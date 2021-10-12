@@ -1,0 +1,254 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use crate::api::{ForeignKey, Qi, };
+
+#[derive(Debug, PartialEq, Deserialize, Serialize)]
+pub struct DbSchema {
+    #[serde(with = "schemas")]
+    pub schemas: HashMap<String, Schema>,
+}
+mod schemas {
+    use super::Schema;
+
+    use std::collections::HashMap;
+
+    use serde::ser::Serializer;
+    use serde::de::{Deserialize, Deserializer};
+    pub fn serialize<S>(map: &HashMap<String, Schema>, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        serializer.collect_seq(map.values())
+    }
+
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Schema>, D::Error>
+        where D: Deserializer<'de>
+    {
+        let mut map = HashMap::new();
+        for schema in Vec::<Schema>::deserialize(deserializer)? {
+            map.insert(schema.name.clone(), schema);
+        }
+        Ok(map)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+pub struct Schema {
+    pub name: String,
+    #[serde(with = "objects")]
+    pub objects: HashMap<String, Object>
+}
+mod objects {
+    use super::Object;
+
+    use std::collections::HashMap;
+
+    use serde::ser::Serializer;
+    use serde::de::{Deserialize, Deserializer};
+    pub fn serialize<S>(map: &HashMap<String, Object>, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        serializer.collect_seq(map.values())
+    }
+
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Object>, D::Error>
+        where D: Deserializer<'de>
+    {
+        let mut map = HashMap::new();
+        for object in Vec::<Object>::deserialize(deserializer)? {
+            map.insert(object.name.clone(), object);
+        }
+        Ok(map)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+pub struct Object {
+    pub kind: ObjectType,
+    pub name: String,
+    #[serde(with = "columns")]
+    pub columns: HashMap<String, Column>,
+    #[serde(with = "foreign_keys")]
+    pub foreign_keys: HashMap<String, ForeignKey>,
+}
+
+mod foreign_keys {
+    use super::{ForeignKeyDef, ForeignKey};
+
+    use std::collections::HashMap;
+
+    use serde::ser::Serializer;
+    use serde::de::{Deserialize, Deserializer};
+    pub fn serialize<S>(map: &HashMap<String, ForeignKey>, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        serializer.collect_seq(map.values().map(|f| 
+            ForeignKeyDef {
+                name: f.name.clone(),
+                table: f.table.clone(),
+                columns: f.columns.clone(),
+                referenced_table: f.referenced_table.clone(),
+                referenced_columns: f.referenced_columns.clone(),
+            }
+        ))
+    }
+
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, ForeignKey>, D::Error>
+        where D: Deserializer<'de>
+    {
+        let mut map = HashMap::new();
+        for foreign_key in Vec::<ForeignKeyDef>::deserialize(deserializer)? {
+            map.insert(foreign_key.name.clone(), ForeignKey {
+                name: foreign_key.name,
+                table: foreign_key.table,
+                columns: foreign_key.columns,
+                referenced_table: foreign_key.referenced_table,
+                referenced_columns: foreign_key.referenced_columns,
+            });
+        }
+        Ok(map)
+    }
+}
+
+mod columns {
+    use super::Column;
+
+    use std::collections::HashMap;
+
+    use serde::ser::Serializer;
+    use serde::de::{Deserialize, Deserializer};
+    pub fn serialize<S>(map: &HashMap<String, Column>, serializer: S) -> Result<S::Ok, S::Error>
+        where S: Serializer
+    {
+        serializer.collect_seq(map.values())
+    }
+
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Column>, D::Error>
+        where D: Deserializer<'de>
+    {
+        let mut map = HashMap::new();
+        for column in Vec::<Column>::deserialize(deserializer)? {
+            map.insert(column.name.clone(), column);
+        }
+        Ok(map)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+pub struct ForeignKeyDef {
+    name: String,
+    table: Qi,
+    columns: Vec<String>,
+    referenced_table: Qi,
+    referenced_columns: Vec<String>
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+pub enum ObjectType { 
+    #[serde(rename = "view")]
+    View,
+
+    #[serde(rename = "table")]
+    Table
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+pub struct Column {
+    #[serde(default)]
+    pub name: String,
+    pub data_type: String,
+}
+
+
+
+
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::{assert_eq};
+    use super::*;
+    use super::ObjectType::*;
+    fn s(s:&str) -> String {
+        s.to_string()
+    }
+    fn t<T>((k,v):(&str, T)) -> (String, T) {
+        (k.to_string(), v)
+    }
+    #[test]
+    fn serialize(){
+        let db_schema = DbSchema {
+            schemas: [
+                ("api", Schema {
+                    name: s("api"),
+                    objects: [
+                        ("tasks", Object {
+                            kind: View,
+                            name: s("tasks"),
+                            columns: [
+                                ("id", Column {
+                                    name: s("id"),
+                                    data_type: s("int")
+                                })
+                            ].iter().cloned().map(t).collect(),
+                            foreign_keys: [
+                                ("project_id_fk", ForeignKey {
+                                    name: s("project_id_fk"),
+                                    table: Qi(s("api"),s("tasks")),
+                                    columns: vec![s("project_id")],
+                                    referenced_table: Qi(s("api"),s("projects")),
+                                    referenced_columns:  vec![s("id")],
+                                })
+                            ].iter().cloned().map(t).collect()
+                        })
+                    ].iter().cloned().map(t).collect()
+                })
+            ].iter().cloned().map(t).collect()
+        };
+
+        let json_schema = r#"
+            {
+                "schemas":[
+                    {
+                        "name":"api",
+                        "objects":[
+                            {
+                                "kind":"view",
+                                "name":"tasks",
+                                "columns":[
+                                    {
+                                        "name":"id",
+                                        "data_type":"int"
+                                    }
+                                ],
+                                "foreign_keys":[
+                                    {
+                                        "name":"project_id_fk",
+                                        "table":["api","tasks"],
+                                        "columns": ["project_id"],
+                                        "referenced_table":["api","projects"],
+                                        "referenced_columns": ["id"]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        "#;
+
+        let serialized_result = serde_json::to_string(&db_schema);
+        let deserialized_result  = serde_json::from_str::<DbSchema>(json_schema);
+
+        println!("serialized_result = {:?}", serialized_result);
+        println!("deserialized_result = {:?}", deserialized_result);
+
+        let serialized = serialized_result.unwrap_or(s("failed to serialize"));
+        let deserialized  = deserialized_result.unwrap_or(DbSchema {schemas: HashMap::new()});
+
+        assert_eq!(db_schema, deserialized);
+        assert_eq!(serde_json::from_str::<serde_json::Value>(serialized.as_str()).unwrap(), serde_json::from_str::<serde_json::Value>(json_schema).unwrap());
+    }
+}

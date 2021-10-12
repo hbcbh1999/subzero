@@ -1,0 +1,27 @@
+[package]
+name = "subzero"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+url = "2.2.2"
+simple-error = "0.2.3"
+http = "0.2"
+rocket = "0.5.0-rc.1"
+combine = "4.6.1"
+lazy_static = "1.4.0"
+serde = "1.0.130"
+# serde_derive = "1.0.130"
+serde_json = "1.0.68"
+snafu = "0.6.10"
+postgres-types = "0.2.2"
+
+[dependencies.rocket_sync_db_pools]
+version = "0.1.0-rc.1"
+features = ["postgres_pool"]
+
+[dev-dependencies]
+pretty_assertions = "1.0.0"
+dyn_partial_eq = "0.1.2"
