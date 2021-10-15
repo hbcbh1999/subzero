@@ -5,11 +5,11 @@ use serde::{Deserialize, Serialize};
 pub use http::Method;
 
 #[derive(Debug, PartialEq)]
-pub struct ApiRequest {
+pub struct ApiRequest<'r> {
     // pub root: String,
     pub method: Method,
     // pub headers: &'r HeaderMap<'r>,
-    pub query: Query,
+    pub query: Query<'r>,
 }
 /*
 query {
@@ -30,11 +30,20 @@ query {
 */
 
 #[derive(Debug, PartialEq)]
-pub enum Query {
+pub enum Query<'r> {
     Select {
-        select: Vec<SelectItem>,
+        select: Vec<SelectItem<'r>>,
         from: String,
         where_: ConditionTree,
+    },
+    Insert {
+        into: String,
+        columns: Vec<String>,
+        payload: &'r str,
+        where_: ConditionTree,
+        returning: Vec<String>,
+        select: Vec<SelectItem<'r>>,
+        //, onConflict :: Maybe (PreferResolution, [FieldName])
     }
     
 }
@@ -72,14 +81,14 @@ pub enum Join {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum SelectItem {
+pub enum SelectItem<'r> {
     //TODO!!! better name
     Simple {
         field: Field,
         alias: Option<String>,
     },
     SubSelect {
-        query: Query,
+        query: Query<'r>,
         alias: Option<String>,
         hint: Option<JoinHint>,
         join: Option<Join>

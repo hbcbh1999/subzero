@@ -4,27 +4,71 @@ use crate::api::{
     Condition::*, Filter::*, Join::*, Query::*, 
 };
 use crate::api::Query;
-//use crate::error::*;
 use postgres_types::{ToSql};
 
 pub fn fmt_query<'a>(schema: &String, q: &'a Query) -> (String, Vec<&'a (dyn ToSql + Sync)> )
 {
-    let (select, from, where_) : (&Vec<SelectItem>, &String, &ConditionTree) = match q {
-        Select {select, from, where_} => (select, from, where_)
+    let (query_str, params) = match q {
+        Select {select, from, where_} => {
+            let qi = &Qi(schema.clone(),from.clone());
+            let (select_and_joins, subselect_parameters): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi, s)).unzip();
+            let (select, joins): (Vec<_>, Vec<_>) = select_and_joins.into_iter().unzip();
+            let (where_, where_parameters) = fmt_condition_tree(qi, where_);
+            let where_str = if where_.len() > 0 { format!("where\n{}", where_) } else { format!("") };
+            let mut from = vec![fmt_qi(qi)];
+        
+            let mut parameters = vec![];
+            parameters.extend(subselect_parameters.into_iter().flatten());
+            parameters.extend(where_parameters);
+            from.extend(joins.into_iter().flatten());
+            (format!("\nselect\n{}\nfrom {}\n{}\n", select.join(",\n"), from.join("\n"), where_str), parameters)
+        },
+        Insert {into, columns, payload, where_, returning, select} => {
+            let qi = &Qi(schema.clone(),into.clone());
+            let qi_payload = &Qi(schema.clone(),"subzero_source".to_string());
+            let (select_and_joins, subselect_parameters): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi_payload, s)).unzip();
+            let (select, joins): (Vec<_>, Vec<_>) = select_and_joins.into_iter().unzip();
+            let (where_, where_parameters) = fmt_condition_tree(qi, where_);
+            let _where_str = if where_.len() > 0 { format!("where\n{}", where_) } else { format!("") };
+            let mut from = vec![fmt_qi(qi_payload)];
+        
+            let mut parameters = vec![];
+            parameters.extend(subselect_parameters.into_iter().flatten());
+            parameters.extend(where_parameters);
+            from.extend(joins.into_iter().flatten());
+            
+            let insert_str = format!(r#"
+with subzero_source as (
+with 
+subzero_payload as ( select ?::json as json_data),
+subzero_body as (
+select
+case when json_typeof(json_data) = 'array'
+then json_data
+else json_build_array(json_data)
+end as val
+from
+subzero_payload
+)
+insert into {} ({})
+select {}
+from json_populate_recordset(null {}, (select val from subzero_body)) _
+returning {}
+)"#,
+            fmt_qi(qi), 
+            columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
+            columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
+            fmt_qi(qi),
+            //where_str,
+            returning.iter().map(fmt_identity).collect::<Vec<_>>().join(",")
+            );
+            let select_str = format!("\nselect\n{}\nfrom {}\n", select.join(",\n"), from.join("\n"));
+            parameters.insert(0, payload);
+            (format!("{}{}", insert_str, select_str), parameters)
+        }
     };
 
-    let qi = &Qi(schema.clone(),from.clone());
-    let (select_and_joins, subselect_parameters): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi, s)).unzip();
-    let (select, joins): (Vec<_>, Vec<_>) = select_and_joins.into_iter().unzip();
-    let (where_, where_parameters) = fmt_condition_tree(qi, where_);
-    let where_str = if where_.len() > 0 { format!("where\n{}", where_) } else { format!("") };
-    let mut from = vec![fmt_qi(qi)];
-
-    let mut parameters = vec![];
-    parameters.extend(subselect_parameters.into_iter().flatten());
-    parameters.extend(where_parameters);
-    from.extend(joins.into_iter().flatten());
-    (format!("\nselect\n{}\nfrom {}\n{}\n", select.join(",\n"), from.join("\n"), where_str), parameters)
+    (query_str, params)
 }
 
 fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> (String, Vec<&'a (dyn ToSql + Sync)>) {
@@ -98,7 +142,7 @@ fn fmt_logic_operator( o: &LogicOperator ) -> String {
 fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> ((String, Vec<String>), Vec<&'a (dyn ToSql + Sync)>) {
     match i {
         Simple {field, alias} => ((format!("{}.{}{}", fmt_qi(qi), fmt_field(field), fmt_alias(alias)), vec![]), vec![]),
-        SubSelect {query,alias,hint:_,join} => match join {
+        SubSelect {query,alias,join,..} => match join {
             Some(j) => match j {
                 Parent (fk) => {
                     let alias_or_name = alias.as_ref().unwrap_or(&fk.referenced_table.1);
@@ -137,7 +181,12 @@ fn fmt_identity(i: &String) -> String{
 }
 
 fn fmt_qi(qi: &Qi) -> String{
-    format!("{}.{}", fmt_identity(&qi.0), fmt_identity(&qi.1))
+    if qi.1.as_str() == "subzero_source" {
+        format!("{}", fmt_identity(&qi.1))
+    }
+    else {
+        format!("{}.{}", fmt_identity(&qi.0), fmt_identity(&qi.1))
+    }
 }
 
 fn fmt_field(f: &Field) -> String {
@@ -189,7 +238,129 @@ mod tests {
         s.to_string()
     }
     #[test]
-    fn test_fmt_query(){
+    fn test_fmt_insert_query(){
+        let payload = r#"[{"id":10, "a":"a field"}]"#;
+        let q = Insert {
+            select: vec![
+                Simple {field: Field {name: s("a"), json_path: None}, alias: None},
+                Simple {field: Field {name: s("b"), json_path: Some(vec![JArrow(JIdx(s("1"))), J2Arrow(JKey(s("key")))])}, alias: None},
+                SubSelect{
+                    query: Select {
+                        select: vec![
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                        ],
+                        from: s("clients"),
+                        where_: ConditionTree { operator: And, conditions: vec![
+                            Single {
+                                field: Field {name: s("id"),json_path: None},
+                                filter: Filter::Col(Qi(s("api"),s("subzero_source")),Field {name: s("client_id"),json_path: None}),
+                                negate: false,
+                           }
+                        ]}
+                    },
+                    alias: None,
+                    hint: None,
+                    join: Some(
+                        Parent(ForeignKey {
+                                name: s("client_id_fk"),
+                                table: Qi(s("api"),s("projects")),
+                                columns: vec![s("client_id")],
+                                referenced_table: Qi(s("api"),s("clients")),
+                                referenced_columns: vec![s("id")],
+                            }),
+                    )
+                },
+                SubSelect{
+                    query: Select {
+                        select: vec![
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                        ],
+                        from: s("tasks"),
+                        where_: ConditionTree { operator: And, conditions: vec![
+                            Single {
+                                field: Field {name: s("project_id"),json_path: None},
+                                filter: Filter::Col(Qi(s("api"),s("subzero_source")),Field {name: s("id"),json_path: None}),
+                                negate: false,
+                            },
+                            Single {filter: Op(s(">"),s("50")), field: Field {name: s("id"), json_path: None}, negate: false},
+                            Single {filter: In(vec![s("51"), s("52")]), field: Field {name: s("id"), json_path: None}, negate: false}
+                        ]}
+                    },
+                    hint: None,
+                    alias: None,
+                    join: Some(
+                        Child(ForeignKey {
+                                name: s("project_id_fk"),
+                                table: Qi(s("api"),s("tasks")),
+                                columns: vec![s("project_id")],
+                                referenced_table: Qi(s("api"),s("projects")),
+                                referenced_columns: vec![s("id")],
+                            }),
+                    )
+                }
+            ],
+            into: s("projects"),
+            where_: ConditionTree { operator: And, conditions: vec![
+                Single {filter: Op(s(">="),s("5")), field: Field {name: s("id"), json_path: None}, negate: false},
+                Single {filter: Op(s("<"),s("10")), field: Field {name: s("id"), json_path: None}, negate: true}
+            ]},
+            columns: vec![s("id"), s("a")],
+            payload: payload,
+            returning: vec![s("id"), s("a")],
+        };
+
+        let (query_str, parameters) = fmt_query(&s("api"), &q);
+        let p0:&(dyn ToSql + Sync) = &vec![&"51", &"52"];
+        let pp: Vec<&(dyn ToSql + Sync)> = vec![&payload, &"50", p0, &"5", &"10"];
+        assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
+        assert_eq!(query_str, s(
+		r#"
+		with subzero_source as (
+			with 
+				subzero_payload as ( select ?::json as json_data),
+				subzero_body as (
+					select
+						case when json_typeof(json_data) = 'array'
+						then json_data
+						else json_build_array(json_data)
+						end as val
+					from
+						subzero_payload
+				)
+				insert into "api"."projects" ("id","a")
+				select "id","a"
+				from json_populate_recordset(null "api"."projects", (select val from subzero_body)) _
+				returning "id","a"
+		)
+		select
+			"subzero_source"."a",
+			"subzero_source"."b"->1->>'key',
+			row_to_json("subzero_source_clients".*) as "clients",
+			coalesce((select json_agg("tasks".*) from (
+				select
+					"api"."tasks"."id"
+				from "api"."tasks"
+				where
+					"api"."tasks"."project_id" = "subzero_source"."id" 
+					and
+					"api"."tasks"."id" > ?
+					and
+					"api"."tasks"."id" = any (?)
+			) as "tasks"), '[]') as "tasks"
+		from "subzero_source"
+		left join lateral (
+			select
+				"api"."clients"."id"
+			from "api"."clients"
+			where
+				"api"."clients"."id" = "subzero_source"."client_id" 
+		) as "subzero_source_clients" on true
+		"#
+        ).replace("\t", ""));
+    }
+
+    #[test]
+    fn test_fmt_select_query(){
         
         let q = Select {
             select: vec![
@@ -228,6 +399,11 @@ mod tests {
                         ],
                         from: s("tasks"),
                         where_: ConditionTree { operator: And, conditions: vec![
+                            Single {
+                                field: Field {name: s("project_id"),json_path: None},
+                                filter: Filter::Col(Qi(s("api"),s("projects")),Field {name: s("id"),json_path: None}),
+                                negate: false,
+                            },
                             Single {filter: Op(s(">"),s("50")), field: Field {name: s("id"), json_path: None}, negate: false},
                             Single {filter: In(vec![s("51"), s("52")]), field: Field {name: s("id"), json_path: None}, negate: false}
                         ]}
@@ -267,6 +443,8 @@ mod tests {
 					"api"."tasks"."id"
 				from "api"."tasks"
 				where
+					"api"."tasks"."project_id" = "api"."projects"."id" 
+					and
 					"api"."tasks"."id" > ?
 					and
 					"api"."tasks"."id" = any (?)

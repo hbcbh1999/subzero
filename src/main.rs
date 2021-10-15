@@ -16,6 +16,7 @@ mod error;
 mod schema;
 mod parser;
 mod executor;
+mod dynamic_statement;
 
 use http::Method;
 // use parser::postgrest::PostgrestRequest;
@@ -38,7 +39,7 @@ fn index() -> &'static str {
         ("id","not.gt.10"),
         ("child.id","lt.5"),
         ("not.or", "(id.eq.11,id.eq.12)"),
-        ]).unwrap();
+        ], None).unwrap();
     let _q = executor::postgresql::fmt_query(&schema, &request.query);
     "Hello, world!"
     
