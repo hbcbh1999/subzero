@@ -40,7 +40,7 @@ pub enum Query<'r> {
         into: String,
         columns: Vec<String>,
         payload: &'r str,
-        where_: ConditionTree,
+        where_: ConditionTree, //used only for put
         returning: Vec<String>,
         select: Vec<SelectItem<'r>>,
         //, onConflict :: Maybe (PreferResolution, [FieldName])
