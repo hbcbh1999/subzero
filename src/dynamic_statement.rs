@@ -1,41 +1,46 @@
 use std::ops::Add;
+// use std::slice::Join;
 
 #[derive(Debug, PartialEq)]
-pub struct SqlSnippet<'a, T>(Vec<SqlSnippetChunk<'a, T>>);
+pub struct SqlSnippet<'a, T:?Sized>(pub Vec<SqlSnippetChunk<'a, T>>);
 
 #[derive(Debug, PartialEq)]
-pub enum SqlSnippetChunk<'a, T> {
+pub enum SqlSnippetChunk<'a, T:?Sized> 
+{
     Sql (&'a str),
     Param (&'a T),
 }
+impl<'a, T:?Sized> SqlSnippet<'a, T>{
+    pub fn len(&self) -> usize {
+        match self {
+            SqlSnippet(v) => v.len()
+        }
+    }
+}
 
-pub trait IntoSnippet<'a, T> {
+pub trait IntoSnippet<'a, T:?Sized> {
     fn into(self) -> SqlSnippet<'a, T>;
 }
 
-pub fn sql<'a, T, A>(s: A) -> SqlSnippet<'a, T> where A: IntoSnippet<'a, T> {
+pub fn sql<'a, T:?Sized, A>(s: A) -> SqlSnippet<'a, T> where A: IntoSnippet<'a, T> {
     s.into()
 }
-pub fn param<'a, T>(p: &'a T) -> SqlSnippet<'a, T> { SqlSnippet(vec![SqlSnippetChunk::Param(p)]) }
+pub fn param<'a, T:?Sized>(p: &'a T) -> SqlSnippet<'a, T> { SqlSnippet(vec![SqlSnippetChunk::Param(p)]) }
 
 
-impl<'a, T> IntoSnippet<'a, T> for &'a str {
+impl<'a, T:?Sized> IntoSnippet<'a, T> for &'a str {
     fn into(self) -> SqlSnippet<'a, T> {
         SqlSnippet(vec![SqlSnippetChunk::Sql(self)])
     }
 }
 
-impl<'a, T> IntoSnippet<'a, T> for &'a String {
+impl<'a, T:?Sized> IntoSnippet<'a, T> for &'a String {
     fn into(self) -> SqlSnippet<'a, T> {
         SqlSnippet(vec![SqlSnippetChunk::Sql(self)])
     }
 }
 
-// pub fn sql<'a, T>(s: &'a str) -> SqlSnippet<'a, T> { SqlSnippet(vec![SqlSnippetChunk::Sql(s)]) }
-
-
-
-impl<T: Add<Output = T>> Add for SqlSnippet<'_, T> {
+impl<T:?Sized> Add for SqlSnippet<'a, T> {
     type Output = Self;
 
     fn add(self, other: Self) -> Self::Output {
@@ -50,7 +55,7 @@ impl<T: Add<Output = T>> Add for SqlSnippet<'_, T> {
     }
 }
 
-impl<T: Add<Output = T>> Add<SqlSnippet<'a, T>> for &'a str {
+impl<T:?Sized> Add<SqlSnippet<'a, T>> for &'a str {
     type Output = SqlSnippet<'a, T>;
     fn add(self, snippet: SqlSnippet<'a, T>) -> SqlSnippet<'a, T> {
         match snippet {
@@ -63,7 +68,7 @@ impl<T: Add<Output = T>> Add<SqlSnippet<'a, T>> for &'a str {
     }
 }
 
-impl<T: Add<Output = T>> Add<&'a str> for SqlSnippet<'a, T>{
+impl<T:?Sized> Add<&'a str> for SqlSnippet<'a, T>{
     type Output = SqlSnippet<'a, T>;
     fn add(self, s: &'a str) -> SqlSnippet<'a, T> {
         match self {
@@ -77,7 +82,7 @@ impl<T: Add<Output = T>> Add<&'a str> for SqlSnippet<'a, T>{
     }
 }
 
-impl<T: Add<Output = T>> Add<SqlSnippet<'a, T>> for &'a String {
+impl<T:?Sized> Add<SqlSnippet<'a, T>> for &'a String {
     type Output = SqlSnippet<'a, T>;
     fn add(self, snippet: SqlSnippet<'a, T>) -> SqlSnippet<'a, T> {
         match snippet {
@@ -90,7 +95,7 @@ impl<T: Add<Output = T>> Add<SqlSnippet<'a, T>> for &'a String {
     }
 }
 
-impl<T: Add<Output = T>> Add<&'a String> for SqlSnippet<'a, T>{
+impl<T:?Sized> Add<&'a String> for SqlSnippet<'a, T>{
     type Output = SqlSnippet<'a, T>;
     fn add(self, s: &'a String) -> SqlSnippet<'a, T> {
         match self {
@@ -104,8 +109,15 @@ impl<T: Add<Output = T>> Add<&'a String> for SqlSnippet<'a, T>{
     }
 }
 
+// impl<T:?Sized> Join<&str> for [SqlSnippet<'a, T>] {
+//     type Output = SqlSnippet<'a, T>;
 
-pub fn generate<'a, T>( s: SqlSnippet<'a, T> ) -> (String, Vec<&T>, u32){
+//     fn join(slice: &Self, sep: &str) -> Output {
+//         todo!();//unsafe { String::from_utf8_unchecked(join_generic_copy(slice, sep.as_bytes())) }
+//     }
+// }
+
+pub fn generate<'a, T:?Sized>( s: SqlSnippet<'a, T> ) -> (String, Vec<&T>, u32){
     match s {
         SqlSnippet(c) => c.iter().fold(
             (String::new(), vec![], 1),
@@ -131,10 +143,12 @@ pub fn generate<'a, T>( s: SqlSnippet<'a, T> ) -> (String, Vec<&T>, u32){
 #[cfg(test)]
 mod tests {
     use pretty_assertions::{assert_eq};
+    use postgres_types::{ToSql};
+
     use super::*;
     use super::SqlSnippetChunk::*;
     #[test]
-    fn concat_components(){
+    fn basic(){
         assert_eq!(sql("select * from tbl where id = ") + param(&20), SqlSnippet(vec![Sql(&"select * from tbl where id = "), Param(&20)]) );
         assert_eq!("select * from tbl where id = " + param(&20), SqlSnippet(vec![Sql(&"select * from tbl where id = "), Param(&20)]) );
         assert_eq!(param(&20) + "=10", SqlSnippet(vec![Param(&20),Sql(&"=10")]) );
@@ -142,8 +156,20 @@ mod tests {
         assert_eq!( &query + param(&20), SqlSnippet(vec![Sql(&"select * from tbl where id = "), Param(&20)]) );
         assert_eq!( query.as_str() + param(&20), SqlSnippet(vec![Sql(&"select * from tbl where id = "), Param(&20)]) );
         assert_eq!(
-            generate("select * from tbl where id > " + param(&20) + " and id < " + param(&30)),
+            generate(("select * from tbl where id > " + param(&20) + " and id < " + param(&30))),
             ("select * from tbl where id > $1 and id < $2".to_string(), vec![&20, &30], 3)
         );
     }
+
+    #[test]
+    fn dyn_parameters(){
+        let p1: &(dyn ToSql + Sync) = &20;
+        let p2: &(dyn ToSql + Sync) = &"name";
+        let snippet = "select * from tbl where id > " + param(p1) + " and name = " + param(p2);
+        let (q,p,i) = generate(snippet);
+        assert_eq!(q, "select * from tbl where id > $1 and name = $2".to_string());
+        assert_eq!(format!("{:?}",p), format!("{:?}",vec![p1, p2]));
+        assert_eq!(i,3);
+    }
+
 }
