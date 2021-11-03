@@ -6,10 +6,53 @@ use crate::api::{
 use crate::dynamic_statement::{
     sql, param, SqlSnippet, SqlSnippetChunk, 
 };
-use postgres_types::{ToSql};
+use postgres_types::{ToSql, Type, to_sql_checked, IsNull, };
+use std::error::Error;
+use bytes::{BufMut, BytesMut};
 
-pub fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>
-{
+impl ToSql for ListVal {
+    fn to_sql(
+        &self,
+        _ty: &Type,
+        out: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        match self {
+            ListVal(v) => {
+                out.put_slice(format!("{{\"{}\"}}", v.join("\",\"")).as_str().as_bytes());
+                Ok(IsNull::No)
+            }
+        }
+    }
+
+    fn accepts(_ty: &Type) -> bool { true }
+
+    fn encode_format(&self) -> i16 { 0 }
+
+    to_sql_checked!();
+}
+
+impl ToSql for SingleVal {
+    fn to_sql(
+        &self,
+        _ty: &Type,
+        out: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        match self {
+            SingleVal(v) => {
+                out.put_slice(v.as_str().as_bytes());
+                Ok(IsNull::No)
+            }
+        }
+    }
+
+    fn accepts(_ty: &Type) -> bool { true }
+
+    fn encode_format(&self) -> i16 { 0 }
+
+    to_sql_checked!();
+}
+
+fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
     match q {
         Select {select, from, where_} => {
             let qi = &Qi(schema.clone(),from.clone());
@@ -60,6 +103,14 @@ returning {}
             insert_snipet + select_snippet
         }
     }
+}
+
+pub fn format<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
+    " with subzero_source as(" + fmt_query(schema, q) + ") " +
+    " select" +
+    " pg_catalog.count(_subzero_t) AS page_total, "+
+    " coalesce(json_agg(_subzero_t), '[]')::character varying as body" +
+    " from ( select * from subzero_source ) _subzero_t"
 }
 
 fn join_snippets<'a>(v: Vec<SqlSnippet<'a, (dyn ToSql + Sync + 'a)>>, s: & str) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
@@ -115,10 +166,11 @@ fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> SqlSnippet<'a, (dyn ToSql + S
     }
 }
 
-fn fmt_filter(f: &Filter) -> SqlSnippet<(dyn ToSql + Sync)>{
+fn fmt_filter(f: &Filter) -> SqlSnippet<(dyn ToSql + Sync + '_)>{
 
     match f {
         Op (o, v) => {
+            //let vv:&(dyn ToSql + Sync) = &Unknown(v);
             let vv:&(dyn ToSql + Sync) = v;
             fmt_operator(o) + param(vv)
         }
@@ -140,7 +192,6 @@ fn fmt_filter(f: &Filter) -> SqlSnippet<(dyn ToSql + Sync)>{
     }
 }
 
-//fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> ((String, Vec<String>), Vec<&'a (dyn ToSql + Sync)>) {
 fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> (SqlSnippet<'a, (dyn ToSql + Sync + 'a)>, Vec<SqlSnippet<'a, (dyn ToSql + Sync + 'a)>>) {
     match i {
         Simple {field, alias} => (sql(format!("{}.{}{}", fmt_qi(qi), fmt_field(field), fmt_alias(alias))), vec![]),
@@ -241,7 +292,7 @@ mod tests {
     // use crate::error::Error as AppError;
     // use combine::EasyParser;
     use super::*;
-    //use crate::parser::postgrest::tests::{JSON_SCHEMA};
+    //use crate::parser::subzero::tests::{JSON_SCHEMA};
     fn s(s:&str) -> String {
         s.to_string()
     }
@@ -290,8 +341,8 @@ mod tests {
                                 filter: Filter::Col(Qi(s("api"),s("subzero_source")),Field {name: s("id"),json_path: None}),
                                 negate: false,
                             },
-                            Single {filter: Op(s(">"),s("50")), field: Field {name: s("id"), json_path: None}, negate: false},
-                            Single {filter: In(vec![s("51"), s("52")]), field: Field {name: s("id"), json_path: None}, negate: false}
+                            Single {filter: Op(s(">"),SingleVal(s("50"))), field: Field {name: s("id"), json_path: None}, negate: false},
+                            Single {filter: In(ListVal(vec![s("51"), s("52")])), field: Field {name: s("id"), json_path: None}, negate: false}
                         ]}
                     },
                     hint: None,
@@ -367,6 +418,11 @@ mod tests {
         ).replace("\t", ""));
     }
 
+    // #[bench]
+    // fn bench_fmt_generate_query(b: &mut Bencher){
+
+    // }
+
     #[test]
     fn test_fmt_select_query(){
         
@@ -412,8 +468,8 @@ mod tests {
                                 filter: Filter::Col(Qi(s("api"),s("projects")),Field {name: s("id"),json_path: None}),
                                 negate: false,
                             },
-                            Single {filter: Op(s(">"),s("50")), field: Field {name: s("id"), json_path: None}, negate: false},
-                            Single {filter: In(vec![s("51"), s("52")]), field: Field {name: s("id"), json_path: None}, negate: false}
+                            Single {filter: Op(s(">"),SingleVal(s("50"))), field: Field {name: s("id"), json_path: None}, negate: false},
+                            Single {filter: In(ListVal(vec![s("51"), s("52")])), field: Field {name: s("id"), json_path: None}, negate: false}
                         ]}
                     },
                     hint: None,
@@ -431,8 +487,8 @@ mod tests {
             ],
             from: s("projects"),
             where_: ConditionTree { operator: And, conditions: vec![
-                Single {filter: Op(s(">="),s("5")), field: Field {name: s("id"), json_path: None}, negate: false},
-                Single {filter: Op(s("<"),s("10")), field: Field {name: s("id"), json_path: None}, negate: true}
+                Single {filter: Op(s(">="),SingleVal(s("5"))), field: Field {name: s("id"), json_path: None}, negate: false},
+                Single {filter: Op(s("<"),SingleVal(s("10"))), field: Field {name: s("id"), json_path: None}, negate: true}
             ]}
         };
 
@@ -484,7 +540,7 @@ mod tests {
                     conditions: vec![
                         Single {
                             field: Field {name:s("name"), json_path:Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])},
-                            filter: Op (s(">"), s("2")),
+                            filter: Op (s(">"), SingleVal(s("2"))),
                             negate: false
                         },
                         Group (false, ConditionTree {
@@ -492,12 +548,12 @@ mod tests {
                             conditions: vec![
                                 Single {
                                     field: Field {name:s("name"), json_path:None},
-                                    filter: Op (s(">"), s("2")),
+                                    filter: Op (s(">"), SingleVal(s("2"))),
                                     negate: false
                                 },
                                 Single {
                                     field: Field {name:s("name"), json_path:None},
-                                    filter: Op (s("<"), s("5")),
+                                    filter: Op (s("<"), SingleVal(s("5"))),
                                     negate: false
                                 }
                             ]
@@ -516,11 +572,11 @@ mod tests {
                 &Qi(s("schema"),s("table")),
                 &Single {
                     field: Field {name:s("name"), json_path:Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])},
-                    filter: Op (s(">"), s("2")),
+                    filter: Op (s(">"), SingleVal(s("2"))),
                     negate: false
                 }
             ))),
-            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21>$1"), vec![&s("2")], 2))
+            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21>$1"), vec![&SingleVal(s("2"))], 2))
         );
 
         assert_eq!(
@@ -528,7 +584,7 @@ mod tests {
                 &Qi(s("schema"),s("table")),
                 &Single {
                     field: Field {name:s("name"), json_path:None},
-                    filter: In (vec![s("5"), s("6")]),
+                    filter: In (ListVal(vec![s("5"), s("6")])),
                     negate: true
                 }
             ))),
@@ -538,9 +594,9 @@ mod tests {
     
     #[test]
     fn test_fmt_filter(){
-        assert_eq!(format!("{:?}",generate(fmt_filter(&Op (s(">"), s("2"))))), format!("{:?}",(&s(">$1"), vec![&s("2")], 2)));
-        assert_eq!(format!("{:?}",generate(fmt_filter(&In (vec![s("5"), s("6")])))), format!("{:?}",(&s("= any($1)"), vec![vec![&s("5"), &s("6")]],2)));
-        assert_eq!(format!("{:?}",generate(fmt_filter(&Fts (s("@@ to_tsquery"), Some(s("eng")), s("2"))))), format!("{:?}",(&s("@@ to_tsquery($1,$2)"), vec![&s("eng"), &s("2")],3)));
+        assert_eq!(format!("{:?}",generate(fmt_filter(&Op (s(">"), SingleVal(s("2")))))), format!("{:?}",(&s(">$1"), vec![&s("2")], 2)));
+        assert_eq!(format!("{:?}",generate(fmt_filter(&In (ListVal(vec![s("5"), s("6")]))))), format!("{:?}",(&s("= any($1)"), vec![vec![&s("5"), &s("6")]],2)));
+        assert_eq!(format!("{:?}",generate(fmt_filter(&Fts (s("@@ to_tsquery"), Some(s("eng")), SingleVal(s("2")))))), format!("{:?}",(&s("@@ to_tsquery($1,$2)"), vec![&s("eng"), &s("2")],3)));
         let p :Vec<&(dyn ToSql + Sync)> = vec![];
         assert_eq!(format!("{:?}",generate(fmt_filter(&Col (Qi(s("api"),s("projects")), Field {name: s("id"), json_path: None})))), format!("{:?}",(&s("= \"api\".\"projects\".\"id\""), p, 1)));
     }

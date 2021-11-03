@@ -1,7 +1,7 @@
 
 //use rocket::http::{HeaderMap, Method};
 use serde::{Deserialize, Serialize};
-
+use core::fmt::Debug;
 pub use http::Method;
 
 #[derive(Debug, PartialEq)]
@@ -140,10 +140,52 @@ pub enum JsonOperand {
 
 
 pub type Operator = String;
-pub type SingleVal = String;
+#[derive(Debug,PartialEq,Clone)]
+pub struct SingleVal(pub String);
 pub type Language = String;
-pub type ListVal = Vec<SingleVal>;
+#[derive(Debug,PartialEq,Clone)]
+pub struct ListVal(pub Vec<String>);
 pub type Negate = bool;
+
+// impl From<ListVal> for &str {
+//     fn from(l: ListVal) -> Self {
+//         match l {
+//             ListVal(v) => format!("{{\"{}\"}}", v.join("\",\"")).as_str()
+//         }
+//     }
+// }
+
+
+
+// pub trait Param where Self: core::fmt::Debug + Sync{
+//     fn as_strr<'a>(self) -> String;
+// }
+
+// impl From<&dyn Param> for String {
+//     fn from(l: &dyn Param) -> Self {
+//         l.as_strr()
+//     }
+// }
+
+// impl Debug for dyn Param {
+//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+//         write!(f, "{:?}", self)
+//     }
+// }
+
+// impl Param for SingleVal {
+//     fn as_strr<'a>(self) -> String{
+//         self
+//     }
+// }
+
+// impl Param for ListVal {
+//     fn as_strr<'a>(self) -> String{
+//         match self {
+//             ListVal(v) => format!("{{\"{}\"}}", v.join("\",\""))
+//         }
+//     }
+// }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum LogicOperator { And, Or }

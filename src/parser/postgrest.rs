@@ -192,7 +192,6 @@ where Input: Stream<Token = char>
     char('.')
 }
 
-
 fn tree_path<Input>() -> impl Parser<Input, Output = (Vec<String>, Field)>
 where Input: Stream<Token = char>
 {
@@ -361,8 +360,8 @@ where Input: Stream<Token = char>
     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
 
     choice((
-        attempt(operator().skip(dot()).and(single_value()).map(|(o,v)| Filter::Op(o, v))),
-        attempt(string("in").skip(dot()).and(list_value()).map(|(_,v)| Filter::In(v))),
+        attempt(operator().skip(dot()).and(single_value()).map(|(o,v)| Filter::Op(o, SingleVal(v)))),
+        attempt(string("in").skip(dot()).and(list_value()).map(|(_,v)| Filter::In(ListVal(v)))),
         fts_operator()
             .and(optional(
                 between(
@@ -375,7 +374,7 @@ where Input: Stream<Token = char>
             ))
             .skip(dot())
             .and(single_value())
-            .map(|((o,l),v)| Filter::Fts (o,l,v)),
+            .map(|((o,l),v)| Filter::Fts (o,l,SingleVal(v))),
 
     ))
 }
@@ -386,8 +385,8 @@ where Input: Stream<Token = char>
     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
 
     choice((
-        attempt(operator().skip(dot()).and(logic_single_value()).map(|(o,v)| Filter::Op(o, v))),
-        attempt(string("in").skip(dot()).and(list_value()).map(|(_,v)| Filter::In(v))),
+        attempt(operator().skip(dot()).and(logic_single_value()).map(|(o,v)| Filter::Op(o, SingleVal(v)))),
+        attempt(string("in").skip(dot()).and(list_value()).map(|(_,v)| Filter::In(ListVal(v)))),
         fts_operator()
             .and(optional(
                 between(
@@ -400,7 +399,7 @@ where Input: Stream<Token = char>
             ))
             .skip(dot())
             .and(logic_single_value())
-            .map(|((o,l),v)| Filter::Fts (o,l,v)),
+            .map(|((o,l),v)| Filter::Fts (o,l,SingleVal(v))),
 
     ))
 }
@@ -463,7 +462,7 @@ pub fn get_parameter<'a >(name: &str, parameters: &'a Vec<(&'a str, &'a str)>)->
     parameters.iter().filter(|v| v.0 == name).next()
 }
 
-pub fn parse<'r>(schema: &String, root: String, db_schema: &DbSchema, method: &Method, parameters: Vec<(&str, &str)>, body: Option<&'r str>) -> Result<ApiRequest<'r>> {
+pub fn parse<'r>(schema: &String, root: &String, db_schema: &DbSchema, method: &Method, parameters: Vec<(&str, &str)>, body: Option<&'r String>) -> Result<ApiRequest<'r>> {
     // extract and parse select item
     let &(_, select_param) = get_parameter("select", &parameters).unwrap_or(&("select","*"));
     let (select_items, _) = select().easy_parse(select_param).map_err(to_app_error(select_param, "select".to_string()))?;
@@ -471,7 +470,7 @@ pub fn parse<'r>(schema: &String, root: String, db_schema: &DbSchema, method: &M
         Method::GET => {
             let mut q = Select {
                 select: select_items,
-                from: root,
+                from: root.clone(),
                 where_: ConditionTree { operator: And, conditions: vec![] }
             };
             add_join_conditions(&mut q, &schema, db_schema)?;
@@ -526,7 +525,7 @@ pub fn parse<'r>(schema: &String, root: String, db_schema: &DbSchema, method: &M
             }?;
 
             let mut q = Insert {
-                into: root,
+                into: root.clone(),
                 columns: columns,
                 payload,
                 where_: ConditionTree { operator: And, conditions: vec![] },
@@ -999,7 +998,7 @@ pub mod tests {
         };
         let condition = Single {
             field: Field {name: s("a"), json_path: None},
-            filter: Filter::Op(s(">="),s("5")),
+            filter: Filter::Op(s(">="),SingleVal(s("5"))),
             negate: false,
         };
         insert_conditions( &mut query, vec![
@@ -1035,7 +1034,7 @@ pub mod tests {
         
         let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
        
-        let a = parse(&s("api"), s("projects"), &db_schema, &Method::GET, vec![
+        let a = parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
             ("select", "id,name,clients(id),tasks(id)"),
             ("id","not.gt.10"),
             ("tasks.id","lt.500"),
@@ -1095,7 +1094,7 @@ pub mod tests {
                                        },
                                         Single {
                                             field: Field {name: s("id"), json_path: None},
-                                            filter: Filter::Op(s("<"),s("500")),
+                                            filter: Filter::Op(s("<"),SingleVal(s("500"))),
                                             negate: false,
                                         },
                                         Group(
@@ -1103,8 +1102,8 @@ pub mod tests {
                                             ConditionTree {
                                                 operator: Or,
                                                 conditions: vec![
-                                                    Single {filter: Filter::Op(s("="),s("11")), field: Field {name: s("id"), json_path: None}, negate: false },
-                                                    Single {filter: Filter::Op(s("="),s("12")), field: Field {name: s("id"), json_path: None}, negate: false }
+                                                    Single {filter: Filter::Op(s("="),SingleVal(s("11"))), field: Field {name: s("id"), json_path: None}, negate: false },
+                                                    Single {filter: Filter::Op(s("="),SingleVal(s("12"))), field: Field {name: s("id"), json_path: None}, negate: false }
                                                 ]
                                             }
                                         )
@@ -1128,7 +1127,7 @@ pub mod tests {
                         where_: ConditionTree { operator: And, conditions: vec![
                             Single {
                                 field: Field {name: s("id"), json_path: None},
-                                filter: Filter::Op(s(">"),s("10")),
+                                filter: Filter::Op(s(">"),SingleVal(s("10"))),
                                 negate: true,
                             },
                             Group(
@@ -1136,8 +1135,8 @@ pub mod tests {
                                 ConditionTree {
                                     operator: Or,
                                     conditions: vec![
-                                        Single {filter: Filter::Op(s("="),s("11")), field: Field {name: s("id"), json_path: None}, negate: false },
-                                        Single {filter: Filter::Op(s("="),s("12")), field: Field {name: s("id"), json_path: None}, negate: false }
+                                        Single {filter: Filter::Op(s("="),SingleVal(s("11"))), field: Field {name: s("id"), json_path: None}, negate: false },
+                                        Single {filter: Filter::Op(s("="),SingleVal(s("12"))), field: Field {name: s("id"), json_path: None}, negate: false }
                                     ]
                                 }
                             )
@@ -1148,14 +1147,14 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::GET, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id,name,unknown(id)")
             ], None),
             Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")})
         );
 
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::GET, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id-,na$me")
             ], None),
             Err(AppError::ParseRequestError{
@@ -1171,12 +1170,12 @@ pub mod tests {
         
         let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
        
-        let payload = r#"{"id":10, "name":"john"}"#;
+        let payload = s(r#"{"id":10, "name":"john"}"#);
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(payload))
+            ], Some(&payload))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
@@ -1185,13 +1184,13 @@ pub mod tests {
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                         ],
-                        payload: payload,
+                        payload: &payload,
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
                         where_: ConditionTree { operator: And, conditions: vec![
                             Single {
                                 field: Field {name: s("id"), json_path: None},
-                                filter: Filter::Op(s(">"),s("10")),
+                                filter: Filter::Op(s(">"),SingleVal(s("10"))),
                                 negate: false,
                             }
                         ] },
@@ -1201,11 +1200,11 @@ pub mod tests {
             })
         );
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id,name"),
                 ("id","gt.10"),
                 ("columns","id,name"),
-            ], Some(payload))
+            ], Some(&payload))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
@@ -1215,13 +1214,13 @@ pub mod tests {
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                             Simple {field: Field {name: s("name"), json_path: None}, alias: None},
                         ],
-                        payload: payload,
+                        payload: &payload,
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
                         where_: ConditionTree { operator: And, conditions: vec![
                             Single {
                                 field: Field {name: s("id"), json_path: None},
-                                filter: Filter::Op(s(">"),s("10")),
+                                filter: Filter::Op(s(">"),SingleVal(s("10"))),
                                 negate: false,
                             }
                         ] },
@@ -1232,11 +1231,11 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
                 ("columns","id,1 name"),
-            ], Some(r#"{"id":10, "name":"john", "phone":"123"}"#))
+            ], Some(&s(r#"{"id":10, "name":"john", "phone":"123"}"#)))
             ,
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse columns parameter (id,1 name)"),
@@ -1246,10 +1245,10 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(r#"{"id":10, "name""#))
+            ], Some(&s(r#"{"id":10, "name""#)))
             ,
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse json body"),
@@ -1259,10 +1258,10 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#))
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)))
             ,
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse json body"),
@@ -1274,14 +1273,14 @@ pub mod tests {
         
 
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::GET, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id,name,unknown(id)")
             ], None),
             Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")})
         );
 
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::GET, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id-,na$me")
             ], None),
             Err(AppError::ParseRequestError{
@@ -1292,10 +1291,10 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#))
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
@@ -1304,13 +1303,13 @@ pub mod tests {
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                         ],
-                        payload: r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#,
+                        payload: &s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
                         where_: ConditionTree { operator: And, conditions: vec![
                             Single {
                                 field: Field {name: s("id"), json_path: None},
-                                filter: Filter::Op(s(">"),s("10")),
+                                filter: Filter::Op(s(">"),SingleVal(s("10"))),
                                 negate: false,
                             }
                         ] },
@@ -1321,11 +1320,11 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id,name,tasks(id),clients(id)"),
                 ("id","gt.10"),
                 ("tasks.id","gt.20"),
-            ], Some(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#))
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
@@ -1349,7 +1348,7 @@ pub mod tests {
                                        },
                                         Single {
                                             field: Field {name: s("id"), json_path: None},
-                                            filter: Filter::Op(s(">"),s("20")),
+                                            filter: Filter::Op(s(">"),SingleVal(s("20"))),
                                             negate: false,
                                         }
                                     ]}
@@ -1394,13 +1393,13 @@ pub mod tests {
                                 )
                             },
                         ],
-                        payload: r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#,
+                        payload: &s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
                         where_: ConditionTree { operator: And, conditions: vec![
                             Single {
                                 field: Field {name: s("id"), json_path: None},
-                                filter: Filter::Op(s(">"),s("10")),
+                                filter: Filter::Op(s(">"),SingleVal(s("10"))),
                                 negate: false,
                             }
                         ] },
@@ -1550,15 +1549,15 @@ pub mod tests {
     fn parse_filter() {
         assert_eq!(
             filter().easy_parse("gte.5"), 
-            Ok((Filter::Op(s(">="),s("5")),""))
+            Ok((Filter::Op(s(">="),SingleVal(s("5"))),""))
         );
         assert_eq!(
             filter().easy_parse("in.(1,2,3)"), 
-            Ok((Filter::In(["1","2","3"].map(str::to_string).to_vec()),""))
+            Ok((Filter::In(ListVal(["1","2","3"].map(str::to_string).to_vec())),""))
         );
         assert_eq!(
             filter().easy_parse("fts.word"), 
-            Ok((Filter::Fts(s("@@ to_tsquery"), None, s("word")),""))
+            Ok((Filter::Fts(s("@@ to_tsquery"), None, SingleVal(s("word"))),""))
         );
     }
 
@@ -1568,19 +1567,19 @@ pub mod tests {
         assert_eq!(
             logic_condition().easy_parse("id.gte.5"), 
             Ok((
-                Single {filter: Filter::Op(s(">="),s("5")), field: field.clone(), negate: false}
+                Single {filter: Filter::Op(s(">="),SingleVal(s("5"))), field: field.clone(), negate: false}
             ,""))
         );
         assert_eq!(
             logic_condition().easy_parse("id.not.in.(1,2,3)"), 
             Ok((
-                Single {filter: Filter::In(vec![s("1"),s("2"),s("3")]), field: field.clone(), negate: true}
+                Single {filter: Filter::In(ListVal(vec![s("1"),s("2"),s("3")])), field: field.clone(), negate: true}
             ,""))
         );
         assert_eq!(
             logic_condition().easy_parse("id.fts.word"), 
             Ok((
-                Single {filter: Filter::Fts(s("@@ to_tsquery"), None, s("word")), field: field.clone(), negate: false}
+                Single {filter: Filter::Fts(s("@@ to_tsquery"), None, SingleVal(s("word"))), field: field.clone(), negate: false}
             ,""))
         );
         assert_eq!(
@@ -1591,8 +1590,8 @@ pub mod tests {
                     ConditionTree {
                         operator: Or,
                         conditions: vec![
-                            Single {filter: Filter::Op(s(">="),s("5")), field: field.clone(), negate: false },
-                            Single {filter: Filter::Op(s("<="),s("10")), field: field.clone(), negate: false }
+                            Single {filter: Filter::Op(s(">="),SingleVal(s("5"))), field: field.clone(), negate: false },
+                            Single {filter: Filter::Op(s("<="),SingleVal(s("10"))), field: field.clone(), negate: false }
                         ]
                     }
                 )
@@ -1606,15 +1605,15 @@ pub mod tests {
                     ConditionTree {
                         operator: Or,
                         conditions: vec![
-                            Single {filter: Filter::Op(s(">="),s("5")), field: field.clone(), negate: false },
-                            Single {filter: Filter::Op(s("<="),s("10")), field: field.clone(), negate: false },
+                            Single {filter: Filter::Op(s(">="),SingleVal(s("5"))), field: field.clone(), negate: false },
+                            Single {filter: Filter::Op(s("<="),SingleVal(s("10"))), field: field.clone(), negate: false },
                             Condition::Group(
                                 false,
                                 ConditionTree {
                                     operator: And,
                                     conditions: vec![
-                                        Single {filter: Filter::Op(s(">="),s("2")), field: field.clone(), negate: false },
-                                        Single {filter: Filter::Op(s("<="),s("4")), field: field.clone(), negate: false }
+                                        Single {filter: Filter::Op(s(">="),SingleVal(s("2"))), field: field.clone(), negate: false },
+                                        Single {filter: Filter::Op(s("<="),SingleVal(s("4"))), field: field.clone(), negate: false }
                                     ]
                                 }
                             )
