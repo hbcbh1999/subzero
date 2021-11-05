@@ -1,5 +1,6 @@
 use std::ops::Add;
-// use std::slice::Join;
+
+//use std::slice::Join;
 
 #[derive(Debug, PartialEq)]
 pub struct SqlSnippet<'a, T:?Sized>(pub Vec<SqlSnippetChunk<'a, T>>);
@@ -17,6 +18,75 @@ impl<'a, T:?Sized> SqlSnippet<'a, T>{
         }
     }
 }
+
+
+// the method `join` exists for struct `Vec<SqlSnippet<'_, &str>>`, but its trait bounds were not satisfied
+// the following trait bounds were not satisfied:
+// `<[SqlSnippet<'_, &str>] as std::slice::Join<_>>::Output = _`
+
+// impl<'a, T:?Sized> Join<&str> for [SqlSnippet<'a, T>] {
+//     type Output = SqlSnippet<'a, T>;
+
+//     fn join(slice: &Self, sep: &str) -> Self::Output {
+//         match slice.into_iter().fold(
+//             SqlSnippet(vec![]),
+//             |SqlSnippet(mut acc), SqlSnippet(v)| {
+//                 acc.push(SqlSnippetChunk::Sql(sep.to_string()));
+//                 acc.extend(v.into_iter());
+//                 SqlSnippet(acc)
+//             }
+//         ) {
+//             SqlSnippet(mut v) => {
+//                 v.remove(0);
+//                 SqlSnippet(v)
+//             }
+//         }
+//     }
+// }
+
+pub trait JoinIterator<'a, T:?Sized> {
+    fn join(self, sep: &str) -> SqlSnippet<'a, T>;
+}
+
+impl<'a, I, T:?Sized + 'a> JoinIterator<'a, T> for I
+where
+    I: IntoIterator<Item = SqlSnippet<'a, T>>
+{
+    fn join(self, sep: &str) -> SqlSnippet<'a, T> {
+        match self.into_iter().fold(
+            SqlSnippet(vec![]),
+            |SqlSnippet(mut acc), SqlSnippet(v)| {
+                acc.push(SqlSnippetChunk::Sql(sep.to_string()));
+                acc.extend(v.into_iter());
+                SqlSnippet(acc)
+            }
+        ) {
+            SqlSnippet(mut v) => {
+                v.remove(0);
+                SqlSnippet(v)
+            }
+        }
+    }
+}
+
+// impl<I, T> JoinIterator for I
+// where
+//     I: IntoIterator<Item = T>,
+//     T: std::fmt::Display,
+// {
+//     fn join(self, sep: &str) -> String {
+//         use std::fmt::Write;
+
+//         let mut it = self.into_iter();
+//         let first = it.next().map(|f| f.to_string()).unwrap_or_default();
+
+//         it.fold(first, |mut acc, s| {
+//             write!(acc, "{}{}", sep, s).expect("Writing in a String shouldn't fail");
+//             acc
+//         })
+
+//     }
+// }
 
 pub trait IntoSnippet<'a, T:?Sized> {
     fn into(self) -> SqlSnippet<'a, T>;

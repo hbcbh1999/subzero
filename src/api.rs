@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use core::fmt::Debug;
 pub use http::Method;
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
 pub struct ApiRequest<'r> {
@@ -10,6 +11,8 @@ pub struct ApiRequest<'r> {
     pub method: Method,
     // pub headers: &'r HeaderMap<'r>,
     pub query: Query<'r>,
+    pub headers: HashMap<&'r str, &'r str>,
+    pub cookies: HashMap<&'r str, &'r str>,
 }
 /*
 query {

@@ -4,6 +4,24 @@ use crate::api::{Join};
 //use combine::error::StringStreamError;
 //use combine;
 
+use std::io::Cursor;
+
+use rocket::request::Request;
+use rocket::response::{self, Response, Responder};
+use rocket::http::{ContentType,Status};
+
+#[rocket::async_trait]
+impl<'r> Responder<'r, 'static> for Error {
+    fn respond_to(self, _: &'r Request<'_>) -> response::Result<'static> {
+        let body = format!("{}", self);
+        Response::build()
+            .header(ContentType::Text)
+            .sized_body(body.len(), Cursor::new(body))
+            .status(Status::BadRequest)
+            .ok()
+    }
+}
+
 #[derive(Debug, Snafu, PartialEq)]
 #[snafu(visibility(pub))]
 pub enum Error {
@@ -37,6 +55,9 @@ pub enum Error {
 
     #[snafu(display("UnsupportedVerb"))]
     UnsupportedVerb,
+
+    #[snafu(display("PgError {} {} {} {}", code, message, details, hint))]
+    PgError {code: String, message: String, details: String, hint: String},
 
 }
 

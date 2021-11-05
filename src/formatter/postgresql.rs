@@ -3,12 +3,38 @@ use crate::api::{
     JsonOperation::*, SelectItem::*, JsonOperand::*, LogicOperator:: *,
     Condition::*, Filter::*, Join::*, Query::*,
 };
+use crate::error::Error as AppError;
+use crate::error::Error::*;
 use crate::dynamic_statement::{
-    sql, param, SqlSnippet, SqlSnippetChunk, 
+    sql, param, SqlSnippet, JoinIterator,
 };
 use postgres_types::{ToSql, Type, to_sql_checked, IsNull, };
+//use rocket::tokio::time::Timeout;
 use std::error::Error;
 use bytes::{BufMut, BytesMut};
+
+use deadpool_postgres::PoolError;
+use tokio_postgres::Error as DbError;
+
+pub fn pool_err_to_app_err(e: PoolError) -> AppError {
+    match e {
+        PoolError::Timeout (_) => PgError {code: "0".to_string(), message: "database connection timout".to_string(), details: "".to_string(), hint: "".to_string()},
+        PoolError::Closed => PgError {code: "0".to_string(), message: "database connection closed".to_string(), details: "".to_string(), hint: "".to_string()},
+        PoolError::Backend(e) => PgError {code: "0".to_string(), message: "database connection error".to_string(), details: format!("{}", e), hint: "".to_string()},
+        _ => PgError {code: "0".to_string(), message: "unknown database pool error".to_string(), details: "".to_string(), hint: "".to_string()},
+    }
+}
+
+pub fn pg_error_to_app_err(e: DbError) -> AppError {
+    if let Some(ee) = e.as_db_error() {
+        let code = ee.code().code().to_string();
+        let message = ee.message().to_string();
+        let details = (match ee.detail() { Some(d) => d, None => ""}).to_string();
+        let hint = (match ee.hint() { Some(h) => h, None => ""}).to_string();
+        return PgError {code,message,details,hint};
+    }
+    PgError {code: "0".to_string(), message: "unknown database".to_string(), details: format!("{}", e), hint: "".to_string()}
+}
 
 impl ToSql for ListVal {
     fn to_sql(
@@ -61,7 +87,7 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + S
             let where_snippet = if where_snippet_.len() > 0 { "where\n" + where_snippet_ } else { where_snippet_ };
             let mut from = vec![sql(fmt_qi(qi))];
             from.extend(joins.into_iter().flatten());
-            "\nselect\n"+join_snippets(select, ",\n")+"\nfrom "+join_snippets(from, "\n")+"\n"+where_snippet+"\n"
+            "\nselect\n"+select.join(",\n")+"\nfrom "+from.join("\n")+"\n"+where_snippet+"\n"
             
         },
         Insert {into, columns, payload, where_:_, returning, select} => {
@@ -99,13 +125,13 @@ returning {}
             //where_str,
             returning.iter().map(fmt_identity).collect::<Vec<_>>().join(",")
             );
-            let select_snippet = "\nselect\n"+join_snippets(select, ",\n")+"\nfrom "+join_snippets(from, "\n")+"\n";
+            let select_snippet = "\nselect\n"+select.join(",\n")+"\nfrom "+from.join("\n")+"\n";
             insert_snipet + select_snippet
         }
     }
 }
 
-pub fn format<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
+pub fn main_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
     " with subzero_source as(" + fmt_query(schema, q) + ") " +
     " select" +
     " pg_catalog.count(_subzero_t) AS page_total, "+
@@ -113,31 +139,28 @@ pub fn format<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + 
     " from ( select * from subzero_source ) _subzero_t"
 }
 
-fn join_snippets<'a>(v: Vec<SqlSnippet<'a, (dyn ToSql + Sync + 'a)>>, s: & str) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
-    match v.into_iter().fold(
-        SqlSnippet(vec![]),
-        |SqlSnippet(mut acc), SqlSnippet(v)| {
-            acc.push(SqlSnippetChunk::Sql(s.to_string()));
-            acc.extend(v.into_iter());
-            SqlSnippet(acc)
-        }
-    ) {
-        SqlSnippet(mut v) => {
-            v.remove(0);
-            SqlSnippet(v)
-        }
-    }
-}
+// fn join_snippets<'a>(v: Vec<SqlSnippet<'a, (dyn ToSql + Sync + 'a)>>, s: & str) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+//     match v.into_iter().fold(
+//         SqlSnippet(vec![]),
+//         |SqlSnippet(mut acc), SqlSnippet(v)| {
+//             acc.push(SqlSnippetChunk::Sql(s.to_string()));
+//             acc.extend(v.into_iter());
+//             SqlSnippet(acc)
+//         }
+//     ) {
+//         SqlSnippet(mut v) => {
+//             v.remove(0);
+//             SqlSnippet(v)
+//         }
+//     }
+// }
 
 fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
     
     match t {
         ConditionTree {operator, conditions} => {
             let sep = format!("\n{}\n",fmt_logic_operator(operator));
-            join_snippets(
-                conditions.iter().map(|c| fmt_condition(qi, c)).collect::<Vec<_>>(),
-                sep.as_str()
-            )
+            conditions.iter().map(|c| fmt_condition(qi, c)).collect::<Vec<_>>().join(sep.as_str())
         }
     }
 }
@@ -369,8 +392,9 @@ mod tests {
         };
 
         let (query_str, parameters, _) = generate(fmt_query(&s("api"), &q));
-        let p0:&(dyn ToSql + Sync) = &vec![&"51", &"52"];
-        let pp: Vec<&(dyn ToSql + Sync)> = vec![&payload, &"50", p0];
+        let p0:&(dyn ToSql + Sync) = &ListVal(vec![s("51"), s("52")]);
+        let p1:&(dyn ToSql + Sync) = &SingleVal(s("50"));
+        let pp: Vec<&(dyn ToSql + Sync)> = vec![&payload, p1, p0];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
         assert_eq!(query_str, s(
 		r#"
@@ -493,9 +517,7 @@ mod tests {
         };
 
         let (query_str, parameters, _) = generate(fmt_query(&s("api"), &q));
-        let p0:&(dyn ToSql + Sync) = &vec![&"51", &"52"];
-        let pp: Vec<&(dyn ToSql + Sync)> = vec![&"50", p0, &"5", &"10"];
-        assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
+        assert_eq!(format!("{:?}", parameters), "[SingleVal(\"50\"), ListVal([\"51\", \"52\"]), SingleVal(\"5\"), SingleVal(\"10\")]");
         assert_eq!(query_str, s(
 		r#"
 		select
@@ -561,7 +583,7 @@ mod tests {
                     ]
                 }
             ))),
-            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21>$1\nand\n(\"schema\".\"table\".\"name\">$2\nand\n\"schema\".\"table\".\"name\"<$3)"), vec![&s("2"), &s("2"), &s("5")], 4))
+            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21>$1\nand\n(\"schema\".\"table\".\"name\">$2\nand\n\"schema\".\"table\".\"name\"<$3)"), vec![SingleVal(s("2")), SingleVal(s("2")), SingleVal(s("5"))], 4))
         );
     }
     
@@ -588,15 +610,15 @@ mod tests {
                     negate: true
                 }
             ))),
-            format!("{:?}",(s("not(\"schema\".\"table\".\"name\"= any($1))"), vec![vec![&s("5"), &s("6")]],2))
+            format!("{:?}",(s("not(\"schema\".\"table\".\"name\"= any($1))"), vec![ListVal(vec![s("5"), s("6")])],2))
         );
     }
     
     #[test]
     fn test_fmt_filter(){
-        assert_eq!(format!("{:?}",generate(fmt_filter(&Op (s(">"), SingleVal(s("2")))))), format!("{:?}",(&s(">$1"), vec![&s("2")], 2)));
-        assert_eq!(format!("{:?}",generate(fmt_filter(&In (ListVal(vec![s("5"), s("6")]))))), format!("{:?}",(&s("= any($1)"), vec![vec![&s("5"), &s("6")]],2)));
-        assert_eq!(format!("{:?}",generate(fmt_filter(&Fts (s("@@ to_tsquery"), Some(s("eng")), SingleVal(s("2")))))), format!("{:?}",(&s("@@ to_tsquery($1,$2)"), vec![&s("eng"), &s("2")],3)));
+        assert_eq!(format!("{:?}",generate(fmt_filter(&Op (s(">"), SingleVal(s("2")))))), format!("{:?}",(&s(">$1"), vec![SingleVal(s("2"))], 2)));
+        assert_eq!(format!("{:?}",generate(fmt_filter(&In (ListVal(vec![s("5"), s("6")]))))), format!("{:?}",(&s("= any($1)"), vec![ListVal(vec![s("5"), s("6")])],2)));
+        assert_eq!(format!("{:?}",generate(fmt_filter(&Fts (s("@@ to_tsquery"), Some(s("eng")), SingleVal(s("2")))))), r#"("@@ to_tsquery($1,$2)", ["eng", SingleVal("2")], 3)"#.to_string());
         let p :Vec<&(dyn ToSql + Sync)> = vec![];
         assert_eq!(format!("{:?}",generate(fmt_filter(&Col (Qi(s("api"),s("projects")), Field {name: s("id"), json_path: None})))), format!("{:?}",(&s("= \"api\".\"projects\".\"id\""), p, 1)));
     }

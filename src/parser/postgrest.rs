@@ -34,8 +34,6 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 
 
-
-
 use combine::error::{StreamError};
 
 // #[derive(Debug)]
@@ -331,7 +329,7 @@ where Input: Stream<Token = char>
         match OPERATORS.get(o.as_str()) {
             Some(oo) => Ok(oo.to_string()),
             None => {
-                println!("unknown operator {}", o);
+                //println!("unknown operator {}", o);
                 Err(StreamErrorFor::<Input>::message_static_message("unknown operator"))
             }
         }
@@ -462,7 +460,16 @@ pub fn get_parameter<'a >(name: &str, parameters: &'a Vec<(&'a str, &'a str)>)->
     parameters.iter().filter(|v| v.0 == name).next()
 }
 
-pub fn parse<'r>(schema: &String, root: &String, db_schema: &DbSchema, method: &Method, parameters: Vec<(&str, &str)>, body: Option<&'r String>) -> Result<ApiRequest<'r>> {
+pub fn parse<'r>(
+    schema: &String, 
+    root: &String, 
+    db_schema: &DbSchema, 
+    method: &Method, 
+    parameters: Vec<(&str, &str)>, 
+    body: Option<&'r String>, 
+    headers: HashMap<&'r str, &'r str>,
+    cookies: HashMap<&'r str, &'r str>,
+) -> Result<ApiRequest<'r>> {
     // extract and parse select item
     let &(_, select_param) = get_parameter("select", &parameters).unwrap_or(&("select","*"));
     let (select_items, _) = select().easy_parse(select_param).map_err(to_app_error(select_param, "select".to_string()))?;
@@ -606,7 +613,9 @@ pub fn parse<'r>(schema: &String, root: &String, db_schema: &DbSchema, method: &
 
     Ok(ApiRequest {
         method: method.clone(),
-        query
+        query,
+        headers,
+        cookies,
     })
 }
 
@@ -1040,13 +1049,15 @@ pub mod tests {
             ("tasks.id","lt.500"),
             ("not.or", "(id.eq.11,id.eq.12)"),
             ("tasks.or", "(id.eq.11,id.eq.12)"),
-            ], None);
+            ], None, HashMap::new(), HashMap::new());
 
         assert_eq!(
             a.unwrap()
             ,
             ApiRequest {
                 method: Method::GET,
+                headers: HashMap::new(),
+                cookies: HashMap::new(),
                 query: 
                     Select {
                         select: vec![
@@ -1149,14 +1160,14 @@ pub mod tests {
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id,name,unknown(id)")
-            ], None),
+            ], None, HashMap::new(), HashMap::new()),
             Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")})
         );
 
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id-,na$me")
-            ], None),
+            ], None, HashMap::new(), HashMap::new()),
             Err(AppError::ParseRequestError{
                 parameter:s("select"),
                 message: s("Failed to parse select parameter (id-,na$me)"),
@@ -1175,10 +1186,12 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&payload))
+            ], Some(&payload), HashMap::new(), HashMap::new())
             ,
             Ok(ApiRequest {
                 method: Method::POST,
+                headers: HashMap::new(),
+                cookies: HashMap::new(),
                 query: 
                     Insert {
                         select: vec![
@@ -1204,10 +1217,12 @@ pub mod tests {
                 ("select", "id,name"),
                 ("id","gt.10"),
                 ("columns","id,name"),
-            ], Some(&payload))
+            ], Some(&payload), HashMap::new(), HashMap::new())
             ,
             Ok(ApiRequest {
                 method: Method::POST,
+                headers: HashMap::new(),
+                cookies: HashMap::new(),
                 query: 
                     Insert {
                         select: vec![
@@ -1235,7 +1250,7 @@ pub mod tests {
                 ("select", "id"),
                 ("id","gt.10"),
                 ("columns","id,1 name"),
-            ], Some(&s(r#"{"id":10, "name":"john", "phone":"123"}"#)))
+            ], Some(&s(r#"{"id":10, "name":"john", "phone":"123"}"#)), HashMap::new(), HashMap::new())
             ,
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse columns parameter (id,1 name)"),
@@ -1248,7 +1263,7 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&s(r#"{"id":10, "name""#)))
+            ], Some(&s(r#"{"id":10, "name""#)), HashMap::new(), HashMap::new())
             ,
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse json body"),
@@ -1261,7 +1276,7 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)))
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)), HashMap::new(), HashMap::new())
             ,
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse json body"),
@@ -1275,14 +1290,14 @@ pub mod tests {
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id,name,unknown(id)")
-            ], None),
+            ], None, HashMap::new(), HashMap::new()),
             Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")})
         );
 
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id-,na$me")
-            ], None),
+            ], None, HashMap::new(), HashMap::new()),
             Err(AppError::ParseRequestError{
                 parameter:s("select"),
                 message: s("Failed to parse select parameter (id-,na$me)"),
@@ -1294,10 +1309,12 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)))
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), HashMap::new(), HashMap::new())
             ,
             Ok(ApiRequest {
                 method: Method::POST,
+                headers: HashMap::new(),
+                cookies: HashMap::new(),
                 query: 
                     Insert {
                         select: vec![
@@ -1324,10 +1341,12 @@ pub mod tests {
                 ("select", "id,name,tasks(id),clients(id)"),
                 ("id","gt.10"),
                 ("tasks.id","gt.20"),
-            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)))
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), HashMap::new(), HashMap::new())
             ,
             Ok(ApiRequest {
                 method: Method::POST,
+                headers: HashMap::new(),
+                cookies: HashMap::new(),
                 query: 
                     Insert {
                         select: vec![
