@@ -3,7 +3,6 @@
 
 #[macro_use] extern crate rocket;
 // #[macro_use] extern crate combine;
-// #[macro_use] extern crate lazy_static;
 // #[macro_use] extern crate serde_derive;
 //#[macro_use] extern crate simple_error;
 pub static JSON_SCHEMA:&str = r#"
@@ -125,7 +124,7 @@ pub static JSON_SCHEMA:&str = r#"
 
 use http::Method;
 use rocket::http::{CookieJar};
-use rocket::Config as RocketConfig;
+use rocket::{Rocket, Build, Config as RocketConfig};
 use subzero::api::ApiRequest;
 use std::collections::HashMap;
 use rocket::{State,};
@@ -272,18 +271,7 @@ struct Config {
     db_schema: String,
 }
 
-
-#[launch]
-fn rocket() -> _ {
-    env_logger::init();
-
-    let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
-    
-    let config = Figment::from(RocketConfig::default())
-        .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
-        .merge(Env::prefixed("SUBZERO_").ignore(&["PROFILE"]).global())
-        .select(Profile::from_env_or("SUBZERO_PROFILE", Profile::const_new("debug")));
-    
+pub fn start(config: &Figment, db_schema: DbSchema) -> Rocket<Build> {
     let app_config:Config = config.extract().expect("config");
     let pg_uri = app_config.db_uri.clone();
     let mut pg_config = pg_uri.parse::<tokio_postgres::Config>().unwrap();
@@ -305,26 +293,22 @@ fn rocket() -> _ {
         .mount("/rest", routes![get,post])
 }
 
+#[launch]
+fn rocket() -> _ {
+    env_logger::init();
 
-#[cfg(test)]
-mod test {
-    use super::rocket;
-    use rocket::local::blocking::Client;
-    use rocket::http::Status;
-
-    #[test]
-    fn hello_world() {
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
-        let response = client.get("/").dispatch();
-        assert_eq!(response.status(), Status::Ok);
-        assert_eq!(response.into_string().unwrap(), "Hello, world!");
-    }
-
-    #[test]
-    fn simple_get(){
-        let client = Client::tracked(rocket()).expect("valid rocket instance");
-        let response = client.get("/rest/projects?select=id,name&id=gt.1&name=eq.IOS").dispatch();
-        assert_eq!(response.status(), Status::Ok);
-        assert_eq!(response.into_string().unwrap(), "Hello, world!");
-    }
+    let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
+    
+    let config = Figment::from(RocketConfig::default())
+        .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
+        .merge(Env::prefixed("SUBZERO_").ignore(&["PROFILE"]).global())
+        .select(Profile::from_env_or("SUBZERO_PROFILE", Profile::const_new("debug")));
+    
+    start(&config, db_schema)
 }
+
+
+#[macro_use] extern crate lazy_static;
+#[cfg(test)]
+#[path = "../tests/basic/mod.rs"]
+mod basic;

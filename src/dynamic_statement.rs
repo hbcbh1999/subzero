@@ -62,7 +62,9 @@ where
             }
         ) {
             SqlSnippet(mut v) => {
-                v.remove(0);
+                if v.len() > 0 {
+                    v.remove(0);
+                }
                 SqlSnippet(v)
             }
         }

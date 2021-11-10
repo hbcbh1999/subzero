@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::api::{ForeignKey, Qi, };
 
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
 pub struct DbSchema {
     #[serde(with = "schemas")]
     pub schemas: HashMap<String, Schema>,

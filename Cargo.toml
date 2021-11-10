@@ -36,6 +36,7 @@ features = ["postgres_pool"]
 pretty_assertions = "1.0.0"
 dyn_partial_eq = "0.1.2"
 criterion = "0.3"
+speculate = "0.1.2"
 
 [[bench]]
 name = "my_benchmark"
