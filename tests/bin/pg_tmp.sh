@@ -26,7 +26,9 @@ trap '' HUP
 set +o posix
 
 USER_OPTS=""
->/dev/null getopt ktp:w:o:d: "$@" || usage
+SUPERUSER=$(whoami)
+
+>/dev/null getopt ktp:w:o:d:u: "$@" || usage
 while [ $# -gt 0 ]; do
 	case "$1" in
 		-k) KEEP=$1 ;;
@@ -35,10 +37,12 @@ while [ $# -gt 0 ]; do
 		-w) TIMEOUT="$2"; shift ;;
 		-o) USER_OPTS="$2"; shift ;;
 		-d) TD="$2"; shift ;;
+		-u) SUPERUSER="$2"; shift ;;
 		 *) CMD=$1 ;;
 	esac
 	shift
 done
+
 
 initdb -V > /dev/null || exit 1
 PGVER=$(pg_ctl -V | awk '{print $NF}')
@@ -52,7 +56,7 @@ case ${CMD:-start} in
 initdb)
 	[ -z $TD ] || mkdir -p $TD
 	[ -z $TD ] && TD="$(mktemp -d ${SYSTMP:-/tmp}/ephemeralpg.XXXXXX)"
-	initdb --nosync -D $TD/$PGVER -E UNICODE -A trust > $TD/initdb.out
+	initdb --nosync -D $TD/$PGVER -E UNICODE -A trust  -U $SUPERUSER > $TD/initdb.out
 	cat <<-EOF >> $TD/$PGVER/postgresql.conf
 	    # log_statement = 'all'
 	    # log_min_messages = debug1
@@ -72,16 +76,16 @@ initdb)
 start)
 	# 1. Find a temporary database directory owned by the current user
 	# 2. Create a new datadir if nothing was found
-	# 3. Launch a background task to create a datadir for future invocations
+	### 3. Launch a background task to create a datadir for future invocations
 	if [ -z $TD ]; then
 		for d in $(ls -d ${SYSTMP:-/tmp}/ephemeralpg.*/$PGVER 2> /dev/null); do
 			td=$(dirname "$d")
 			test -O $td/NEW && rm $td/NEW 2> /dev/null && { TD=$td; break; }
 		done
-		[ -z $TD ] && { TD=$($0 initdb); rm $TD/NEW; }
+		[ -z $TD ] && { TD=$($0 initdb -u $SUPERUSER); rm $TD/NEW; }
 		# nice -n 19 $0 initdb > /dev/null &
 	else
-		[ -O $TD/$PGVER ] || TD=$($0 initdb -d $TD)
+		[ -O $TD/$PGVER ] || TD=$($0 initdb -d $TD  -u $SUPERUSER)
 	fi
 	if [ ${TIMEOUT:-1} -gt 0 ]; then
 		nice -n 19 $0 $KEEP -w ${TIMEOUT:-60} -d $TD -p ${PGPORT:-5432} stop > $TD/stop.log 2>&1 &
@@ -92,13 +96,13 @@ start)
 	PGHOST=$TD
 	export PGPORT PGHOST
 	if [ -n "$PGPORT" ]; then
-		url="postgresql://$(whoami)@$LISTENTO:$PGPORT/test"
+		url="postgresql://$SUPERUSER@$LISTENTO:$PGPORT/test"
 	else
-		url="postgresql:///test?host=$(echo $PGHOST | sed 's:/:%2F:g')"
+		url="postgresql:///test?host=$(echo $PGHOST | sed 's:/:%2F:g')&user=$SUPERUSER"
 	fi
 	for n in 1 2 3 4 5; do
 		sleep 0.1
-		createdb -E UNICODE test > /dev/null 2>&1 && break
+		createdb -O $SUPERUSER -E UNICODE -U $SUPERUSER test > /dev/null 2>&1 && break
 	done
 	[ $? != 0 ] && { >&2 tail $LOGFILE; exit 1; }
 	[ -t 1 ] && echo "$url" || echo -n "$url"

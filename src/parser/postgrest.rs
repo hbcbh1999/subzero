@@ -230,7 +230,7 @@ where Input: Stream<Token = char>
     })
 }
 
-fn select<Input>() -> impl Parser<Input, Output = Vec<SelectItem<'r>>>
+fn select<'r, Input>() -> impl Parser<Input, Output = Vec<SelectItem<'r>>>
 where Input: Stream<Token = char>
 {
     sep_by1(select_item(), lex(char(','))).skip(eof())
@@ -245,7 +245,7 @@ where Input: Stream<Token = char>
 // We need to use `parser!` to break the recursive use of `select_item` to prevent the returned parser
 // from containing itself
 #[inline]
-fn select_item<Input>() -> impl Parser<Input, Output = SelectItem<'r>>
+fn select_item<'r, Input>() -> impl Parser<Input, Output = SelectItem<'r>>
 where Input: Stream<Token = char>
 {
     select_item_()

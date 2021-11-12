@@ -112,7 +112,7 @@ impl<'a, T:?Sized> IntoSnippet<'a, T> for String {
     }
 }
 
-impl<T:?Sized> Add for SqlSnippet<'a, T> {
+impl<'a, T:?Sized> Add for SqlSnippet<'a, T> {
     type Output = Self;
 
     fn add(self, other: Self) -> Self::Output {
@@ -127,7 +127,7 @@ impl<T:?Sized> Add for SqlSnippet<'a, T> {
     }
 }
 
-impl<T:?Sized> Add<SqlSnippet<'a, T>> for &'a str {
+impl<'a, T:?Sized> Add<SqlSnippet<'a, T>> for &'a str {
     type Output = SqlSnippet<'a, T>;
     fn add(self, snippet: SqlSnippet<'a, T>) -> SqlSnippet<'a, T> {
         match snippet {
@@ -140,7 +140,7 @@ impl<T:?Sized> Add<SqlSnippet<'a, T>> for &'a str {
     }
 }
 
-impl<T:?Sized> Add<&'a str> for SqlSnippet<'a, T>{
+impl<'a, T:?Sized> Add<&'a str> for SqlSnippet<'a, T>{
     type Output = SqlSnippet<'a, T>;
     fn add(self, s: &'a str) -> SqlSnippet<'a, T> {
         match self {
@@ -154,7 +154,7 @@ impl<T:?Sized> Add<&'a str> for SqlSnippet<'a, T>{
     }
 }
 
-impl<T:?Sized> Add<SqlSnippet<'a, T>> for String {
+impl<'a, T:?Sized> Add<SqlSnippet<'a, T>> for String {
     type Output = SqlSnippet<'a, T>;
     fn add(self, snippet: SqlSnippet<'a, T>) -> SqlSnippet<'a, T> {
         match snippet {
@@ -167,7 +167,7 @@ impl<T:?Sized> Add<SqlSnippet<'a, T>> for String {
     }
 }
 
-impl<T:?Sized> Add<String> for SqlSnippet<'a, T>{
+impl<'a, T:?Sized> Add<String> for SqlSnippet<'a, T>{
     type Output = SqlSnippet<'a, T>;
     fn add(self, s: String) -> SqlSnippet<'a, T> {
         match self {

@@ -309,6 +309,11 @@ fn rocket() -> _ {
 
 
 #[macro_use] extern crate lazy_static;
+
 #[cfg(test)]
 #[path = "../tests/basic/mod.rs"]
 mod basic;
+
+#[cfg(test)]
+#[path = "../tests/postgrest/mod.rs"]
+mod postgrest;
