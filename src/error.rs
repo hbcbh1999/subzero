@@ -9,6 +9,10 @@ use std::io::Cursor;
 use rocket::request::Request;
 use rocket::response::{self, Response, Responder};
 use rocket::http::{ContentType,Status};
+use std::{io, path::PathBuf};
+use deadpool_postgres::PoolError;
+use tokio_postgres::Error as PgError;
+// use serde_json;
 
 #[rocket::async_trait]
 impl<'r> Responder<'r, 'static> for Error {
@@ -22,7 +26,7 @@ impl<'r> Responder<'r, 'static> for Error {
     }
 }
 
-#[derive(Debug, Snafu, PartialEq)]
+#[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
 
@@ -50,14 +54,26 @@ pub enum Error {
     #[snafu(display("UnacceptableSchema {:?}", schemas))]
     UnacceptableSchema {schemas: Vec<String>},
 
-    #[snafu(display("UnknownRelation"))]
+    #[snafu(display("UnknownRelation {}", relation))]
     UnknownRelation {relation: String},
 
     #[snafu(display("UnsupportedVerb"))]
     UnsupportedVerb,
 
-    #[snafu(display("PgError {} {} {} {}", code, message, details, hint))]
-    PgError {code: String, message: String, details: String, hint: String},
+    // #[snafu(display("PgError {} {} {} {}", code, message, details, hint))]
+    // PgError {code: String, message: String, details: String, hint: String},
+
+    #[snafu(display("Unable to read from {}: {}", path.display(), source))]
+    ReadFile  { source: io::Error, path: PathBuf },
+
+    #[snafu(display("Failed to deserialize json: {}", source))]
+    JsonDeserialize  { source: serde_json::Error },
+
+    #[snafu(display("DbPoolError {}", source))]
+    DbPoolError { source: PoolError },
+
+    #[snafu(display("DbError {}", source))]
+    DbError { source: PgError },
 
 }
 

@@ -3,8 +3,8 @@ use crate::api::{
     JsonOperation::*, SelectItem::*, JsonOperand::*, LogicOperator:: *,
     Condition::*, Filter::*, Join::*, Query::*,
 };
-use crate::error::Error as AppError;
-use crate::error::Error::*;
+// use crate::error::Error as AppError;
+// use crate::error::Error::*;
 use crate::dynamic_statement::{
     sql, param, SqlSnippet, JoinIterator,
 };
@@ -13,28 +13,28 @@ use postgres_types::{ToSql, Type, to_sql_checked, IsNull, };
 use std::error::Error;
 use bytes::{BufMut, BytesMut};
 
-use deadpool_postgres::PoolError;
-use tokio_postgres::Error as DbError;
+// use deadpool_postgres::PoolError;
+// use tokio_postgres::Error as DbError;
 
-pub fn pool_err_to_app_err(e: PoolError) -> AppError {
-    match e {
-        PoolError::Timeout (_) => PgError {code: "0".to_string(), message: "database connection timout".to_string(), details: "".to_string(), hint: "".to_string()},
-        PoolError::Closed => PgError {code: "0".to_string(), message: "database connection closed".to_string(), details: "".to_string(), hint: "".to_string()},
-        PoolError::Backend(e) => PgError {code: "0".to_string(), message: "database connection error".to_string(), details: format!("{}", e), hint: "".to_string()},
-        _ => PgError {code: "0".to_string(), message: "unknown database pool error".to_string(), details: "".to_string(), hint: "".to_string()},
-    }
-}
+// pub fn pool_err_to_app_err(e: PoolError) -> AppError {
+//     match e {
+//         PoolError::Timeout (_) => PgError {code: "0".to_string(), message: "database connection timout".to_string(), details: "".to_string(), hint: "".to_string()},
+//         PoolError::Closed => PgError {code: "0".to_string(), message: "database connection closed".to_string(), details: "".to_string(), hint: "".to_string()},
+//         PoolError::Backend(e) => PgError {code: "0".to_string(), message: "database connection error".to_string(), details: format!("{}", e), hint: "".to_string()},
+//         _ => PgError {code: "0".to_string(), message: "unknown database pool error".to_string(), details: "".to_string(), hint: "".to_string()},
+//     }
+// }
 
-pub fn pg_error_to_app_err(e: DbError) -> AppError {
-    if let Some(ee) = e.as_db_error() {
-        let code = ee.code().code().to_string();
-        let message = ee.message().to_string();
-        let details = (match ee.detail() { Some(d) => d, None => ""}).to_string();
-        let hint = (match ee.hint() { Some(h) => h, None => ""}).to_string();
-        return PgError {code,message,details,hint};
-    }
-    PgError {code: "0".to_string(), message: "unknown database".to_string(), details: format!("{}", e), hint: "".to_string()}
-}
+// pub fn pg_error_to_app_err(e: DbError) -> AppError {
+//     if let Some(ee) = e.as_db_error() {
+//         let code = ee.code().code().to_string();
+//         let message = ee.message().to_string();
+//         let details = (match ee.detail() { Some(d) => d, None => ""}).to_string();
+//         let hint = (match ee.hint() { Some(h) => h, None => ""}).to_string();
+//         return PgError {code,message,details,hint};
+//     }
+//     PgError {code: "0".to_string(), message: "unknown database".to_string(), details: format!("{}", e), hint: "".to_string()}
+// }
 
 impl ToSql for ListVal {
     fn to_sql(

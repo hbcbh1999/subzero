@@ -9,4 +9,5 @@
 
 [default]
 db_uri = "postgres://root:root@localhost/app"
-db_schema = "public"
+db_schemas = ["public"]
+db_schema_structure = { sql_file = "structure_query.sql" }

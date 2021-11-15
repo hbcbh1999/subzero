@@ -5,142 +5,32 @@
 // #[macro_use] extern crate combine;
 // #[macro_use] extern crate serde_derive;
 //#[macro_use] extern crate simple_error;
-pub static JSON_SCHEMA:&str = r#"
-                    {
-                        "schemas":[
-                            {
-                                "name":"public",
-                                "objects":[
-                                    {
-                                        "kind":"view",
-                                        "name":"addresses",
-                                        "columns":[
-                                            { "name":"id", "data_type":"int", "primary_key":true },
-                                            { "name":"location", "data_type":"text" }
-                                        ],
-                                        "foreign_keys":[]
-                                    },
-                                    {
-                                        "kind":"view",
-                                        "name":"users",
-                                        "columns":[
-                                            { "name":"id", "data_type":"int", "primary_key":true },
-                                            { "name":"name", "data_type":"text" },
-                                            { "name":"billing_address_id", "data_type":"int" },
-                                            { "name":"shipping_address_id", "data_type":"int" }
-                                        ],
-                                        "foreign_keys":[
-                                            {
-                                                "name":"billing_address_id_fk",
-                                                "table":["public","users"],
-                                                "columns": ["billing_address_id"],
-                                                "referenced_table":["public","addresses"],
-                                                "referenced_columns": ["id"]
-                                            },
-                                            {
-                                                "name":"shipping_address_id_fk",
-                                                "table":["public","users"],
-                                                "columns": ["shipping_address_id"],
-                                                "referenced_table":["public","addresses"],
-                                                "referenced_columns": ["id"]
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "kind":"view",
-                                        "name":"clients",
-                                        "columns":[
-                                            { "name":"id", "data_type":"int", "primary_key":true },
-                                            { "name":"name", "data_type":"text" }
-                                        ],
-                                        "foreign_keys":[]
-                                    },
-                                    {
-                                        "kind":"view",
-                                        "name":"projects",
-                                        "columns":[
-                                            { "name":"id", "data_type":"int", "primary_key":true },
-                                            { "name":"client_id", "data_type":"int" },
-                                            { "name":"name", "data_type":"text" }
-                                        ],
-                                        "foreign_keys":[
-                                            {
-                                                "name":"client_id_fk",
-                                                "table":["public","projects"],
-                                                "columns": ["client_id"],
-                                                "referenced_table":["public","clients"],
-                                                "referenced_columns": ["id"]
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "kind":"view",
-                                        "name":"tasks",
-                                        "columns":[
-                                            { "name":"id", "data_type":"int", "primary_key":true },
-                                            { "name":"project_id", "data_type":"int" },
-                                            { "name":"name", "data_type":"text" }
-                                        ],
-                                        "foreign_keys":[
-                                            {
-                                                "name":"project_id_fk",
-                                                "table":["public","tasks"],
-                                                "columns": ["project_id"],
-                                                "referenced_table":["public","projects"],
-                                                "referenced_columns": ["id"]
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "kind":"view",
-                                        "name":"users_tasks",
-                                        "columns":[
-                                            { "name":"task_id", "data_type":"int", "primary_key":true },
-                                            { "name":"user_id", "data_type":"int", "primary_key":true }
-                                            
-                                        ],
-                                        "foreign_keys":[
-                                            {
-                                                "name":"task_id_fk",
-                                                "table":["public","users_tasks"],
-                                                "columns": ["task_id"],
-                                                "referenced_table":["public","tasks"],
-                                                "referenced_columns": ["id"]
-                                            },
-                                            {
-                                                "name":"user_id_fk",
-                                                "table":["public","users_tasks"],
-                                                "columns": ["user_id"],
-                                                "referenced_table":["public","users"],
-                                                "referenced_columns": ["id"]
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                "#;
+// use snafu::ResultExt;
+use snafu::{ResultExt};
 
 use http::Method;
 use rocket::http::{CookieJar};
 use rocket::{Rocket, Build, Config as RocketConfig};
 use subzero::api::ApiRequest;
+// use core::slice::SlicePattern;
 use std::collections::HashMap;
 use rocket::{State,};
-use serde::Deserialize;
+
 use figment::{Figment, Profile, };
 use figment::providers::{Env, Toml, Format};
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use tokio_postgres::{NoTls, IsolationLevel, types::ToSql};
 use futures::future;
+use std::fs;
+
 
 use subzero::schema::DbSchema;
 use subzero::parser::postgrest::parse;
 use subzero::dynamic_statement::{generate, SqlSnippet, param, JoinIterator};
-use subzero::formatter::postgresql::{main_query, pool_err_to_app_err,pg_error_to_app_err};
+use subzero::formatter::postgresql::{main_query};
 use subzero::error::{Result};
-
+use subzero::error::*;
+use subzero::config::{Config,  SchemaStructure::*};
 pub struct Headers<'r>(&'r rocket::http::HeaderMap<'r>);
 
 #[rocket::async_trait]
@@ -190,25 +80,25 @@ async fn handle_postgrest_request(
     let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request.query));
     let env = get_postgrest_env(&request);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
-    let mut client = pool.get().await.map_err(pool_err_to_app_err)?;
+    let mut client = pool.get().await.context(DbPoolError)?;
 
     let transaction = client
         .build_transaction()
         .isolation_level(IsolationLevel::Serializable)
         .read_only(true)
         .start()
-        .await.map_err(pg_error_to_app_err)?;
+        .await.context(DbError)?;
 
     let (env_stm, main_stm) = future::try_join(
             transaction.prepare_cached(env_statement.as_str()),
             transaction.prepare_cached(main_statement.as_str())
-        ).await.map_err(pg_error_to_app_err)?;
+        ).await.context(DbError)?;
     let (_, rows) = future::try_join(
         transaction.query(&env_stm, env_parameters.as_slice()),
         transaction.query(&main_stm, main_parameters.as_slice())
-    ).await.map_err(pg_error_to_app_err)?;
+    ).await.context(DbError)?;
 
-    transaction.commit().await.map_err(pg_error_to_app_err)?;
+    transaction.commit().await.context(DbError)?;
 
     let body: String = rows[0].get("body");
 
@@ -230,7 +120,7 @@ async fn get<'a>(
         cookies: &CookieJar<'_>,
         headers: Headers<'_>,
 ) -> Result<String> {
-    let schema_name = config.db_schema.clone();
+    let schema_name = config.db_schemas.get(0).unwrap();
     let parameters = parameters.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
@@ -254,7 +144,7 @@ async fn post<'a>(
         cookies: &CookieJar<'_>,
         headers: Headers<'_>,
 ) -> Result<String> {
-    let schema_name = config.db_schema.clone();
+    let schema_name = config.db_schemas.get(0).unwrap();
     let parameters = parameters.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
@@ -265,14 +155,10 @@ async fn post<'a>(
     Ok(handle_postgrest_request(&schema_name, &root, &Method::POST, parameters, db_schema, pool, Some(&body), headers, cookies).await?)
 }
 
-#[derive(Deserialize, Debug)]
-struct Config {
-    db_uri: String,
-    db_schema: String,
-}
-
-pub fn start(config: &Figment, db_schema: DbSchema) -> Rocket<Build> {
+pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
     let app_config:Config = config.extract().expect("config");
+
+    //setup db connection
     let pg_uri = app_config.db_uri.clone();
     let mut pg_config = pg_uri.parse::<tokio_postgres::Config>().unwrap();
     if let None = pg_config.get_application_name() {
@@ -285,26 +171,66 @@ pub fn start(config: &Figment, db_schema: DbSchema) -> Rocket<Build> {
     let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
     let pool = Pool::builder(mgr).max_size(10).build().unwrap();
 
-    rocket::custom(config)
+
+    //read db schema
+    let db_schema = match &app_config.db_schema_structure {
+        SqlFile(f) => match fs::read_to_string(f) {
+            Ok(s) => {
+                match pool.get().await{
+                    Ok(client) => {
+                       
+    
+                        let params = vec![app_config.db_schemas.iter().map(|s| s.as_str()).collect::<Vec<_>>()];
+                        let params: Vec<&(dyn ToSql + Sync)> = params.iter().map(|p| p as &(dyn ToSql + Sync)).collect();
+                        // let params:Vec<&(dyn ToSql + Sync)> = vec![&params];
+                        match client.query(&s, &params).await {
+                            Ok(rows) => {
+                               
+                                let value:&str = rows[0].get(0);
+                                //println!("got rows {:?}", value);
+                                serde_json::from_str::<DbSchema>(value).context(JsonDeserialize)
+                            },
+                            Err(e) => Err(e).context(DbError)
+                        }
+                        //serde_json::from_str::<DbSchema>("ssss").context(JsonDeserialize)
+                    },
+                    Err(e) => Err(e).context(DbPoolError)
+                }
+            },
+            Err(e) => Err(e).context(ReadFile {path: f})
+        },
+        JsonFile(f) => {
+            match fs::read_to_string(f) {
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
+                Err(e) => Err(e).context(ReadFile {path: f})
+            }
+        },
+        JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize)
+    }?;
+    //let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
+
+
+    Ok(rocket::custom(config)
         .manage(db_schema)
         .manage(app_config)
         .manage(pool)
         .mount("/", routes![index])
-        .mount("/rest", routes![get,post])
+        .mount("/rest", routes![get,post]))
 }
 
 #[launch]
-fn rocket() -> _ {
+async fn rocket() -> Rocket<Build> {
     env_logger::init();
 
-    let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
-    
     let config = Figment::from(RocketConfig::default())
         .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
         .merge(Env::prefixed("SUBZERO_").ignore(&["PROFILE"]).global())
         .select(Profile::from_env_or("SUBZERO_PROFILE", Profile::const_new("debug")));
     
-    start(&config, db_schema)
+    match start(&config).await {
+        Ok(r) => r,
+        Err(e) => panic!("{}", e)
+    }
 }
 
 

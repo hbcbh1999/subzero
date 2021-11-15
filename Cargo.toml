@@ -37,6 +37,7 @@ pretty_assertions = "1.0.0"
 dyn_partial_eq = "0.1.2"
 criterion = "0.3"
 speculate = "0.1.2"
+demonstrate = "0.4.5"
 
 [[bench]]
 name = "my_benchmark"

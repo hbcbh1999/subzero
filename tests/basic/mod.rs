@@ -1,9 +1,9 @@
 
 use super::*; //super in this case is src/main.rs
 use rocket::{Rocket, Build, Config as RocketConfig};
-use rocket::local::blocking::Client;
+// use rocket::local::blocking::Client;
+use rocket::local::asynchronous::Client;
 use rocket::http::Status;
-use subzero::schema::DbSchema;
 use figment::{Figment, Profile, };
 use figment::providers::{Env, Toml, Format};
 use std::sync::Once;
@@ -11,7 +11,7 @@ use std::process::Command;
 use std::path::PathBuf;
 use std::env;
 extern crate speculate;
-use speculate::speculate;
+use demonstrate::demonstrate;
 
 static INIT: Once = Once::new();
 
@@ -22,7 +22,7 @@ lazy_static! {
             .merge(Env::prefixed("SUBZERO_").ignore(&["PROFILE"]).global())
             .select(Profile::from_env_or("SUBZERO_PROFILE", Profile::const_new("debug")))
     };
-    static ref DB_SCHEMA: DbSchema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
+    // static ref DB_SCHEMA: DbSchema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
 }
 
 fn setup() {
@@ -50,38 +50,67 @@ fn setup() {
         assert!(output.status.success());
 
         lazy_static::initialize(&CONFIG);
-        lazy_static::initialize(&DB_SCHEMA);
+        //println!("{:?}", *CONFIG);
+
+        // lazy_static::initialize(&DB_SCHEMA);
     });
 }
 
-fn server() -> Rocket<Build> {
+async fn server() -> Rocket<Build> {
     //let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
-    start(&CONFIG, DB_SCHEMA.clone())
+    start(&CONFIG).await.unwrap()
 }
 
 
-speculate! {
-    describe "basic" {
+// #[rocket::async_test]
+// async fn hello_world()
+// {
+//     setup();
+//     let client = Client::tracked(server().await).expect("valid client");
+//     let response = client.get("/").dispatch();
+//     assert_eq!(response.status(), Status::Ok);
+//     assert_eq!(response.into_string().unwrap(), "Hello, world!");
+// }
+
+// demonstrate! {
+    
+//     describe "basic" {
+//         use super::*;
+//         #[rocket::async_test]
+//         async it "hello worlds" {
+//             setup();
+//             let client = Client::tracked(server().await).expect("valid client");
+//             // let response = client.get("/").dispatch();
+//             // assert_eq!(response.status(), Status::Ok);
+//             // assert_eq!(response.into_string().unwrap(), "Hello, world!");
+//         }
+//     }
+// }
+
+demonstrate! {
+    #[rocket::async_test]
+    async describe "basic" {
+        use super::*;
         before {
             setup();
-            let client = Client::tracked(server()).expect("valid client");
+            let client = Client::tracked(server().await).await.expect("valid client");
         }
         it "hello world" {
-            let response = client.get("/").dispatch();
+            let response = client.get("/").dispatch().await;
             assert_eq!(response.status(), Status::Ok);
-            assert_eq!(response.into_string().unwrap(), "Hello, world!");
+            assert_eq!(response.into_string().await.unwrap(), "Hello, world!");
         }
     
         it "simple get" {
-            let response = client.get("/rest/projects?select=id,name&id=gt.1&name=eq.IOS").dispatch();
+            let response = client.get("/rest/projects?select=id,name&id=gt.1&name=eq.IOS").dispatch().await;
             assert_eq!(response.status(), Status::Ok);
-            assert_eq!(response.into_string().unwrap(), r#"[{"id":3,"name":"IOS"}]"#);
+            assert_eq!(response.into_string().await.unwrap(), r#"[{"id":3,"name":"IOS"}]"#);
         }
     
         it "simple get two" {
-            let response = client.get("/rest/projects?select=id&id=gt.1&name=eq.IOS").dispatch();
+            let response = client.get("/rest/projects?select=id&id=gt.1&name=eq.IOS").dispatch().await;
             assert_eq!(response.status(), Status::Ok);
-            assert_eq!(response.into_string().unwrap(), r#"[{"id":3}]"#);
+            assert_eq!(response.into_string().await.unwrap(), r#"[{"id":3}]"#);
         }
     }
 }

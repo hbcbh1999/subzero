@@ -1160,19 +1160,19 @@ pub mod tests {
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id,name,unknown(id)")
-            ], None, HashMap::new(), HashMap::new()),
-            Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")})
+            ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
+            Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")}).map_err(|e| format!("{}",e))
         );
 
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id-,na$me")
-            ], None, HashMap::new(), HashMap::new()),
+            ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
             Err(AppError::ParseRequestError{
                 parameter:s("select"),
                 message: s("Failed to parse select parameter (id-,na$me)"),
                 details: s("Parse error at 3\nUnexpected `,`\nExpected `letter`, `digit` or `_`\n")
-            })
+            }).map_err(|e| format!("{}",e))
         );
     }
 
@@ -1186,7 +1186,7 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&payload), HashMap::new(), HashMap::new())
+            ], Some(&payload), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
@@ -1217,7 +1217,7 @@ pub mod tests {
                 ("select", "id,name"),
                 ("id","gt.10"),
                 ("columns","id,name"),
-            ], Some(&payload), HashMap::new(), HashMap::new())
+            ], Some(&payload), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
@@ -1250,39 +1250,39 @@ pub mod tests {
                 ("select", "id"),
                 ("id","gt.10"),
                 ("columns","id,1 name"),
-            ], Some(&s(r#"{"id":10, "name":"john", "phone":"123"}"#)), HashMap::new(), HashMap::new())
+            ], Some(&s(r#"{"id":10, "name":"john", "phone":"123"}"#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
             ,
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse columns parameter (id,1 name)"),
                 details: s("Parse error at 5\nUnexpected `n`\nExpected `,`, `whitespaces` or `end of input`\n"),
                 parameter: s("columns"),
-            })
+            }).map_err(|e| format!("{}",e))
         );
 
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&s(r#"{"id":10, "name""#)), HashMap::new(), HashMap::new())
+            ], Some(&s(r#"{"id":10, "name""#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
             ,
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse json body"),
                 details: s(""),
                 parameter: s("{\"id\":10, \"name\""),
-            })
+            }).map_err(|e| format!("{}",e))
         );
 
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)), HashMap::new(), HashMap::new())
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
             ,
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse json body"),
                 details: s("All object keys must match"),
                 parameter: s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#),
-            })
+            }).map_err(|e| format!("{}",e))
         );
 
         
@@ -1290,26 +1290,26 @@ pub mod tests {
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id,name,unknown(id)")
-            ], None, HashMap::new(), HashMap::new()),
-            Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")})
+            ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
+            Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")}).map_err(|e| format!("{}",e))
         );
 
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
                 ("select", "id-,na$me")
-            ], None, HashMap::new(), HashMap::new()),
+            ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
             Err(AppError::ParseRequestError{
                 parameter:s("select"),
                 message: s("Failed to parse select parameter (id-,na$me)"),
                 details: s("Parse error at 3\nUnexpected `,`\nExpected `letter`, `digit` or `_`\n")
-            })
+            }).map_err(|e| format!("{}",e))
         );
 
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), HashMap::new(), HashMap::new())
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
@@ -1341,7 +1341,7 @@ pub mod tests {
                 ("select", "id,name,tasks(id),clients(id)"),
                 ("id","gt.10"),
                 ("tasks.id","gt.20"),
-            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), HashMap::new(), HashMap::new())
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
@@ -1432,7 +1432,7 @@ pub mod tests {
     #[test]
     fn test_get_join_conditions(){
         let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-        assert_eq!( get_join(&s("api"), &db_schema, &s("projects"), &s("tasks"), &mut None),
+        assert_eq!( get_join(&s("api"), &db_schema, &s("projects"), &s("tasks"), &mut None).map_err(|e| format!("{}",e)),
             Ok(
                 
                     Child(ForeignKey {
@@ -1445,7 +1445,7 @@ pub mod tests {
                 
             )
         );
-        assert_eq!( get_join(&s("api"), &db_schema, &s("tasks"), &s("projects"), &mut None),
+        assert_eq!( get_join(&s("api"), &db_schema, &s("tasks"), &s("projects"), &mut None).map_err(|e| format!("{}",e)),
             Ok(
                 
                     Parent(ForeignKey {
@@ -1458,7 +1458,7 @@ pub mod tests {
                 
             )
         );
-        assert_eq!( get_join(&s("api"), &db_schema, &s("clients"), &s("projects"), &mut None),
+        assert_eq!( get_join(&s("api"), &db_schema, &s("clients"), &s("projects"), &mut None).map_err(|e| format!("{}",e)),
             Ok(
                 
                     Child(ForeignKey {
@@ -1471,7 +1471,7 @@ pub mod tests {
                 
             )
         );
-        assert_eq!( get_join(&s("api"), &db_schema, &s("tasks"), &s("users"), &mut None),
+        assert_eq!( get_join(&s("api"), &db_schema, &s("tasks"), &s("users"), &mut None).map_err(|e| format!("{}",e)),
             Ok(
                
                     Many(
@@ -1494,7 +1494,7 @@ pub mod tests {
                
             )
         );
-        assert_eq!( get_join(&s("api"), &db_schema, &s("tasks"), &s("users"), &mut Some(s("users_tasks"))),
+        assert_eq!( get_join(&s("api"), &db_schema, &s("tasks"), &s("users"), &mut Some(s("users_tasks"))).map_err(|e| format!("{}",e)),
             Ok(
                
                     Many(

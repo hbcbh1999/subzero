@@ -9,3 +9,4 @@ pub mod schema;
 pub mod parser;
 pub mod formatter;
 pub mod dynamic_statement;
+pub mod config;
