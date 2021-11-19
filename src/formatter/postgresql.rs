@@ -8,7 +8,7 @@ use crate::api::{
 use crate::dynamic_statement::{
     sql, param, SqlSnippet, JoinIterator,
 };
-use postgres_types::{ToSql, Type, to_sql_checked, IsNull, };
+use postgres_types::{ToSql, Type, to_sql_checked, IsNull, Format};
 //use rocket::tokio::time::Timeout;
 use std::error::Error;
 use bytes::{BufMut, BytesMut};
@@ -52,7 +52,7 @@ impl ToSql for ListVal {
 
     fn accepts(_ty: &Type) -> bool { true }
 
-    fn encode_format(&self) -> i16 { 0 }
+    fn encode_format(&self) -> Format { Format::Text }
 
     to_sql_checked!();
 }
@@ -73,21 +73,25 @@ impl ToSql for SingleVal {
 
     fn accepts(_ty: &Type) -> bool { true }
 
-    fn encode_format(&self) -> i16 { 0 }
+    fn encode_format(&self) -> Format { Format::Text }
 
     to_sql_checked!();
 }
 
 fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
     match q {
-        Select {select, from, where_} => {
-            let qi = &Qi(schema.clone(),from.clone());
+        Select {select, from, where_, limit, offset} => {
+            let qi = &Qi(schema.clone(),from.get(0).unwrap().clone());
             let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi, s)).unzip();
             let where_snippet_ = fmt_condition_tree(qi, where_);
             let where_snippet = if where_snippet_.len() > 0 { "where\n" + where_snippet_ } else { where_snippet_ };
-            let mut from = vec![sql(fmt_qi(qi))];
-            from.extend(joins.into_iter().flatten());
-            "\nselect\n"+select.join(",\n")+"\nfrom "+from.join("\n")+"\n"+where_snippet+"\n"
+            //let mut from = vec![sql(fmt_qi(qi))];
+            let from_snippet = from.iter().map(|f| fmt_qi(&Qi(schema.clone(), f.clone()))).collect::<Vec<_>>();
+            let limit_snippet = fmt_limit(limit);
+            let offset_snippet = fmt_offset(offset);
+            let joins_snippet = joins.into_iter().flatten().collect::<Vec<_>>();
+            "\nselect\n"+select.join(",\n")+
+            "\nfrom "+from_snippet.join(",")+"\n"+joins_snippet.join("\n")+"\n" + where_snippet+"\n" + limit_snippet + offset_snippet
             
         },
         Insert {into, columns, payload, where_:_, returning, select} => {
@@ -177,6 +181,10 @@ fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> SqlSnippet<'a, (dyn ToSql + S
                 fld + fmt_filter(filter)
             }
         },
+        Foreign {left: (l_qi, l_fld), right: (r_qi, r_fld)} => {
+            sql( format!("{}.{} = {}.{}", fmt_qi(l_qi), fmt_field(l_fld), fmt_qi(r_qi), fmt_field(r_fld)) )
+        },
+
         Group (negate, tree) => {
             if *negate {
                 "not("+ fmt_condition_tree(qi, tree) + ")"
@@ -217,6 +225,7 @@ fn fmt_filter(f: &Filter) -> SqlSnippet<(dyn ToSql + Sync + '_)>{
 
 fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> (SqlSnippet<'a, (dyn ToSql + Sync + 'a)>, Vec<SqlSnippet<'a, (dyn ToSql + Sync + 'a)>>) {
     match i {
+        Star => (sql(format!("{}.*", fmt_qi(qi))), vec![]),
         Simple {field, alias} => (sql(format!("{}.{}{}", fmt_qi(qi), fmt_field(field), fmt_alias(alias))), vec![]),
         SubSelect {query,alias,join,..} => match join {
             Some(j) => match j {
@@ -239,7 +248,15 @@ fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> (SqlSnippet<'a, (dyn ToSq
                         vec![]
                     )
                 },
-                Many (_table, _fk1, _fk2) => todo!()
+                Many (_table, _fk1, fk2) => {
+                    let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
+                    let local_table_name = fmt_identity(&fk2.referenced_table.1);
+                    let subquery = fmt_query(&qi.0, query);
+                    (
+                        ("coalesce((select json_agg("+sql(local_table_name.clone())+".*) from ("+subquery+") as "+sql(local_table_name.clone())+"), '[]') as " + sql(alias_or_name)),
+                        vec![]
+                    )
+                }
             },
             None => panic!("unable to format join query without matching relation")
         }
@@ -247,7 +264,7 @@ fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> (SqlSnippet<'a, (dyn ToSq
 }
 
 fn fmt_operator(o: &Operator) -> String{
-    format!("{}", o)
+    format!("{} ", o)
 }
 
 fn fmt_logic_operator( o: &LogicOperator ) -> String {
@@ -276,8 +293,28 @@ fn fmt_field(f: &Field) -> String {
 
 fn fmt_alias(a: &Option<String>) -> String {
     match a {
-        Some(aa) => format!(" as {}", aa),
+        Some(aa) => format!(" as \"{}\"", aa),
         None => format!("")
+    }
+}
+
+fn fmt_limit<'a>(l: &'a Option<SingleVal>) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+    match l {
+        Some(ll) => {
+            let vv:&(dyn ToSql + Sync) = ll;
+            " limit " + param(vv)
+        },
+        None => sql("")
+    }
+}
+
+fn fmt_offset<'a>(o: &'a Option<SingleVal>) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+    match o {
+        Some(oo) => {
+            let vv:&(dyn ToSql + Sync) = oo;
+            " offset " + param(vv)
+        },
+        None => sql("")
     }
 }
 
@@ -327,11 +364,11 @@ mod tests {
                 Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                 Simple {field: Field {name: s("b"), json_path: Some(vec![JArrow(JIdx(s("1"))), J2Arrow(JKey(s("key")))])}, alias: None},
                 SubSelect{
-                    query: Select {
+                    query: Select {limit: None, offset: None, 
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                         ],
-                        from: s("clients"),
+                        from: vec![s("clients")],
                         where_: ConditionTree { operator: And, conditions: vec![
                             Single {
                                 field: Field {name: s("id"),json_path: None},
@@ -353,11 +390,11 @@ mod tests {
                     )
                 },
                 SubSelect{
-                    query: Select {
+                    query: Select {limit: None, offset: None, 
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                         ],
-                        from: s("tasks"),
+                        from: vec![s("tasks")],
                         where_: ConditionTree { operator: And, conditions: vec![
                             Single {
                                 field: Field {name: s("project_id"),json_path: None},
@@ -450,16 +487,16 @@ mod tests {
     #[test]
     fn test_fmt_select_query(){
         
-        let q = Select {
+        let q = Select {limit: None, offset: None, 
             select: vec![
                 Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                 Simple {field: Field {name: s("b"), json_path: Some(vec![JArrow(JIdx(s("1"))), J2Arrow(JKey(s("key")))])}, alias: None},
                 SubSelect{
-                    query: Select {
+                    query: Select {limit: None, offset: None, 
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                         ],
-                        from: s("clients"),
+                        from: vec![s("clients")],
                         where_: ConditionTree { operator: And, conditions: vec![
                             Single {
                                 field: Field {name: s("id"),json_path: None},
@@ -481,11 +518,11 @@ mod tests {
                     )
                 },
                 SubSelect{
-                    query: Select {
+                    query: Select {limit: None, offset: None, 
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                         ],
-                        from: s("tasks"),
+                        from: vec![s("tasks")],
                         where_: ConditionTree { operator: And, conditions: vec![
                             Single {
                                 field: Field {name: s("project_id"),json_path: None},
@@ -509,7 +546,7 @@ mod tests {
                     )
                 }
             ],
-            from: s("projects"),
+            from: vec![s("projects")],
             where_: ConditionTree { operator: And, conditions: vec![
                 Single {filter: Op(s(">="),SingleVal(s("5"))), field: Field {name: s("id"), json_path: None}, negate: false},
                 Single {filter: Op(s("<"),SingleVal(s("10"))), field: Field {name: s("id"), json_path: None}, negate: true}

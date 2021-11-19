@@ -310,6 +310,7 @@ columns as (
       , information_schema._pg_truetypmod(a.*, t.*) truetypmod
     where
       a.attnum <> 0
+      and a.attname not in ('tableoid','cmax','xmax','cmin','xmin','ctid')
       and not a.attisdropped
       and c.relkind in ('r', 'v', 'f', 'm')
       --and (nc.nspname = any ($1::name[]) or pks is not null)
@@ -412,7 +413,7 @@ view_view_relations as (
     from view_table_relations left_view
     join table_view_relations right_view on
     left_view.constraint_name = right_view.constraint_name
-    and left_view.foreign_table_oid = right_view.table_oid
+    --and left_view.foreign_table_oid = right_view.table_oid
 ),
 
 relations as (
@@ -428,7 +429,7 @@ relations as (
 select 
     json_build_object (
         'schemas', coalesce(schemas_agg.array_agg, array[]::record[])
-    )::TEXT
+    )::text
 from
     (
         select 

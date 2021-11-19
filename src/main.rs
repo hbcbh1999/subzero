@@ -10,7 +10,8 @@ use snafu::{ResultExt};
 
 use http::Method;
 use rocket::http::{CookieJar};
-use rocket::{Rocket, Build, Config as RocketConfig};
+use rocket::{Rocket, Build, Config as RocketConfig, Request};
+use rocket::response::content::Json;
 use subzero::api::ApiRequest;
 // use core::slice::SlicePattern;
 use std::collections::HashMap;
@@ -74,13 +75,15 @@ async fn handle_postgrest_request(
     body: Option<&String>,
     headers: HashMap<&str, &str>,
     cookies: HashMap<&str, &str>,
-) -> Result<String> {
+) -> Result<Json<String>> {
     //let schema_name = config.db_schema.clone();
     let request = parse(schema_name, root, db_schema, method, parameters, body, headers, cookies)?;
     let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request.query));
     let env = get_postgrest_env(&request);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
     let mut client = pool.get().await.context(DbPoolError)?;
+
+    println!("main statement:====================\n{}", main_statement);
 
     let transaction = client
         .build_transaction()
@@ -102,8 +105,13 @@ async fn handle_postgrest_request(
 
     let body: String = rows[0].get("body");
 
-    return Ok(body);
+    return Ok(Json(body));
 }
+
+// #[catch(400)]
+// fn not_found(req: &Request) -> String {
+//     format!("Sorry, '{}' is not a valid path.", req.uri())
+// }
 
 #[get("/")]
 fn index() -> &'static str {
@@ -119,7 +127,7 @@ async fn get<'a>(
         pool: &State<Pool>,
         cookies: &CookieJar<'_>,
         headers: Headers<'_>,
-) -> Result<String> {
+) -> Result<Json<String>> {
     let schema_name = config.db_schemas.get(0).unwrap();
     let parameters = parameters.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
@@ -143,7 +151,7 @@ async fn post<'a>(
         body: String,
         cookies: &CookieJar<'_>,
         headers: Headers<'_>,
-) -> Result<String> {
+) -> Result<Json<String>> {
     let schema_name = config.db_schemas.get(0).unwrap();
     let parameters = parameters.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
@@ -242,4 +250,4 @@ mod basic;
 
 #[cfg(test)]
 #[path = "../tests/postgrest/mod.rs"]
-mod postgrest;
+mod postgrestinegration;

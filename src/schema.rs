@@ -70,20 +70,20 @@ pub struct Object {
     #[serde(with = "columns")]
     pub columns: HashMap<String, Column>,
     #[serde(with = "foreign_keys")]
-    pub foreign_keys: HashMap<String, ForeignKey>,
+    pub foreign_keys: Vec<ForeignKey>,
 }
 
 mod foreign_keys {
     use super::{ForeignKeyDef, ForeignKey};
 
-    use std::collections::HashMap;
+    //use std::collections::HashMap;
 
     use serde::ser::Serializer;
     use serde::de::{Deserialize, Deserializer};
-    pub fn serialize<S>(map: &HashMap<String, ForeignKey>, serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(v: &Vec<ForeignKey>, serializer: S) -> Result<S::Ok, S::Error>
         where S: Serializer
     {
-        serializer.collect_seq(map.values().map(|f| 
+        serializer.collect_seq(v.iter().map(|f| 
             ForeignKeyDef {
                 name: f.name.clone(),
                 table: f.table.clone(),
@@ -95,12 +95,12 @@ mod foreign_keys {
     }
 
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, ForeignKey>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<ForeignKey>, D::Error>
         where D: Deserializer<'de>
     {
-        let mut map = HashMap::new();
+        let mut v = vec![];
         for foreign_key in Vec::<ForeignKeyDef>::deserialize(deserializer)? {
-            map.insert(foreign_key.name.clone(), ForeignKey {
+            v.push(ForeignKey {
                 name: foreign_key.name,
                 table: foreign_key.table,
                 columns: foreign_key.columns,
@@ -108,7 +108,7 @@ mod foreign_keys {
                 referenced_columns: foreign_key.referenced_columns,
             });
         }
-        Ok(map)
+        Ok(v)
     }
 }
 
@@ -207,14 +207,14 @@ mod tests {
                                 })
                             ].iter().cloned().map(t).collect(),
                             foreign_keys: [
-                                ("project_id_fk", ForeignKey {
+                                ForeignKey {
                                     name: s("project_id_fk"),
                                     table: Qi(s("api"),s("tasks")),
                                     columns: vec![s("project_id")],
                                     referenced_table: Qi(s("api"),s("projects")),
                                     referenced_columns:  vec![s("id")],
-                                })
-                            ].iter().cloned().map(t).collect()
+                                }
+                            ].iter().cloned().collect()
                         })
                     ].iter().cloned().map(t).collect()
                 })
@@ -266,10 +266,10 @@ mod tests {
 
         assert_eq!(deserialized, db_schema);
         
-        //let serialized_result = serde_json::to_string(&db_schema);
-        //println!("serialized_result = {:?}", serialized_result);
-        //let serialized = serialized_result.unwrap_or(s("failed to serialize"));
-        //assert_eq!(serde_json::from_str::<serde_json::Value>(serialized.as_str()).unwrap(), serde_json::from_str::<serde_json::Value>(json_schema).unwrap());
+        let serialized_result = serde_json::to_string(&db_schema);
+        println!("serialized_result = {:?}", serialized_result);
+        let serialized = serialized_result.unwrap_or(s("failed to serialize"));
+        assert_eq!(serde_json::from_str::<serde_json::Value>(serialized.as_str()).unwrap(), serde_json::from_str::<serde_json::Value>(json_schema).unwrap());
     }
 
     // #[test]

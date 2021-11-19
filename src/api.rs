@@ -36,8 +36,10 @@ query {
 pub enum Query<'r> {
     Select {
         select: Vec<SelectItem<'r>>,
-        from: String,
+        from: Vec<String>,
         where_: ConditionTree,
+        limit: Option<SingleVal>,
+        offset: Option<SingleVal>,
     },
     Insert {
         into: String,
@@ -77,7 +79,7 @@ pub struct ForeignKey {
 pub enum Join {
     Child (ForeignKey),
     Parent (ForeignKey),
-    Many (String, ForeignKey, ForeignKey),
+    Many (Qi, ForeignKey, ForeignKey),
 
     // pub kind: JoinType,
     // pub foreign_key: ForeignKey,
@@ -86,6 +88,7 @@ pub enum Join {
 #[derive(Debug, PartialEq)]
 pub enum SelectItem<'r> {
     //TODO!!! better name
+    Star,
     Simple {
         field: Field,
         alias: Option<String>,
@@ -111,6 +114,10 @@ pub enum Condition {
         field: Field,
         filter: Filter,
         negate: Negate,
+    },
+    Foreign {
+        left: (Qi, Field),
+        right: (Qi, Field)
     }
 }
 

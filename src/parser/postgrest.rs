@@ -256,7 +256,8 @@ parser! {
     fn select_item_['r, Input]()(Input) -> SelectItem<'r>
     where [ Input: Stream<Token = char> ]
     {
-       let column = 
+        let star = char('*').map(|_| SelectItem::Star);
+        let column = 
             optional(attempt(alias()))
             .and(field())
             .map(|(alias, field)| SelectItem::Simple {field: field, alias: alias});
@@ -270,9 +271,10 @@ parser! {
             SelectItem::SubSelect {
                 query: Select {
                     select: select,
-                    from: from,
+                    from: vec![from],
                     //from_alias: alias,
-                    where_: ConditionTree { operator: And, conditions: vec![]}
+                    where_: ConditionTree { operator: And, conditions: vec![]},
+                    limit: None, offset: None,
                 },
                 alias: alias,
                 hint: join_hint,
@@ -280,7 +282,7 @@ parser! {
             }
         );
 
-        attempt(sub_select).or(column)
+        attempt(sub_select).or(column).or(star)
     }
 }
 
@@ -289,6 +291,25 @@ where Input: Stream<Token = char>
 {
     many(any())
 }
+
+fn integer<Input>() -> impl Parser<Input, Output = SingleVal>
+where Input: Stream<Token = char>
+{
+    many1(digit()).map(|v| SingleVal(v))
+}
+
+fn limit<Input>() -> impl Parser<Input, Output = SingleVal>
+where Input: Stream<Token = char>
+{
+    integer()
+}
+
+fn offset<Input>() -> impl Parser<Input, Output = SingleVal>
+where Input: Stream<Token = char>
+{
+    integer()
+}
+
 
 fn logic_single_value<Input>() -> impl Parser<Input, Output = String>
 where Input: Stream<Token = char>
@@ -447,6 +468,8 @@ parser! {
 }
 
 fn is_logical(s: &str)->bool{ s.ends_with("or") || s.ends_with("and") }
+fn is_limit(s: &str)->bool{ s.ends_with("limit") }
+fn is_offset(s: &str)->bool{ s.ends_with("offset") }
 
 fn to_app_error<'a>(s: &'a str, p: String) -> impl Fn(ParseError<&'a str>) -> Error {
     move |e| {
@@ -473,12 +496,30 @@ pub fn parse<'r>(
     // extract and parse select item
     let &(_, select_param) = get_parameter("select", &parameters).unwrap_or(&("select","*"));
     let (select_items, _) = select().easy_parse(select_param).map_err(to_app_error(select_param, "select".to_string()))?;
+
+    //todo suppord deep limit/offset
+    let limit = match get_parameter("limit", &parameters) {
+        Some(&(_,l)) => {
+            let (parsed_limit,_) = limit().easy_parse(l).map_err(to_app_error(l, "limit".to_string()))?;
+            Some(parsed_limit)
+        },
+        None => None
+    };
+
+    let offset = match get_parameter("offset", &parameters) {
+        Some(&(_,o)) => {
+            let (parsed_offset,_) = offset().easy_parse(o).map_err(to_app_error(o, "offset".to_string()))?;
+            Some(parsed_offset)
+        },
+        None => None
+    };
     let mut query = match *method {
         Method::GET => {
             let mut q = Select {
                 select: select_items,
-                from: root.clone(),
-                where_: ConditionTree { operator: And, conditions: vec![] }
+                from: vec![root.clone()],
+                where_: ConditionTree { operator: And, conditions: vec![] },
+                limit, offset,
             };
             add_join_conditions(&mut q, &schema, db_schema)?;
             Ok(q)
@@ -592,7 +633,7 @@ pub fn parse<'r>(
     
     //extract and parse simple filters "id=gt.10"
     let filters_str:Vec<&(&str, &str)> = parameters.iter().filter(|(k,_)|
-        !(is_logical(k) || ["select","columns"].contains(&k))
+        !(is_logical(k) || is_limit(k) || is_offset(k) || ["select","columns"].contains(&k))
     ).collect();
     let filters = filters_str.into_iter().map(|&(p, f)|{
         let (tp, _)= tree_path().easy_parse(p).map_err(to_app_error(p, p.to_string()))?;
@@ -620,38 +661,51 @@ pub fn parse<'r>(
 }
 
 fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, target: &String, hint: &mut Option<String>) -> Result<Join>{
+    // let match_fk = | s: &String, t:&String, n:&String | {
+    //     | fk: &&ForeignKey |{
+    //         &fk.name == n && &fk.referenced_table.0 == s
+    //     }
+    // };
     let schema = db_schema.schemas.get(current_schema).context(UnacceptableSchema {schemas: vec![current_schema.to_owned()]})?;
+    // println!("--------------looking for {} {}->{}.{:?}", current_schema, origin, target, hint);
+    // println!("--------------got schema");
     let origin_table = schema.objects.get(origin).context(UnknownRelation {relation: origin.to_owned()})?;
+    // println!("--------------got table");
     match schema.objects.get(target) {
         // the target is an existing table
         Some(target_table) => {
+            // println!("--------------got target table");
             match hint {
                 Some(h) => {
                     // projects?select=clients!projects_client_id_fkey(*)
-                    if let Some(fk) = target_table.foreign_keys.get(h) {
+                    if let Some(fk) = origin_table.foreign_keys.iter().find(|&fk|
+                        &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target
+                    ) {
                         return Ok(Parent(fk.clone()));
                     }
-                    if let Some(fk) = target_table.foreign_keys.get(h) {
+                    if let Some(fk) = target_table.foreign_keys.iter().find(|&fk|
+                        &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin
+                    ) {
                         return Ok(Child(fk.clone()));
                     }
 
                     // users?select=tasks!users_tasks(*)
                     // TODO!!! handle
                     if let Some(join_table) = schema.objects.get(h) {
-                        let ofk1 = join_table.foreign_keys.values().find_map(|fk| {
+                        let ofk1 = join_table.foreign_keys.iter().find_map(|fk| {
                             if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
                                 Some(fk)
                             }
                             else { None }
                         });
-                        let ofk2 = join_table.foreign_keys.values().find_map(|fk| {
+                        let ofk2 = join_table.foreign_keys.iter().find_map(|fk| {
                             if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
                                 Some(fk)
                             }
                             else { None }
                         });
                         if let (Some(fk1), Some(fk2)) = (ofk1, ofk2){
-                            return Ok( Many(join_table.name.clone(), fk1.clone(), fk2.clone()) )
+                            return Ok( Many(Qi(current_schema.clone(),join_table.name.clone()), fk1.clone(), fk2.clone()) )
                         }
                         else {
                             return Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
@@ -664,23 +718,23 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
                     let mut joins = vec![];
                     
                     joins.extend(origin_table.foreign_keys.iter()
-                        .filter(|&(_, fk)|
+                        .filter(|&fk|
                                &fk.referenced_table.0 == current_schema 
                             && &fk.referenced_table.1 == target
                             && fk.columns.len() == 1
                             && ( fk.columns.contains(h) || fk.referenced_columns.contains(h) )
                         )
-                        .map(|(_, fk)| Parent(fk.clone()))
+                        .map(|fk| Parent(fk.clone()))
                         .collect::<Vec<_>>()
                     );
                     joins.extend(target_table.foreign_keys.iter()
-                    .filter(|&(_, fk)|
+                    .filter(|&fk|
                            &fk.referenced_table.0 == current_schema 
                         && &fk.referenced_table.1 == origin
                         && fk.columns.len() == 1
                         && ( fk.columns.contains(h) || fk.referenced_columns.contains(h) )
                     )
-                    .map(|(_, fk)| Parent(fk.clone()))
+                    .map(|fk| Parent(fk.clone()))
                     .collect::<Vec<_>>()
                     );
                     
@@ -701,15 +755,16 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
                     // check child relations
                     // projects?select=tasks(*)
                     let child_joins = target_table.foreign_keys.iter()
-                    .filter(|&(_, fk)| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin )
-                    .map(|(_, fk)| Child(fk.clone()))
+                    .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin )
+                    .map(|fk| Child(fk.clone()))
                     .collect::<Vec<_>>();
+                    // println!("target tbl fks: {:#?}", target_table);
                     
                     // check parent relations
                     // projects?select=clients(*)
                     let parent_joins = origin_table.foreign_keys.iter()
-                    .filter(|&(_, fk)| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target )
-                    .map(|(_, fk)| Parent(fk.clone()))
+                    .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target )
+                    .map(|fk| Parent(fk.clone()))
                     .collect::<Vec<_>>();
 
                     let mut joins = vec![];
@@ -717,30 +772,33 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
                     joins.extend(parent_joins);
                     
                     if joins.len() == 1 {
+                        // println!("--------------found 1 {:?}", joins[0].clone());
                         Ok(joins[0].clone())
                     }
                     else if joins.len() == 0 {
                         // check many to many relations
                         // users?select=tasks(*)
                         let many_joins = schema.objects.values().filter_map(|join_table|{
-                            let fk1 = join_table.foreign_keys.values().find_map(|fk| {
+                            let fk1 = join_table.foreign_keys.iter().find_map(|fk| {
                                 if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
                                     Some(fk)
                                 }
                                 else { None }
                             })?;
-                            let fk2 = join_table.foreign_keys.values().find_map(|fk| {
+                            let fk2 = join_table.foreign_keys.iter().find_map(|fk| {
                                 if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
                                     Some(fk)
                                 }
                                 else { None }
                             })?;
-                            Some( Many(join_table.name.clone(), fk1.clone(), fk2.clone()) )
+                            Some( Many(Qi(current_schema.clone(),join_table.name.clone()), fk1.clone(), fk2.clone()) )
                         }).collect::<Vec<_>>();
                         if many_joins.len() == 1 {
+                            // println!("--------------found many join");
                             Ok(many_joins[0].clone())
                         }
                         else if many_joins.len() == 0 {
+                            // println!("--------------nothing found");
                             Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
                         }
                         else{
@@ -755,17 +813,18 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
         },
         // the target is not a table
         None => {
-            match origin_table.foreign_keys.get(target) {
+            // println!("--------------no target table");
+            match origin_table.foreign_keys.iter().find(|&fk| &fk.name == target && &fk.referenced_table.0 == current_schema) {
                 // the target is a foreign key name
                 // projects?select=projects_client_id_fkey(*)
-                Some (fk) => if &fk.referenced_table.0 == current_schema { Ok(Child(fk.clone())) }
-                             else { Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()}) }
+                // TODO! when views are involved there may be multiple fks with the same name
+                Some (fk) => Ok(Child(fk.clone())),
                 // the target is a foreign key column
                 // projects?select=client_id(*)
                 None => {
                     let joins = origin_table.foreign_keys.iter()
-                        .filter(|&(_, fk)| &fk.referenced_table.0 == current_schema && fk.columns.len() == 1 && fk.columns.contains(target) )
-                        .map(|(_, fk)| Child(fk.clone()))
+                        .filter(|&fk| &fk.referenced_table.0 == current_schema && fk.columns.len() == 1 && fk.columns.contains(target) )
+                        .map(|fk| Child(fk.clone()))
                         .collect::<Vec<_>>();
                     //Ok(joins)
                     if joins.len() == 1 {
@@ -781,35 +840,82 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
             }
         }
     }
+    
 }
 
 fn add_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema )->Result<()>{
     let subzero_source = &"subzero_source".to_string();
     let (select, parent_table, parent_alias) : (&mut Vec<SelectItem>, &String, &String) = match query {
-        Select {select, from, ..} => (select.as_mut(), from, from),
+        Select {select, from, ..} => (select.as_mut(), from.get(0).unwrap(), from.get(0).unwrap()),
         Insert {select, into, ..} => (select.as_mut(), into, subzero_source),
     };
     
     for s in select.iter_mut() {
         match s {
             SelectItem::SubSelect{query: q, join, hint, ..} => {
-                let child_table = match q {
+                let from = match q {
                     Select {from, ..} => from,
                     _ => panic!("there should not be any Insert queries as subselects"),
                 };
+                let child_table = from.get(0).unwrap();
                 let new_join = get_join(schema, db_schema, parent_table, child_table, hint)?;
                 match &new_join {
-                    Parent (fk) => insert_conditions(q, vec![(vec![],Single { //clients
-                        field: Field {name: fk.referenced_columns[0].clone(), json_path: None},
-                        filter: Col (Qi (schema.clone(), parent_alias.clone()), Field {name: fk.columns[0].clone(), json_path: None}),
-                        negate: false
-                    })]),
-                    Child (fk) => insert_conditions(q, vec![(vec![],Single { //tasks
-                        field: Field {name: fk.columns[0].clone(), json_path: None},
-                        filter: Col (Qi (schema.clone(), parent_alias.clone()), Field {name: fk.referenced_columns[0].clone(), json_path: None}),
-                        negate: false
-                    })]),
-                    Many (_tbl, _fk1, _fk2) => insert_conditions(q, vec![])
+                    Parent (fk) => {
+                        let mut conditions = vec![];
+                        for i in 0..fk.columns.len() {
+                            conditions.push((
+                                vec![],
+                                Single { //tasks
+                                    field: Field {name: fk.referenced_columns[i].clone(), json_path: None},
+                                    filter: Col (Qi (schema.clone(), parent_alias.clone()), Field {name: fk.columns[i].clone(), json_path: None}),
+                                    negate: false
+                                }
+                            ));
+                        }
+                        insert_conditions(q, conditions);
+                    },
+                    Child (fk) => {
+                        let mut conditions = vec![];
+                        for i in 0..fk.columns.len() {
+                            conditions.push((
+                                vec![],
+                                Single { //tasks
+                                    field: Field {name: fk.columns[i].clone(), json_path: None},
+                                    filter: Col (Qi (schema.clone(), parent_alias.clone()), Field {name: fk.referenced_columns[i].clone(), json_path: None}),
+                                    negate: false
+                                }
+                            ));
+                        }
+                        insert_conditions(q, conditions);
+                    },
+                    //TODO!!! insert many to many conditions
+                    Many (join_table, fk1, fk2) => {
+                        let mut conditions = vec![];
+                        //fk1 is for origin table
+                        for i in 0..fk1.columns.len() {
+                            conditions.push((
+                                vec![],
+                                Foreign {
+                                    left: (Qi (schema.clone(), parent_alias.clone()), Field {name: fk1.referenced_columns[i].clone(), json_path: None}),
+                                    right: (Qi (join_table.0.clone(), join_table.1.clone()), Field {name: fk1.columns[i].clone(), json_path: None})
+                                }
+                            ));
+                        }
+                        //fk2 is for target table
+                        for i in 0..fk2.columns.len() {
+                            conditions.push((
+                                vec![],
+                                Single {
+                                    field: Field {name: fk2.referenced_columns[i].clone(), json_path: None},
+                                    filter: Col (Qi (join_table.0.clone(), join_table.1.clone()), Field {name: fk2.columns[i].clone(), json_path: None}),
+                                    negate: false
+                                }
+                            ));
+                        }
+                        from.push(join_table.1.clone());
+                        insert_conditions(q, conditions);
+                        
+                    }
                 }
                 std::mem::swap(join, &mut Some(new_join));
                 add_join_conditions( q, schema, db_schema)?
@@ -832,7 +938,7 @@ fn insert_conditions( query: &mut Query, mut conditions: Vec<(Vec<String>,Condit
         match s {
             SelectItem::SubSelect{query: q, ..} => {
                 let from : &String = match q {
-                    Select {from, ..} => from,
+                    Select {from, ..} => from.get(0).unwrap(),
                     _ => panic!("there should not be any Insert queries as subselects"),
                 };
                 let node_conditions = conditions.drain_filter(|(path, _)|
@@ -985,15 +1091,15 @@ pub mod tests {
     #[test]
     fn test_insert_conditions(){
        
-        let mut query = Select {
+        let mut query = Select { limit: None, offset: None,
             select: vec![
                 Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                 SubSelect{
-                    query: Select {
+                    query: Select { limit: None, offset: None,
                         select: vec![
                             Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                         ],
-                        from: s("child"),
+                        from: vec![s("child")],
                         where_: ConditionTree { operator: And, conditions: vec![]}
                     },
                     alias: None,
@@ -1001,7 +1107,7 @@ pub mod tests {
                     join: None
                 }
             ],
-            from: s("parent"),
+            from: vec![s("parent")],
             //from_alias: None,
             where_: ConditionTree { operator: And, conditions: vec![] }
         };
@@ -1015,15 +1121,15 @@ pub mod tests {
             (vec![s("child")],condition.clone()),
         ]);
         assert_eq!(query,
-            Select {
+            Select { limit: None, offset: None,
                 select: vec![
                     Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                     SubSelect{
-                        query: Select {
+                        query: Select { limit: None, offset: None,
                             select: vec![
                                 Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                             ],
-                            from: s("child"),
+                            from: vec![s("child")],
                             //from_alias: None,
                             where_: ConditionTree { operator: And, conditions: vec![condition.clone()] }
                         },
@@ -1032,7 +1138,7 @@ pub mod tests {
                         join: None
                     }
                 ],
-                from: s("parent"),
+                from: vec![s("parent")],
                 where_: ConditionTree { operator: And, conditions: vec![condition.clone()] }
             }
         );
@@ -1059,16 +1165,16 @@ pub mod tests {
                 headers: HashMap::new(),
                 cookies: HashMap::new(),
                 query: 
-                    Select {
+                    Select { limit: None, offset: None,
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                             Simple {field: Field {name: s("name"), json_path: None}, alias: None},
                             SubSelect{
-                                query: Select {
+                                query: Select { limit: None, offset: None,
                                     select: vec![
                                         Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                                     ],
-                                    from: s("clients"),
+                                    from: vec![s("clients")],
                                     //from_alias: None,
                                     where_: ConditionTree { operator: And, conditions: vec![
                                         Single {
@@ -1091,11 +1197,11 @@ pub mod tests {
                                 )
                             },
                             SubSelect{
-                                query: Select {
+                                query: Select {  limit: None, offset: None,
                                     select: vec![
                                         Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                                     ],
-                                    from: s("tasks"),
+                                    from: vec![s("tasks")],
                                     //from_alias: None,
                                     where_: ConditionTree { operator: And, conditions: vec![
                                         Single {
@@ -1133,7 +1239,7 @@ pub mod tests {
                                 )
                             }
                         ],
-                        from: s("projects"),
+                        from: vec![s("projects")],
                         //from_alias: None,
                         where_: ConditionTree { operator: And, conditions: vec![
                             Single {
@@ -1353,11 +1459,11 @@ pub mod tests {
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                             Simple {field: Field {name: s("name"), json_path: None}, alias: None},
                             SubSelect{
-                                query: Select {
+                                query: Select { limit: None, offset: None,
                                     select: vec![
                                         Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                                     ],
-                                    from: s("tasks"),
+                                    from: vec![s("tasks")],
                                     //from_alias: None,
                                     where_: ConditionTree { operator: And, conditions: vec![
                                         Single {
@@ -1385,11 +1491,11 @@ pub mod tests {
                                 )
                             },
                             SubSelect{
-                                query: Select {
+                                query: Select { limit: None, offset: None,
                                     select: vec![
                                         Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                                     ],
-                                    from: s("clients"),
+                                    from: vec![s("clients")],
                                     //from_alias: None,
                                     where_: ConditionTree { operator: And, conditions: vec![
                                         Single {
@@ -1475,7 +1581,7 @@ pub mod tests {
             Ok(
                
                     Many(
-                        s("users_tasks"),
+                        Qi(s("api"), s("users_tasks")),
                         ForeignKey {
                             name: s("task_id_fk"),
                             table: Qi(s("api"),s("users_tasks")),
@@ -1498,7 +1604,7 @@ pub mod tests {
             Ok(
                
                     Many(
-                        s("users_tasks"),
+                        Qi(s("api"), s("users_tasks")),
                         ForeignKey {
                             name: s("task_id_fk"),
                             table: Qi(s("api"),s("users_tasks")),
@@ -1827,13 +1933,13 @@ pub mod tests {
             select_item().easy_parse("table!hint ( column0->key, column1 ,  alias2:column2 )"), 
             Ok((
                 SubSelect{
-                    query: Select {
+                    query: Select { limit: None, offset: None,
                         select: vec![
                             Simple {field: Field {name:s("column0"), json_path: Some(vec![JArrow(JKey(s("key")))])}, alias:  None},
                             Simple {field: Field {name:s("column1"), json_path: None}, alias:  None},
                             Simple {field: Field {name:s("column2"), json_path: None}, alias:  Some(s("alias2"))},
                         ],
-                        from: s("table"),
+                        from: vec![s("table")],
                         //from_alias: None,
                         where_: ConditionTree { operator: And, conditions: vec![]}
                     },
