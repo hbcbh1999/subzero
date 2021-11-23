@@ -3,8 +3,8 @@ use super::*; //super in
 use serde_json::Value;
 
 use rocket::{Rocket, Build, Config as RocketConfig};
-use rocket::http::{Accept};
-use std::str::FromStr;
+//use rocket::http::{Accept};
+//use std::str::FromStr;
 use rocket::local::asynchronous::Client;
 // use rocket::http::Status;
 use figment::{Figment, Profile, };
@@ -45,6 +45,7 @@ fn setup() {
 
         let db_uri =  String::from_utf8_lossy(&output.stdout);
         env::set_var("SUBZERO_DB_URI", &*db_uri);
+        //env::set_var("SUBZERO_PORT", &"8002");
 
         env::set_var("SUBZERO_DB_SCHEMAS", "[test]");
 
@@ -144,7 +145,7 @@ macro_rules! haskell_test {
                                         $(let url = format!("/rest{}",$get1_url);)?
                                         $(let url = format!("/rest{}",$get2_url);)?
                                         println!("url ===\n{:?}\n", url);
-                                        let mut request = client.get(url.replace(" ", "%20"));
+                                        let request = client.get(url.replace(" ", "%20"));
                                         $(
                                         request.add_header(Accept::from_str($accept_header).unwrap());
                                         )?
@@ -750,14 +751,14 @@ spec actualPgVersion = do
           [json|r#" [{"name":"George Orwell","entities":[3, 4],"books":[{"title":"1984"}]}] "#|]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-    // describe "aliased embeds" $ do
-    //   it "works with child relation" $
-    //     get "/space?select=id,zones:zone(id,name),stores:zone(id,name)&zones.zone_type_id=eq.2&stores.zone_type_id=eq.3" shouldRespondWith
-    //       [json|r#"[
-    //         { "id":1,
-    //           "zones": [ {"id":1,"name":"zone 1"}, {"id":2,"name":"zone 2"}],
-    //           "stores": [ {"id":3,"name":"store 3"}, {"id":4,"name":"store 4"}]}
-    //       ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+    describe "aliased embeds" $ do
+      it "works with child relation" $
+        get "/space?select=id,zones:zone(id,name),stores:zone(id,name)&zones.zone_type_id=eq.2&stores.zone_type_id=eq.3" shouldRespondWith
+          [json|r#"[
+            { "id":1,
+              "zones": [ {"id":1,"name":"zone 1"}, {"id":2,"name":"zone 2"}],
+              "stores": [ {"id":3,"name":"store 3"}, {"id":4,"name":"store 4"}]}
+          ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     //   it "works with many to many relation" $
     //     get "/users?select=id,designTasks:tasks(id,name),codeTasks:tasks(id,name)&designTasks.name=like.*Design*&codeTasks.name=like.*Code*" shouldRespondWith

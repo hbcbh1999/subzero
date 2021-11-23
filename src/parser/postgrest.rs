@@ -274,7 +274,7 @@ parser! {
                     from: vec![from],
                     //from_alias: alias,
                     where_: ConditionTree { operator: And, conditions: vec![]},
-                    limit: None, offset: None,
+                    limit: None, offset: None, order: vec![],
                 },
                 alias: alias,
                 hint: join_hint,
@@ -398,6 +398,22 @@ where Input: Stream<Token = char>
     ))
 }
 
+fn order<Input>() -> impl Parser<Input, Output = Vec<OrderTerm>>
+where Input: Stream<Token = char>
+{
+    sep_by1(order_term(), lex(char(','))).skip(eof())
+}
+
+fn order_term<Input>() -> impl Parser<Input, Output = OrderTerm>
+where Input: Stream<Token = char>
+{
+    let direction = dot().and(string("asc").map(|_| OrderDirection::Asc).or(string("desc").map(|_| OrderDirection::Desc))).map(|(_,v)| v);
+    let nulls = dot().and(
+        attempt(string("nullsfirst").map(|_| OrderNulls::NullsFirst)).or(string("nullslast").map(|_| OrderNulls::NullsLast))
+    ).map(|(_,v)| v);
+    field().and(optional(direction)).and(optional(nulls)).map(|((term, direction), null_order)| OrderTerm{term, direction, null_order})
+}
+
 fn logic_filter<Input>() -> impl Parser<Input, Output = Filter>
 where Input: Stream<Token = char>
 {
@@ -470,6 +486,7 @@ parser! {
 fn is_logical(s: &str)->bool{ s.ends_with("or") || s.ends_with("and") }
 fn is_limit(s: &str)->bool{ s.ends_with("limit") }
 fn is_offset(s: &str)->bool{ s.ends_with("offset") }
+fn is_order(s: &str)->bool{ s.ends_with("order") }
 
 fn to_app_error<'a>(s: &'a str, p: String) -> impl Fn(ParseError<&'a str>) -> Error {
     move |e| {
@@ -493,44 +510,76 @@ pub fn parse<'r>(
     headers: HashMap<&'r str, &'r str>,
     cookies: HashMap<&'r str, &'r str>,
 ) -> Result<ApiRequest<'r>> {
-    // extract and parse select item
-    let &(_, select_param) = get_parameter("select", &parameters).unwrap_or(&("select","*"));
-    let (select_items, _) = select().easy_parse(select_param).map_err(to_app_error(select_param, "select".to_string()))?;
 
-    //todo suppord deep limit/offset
-    let limit = match get_parameter("limit", &parameters) {
-        Some(&(_,l)) => {
-            let (parsed_limit,_) = limit().easy_parse(l).map_err(to_app_error(l, "limit".to_string()))?;
-            Some(parsed_limit)
-        },
-        None => None
-    };
+    let mut select_items = vec![SelectItem::Star];
+    let mut limits = vec![];
+    let mut offsets = vec![];
+    let mut orders = vec![];
+    let mut conditions = vec![];
+    let mut columns_ = None;
 
-    let offset = match get_parameter("offset", &parameters) {
-        Some(&(_,o)) => {
-            let (parsed_offset,_) = offset().easy_parse(o).map_err(to_app_error(o, "offset".to_string()))?;
-            Some(parsed_offset)
-        },
-        None => None
-    };
+    for (k,v) in parameters.into_iter() {
+        match k {
+            "select" => {
+                let (parsed_value, _) = select().easy_parse(v).map_err(to_app_error(v, "select".to_string()))?;
+                select_items = parsed_value;
+            }
+
+            "columns" => {
+                let (parsed_value, _) = columns().easy_parse(v).map_err(to_app_error(v, "columns".to_string()))?;
+                columns_ = Some(parsed_value);
+            }
+
+            kk if is_logical(kk) => {
+                let ((tp, n, lo), _) = logic_tree_path().easy_parse(k).map_err(to_app_error(k, k.to_string()))?;
+                let ns = if n { "not." } else { "" };
+                let los = if lo == And {  "and" } else { "or" };
+                let s = format!("{}{}{}", ns,los,v);
+                let (c, _) = logic_condition().easy_parse(s.as_str()).map_err(to_app_error(&s, k.to_string()))?;
+                conditions.push((tp, c));
+            }
+
+            kk if is_limit(kk) => {
+                let ((tp,_), _)= tree_path().easy_parse(k).map_err(to_app_error(k, k.to_string()))?;
+                let (parsed_value,_) = limit().easy_parse(v).map_err(to_app_error(v, "limit".to_string()))?;
+                limits.push((tp, parsed_value));
+            }
+
+            kk if is_offset(kk) => {
+                let ((tp,_), _)= tree_path().easy_parse(k).map_err(to_app_error(k, k.to_string()))?;
+                let (parsed_value,_) = offset().easy_parse(v).map_err(to_app_error(v, "offset".to_string()))?;
+                offsets.push((tp, parsed_value));
+            }
+
+            kk if is_order(kk) => {
+                let ((tp,_), _)= tree_path().easy_parse(k).map_err(to_app_error(k, k.to_string()))?;
+                let (parsed_value,_) = order().easy_parse(v).map_err(to_app_error(v, "order".to_string()))?;
+                orders.push((tp, parsed_value));
+            }
+
+            //is filter
+            _ => {
+                let ((tp,field), _)= tree_path().easy_parse(k).map_err(to_app_error(k, k.to_string()))?;
+                let ((negate,filter), _) = negatable_filter().easy_parse(v).map_err(to_app_error(v, k.to_string()))?;
+                conditions.push((tp, Condition::Single {field, filter, negate}));
+            }
+        }
+    }
     let mut query = match *method {
         Method::GET => {
-            let mut q = Select {
+            let q = Select {
                 select: select_items,
                 from: vec![root.clone()],
                 where_: ConditionTree { operator: And, conditions: vec![] },
-                limit, offset,
+                limit: None, offset: None, order: vec![],
             };
-            add_join_conditions(&mut q, &schema, db_schema)?;
+            //add_join_conditions(&mut q, &schema, db_schema)?;
             Ok(q)
         },
         Method::POST => {
             let payload = body.context(InvalidBody)?;
-            let columns = match get_parameter("columns", &parameters){
-                Some(&(_, columns_param)) => 
-                    columns().easy_parse(columns_param)
-                    .map(|v| v.0)
-                    .map_err(to_app_error(columns_param, "columns".to_string())),
+            let columns = match columns_ {
+                Some(c) => Ok(c),
                 None => {
                     let json_payload: Result<JsonValue,serde_json::Error> = serde_json::from_str(payload);
                     match json_payload {
@@ -582,7 +631,7 @@ pub fn parse<'r>(
                 //, onConflict :: Maybe (PreferResolution, [FieldName])
             };
             
-            add_join_conditions(&mut q, &schema, db_schema)?;
+            //add_join_conditions(&mut q, &schema, db_schema)?;
             let (select, table, returning) = match &mut q {
                 Insert {select,into,returning,..}=>(select,into,returning),
                 _ => panic!("q can not be of other types")
@@ -618,38 +667,49 @@ pub fn parse<'r>(
         _ => Err(Error::UnsupportedVerb)
     }?;
 
-    
-    
-    //extract and parse logical filters "and=(...)"
-    let logical_filters_str:Vec<&(&str, &str)> = parameters.iter().filter(|(k,_)|is_logical(k)).collect();
-    let mut logical_conditions = logical_filters_str.into_iter().map(|&(p, f)|{
-        let ((tp, n, lo), _) = logic_tree_path().easy_parse(p).map_err(to_app_error(p, p.to_string()))?;
-        let ns = if n { "not." } else { "" };
-        let los = if lo == And {  "and" } else { "or" };
-        let s = format!("{}{}{}", ns,los,f);
-        let (c, _) = logic_condition().easy_parse(s.as_str()).map_err(to_app_error(&s, p.to_string()))?;
-        Ok((tp, c))
-    }).collect::<Vec<Result<_,Error>>>().into_iter().collect::<Result<Vec<_>,_>>()?;
-    
-    //extract and parse simple filters "id=gt.10"
-    let filters_str:Vec<&(&str, &str)> = parameters.iter().filter(|(k,_)|
-        !(is_logical(k) || is_limit(k) || is_offset(k) || ["select","columns"].contains(&k))
-    ).collect();
-    let filters = filters_str.into_iter().map(|&(p, f)|{
-        let (tp, _)= tree_path().easy_parse(p).map_err(to_app_error(p, p.to_string()))?;
-        let ((n,ff), _) = negatable_filter().easy_parse(f).map_err(to_app_error(f, p.to_string()))?;
-        Ok((tp, n, ff))
-    }).collect::<Vec<Result<_,Error>>>().into_iter().collect::<Result<Vec<_>,_>>()?;
-    let mut single_conditions = filters.into_iter().map(|((p,fld), negate, flt)|{
-        (p, Condition::Single {field:fld, filter:flt, negate: negate})
-    }).collect::<Vec<(_,_)>>();
+    add_join_conditions(&mut query, &schema, db_schema)?;
+    //insert_conditions(&mut query, conditions);
+    //insert_limits(&mut query, limits);
+    //insert_offsets(&mut query, offsets);
+    //insert_orders(&mut query, orders);
 
+    insert_properties(&mut query, conditions, |q, p|{
+        let query_conditions: &mut Vec<Condition> = match q {
+            Select {where_, ..} => where_.conditions.as_mut(),
+            Insert {where_, ..} => where_.conditions.as_mut(),
+        };
+        p.into_iter().for_each(|c| query_conditions.push(c));
+    });
 
-    let mut conditions = vec![];
-    conditions.append(&mut single_conditions);
-    conditions.append(&mut logical_conditions);
+    insert_properties(&mut query, limits, |q, p|{
+        let limit = match q {
+            Select {limit, ..} => limit,
+            Insert {..} => todo!(),
+        };
+        for v in p {
+            std::mem::swap(limit, &mut Some(v));
+        }
+    });
 
-    insert_conditions(&mut query, conditions);
+    insert_properties(&mut query, offsets, |q, p|{
+        let offset = match q {
+            Select {offset, ..} => offset,
+            Insert {..} => todo!(),
+        };
+        for v in p {
+            std::mem::swap(offset, &mut Some(v));
+        }
+    });
+
+    insert_properties(&mut query, orders, |q, p|{
+        let order = match q {
+            Select {order, ..} => order,
+            Insert {..} => todo!(),
+        };
+        for mut o in p {
+            std::mem::swap(order, &mut o);
+        }
+    });
     
 
     Ok(ApiRequest {
@@ -926,30 +986,48 @@ fn add_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema
     Ok(())
 }
 
-fn insert_conditions( query: &mut Query, mut conditions: Vec<(Vec<String>,Condition)>){
-    let (select, query_conditions) : (&mut Vec<SelectItem>, &mut Vec<Condition>) = match query {
-        Select {select, where_, ..} => (select.as_mut(), where_.conditions.as_mut()),
-        Insert {select, where_, ..} => (select.as_mut(), where_.conditions.as_mut()),
-    };
-    let node_conditions = conditions.drain_filter(|(path, _)| path.len() == 0).map(|(_,c)| c).collect::<Vec<_>>();
-    node_conditions.into_iter().for_each(|c| query_conditions.push(c));
+fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>, f: fn(&mut Query, Vec<T>),  ) {
+    let node_properties = properties.drain_filter(|(path, _)| path.len() == 0).map(|(_,c)| c).collect::<Vec<_>>();
+    f(query, node_properties);
     
+
+    let select = match query {
+        Select {select,..} => select,
+        Insert {select,..} => select,
+    };
+
     for s in select.iter_mut() {
         match s {
-            SelectItem::SubSelect{query: q, ..} => {
+            SelectItem::SubSelect{query: q, alias, ..} => {
                 let from : &String = match q {
                     Select {from, ..} => from.get(0).unwrap(),
                     _ => panic!("there should not be any Insert queries as subselects"),
                 };
-                let node_conditions = conditions.drain_filter(|(path, _)|
-                    if path.get(0) == Some(from) { path.remove(0); true }
-                    else {false}
+                let node_properties = properties.drain_filter(|(path, _)|
+                    match path.get(0) {
+                        Some(p) => {
+                            if p == from || Some(p) == alias.as_ref()  { path.remove(0); true }
+                            else {false}
+                        }
+                        None => false
+                    }
                 ).collect::<Vec<_>>();
-                insert_conditions(q, node_conditions);
+                insert_properties(q, node_properties, f);
             }
             _ => {}
         }
     }
+}
+
+fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)>){
+
+    insert_properties(query, conditions, |q, p|{
+        let query_conditions: &mut Vec<Condition> = match q {
+            Select {where_, ..} => where_.conditions.as_mut(),
+            Insert {where_, ..} => where_.conditions.as_mut(),
+        };
+        p.into_iter().for_each(|c| query_conditions.push(c));
+    });
 }
 
 #[cfg(test)]
@@ -1091,11 +1169,11 @@ pub mod tests {
     #[test]
     fn test_insert_conditions(){
        
-        let mut query = Select { limit: None, offset: None,
+        let mut query = Select { order: vec![], limit: None, offset: None,
             select: vec![
                 Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                 SubSelect{
-                    query: Select { limit: None, offset: None,
+                    query: Select { order: vec![], limit: None, offset: None,
                         select: vec![
                             Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                         ],
@@ -1121,11 +1199,11 @@ pub mod tests {
             (vec![s("child")],condition.clone()),
         ]);
         assert_eq!(query,
-            Select { limit: None, offset: None,
+            Select { order: vec![], limit: None, offset: None,
                 select: vec![
                     Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                     SubSelect{
-                        query: Select { limit: None, offset: None,
+                        query: Select { order: vec![], limit: None, offset: None,
                             select: vec![
                                 Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                             ],
@@ -1165,12 +1243,12 @@ pub mod tests {
                 headers: HashMap::new(),
                 cookies: HashMap::new(),
                 query: 
-                    Select { limit: None, offset: None,
+                    Select { order: vec![], limit: None, offset: None,
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                             Simple {field: Field {name: s("name"), json_path: None}, alias: None},
                             SubSelect{
-                                query: Select { limit: None, offset: None,
+                                query: Select { order: vec![], limit: None, offset: None,
                                     select: vec![
                                         Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                                     ],
@@ -1197,7 +1275,7 @@ pub mod tests {
                                 )
                             },
                             SubSelect{
-                                query: Select {  limit: None, offset: None,
+                                query: Select { order: vec![], limit: None, offset: None,
                                     select: vec![
                                         Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                                     ],
@@ -1459,7 +1537,7 @@ pub mod tests {
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                             Simple {field: Field {name: s("name"), json_path: None}, alias: None},
                             SubSelect{
-                                query: Select { limit: None, offset: None,
+                                query: Select { order: vec![], limit: None, offset: None,
                                     select: vec![
                                         Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                                     ],
@@ -1491,7 +1569,7 @@ pub mod tests {
                                 )
                             },
                             SubSelect{
-                                query: Select { limit: None, offset: None,
+                                query: Select { order: vec![], limit: None, offset: None,
                                     select: vec![
                                         Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                                     ],
@@ -1844,6 +1922,24 @@ pub mod tests {
     }
 
     #[test]
+    fn parse_order(){
+        assert_eq!(order_term().easy_parse("field"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: None,null_order: None},"")));
+        assert_eq!(order_term().easy_parse("field.asc"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: Some(OrderDirection::Asc),null_order: None},"")));
+        assert_eq!(order_term().easy_parse("field.desc"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: Some(OrderDirection::Desc),null_order: None},"")));
+        assert_eq!(order_term().easy_parse("field.desc.nullsfirst"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: Some(OrderDirection::Desc),null_order: Some(OrderNulls::NullsFirst)},"")));
+        assert_eq!(order_term().easy_parse("field.desc.nullslast"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: Some(OrderDirection::Desc),null_order: Some(OrderNulls::NullsLast)},"")));
+        assert_eq!(
+            order().easy_parse("field,field.asc,field.desc.nullslast"),
+            Ok((vec![
+                OrderTerm{term:Field{name:s("field"), json_path:None},direction: None,null_order: None},
+                OrderTerm{term:Field{name:s("field"), json_path:None},direction: Some(OrderDirection::Asc),null_order: None},
+                OrderTerm{term:Field{name:s("field"), json_path:None},direction: Some(OrderDirection::Desc),null_order: Some(OrderNulls::NullsLast)},
+            ]
+            ,""))
+        );
+    }
+
+    #[test]
     fn parse_columns() {
         assert_eq!(columns().easy_parse("col1, col2 "), Ok((vec![s("col1"), s("col2")],"")));
         
@@ -1900,6 +1996,8 @@ pub mod tests {
             }
         );
         assert_eq!(tree_path().easy_parse("sub.path.field->key"), Ok((result,"")));
+        //println!("{:#?}", tree_path().easy_parse("stores.zone_type_id"));
+        //assert!(false);
     }
 
     #[test]
@@ -1933,7 +2031,7 @@ pub mod tests {
             select_item().easy_parse("table!hint ( column0->key, column1 ,  alias2:column2 )"), 
             Ok((
                 SubSelect{
-                    query: Select { limit: None, offset: None,
+                    query: Select { order: vec![], limit: None, offset: None,
                         select: vec![
                             Simple {field: Field {name:s("column0"), json_path: Some(vec![JArrow(JKey(s("key")))])}, alias:  None},
                             Simple {field: Field {name:s("column1"), json_path: None}, alias:  None},

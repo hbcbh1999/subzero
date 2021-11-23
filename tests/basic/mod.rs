@@ -42,6 +42,7 @@ fn setup() {
 
         let db_uri =  String::from_utf8_lossy(&output.stdout);
         env::set_var("SUBZERO_DB_URI", &*db_uri);
+        //env::set_var("SUBZERO_PORT", &"8001");
 
         let output = Command::new("psql").arg("-f").arg(init_file.to_str().unwrap()).arg(db_uri.into_owned()).output().expect("failed to execute process");
         println!("status: {}", output.status);
@@ -113,7 +114,7 @@ demonstrate! {
             println!("{:?}", response);
             assert_eq!(response.into_string().await.unwrap(), r#"[{"id":3}]"#);
             
-            assert!(false);
+            //assert!(false);
         }
     }
 }

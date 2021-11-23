@@ -10,7 +10,7 @@ use snafu::{ResultExt};
 
 use http::Method;
 use rocket::http::{CookieJar};
-use rocket::{Rocket, Build, Config as RocketConfig, Request};
+use rocket::{Rocket, Build, Config as RocketConfig};
 use rocket::response::content::Json;
 use subzero::api::ApiRequest;
 // use core::slice::SlicePattern;
@@ -32,7 +32,34 @@ use subzero::formatter::postgresql::{main_query};
 use subzero::error::{Result};
 use subzero::error::*;
 use subzero::config::{Config,  SchemaStructure::*};
+use ref_cast::RefCast;
+
 pub struct Headers<'r>(&'r rocket::http::HeaderMap<'r>);
+use rocket::form::{FromForm, ValueField, DataField, Options, Result as FormResult};
+
+#[derive(Debug, RefCast)]
+#[repr(transparent)]
+pub struct QueryStringParameters<'r> (Vec<(&'r str, &'r str)>);
+
+#[rocket::async_trait]
+impl<'v> FromForm<'v> for QueryStringParameters<'v> {
+    type Context = Vec<(&'v str, &'v str)>;
+
+    fn init(_opts: Options) -> Self::Context {
+        vec![]
+    }
+
+    fn push_value(ctxt: &mut Self::Context, field: ValueField<'v>) {
+        ctxt.push((field.name.source(), field.value));
+    }
+
+    async fn push_data(_ctxt: &mut Self::Context, _field: DataField<'v, '_>) {
+    }
+
+    fn finalize(this: Self::Context) -> FormResult<'v, Self> {
+        Ok(QueryStringParameters(this))
+    }
+}
 
 #[rocket::async_trait]
 impl<'r> rocket::request::FromRequest<'r> for Headers<'r> {
@@ -118,10 +145,17 @@ fn index() -> &'static str {
     "Hello, world!"
 }
 
+
+#[get("/test?<parameters..>")]
+async fn test<'a>( parameters: QueryStringParameters<'a>) -> &'a str {
+    println!("parameters top {:#?}", parameters.0);
+    "ok"
+}
+
 #[get("/<root>?<parameters..>")]
 async fn get<'a>(
         root: String,
-        parameters: HashMap<String, String>,
+        parameters: QueryStringParameters<'a>,
         db_schema: &State<DbSchema>,
         config: &State<Config>,
         pool: &State<Pool>,
@@ -129,7 +163,7 @@ async fn get<'a>(
         headers: Headers<'_>,
 ) -> Result<Json<String>> {
     let schema_name = config.db_schemas.get(0).unwrap();
-    let parameters = parameters.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
+    let parameters = parameters.0;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -137,14 +171,13 @@ async fn get<'a>(
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
     
-    
     Ok(handle_postgrest_request(&schema_name, &root, &Method::GET, parameters, db_schema, pool, None, headers, cookies).await?)
 }
 
 #[post("/<root>?<parameters..>", data = "<body>")]
 async fn post<'a>(
         root: String,
-        parameters: HashMap<String, String>,
+        parameters: QueryStringParameters<'a>,
         db_schema: &State<DbSchema>,
         config: &State<Config>,
         pool: &State<Pool>,
@@ -153,7 +186,8 @@ async fn post<'a>(
         headers: Headers<'_>,
 ) -> Result<Json<String>> {
     let schema_name = config.db_schemas.get(0).unwrap();
-    let parameters = parameters.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
+    let parameters = parameters.0;
+    
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -222,7 +256,7 @@ pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
         .manage(db_schema)
         .manage(app_config)
         .manage(pool)
-        .mount("/", routes![index])
+        .mount("/", routes![index, test])
         .mount("/rest", routes![get,post]))
 }
 
@@ -241,8 +275,8 @@ async fn rocket() -> Rocket<Build> {
     }
 }
 
-
-#[macro_use] extern crate lazy_static;
+#[cfg_attr(test, macro_use)]
+extern crate lazy_static;
 
 #[cfg(test)]
 #[path = "../tests/basic/mod.rs"]

@@ -40,6 +40,7 @@ pub enum Query<'r> {
         where_: ConditionTree,
         limit: Option<SingleVal>,
         offset: Option<SingleVal>,
+        order: Vec<OrderTerm>
     },
     Insert {
         into: String,
@@ -52,6 +53,19 @@ pub enum Query<'r> {
     }
     
 }
+
+#[derive(Debug, PartialEq)]
+pub struct OrderTerm {
+    pub term:  Field,
+    pub direction: Option<OrderDirection>,
+    pub null_order:  Option<OrderNulls>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum OrderDirection { Asc, Desc}
+
+#[derive(Debug, PartialEq)]
+pub enum OrderNulls { NullsFirst, NullsLast }
 
 pub type JoinHint = String;
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]

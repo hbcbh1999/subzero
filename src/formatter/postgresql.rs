@@ -80,18 +80,17 @@ impl ToSql for SingleVal {
 
 fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
     match q {
-        Select {select, from, where_, limit, offset} => {
+        Select {select, from, where_, limit, offset, order} => {
             let qi = &Qi(schema.clone(),from.get(0).unwrap().clone());
             let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi, s)).unzip();
-            let where_snippet_ = fmt_condition_tree(qi, where_);
-            let where_snippet = if where_snippet_.len() > 0 { "where\n" + where_snippet_ } else { where_snippet_ };
-            //let mut from = vec![sql(fmt_qi(qi))];
-            let from_snippet = from.iter().map(|f| fmt_qi(&Qi(schema.clone(), f.clone()))).collect::<Vec<_>>();
-            let limit_snippet = fmt_limit(limit);
-            let offset_snippet = fmt_offset(offset);
-            let joins_snippet = joins.into_iter().flatten().collect::<Vec<_>>();
-            "\nselect\n"+select.join(",\n")+
-            "\nfrom "+from_snippet.join(",")+"\n"+joins_snippet.join("\n")+"\n" + where_snippet+"\n" + limit_snippet + offset_snippet
+
+            " select "+select.join(", ") +
+            " from " + from.iter().map(|f| fmt_qi(&Qi(schema.clone(), f.clone()))).collect::<Vec<_>>().join(", ") +
+            " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
+            " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi, where_) } else { sql("") } +
+            " " + fmt_order(order) +
+            " " + fmt_limit(limit) +
+            " " + fmt_offset(offset)
             
         },
         Insert {into, columns, payload, where_:_, returning, select} => {
@@ -99,38 +98,29 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + S
             let payload_param:&(dyn ToSql + Sync) = payload;
             let qi_payload = &Qi(schema.clone(),"subzero_source".to_string());
             let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi_payload, s)).unzip();
-            //let mut where_snippet = fmt_condition_tree(qi, where_);
-            //where_snippet = if where_snippet.len() > 0 { "where\n" + where_snippet } else { where_snippet };
             let mut from = vec![sql(fmt_qi(qi_payload))];
             from.extend(joins.into_iter().flatten());
             
-            let insert_snipet = r#"
-with subzero_source as (
-with 
-subzero_payload as ( select "# +param(payload_param)+format!(r#"::json as json_data),
-subzero_body as (
-select
-case when json_typeof(json_data) = 'array'
-then json_data
-else json_build_array(json_data)
-end as val
-from
-subzero_payload
-)
-insert into {} ({})
-select {}
-from json_populate_recordset(null {}, (select val from subzero_body)) _
-returning {}
-)"#,
-            fmt_qi(qi), 
-            columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
-            columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
-            fmt_qi(qi),
-            //where_str,
-            returning.iter().map(fmt_identity).collect::<Vec<_>>().join(",")
-            );
-            let select_snippet = "\nselect\n"+select.join(",\n")+"\nfrom "+from.join("\n")+"\n";
-            insert_snipet + select_snippet
+            let insert_snipet = 
+                " with subzero_source as ( with  subzero_payload as ( select " + param(payload_param) + "::json as json_data),"+
+                    " subzero_body as ("+
+                        " select"+
+                            " case when json_typeof(json_data) = 'array'"+
+                            " then json_data"+
+                            " else json_build_array(json_data)"+
+                            " end as val"+
+                        " from subzero_payload"+
+                    " )"+
+                format!( " insert into {} ({}) select {} from json_populate_recordset(null {}, (select val from subzero_body)) _ returning {} )",
+                    fmt_qi(qi), 
+                    columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
+                    columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
+                    fmt_qi(qi),
+                    //where_str,
+                    returning.iter().map(fmt_identity).collect::<Vec<_>>().join(",")
+                );
+
+            insert_snipet + " select " + select.join(", ")  +" from " + from.join(" ")
         }
     }
 }
@@ -143,27 +133,11 @@ pub fn main_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSq
     " from ( select * from subzero_source ) _subzero_t"
 }
 
-// fn join_snippets<'a>(v: Vec<SqlSnippet<'a, (dyn ToSql + Sync + 'a)>>, s: & str) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
-//     match v.into_iter().fold(
-//         SqlSnippet(vec![]),
-//         |SqlSnippet(mut acc), SqlSnippet(v)| {
-//             acc.push(SqlSnippetChunk::Sql(s.to_string()));
-//             acc.extend(v.into_iter());
-//             SqlSnippet(acc)
-//         }
-//     ) {
-//         SqlSnippet(mut v) => {
-//             v.remove(0);
-//             SqlSnippet(v)
-//         }
-//     }
-// }
-
 fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
     
     match t {
         ConditionTree {operator, conditions} => {
-            let sep = format!("\n{}\n",fmt_logic_operator(operator));
+            let sep = format!(" {} ",fmt_logic_operator(operator));
             conditions.iter().map(|c| fmt_condition(qi, c)).collect::<Vec<_>>().join(sep.as_str())
         }
     }
@@ -291,6 +265,27 @@ fn fmt_field(f: &Field) -> String {
     format!("{}{}", fmt_identity(&f.name), fmt_json_path(&f.json_path))
 }
 
+fn fmt_order(o: &Vec<OrderTerm>) -> String {
+    if o.len() > 0 {
+        format!("order by {}", o.iter().map(fmt_order_term).collect::<Vec<_>>().join(", "))
+    }
+    else {
+        format!("")
+    }
+}
+
+fn fmt_order_term(t: &OrderTerm) -> String {
+    let direction = match &t.direction {
+        None => "",
+        Some(d) => match d { OrderDirection::Asc => "asc", OrderDirection::Desc => "desc" }
+    };
+    let nulls = match &t.null_order {
+        None => "",
+        Some(n) => match n { OrderNulls::NullsFirst => "nullsfirst", OrderNulls::NullsLast => "nullslast" }
+    };
+    format!("{} {} {}", fmt_field(&t.term), direction, nulls)
+}
+
 fn fmt_alias(a: &Option<String>) -> String {
     match a {
         Some(aa) => format!(" as \"{}\"", aa),
@@ -302,7 +297,7 @@ fn fmt_limit<'a>(l: &'a Option<SingleVal>) -> SqlSnippet<'a, (dyn ToSql + Sync +
     match l {
         Some(ll) => {
             let vv:&(dyn ToSql + Sync) = ll;
-            " limit " + param(vv)
+            "limit " + param(vv)
         },
         None => sql("")
     }
@@ -312,7 +307,7 @@ fn fmt_offset<'a>(o: &'a Option<SingleVal>) -> SqlSnippet<'a, (dyn ToSql + Sync 
     match o {
         Some(oo) => {
             let vv:&(dyn ToSql + Sync) = oo;
-            " offset " + param(vv)
+            "offset " + param(vv)
         },
         None => sql("")
     }
@@ -343,6 +338,7 @@ fn fmt_json_operand(o: &JsonOperand) -> String{
 mod tests {
     use pretty_assertions::{assert_eq};
     use crate::dynamic_statement::generate;
+    use regex::Regex;
     //use crate::api::{SelectItem::*};
     //use crate::api::LogicOperator::*;
     //use crate::api::{Condition::*, Filter::*};
@@ -364,7 +360,7 @@ mod tests {
                 Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                 Simple {field: Field {name: s("b"), json_path: Some(vec![JArrow(JIdx(s("1"))), J2Arrow(JKey(s("key")))])}, alias: None},
                 SubSelect{
-                    query: Select {limit: None, offset: None, 
+                    query: Select {order: vec![], limit: None, offset: None, 
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                         ],
@@ -390,7 +386,7 @@ mod tests {
                     )
                 },
                 SubSelect{
-                    query: Select {limit: None, offset: None, 
+                    query: Select {order: vec![], limit: None, offset: None, 
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                         ],
@@ -433,7 +429,8 @@ mod tests {
         let p1:&(dyn ToSql + Sync) = &SingleVal(s("50"));
         let pp: Vec<&(dyn ToSql + Sync)> = vec![&payload, p1, p0];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
-        assert_eq!(query_str, s(
+        let re = Regex::new(r"\s+").unwrap();
+        assert_eq!(re.replace_all(query_str.as_str(), " "), re.replace_all(
 		r#"
 		with subzero_source as (
 			with 
@@ -461,11 +458,12 @@ mod tests {
 					"api"."tasks"."id"
 				from "api"."tasks"
 				where
+			
 					"api"."tasks"."project_id"= "subzero_source"."id"
 					and
-					"api"."tasks"."id">$2
+					"api"."tasks"."id"> $2
 					and
-					"api"."tasks"."id"= any($3)
+					"api"."tasks"."id"= any ($3)
 			) as "tasks"), '[]') as "tasks"
 		from "subzero_source"
 		left join lateral (
@@ -473,10 +471,11 @@ mod tests {
 				"api"."clients"."id"
 			from "api"."clients"
 			where
+			
 				"api"."clients"."id"= "subzero_source"."client_id"
 		) as "subzero_source_clients" on true
 		"#
-        ).replace("\t", ""));
+        , " "));
     }
 
     // #[bench]
@@ -487,12 +486,12 @@ mod tests {
     #[test]
     fn test_fmt_select_query(){
         
-        let q = Select {limit: None, offset: None, 
+        let q = Select {order: vec![], limit: None, offset: None, 
             select: vec![
                 Simple {field: Field {name: s("a"), json_path: None}, alias: None},
                 Simple {field: Field {name: s("b"), json_path: Some(vec![JArrow(JIdx(s("1"))), J2Arrow(JKey(s("key")))])}, alias: None},
                 SubSelect{
-                    query: Select {limit: None, offset: None, 
+                    query: Select {order: vec![], limit: None, offset: None, 
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                         ],
@@ -518,7 +517,7 @@ mod tests {
                     )
                 },
                 SubSelect{
-                    query: Select {limit: None, offset: None, 
+                    query: Select {order: vec![], limit: None, offset: None, 
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None},
                         ],
@@ -555,9 +554,10 @@ mod tests {
 
         let (query_str, parameters, _) = generate(fmt_query(&s("api"), &q));
         assert_eq!(format!("{:?}", parameters), "[SingleVal(\"50\"), ListVal([\"51\", \"52\"]), SingleVal(\"5\"), SingleVal(\"10\")]");
-        assert_eq!(query_str, s(
+        let re = Regex::new(r"\s+").unwrap();
+        assert_eq!(re.replace_all(query_str.as_str(), " "), re.replace_all(
 		r#"
-		select
+		 select
 			"api"."projects"."a",
 			"api"."projects"."b"->1->>'key',
 			row_to_json("projects_clients".*) as "clients",
@@ -568,9 +568,9 @@ mod tests {
 				where
 					"api"."tasks"."project_id"= "api"."projects"."id"
 					and
-					"api"."tasks"."id">$1
+					"api"."tasks"."id"> $1
 					and
-					"api"."tasks"."id"= any($2)
+					"api"."tasks"."id"= any ($2)
 			) as "tasks"), '[]') as "tasks"
 		from "api"."projects"
 		left join lateral (
@@ -581,11 +581,11 @@ mod tests {
 				"api"."clients"."id"= "api"."projects"."client_id"
 		) as "projects_clients" on true
 		where
-			"api"."projects"."id">=$3
+			"api"."projects"."id">= $3
 			and
-			not("api"."projects"."id"<$4)
-		"#
-        ).replace("\t", ""));
+			not("api"."projects"."id"< $4)
+		"#,
+        " "));
     }
     
     
@@ -620,7 +620,7 @@ mod tests {
                     ]
                 }
             ))),
-            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21>$1\nand\n(\"schema\".\"table\".\"name\">$2\nand\n\"schema\".\"table\".\"name\"<$3)"), vec![SingleVal(s("2")), SingleVal(s("2")), SingleVal(s("5"))], 4))
+            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21> $1 and (\"schema\".\"table\".\"name\"> $2 and \"schema\".\"table\".\"name\"< $3)"), vec![SingleVal(s("2")), SingleVal(s("2")), SingleVal(s("5"))], 4))
         );
     }
     
@@ -635,7 +635,7 @@ mod tests {
                     negate: false
                 }
             ))),
-            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21>$1"), vec![&SingleVal(s("2"))], 2))
+            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21> $1"), vec![&SingleVal(s("2"))], 2))
         );
 
         assert_eq!(
@@ -647,22 +647,22 @@ mod tests {
                     negate: true
                 }
             ))),
-            format!("{:?}",(s("not(\"schema\".\"table\".\"name\"= any($1))"), vec![ListVal(vec![s("5"), s("6")])],2))
+            format!("{:?}",(s("not(\"schema\".\"table\".\"name\"= any ($1))"), vec![ListVal(vec![s("5"), s("6")])],2))
         );
     }
     
     #[test]
     fn test_fmt_filter(){
-        assert_eq!(format!("{:?}",generate(fmt_filter(&Op (s(">"), SingleVal(s("2")))))), format!("{:?}",(&s(">$1"), vec![SingleVal(s("2"))], 2)));
-        assert_eq!(format!("{:?}",generate(fmt_filter(&In (ListVal(vec![s("5"), s("6")]))))), format!("{:?}",(&s("= any($1)"), vec![ListVal(vec![s("5"), s("6")])],2)));
-        assert_eq!(format!("{:?}",generate(fmt_filter(&Fts (s("@@ to_tsquery"), Some(s("eng")), SingleVal(s("2")))))), r#"("@@ to_tsquery($1,$2)", ["eng", SingleVal("2")], 3)"#.to_string());
+        assert_eq!(format!("{:?}",generate(fmt_filter(&Op (s(">"), SingleVal(s("2")))))), format!("{:?}",(&s("> $1"), vec![SingleVal(s("2"))], 2)));
+        assert_eq!(format!("{:?}",generate(fmt_filter(&In (ListVal(vec![s("5"), s("6")]))))), format!("{:?}",(&s("= any ($1)"), vec![ListVal(vec![s("5"), s("6")])],2)));
+        assert_eq!(format!("{:?}",generate(fmt_filter(&Fts (s("@@ to_tsquery"), Some(s("eng")), SingleVal(s("2")))))), r#"("@@ to_tsquery ($1,$2)", ["eng", SingleVal("2")], 3)"#.to_string());
         let p :Vec<&(dyn ToSql + Sync)> = vec![];
         assert_eq!(format!("{:?}",generate(fmt_filter(&Col (Qi(s("api"),s("projects")), Field {name: s("id"), json_path: None})))), format!("{:?}",(&s("= \"api\".\"projects\".\"id\""), p, 1)));
     }
     
     #[test]
     fn test_fmt_operator(){
-        assert_eq!(fmt_operator(&s(">")), s(">"));
+        assert_eq!(fmt_operator(&s(">")), s("> "));
     }
     
     #[test]
@@ -682,7 +682,7 @@ mod tests {
             &select
         );
         let (query_str,_,_) = generate(select_item);
-        assert_eq!(query_str,s("\"schema\".\"table\".\"name\"->'key'->>21 as alias"));
+        assert_eq!(query_str,s("\"schema\".\"table\".\"name\"->'key'->>21 as \"alias\""));
     }
     
     #[test]
@@ -704,7 +704,7 @@ mod tests {
 
     #[test]
     fn test_fmt_alias(){
-        assert_eq!(fmt_alias(&Some(s("alias"))), s(" as alias"));
+        assert_eq!(fmt_alias(&Some(s("alias"))), s(" as \"alias\""));
     }
 
     #[test]

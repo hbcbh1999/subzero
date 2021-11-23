@@ -1832,6 +1832,8 @@ dependencies = [
  "lazy_static",
  "postgres-types",
  "pretty_assertions",
+ "ref-cast",
+ "regex",
  "rocket",
  "rocket_sync_db_pools",
  "serde",
