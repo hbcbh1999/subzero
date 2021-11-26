@@ -11,7 +11,6 @@ use snafu::{ResultExt};
 use http::Method;
 use rocket::http::{CookieJar};
 use rocket::{Rocket, Build, Config as RocketConfig};
-use rocket::response::content::Json;
 use subzero::api::ApiRequest;
 // use core::slice::SlicePattern;
 use std::collections::HashMap;
@@ -21,7 +20,7 @@ use figment::{Figment, Profile, };
 use figment::providers::{Env, Toml, Format};
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use tokio_postgres::{NoTls, IsolationLevel, types::ToSql};
-use futures::future;
+//use futures::future;
 use std::fs;
 
 
@@ -32,12 +31,14 @@ use subzero::formatter::postgresql::{main_query};
 use subzero::error::{Result};
 use subzero::error::*;
 use subzero::config::{Config,  SchemaStructure::*};
-use ref_cast::RefCast;
+// use ref_cast::RefCast;
+use rocket::http::{Header, ContentType};
+
 
 pub struct Headers<'r>(&'r rocket::http::HeaderMap<'r>);
 use rocket::form::{FromForm, ValueField, DataField, Options, Result as FormResult};
 
-#[derive(Debug, RefCast)]
+#[derive(Debug)]
 #[repr(transparent)]
 pub struct QueryStringParameters<'r> (Vec<(&'r str, &'r str)>);
 
@@ -80,8 +81,9 @@ impl<'r> std::ops::Deref for Headers<'r> {
 	}
 }
 
-fn get_postgrest_env(request: &ApiRequest) -> HashMap<String, String>{
+fn get_postgrest_env(search_path: &Vec<String>, request: &ApiRequest) -> HashMap<String, String>{
     let mut env = HashMap::new();
+    env.insert("search_path".to_string(), search_path.join(", ").to_string());
     env.extend(request.headers.iter().map(|(k,v)| (format!("pgrst.header.{}",k),v.to_string())));
     env.extend(request.cookies.iter().map(|(k,v)| (format!("pgrst.cookie.{}",k),v.to_string())));
     env
@@ -89,6 +91,15 @@ fn get_postgrest_env(request: &ApiRequest) -> HashMap<String, String>{
 
 fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
     "select " + env.iter().map(|(k,v)| "set_config("+param(k as &(dyn ToSql + Sync + 'a))+", "+ param(v as &(dyn ToSql + Sync + 'a))+", true)"  ).join(",")
+}
+
+#[derive(Responder, Debug)]
+struct ApiResponse {
+    body: String,
+    content_type: ContentType,
+    content_range: Header<'static>
+    //status: Header<'static>,
+    //headers: Vec<Header<'r>>,
 }
 
 async fn handle_postgrest_request(
@@ -102,15 +113,16 @@ async fn handle_postgrest_request(
     body: Option<&String>,
     headers: HashMap<&str, &str>,
     cookies: HashMap<&str, &str>,
-) -> Result<Json<String>> {
+) -> Result<ApiResponse> {
     //let schema_name = config.db_schema.clone();
     let request = parse(schema_name, root, db_schema, method, parameters, body, headers, cookies)?;
     let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request.query));
-    let env = get_postgrest_env(&request);
+    let env = get_postgrest_env(&vec![schema_name.clone()], &request);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
     let mut client = pool.get().await.context(DbPoolError)?;
 
-    println!("main statement:====================\n{}", main_statement);
+    println!("statements:====================\n{}\n{:?}\n===\n{}\n{:?}\n=================", env_statement, env_parameters, main_statement,main_parameters);
+     
 
     let transaction = client
         .build_transaction()
@@ -119,20 +131,32 @@ async fn handle_postgrest_request(
         .start()
         .await.context(DbError)?;
 
-    let (env_stm, main_stm) = future::try_join(
-            transaction.prepare_cached(env_statement.as_str()),
-            transaction.prepare_cached(main_statement.as_str())
-        ).await.context(DbError)?;
-    let (_, rows) = future::try_join(
-        transaction.query(&env_stm, env_parameters.as_slice()),
-        transaction.query(&main_stm, main_parameters.as_slice())
-    ).await.context(DbError)?;
+    //TODO!!! optimize this so we run both queries in paralel
+    let env_stm = transaction.prepare_cached(env_statement.as_str()).await.context(DbError)?;
+    let _ = transaction.query(&env_stm, env_parameters.as_slice()).await.context(DbError)?;
+    let main_stm = transaction.prepare_cached(main_statement.as_str()).await.context(DbError)?;
+    let rows = transaction.query(&main_stm, main_parameters.as_slice()).await.context(DbError)?;
 
+    // let (env_stm, main_stm) = future::try_join(
+    //         transaction.prepare_cached(env_statement.as_str()),
+    //         transaction.prepare_cached(main_statement.as_str())
+    //     ).await.context(DbError)?;
+    
+    // let (_, rows) = future::try_join(
+    //     transaction.query(&env_stm, env_parameters.as_slice()),
+    //     transaction.query(&main_stm, main_parameters.as_slice())
+    // ).await.context(DbError)?;
+    
     transaction.commit().await.context(DbError)?;
 
     let body: String = rows[0].get("body");
-
-    return Ok(Json(body));
+    let page_total: i64 = rows[0].get("page_total");
+    
+    Ok(ApiResponse {
+        body,
+        content_type: ContentType::JSON,
+        content_range: Header::new("Content-Range", format!("0-{}/*", page_total - 1))
+    })
 }
 
 // #[catch(400)]
@@ -161,7 +185,7 @@ async fn get<'a>(
         pool: &State<Pool>,
         cookies: &CookieJar<'_>,
         headers: Headers<'_>,
-) -> Result<Json<String>> {
+) -> Result<ApiResponse> {
     let schema_name = config.db_schemas.get(0).unwrap();
     let parameters = parameters.0;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
@@ -184,7 +208,7 @@ async fn post<'a>(
         body: String,
         cookies: &CookieJar<'_>,
         headers: Headers<'_>,
-) -> Result<Json<String>> {
+) -> Result<ApiResponse> {
     let schema_name = config.db_schemas.get(0).unwrap();
     let parameters = parameters.0;
     
@@ -200,6 +224,7 @@ async fn post<'a>(
 pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
     let app_config:Config = config.extract().expect("config");
 
+    //println!("{:#?}", app_config);
     //setup db connection
     let pg_uri = app_config.db_uri.clone();
     let mut pg_config = pg_uri.parse::<tokio_postgres::Config>().unwrap();
@@ -262,7 +287,7 @@ pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
 
 #[launch]
 async fn rocket() -> Rocket<Build> {
-    env_logger::init();
+    //env_logger::init();
 
     let config = Figment::from(RocketConfig::default())
         .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())

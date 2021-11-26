@@ -136,9 +136,13 @@ pub enum Condition {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum TrileanVal {TriTrue, TriFalse, TriNull, TriUnknown}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Filter {
     Op (Operator, SingleVal),
     In (ListVal),
+    Is (TrileanVal),
     Fts (Operator, Option<Language>, SingleVal),
     Col (Qi, Field)
 }
@@ -166,7 +170,7 @@ pub enum JsonOperand {
 pub type Operator = String;
 #[derive(Debug,PartialEq,Clone)]
 pub struct SingleVal(pub String);
-pub type Language = String;
+pub type Language = SingleVal;
 #[derive(Debug,PartialEq,Clone)]
 pub struct ListVal(pub Vec<String>);
 pub type Negate = bool;

@@ -6,6 +6,7 @@ use crate::api::{
 };
 use crate::schema::*;
 use crate::error::*;
+//use combine::Positioned;
 use snafu::{OptionExt};
 use std::collections::HashMap;
 use std::collections::BTreeSet;
@@ -13,7 +14,7 @@ use serde_json::Value as JsonValue;
 
 use combine::{
     //error::{ParseError},
-    easy::{ParseError},
+    easy::{ParseError,Error as ParserError, Info},
     //easy::Error as ParserError,
     //easy::Error::fmt_errors,
     //easy::{Errors,Error},
@@ -30,6 +31,7 @@ use combine::{
     attempt, any, many, eof,
     Parser, Stream, EasyParser
 };
+
 use std::collections::HashSet;
 use std::iter::FromIterator;
 
@@ -111,11 +113,11 @@ where Input: Stream<Token = char>
     lex(choice(( 
         quoted_value(), 
         sep_by1(
-            many1::<String, _, _>(choice((letter(),digit(),one_of("_".chars())))),
+            many1::<String, _, _>(choice((letter(),digit(),one_of("_ ".chars())))),
             dash
         ).map(|words: Vec<String>| words.join("-"))
     )))
-    .expected("field name (* or [a..z0..9_])")
+    
 }
 
 fn quoted_value<Input>() -> impl Parser<Input, Output = String>
@@ -214,7 +216,7 @@ where Input: Stream<Token = char>
                 let op = match name.as_str() {
                     "and" => And,
                     "or" => Or,
-                    &_ => panic!("unknown logic operator")
+                    x => panic!("unknown logic operator {}", x)
                 };
                 match path.split_last() {
                     Some((negate, path1)) => {
@@ -332,7 +334,7 @@ where Input: Stream<Token = char>
         between(
             lex(char('(')),
             lex(char(')')),
-            sep_by1(list_element(), lex(char(',')))
+            sep_by(list_element(), lex(char(',')))
         )
     )
 }
@@ -340,7 +342,7 @@ where Input: Stream<Token = char>
 fn list_element<Input>() -> impl Parser<Input, Output = String>
 where Input: Stream<Token = char>
 {
-    attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))).or(many(none_of(",)".chars())))
+    attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))).or(many1(none_of(",)".chars())))
 }
 
 fn operator<Input>() -> impl Parser<Input, Output = String>
@@ -379,8 +381,27 @@ where Input: Stream<Token = char>
     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
 
     choice((
-        attempt(operator().skip(dot()).and(single_value()).map(|(o,v)| Filter::Op(o, SingleVal(v)))),
-        attempt(string("in").skip(dot()).and(list_value()).map(|(_,v)| Filter::In(ListVal(v)))),
+        attempt(operator().skip(dot()).and(single_value()).map(|(o,v)|
+            match &*o {
+                "like" | "ilike" => {
+                    Ok(Filter::Op(o, SingleVal(v.replace("*","%"))))
+                }
+                "is" => {
+                    match &*v {
+                        "null" => Ok(Filter::Is(TrileanVal::TriNull)),
+                        "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
+                        "true" => Ok(Filter::Is(TrileanVal::TriTrue)),
+                        "false" => Ok(Filter::Is(TrileanVal::TriFalse)),
+                        _ => Err(StreamErrorFor::<Input>::message_static_message("unknown value for is operator, use null, unknown, true, false"))
+                    }
+                }
+                _ => {
+                    Ok(Filter::Op(o, SingleVal(v)))
+                }
+            }
+            
+        )),
+        attempt(string("in").skip(dot()).and(list_value()).map(|(_,v)| Ok(Filter::In(ListVal(v))))),
         fts_operator()
             .and(optional(
                 between(
@@ -389,13 +410,13 @@ where Input: Stream<Token = char>
                     many1(choice(
                         (letter(),digit(),char('_'))
                     ))
-                )
+                ).map(|v| SingleVal(v))
             ))
             .skip(dot())
             .and(single_value())
-            .map(|((o,l),v)| Filter::Fts (o,l,SingleVal(v))),
+            .map(|((o,l),v)| Ok(Filter::Fts (o,l,SingleVal(v)))),
 
-    ))
+    )).and_then(|r| r)
 }
 
 fn order<Input>() -> impl Parser<Input, Output = Vec<OrderTerm>>
@@ -407,11 +428,11 @@ where Input: Stream<Token = char>
 fn order_term<Input>() -> impl Parser<Input, Output = OrderTerm>
 where Input: Stream<Token = char>
 {
-    let direction = dot().and(string("asc").map(|_| OrderDirection::Asc).or(string("desc").map(|_| OrderDirection::Desc))).map(|(_,v)| v);
+    let direction = attempt(dot().and(string("asc").map(|_| OrderDirection::Asc).or(string("desc").map(|_| OrderDirection::Desc))).map(|(_,v)| v));
     let nulls = dot().and(
         attempt(string("nullsfirst").map(|_| OrderNulls::NullsFirst)).or(string("nullslast").map(|_| OrderNulls::NullsLast))
     ).map(|(_,v)| v);
-    field().and(optional(direction)).and(optional(nulls)).map(|((term, direction), null_order)| OrderTerm{term, direction, null_order})
+    field().and(optional(direction).and(optional(nulls))).map(|(term, (direction, null_order))| OrderTerm{term, direction, null_order})
 }
 
 fn logic_filter<Input>() -> impl Parser<Input, Output = Filter>
@@ -420,8 +441,27 @@ where Input: Stream<Token = char>
     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
 
     choice((
-        attempt(operator().skip(dot()).and(logic_single_value()).map(|(o,v)| Filter::Op(o, SingleVal(v)))),
-        attempt(string("in").skip(dot()).and(list_value()).map(|(_,v)| Filter::In(ListVal(v)))),
+        attempt(operator().skip(dot()).and(logic_single_value()).map(|(o,v)|
+            match &*o {
+                "like" | "ilike" => {
+                    Ok(Filter::Op(o, SingleVal(v.replace("*","%"))))
+                }
+                "is" => {
+                    match &*v {
+                        "null" => Ok(Filter::Is(TrileanVal::TriNull)),
+                        "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
+                        "true" => Ok(Filter::Is(TrileanVal::TriTrue)),
+                        "false" => Ok(Filter::Is(TrileanVal::TriFalse)),
+                        _ => Err(StreamErrorFor::<Input>::message_static_message("unknown value for is operator, use null, unknown, true, false"))
+                    }
+                }
+                _ => {
+                    Ok(Filter::Op(o, SingleVal(v)))
+                }
+            }
+            
+        )),
+        attempt(string("in").skip(dot()).and(list_value()).map(|(_,v)| Ok(Filter::In(ListVal(v))))),
         fts_operator()
             .and(optional(
                 between(
@@ -430,13 +470,12 @@ where Input: Stream<Token = char>
                     many1(choice(
                         (letter(),digit(),char('_'))
                     ))
-                )
+                ).map(|v| SingleVal(v))
             ))
             .skip(dot())
             .and(logic_single_value())
-            .map(|((o,l),v)| Filter::Fts (o,l,SingleVal(v))),
-
-    ))
+            .map(|((o,l),v)| Ok(Filter::Fts (o,l,SingleVal(v)))),
+    )).and_then(|v| v)
 }
 
 fn logic_condition<Input>() -> impl Parser<Input, Output = Condition>
@@ -467,7 +506,7 @@ parser! {
                     match l {
                         "and" => And,
                         "or" => Or,
-                        &_ => panic!("unknown logic operator")
+                        x => panic!("unknown logic operator {}", x)
                     }
                 )
                 .and(between(lex(char('(')),lex(char(')')),sep_by1(logic_condition(), lex(char(',')))))
@@ -483,16 +522,31 @@ parser! {
     }
 }
 
-fn is_logical(s: &str)->bool{ s.ends_with("or") || s.ends_with("and") }
-fn is_limit(s: &str)->bool{ s.ends_with("limit") }
-fn is_offset(s: &str)->bool{ s.ends_with("offset") }
-fn is_order(s: &str)->bool{ s.ends_with("order") }
+fn is_logical(s: &str)->bool{ s == "and" || s == "or" || s.ends_with(".or") || s.ends_with(".and") }
+fn is_limit(s: &str)->bool{ s == "limit" || s.ends_with(".limit") }
+fn is_offset(s: &str)->bool{ s == "offset" || s.ends_with(".offset") }
+fn is_order(s: &str)->bool{ s == "order" || s.ends_with(".order") }
 
-fn to_app_error<'a>(s: &'a str, p: String) -> impl Fn(ParseError<&'a str>) -> Error {
-    move |e| {
-        let details = format!("{}", e.map_position(|p| p.translate_position(s)));
-        let message = format!("Failed to parse {} parameter ({})", p, s);
-        Error::ParseRequestError {message, details, parameter:p.clone()}
+fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
+    move |mut e| {
+        let m = e.errors.drain_filter(|v| 
+            match v {
+                ParserError::Message(_) => true,
+                _ => false
+            }
+        ).collect::<Vec<_>>();
+        let position = e.position.translate_position(s);
+        let message = match m.as_slice() {
+            [ParserError::Message(Info::Static(s))] => s,
+            _ => ""
+        };
+        let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
+        let details = format!("{}", e)
+            .replace(format!("Parse error at {}", e.position).as_str(), "")
+            .replace("\n", " ")
+            .trim()
+            .to_string();
+        Error::ParseRequestError {message, details}
     }
 }
 
@@ -521,63 +575,88 @@ pub fn parse<'r>(
     for (k,v) in parameters.into_iter() {
         match k {
             "select" => {
-                let (parsed_value, _) = select().easy_parse(v).map_err(to_app_error(v, "select".to_string()))?;
+                let (parsed_value, _) = select()
+                    .message("failed to parse select parameter")
+                    .easy_parse(v).map_err(to_app_error(v))?;
                 select_items = parsed_value;
             }
 
             "columns" => {
-                let (parsed_value, _) = columns().easy_parse(v).map_err(to_app_error(v, "columns".to_string()))?;
+                let (parsed_value, _) = columns()
+                    .message("failed to parse columns parameter")
+                    .easy_parse(v).map_err(to_app_error(v))?;
                 columns_ = Some(parsed_value);
             }
 
             kk if is_logical(kk) => {
-                let ((tp, n, lo), _) = logic_tree_path().easy_parse(k).map_err(to_app_error(k, k.to_string()))?;
+                let ((tp, n, lo), _) = logic_tree_path()
+                    .message("failed to parser logic tree path")
+                    .easy_parse(k).map_err(to_app_error(k))?;
                 let ns = if n { "not." } else { "" };
                 let los = if lo == And {  "and" } else { "or" };
                 let s = format!("{}{}{}", ns,los,v);
-                let (c, _) = logic_condition().easy_parse(s.as_str()).map_err(to_app_error(&s, k.to_string()))?;
+                let (c, _) = logic_condition()
+                    .message("failed to parse logic tree")
+                    .easy_parse(s.as_str()).map_err(to_app_error(&s))?;
                 conditions.push((tp, c));
             }
 
             kk if is_limit(kk) => {
-                let ((tp,_), _)= tree_path().easy_parse(k).map_err(to_app_error(k, k.to_string()))?;
-                let (parsed_value,_) = limit().easy_parse(v).map_err(to_app_error(v, "limit".to_string()))?;
+                let ((tp,_), _)= tree_path()
+                    .message("failed to parser limit tree path")
+                    .easy_parse(k).map_err(to_app_error(k))?;
+                let (parsed_value,_) = limit()
+                    .message("failed to parse limit parameter")
+                    .easy_parse(v).map_err(to_app_error(v))?;
                 limits.push((tp, parsed_value));
             }
 
             kk if is_offset(kk) => {
-                let ((tp,_), _)= tree_path().easy_parse(k).map_err(to_app_error(k, k.to_string()))?;
-                let (parsed_value,_) = offset().easy_parse(v).map_err(to_app_error(v, "offset".to_string()))?;
+                let ((tp,_), _)= tree_path()
+                    .message("failed to parser offset tree path")
+                    .easy_parse(k).map_err(to_app_error(k))?;
+                let (parsed_value,_) = offset()
+                    .message("failed to parse limit parameter")
+                    .easy_parse(v).map_err(to_app_error(v))?;
                 offsets.push((tp, parsed_value));
             }
 
             kk if is_order(kk) => {
-                let ((tp,_), _)= tree_path().easy_parse(k).map_err(to_app_error(k, k.to_string()))?;
-                let (parsed_value,_) = order().easy_parse(v).map_err(to_app_error(v, "order".to_string()))?;
+                let ((tp,_), _)= tree_path()
+                    .message("failed to parser order tree path")
+                    .easy_parse(k).map_err(to_app_error(k))?;
+                let (parsed_value,_) = order()
+                    .message("failed to parse order")
+                    .easy_parse(v).map_err(to_app_error(v))?;
                 orders.push((tp, parsed_value));
             }
 
             //is filter
             _ => {
-                let ((tp,field), _)= tree_path().easy_parse(k).map_err(to_app_error(k, k.to_string()))?;
-                let ((negate,filter), _) = negatable_filter().easy_parse(v).map_err(to_app_error(v, k.to_string()))?;
+                let ((tp,field), _)= tree_path()
+                    .message("failed to parser filter tree path")
+                    .easy_parse(k).map_err(to_app_error(k))?;
+                let ((negate,filter), _) = negatable_filter()
+                    .message("failed to parse filter")
+                    .easy_parse(v).map_err(to_app_error(v))?;
+                //println!("----------------{:?} {:?} {:?}", tp, field, filter);
                 conditions.push((tp, Condition::Single {field, filter, negate}));
             }
         }
     }
     let mut query = match *method {
         Method::GET => {
-            let q = Select {
+            let mut q = Select {
                 select: select_items,
                 from: vec![root.clone()],
                 where_: ConditionTree { operator: And, conditions: vec![] },
                 limit: None, offset: None, order: vec![],
             };
-            //add_join_conditions(&mut q, &schema, db_schema)?;
+            add_join_conditions(&mut q, &schema, db_schema)?;
             Ok(q)
         },
         Method::POST => {
-            let payload = body.context(InvalidBody)?;
+            let payload = body.context(InvalidBody {message: "body not available".to_string()})?;
             let columns = match columns_ {
                 Some(c) => Ok(c),
                 None => {
@@ -600,9 +679,7 @@ pub fn parse<'r>(
                                                 Ok(m.keys().cloned().collect())
                                             }
                                             else {
-                                                let details = format!("All object keys must match");
-                                                let message = format!("Failed to parse json body");
-                                                Err(Error::ParseRequestError {message, details, parameter: payload.to_string()})
+                                                Err(Error::InvalidBody {message: format!("All object keys must match")})
                                             }
                                             
                                         },
@@ -612,10 +689,8 @@ pub fn parse<'r>(
                                 _ => Ok(vec![])
                             }
                         },
-                        Err(_) => {
-                            let details = format!("");
-                            let message = format!("Failed to parse json body");
-                            Err(Error::ParseRequestError {message, details, parameter: payload.to_string()})
+                        Err(e) => {
+                            Err(Error::InvalidBody {message: format!("Failed to parse json body {}", e)})
                         }
                     }
                 }
@@ -631,7 +706,7 @@ pub fn parse<'r>(
                 //, onConflict :: Maybe (PreferResolution, [FieldName])
             };
             
-            //add_join_conditions(&mut q, &schema, db_schema)?;
+            add_join_conditions(&mut q, &schema, db_schema)?;
             let (select, table, returning) = match &mut q {
                 Insert {select,into,returning,..}=>(select,into,returning),
                 _ => panic!("q can not be of other types")
@@ -667,19 +742,19 @@ pub fn parse<'r>(
         _ => Err(Error::UnsupportedVerb)
     }?;
 
-    add_join_conditions(&mut query, &schema, db_schema)?;
-    //insert_conditions(&mut query, conditions);
+    //add_join_conditions(&mut query, &schema, db_schema)?;
+    insert_conditions(&mut query, conditions);
     //insert_limits(&mut query, limits);
     //insert_offsets(&mut query, offsets);
     //insert_orders(&mut query, orders);
 
-    insert_properties(&mut query, conditions, |q, p|{
-        let query_conditions: &mut Vec<Condition> = match q {
-            Select {where_, ..} => where_.conditions.as_mut(),
-            Insert {where_, ..} => where_.conditions.as_mut(),
-        };
-        p.into_iter().for_each(|c| query_conditions.push(c));
-    });
+    // insert_properties(&mut query, conditions, |q, p|{
+    //     let query_conditions: &mut Vec<Condition> = match q {
+    //         Select {where_, ..} => where_.conditions.as_mut(),
+    //         Insert {where_, ..} => where_.conditions.as_mut(),
+    //     };
+    //     p.into_iter().for_each(|c| query_conditions.push(c));
+    // });
 
     insert_properties(&mut query, limits, |q, p|{
         let limit = match q {
@@ -988,7 +1063,9 @@ fn add_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema
 
 fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>, f: fn(&mut Query, Vec<T>),  ) {
     let node_properties = properties.drain_filter(|(path, _)| path.len() == 0).map(|(_,c)| c).collect::<Vec<_>>();
-    f(query, node_properties);
+    if node_properties.len() > 0 {
+         f(query, node_properties) 
+    };
     
 
     let select = match query {
@@ -1020,7 +1097,6 @@ fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>,
 }
 
 fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)>){
-
     insert_properties(query, conditions, |q, p|{
         let query_conditions: &mut Vec<Condition> = match q {
             Select {where_, ..} => where_.conditions.as_mut(),
@@ -1037,6 +1113,7 @@ pub mod tests {
     use crate::api::{JsonOperand::*, JsonOperation::*, SelectItem::*, Condition::{Group, Single}};
     use combine::{stream::PointerOffset};
     use combine::easy::{Error, Errors};
+    
     use combine::stream::position;
     use combine::stream::position::SourcePosition;
     //use combine::error::StringStreamError;
@@ -1353,9 +1430,8 @@ pub mod tests {
                 ("select", "id-,na$me")
             ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
             Err(AppError::ParseRequestError{
-                parameter:s("select"),
-                message: s("Failed to parse select parameter (id-,na$me)"),
-                details: s("Parse error at 3\nUnexpected `,`\nExpected `letter`, `digit` or `_`\n")
+                message: s("failed to parse select parameter (id-,na$me) (line 1, column 3)"),
+                details: s("Unexpected `,` Expected `letter`, `digit` or `_`")
             }).map_err(|e| format!("{}",e))
         );
     }
@@ -1438,8 +1514,7 @@ pub mod tests {
             ,
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse columns parameter (id,1 name)"),
-                details: s("Parse error at 5\nUnexpected `n`\nExpected `,`, `whitespaces` or `end of input`\n"),
-                parameter: s("columns"),
+                details: s("Parse error at 5\nUnexpected `n`\nExpected `,`, `whitespaces` or `end of input`\nfailed to parse columns parameter\n"),
             }).map_err(|e| format!("{}",e))
         );
 
@@ -1452,7 +1527,6 @@ pub mod tests {
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse json body"),
                 details: s(""),
-                parameter: s("{\"id\":10, \"name\""),
             }).map_err(|e| format!("{}",e))
         );
 
@@ -1465,7 +1539,6 @@ pub mod tests {
             Err(AppError::ParseRequestError {
                 message: s("Failed to parse json body"),
                 details: s("All object keys must match"),
-                parameter: s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#),
             }).map_err(|e| format!("{}",e))
         );
 
@@ -1483,9 +1556,8 @@ pub mod tests {
                 ("select", "id-,na$me")
             ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
             Err(AppError::ParseRequestError{
-                parameter:s("select"),
                 message: s("Failed to parse select parameter (id-,na$me)"),
-                details: s("Parse error at 3\nUnexpected `,`\nExpected `letter`, `digit` or `_`\n")
+                details: s("Parse error at 3\nUnexpected `,`\nExpected `letter`, `digit` or `_`\nfailed to parse select parameter\n")
             }).map_err(|e| format!("{}",e))
         );
 
@@ -1875,6 +1947,7 @@ pub mod tests {
 
     #[test]
     fn parse_list_value() {
+        assert_eq!(list_value().easy_parse("()"), Ok((vec![],"")));
         assert_eq!(list_value().easy_parse("(any 123 value)"), Ok((vec![s("any 123 value")],"")));
         assert_eq!(list_value().easy_parse("(any123value,another)"), Ok((vec![s("any123value"),s("another")],"")));
         assert_eq!(list_value().easy_parse("(\"any123 value\", another)"), Ok((vec![s("any123 value"),s("another")],"")));
@@ -1923,11 +1996,13 @@ pub mod tests {
 
     #[test]
     fn parse_order(){
+        
         assert_eq!(order_term().easy_parse("field"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: None,null_order: None},"")));
         assert_eq!(order_term().easy_parse("field.asc"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: Some(OrderDirection::Asc),null_order: None},"")));
         assert_eq!(order_term().easy_parse("field.desc"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: Some(OrderDirection::Desc),null_order: None},"")));
         assert_eq!(order_term().easy_parse("field.desc.nullsfirst"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: Some(OrderDirection::Desc),null_order: Some(OrderNulls::NullsFirst)},"")));
         assert_eq!(order_term().easy_parse("field.desc.nullslast"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: Some(OrderDirection::Desc),null_order: Some(OrderNulls::NullsLast)},"")));
+        assert_eq!(order_term().easy_parse("field.nullslast"), Ok((OrderTerm{term:Field{name:s("field"), json_path:None},direction: None,null_order: Some(OrderNulls::NullsLast)},"")));
         assert_eq!(
             order().easy_parse("field,field.asc,field.desc.nullslast"),
             Ok((vec![

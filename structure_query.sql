@@ -207,7 +207,7 @@ tables as (
       left join pg_catalog.pg_description as d
         on d.objoid = c.oid and d.objsubid = 0
     where
-      c.relkind in ('v','r','m','f')
+      c.relkind in ('v','r','m','f', 'p')
       and n.nspname not in ('pg_catalog'::name, 'information_schema'::name)
 ),
 
@@ -338,8 +338,8 @@ table_table_relations as (
       lateral (select * from pg_attribute where attrelid = confrelid and attnum = ref) as refs
     ) as column_info,
     lateral (select * from pg_namespace where pg_namespace.oid = connamespace) as ns1,
-    lateral (select oid, * from pg_class where pg_class.oid = conrelid) as tab,
-    lateral (select oid, * from pg_class where pg_class.oid = confrelid) as other,
+    lateral (select * from pg_class where pg_class.oid = conrelid) as tab,
+    lateral (select * from pg_class where pg_class.oid = confrelid) as other,
     lateral (select * from pg_namespace where pg_namespace.oid = other.relnamespace) as ns2
     where confrelid != 0
     order by (conrelid, column_info.nums)

@@ -68,13 +68,13 @@ async fn server() -> Rocket<Build> {
 }
 
 macro_rules! haskell_test {
-    (@status $response:ident $status:literal) => {
+    (@status $status_code:ident $status:literal) => {
         println!("matching status: ===\n{}\n====", $status );
-        self::assert_eq!($response.status().code, $status);
+        self::assert_eq!($status_code, $status);
     };
-    (@header $response:ident $name:literal $value:literal) => {
+    (@header $headers:ident $name:literal $value:literal) => {
         println!("matching header: {}: {}", $name, $value );
-        self::assert_eq!($response.headers().get_one($name), Some($value));
+        self::assert_eq!($headers.get($name), Some(&$value.to_string()));
     };
     (@body_json $response:ident $json:literal) => {
         let body = match $response.into_string().await {
@@ -149,16 +149,18 @@ macro_rules! haskell_test {
                                         $(
                                         request.add_header(Accept::from_str($accept_header).unwrap());
                                         )?
-                                        println!("request ===\n{:?}\n", request);
+                                        //println!("request ===\n{:?}\n", request);
                                         let response = request.dispatch().await;
-                                        println!("response ===\n{:?}\n", response);
-                                        // $(haskell_test!(@status response $status_simple);)?
-                                        // $($(haskell_test!(@status response $status);)?)?
-
-                                        // $($($(haskell_test!(@header response $header_name $header_value);)*)?)?
-                                        
+                                        let _status_code = response.status().code;
+                                        let _headers = response.headers().iter().map(|h| (h.name().to_string(), h.value().to_string())).collect::<HashMap<_,_>>();
+                                        //println!("response ===\n{:?}\n", response);
                                         $(haskell_test!(@body_json response $json);)?
                                         $(haskell_test!(@body_text response $text);)?
+                                        $(haskell_test!(@status _status_code $status_simple);)?
+                                        $($(haskell_test!(@status _status_code $status);)?)?
+                                        $($($(haskell_test!(@header _headers $header_name $header_value);)*)?)?
+                                        
+                                        
                                         //assert!(false);
                                     }
                                 )?
@@ -175,237 +177,237 @@ macro_rules! haskell_test {
 haskell_test! {
 spec actualPgVersion = do
 
-//   describe "Querying a table with a column called count" $
-//     it "should not confuse count column with pg_catalog count aggregate" $
-//       get "/has_count_column" shouldRespondWith 200
+  describe "Querying a table with a column called count" $
+    it "should not confuse count column with pg_catalog count aggregate" $
+      get "/has_count_column" shouldRespondWith 200
 
-//   describe "Querying a table with a column called t" $
-//     it "should not conflict with internal postgrest table alias" $
-//       get "/clashing_column?select=t" shouldRespondWith 200
+  describe "Querying a table with a column called t" $
+    it "should not conflict with internal postgrest table alias" $
+      get "/clashing_column?select=t" shouldRespondWith 200
 
-//   describe "Querying a nonexistent table" $
-//     it "causes a 404" $
-//       get "/faketable" shouldRespondWith 404
+  describe "Querying a nonexistent table" $
+    it "causes a 404" $
+      get "/faketable" shouldRespondWith 404
 
-//   describe "Filtering response" $ do
-//     it "matches with equality" $
-//       get "/items?id=eq.5"
-//         shouldRespondWith [json|r#" [{"id":5}] "#|]
-//         { matchHeaders = ["Content-Range" <:> "0-0/*"] }
+  describe "Filtering response" $ do
+    it "matches with equality" $
+      get "/items?id=eq.5"
+        shouldRespondWith [json|r#" [{"id":5}] "#|]
+        { matchHeaders = ["Content-Range" <:> "0-0/*"] }
 
-//     it "matches with equality using not operator" $
-//       get "/items?id=not.eq.5&order=id"
-//         shouldRespondWith [json|r#" [{"id":1},{"id":2},{"id":3},{"id":4},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] "#|]
-//         { matchHeaders = ["Content-Range" <:> "0-13/*"] }
+    it "matches with equality using not operator" $
+      get "/items?id=not.eq.5&order=id"
+        shouldRespondWith [json|r#" [{"id":1},{"id":2},{"id":3},{"id":4},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] "#|]
+        { matchHeaders = ["Content-Range" <:> "0-13/*"] }
 
-//     it "matches with more than one condition using not operator" $
-//       get "/simple_pk?k=like.*yx&extra=not.eq.u" shouldRespondWith [json|"[]"|]
+    it "matches with more than one condition using not operator" $
+      get "/simple_pk?k=like.*yx&extra=not.eq.u" shouldRespondWith [json|"[]"|]
 
-//     it "matches with inequality using not operator" $ do
-//       get "/items?id=not.lt.14&order=id.asc"
-//         shouldRespondWith [json|r#" [{"id":14},{"id":15}] "#|]
-//         { matchHeaders = ["Content-Range" <:> "0-1/*"] }
-//       get "/items?id=not.gt.2&order=id.asc"
-//         shouldRespondWith [json|r#" [{"id":1},{"id":2}] "#|]
-//         { matchHeaders = ["Content-Range" <:> "0-1/*"] }
+    it "matches with inequality using not operator" $ do
+      get "/items?id=not.lt.14&order=id.asc"
+        shouldRespondWith [json|r#" [{"id":14},{"id":15}] "#|]
+        { matchHeaders = ["Content-Range" <:> "0-1/*"] }
+      get "/items?id=not.gt.2&order=id.asc"
+        shouldRespondWith [json|r#" [{"id":1},{"id":2}] "#|]
+        { matchHeaders = ["Content-Range" <:> "0-1/*"] }
 
-//     it "matches items IN" $
-//       get "/items?id=in.(1,3,5)"
-//         shouldRespondWith [json|r#" [{"id":1},{"id":3},{"id":5}] "#|]
-//         { matchHeaders = ["Content-Range" <:> "0-2/*"] }
+    it "matches items IN" $
+      get "/items?id=in.(1,3,5)"
+        shouldRespondWith [json|r#" [{"id":1},{"id":3},{"id":5}] "#|]
+        { matchHeaders = ["Content-Range" <:> "0-2/*"] }
 
-//     it "matches items NOT IN using not operator" $
-//       get "/items?id=not.in.(2,4,6,7,8,9,10,11,12,13,14,15)"
-//         shouldRespondWith [json|r#" [{"id":1},{"id":3},{"id":5}] "#|]
-//         { matchHeaders = ["Content-Range" <:> "0-2/*"] }
+    it "matches items NOT IN using not operator" $
+      get "/items?id=not.in.(2,4,6,7,8,9,10,11,12,13,14,15)"
+        shouldRespondWith [json|r#" [{"id":1},{"id":3},{"id":5}] "#|]
+        { matchHeaders = ["Content-Range" <:> "0-2/*"] }
 
-//     it "matches nulls using not operator" $
-//       get "/no_pk?a=not.is.null" shouldRespondWith
-//         [json|r#" [{"a":"1","b":"0"},{"a":"2","b":"0"}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "matches nulls using not operator" $
+      get "/no_pk?a=not.is.null" shouldRespondWith
+        [json|r#" [{"a":"1","b":"0"},{"a":"2","b":"0"}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "matches nulls in varchar and numeric fields alike" $ do
-//       get "/no_pk?a=is.null" shouldRespondWith
-//         [json|r#" [{"a": null, "b": null}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "matches nulls in varchar and numeric fields alike" $ do
+      get "/no_pk?a=is.null" shouldRespondWith
+        [json|r#" [{"a": null, "b": null}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//       get "/nullable_integer?a=is.null" shouldRespondWith [json|r#"[{"a":null}]"#|]
+      get "/nullable_integer?a=is.null" shouldRespondWith [json|r#"[{"a":null}]"#|]
 
-//     it "matches with like" $ do
-//       get "/simple_pk?k=like.*yx" shouldRespondWith
-//         [json|r#"[{"k":"xyyx","extra":"u"}]"#|]
-//       get "/simple_pk?k=like.xy*" shouldRespondWith
-//         [json|r#"[{"k":"xyyx","extra":"u"}]"#|]
-//       get "/simple_pk?k=like.*YY*" shouldRespondWith
-//         [json|r#"[{"k":"xYYx","extra":"v"}]"#|]
+    it "matches with like" $ do
+      get "/simple_pk?k=like.*yx" shouldRespondWith
+        [json|r#"[{"k":"xyyx","extra":"u"}]"#|]
+      get "/simple_pk?k=like.xy*" shouldRespondWith
+        [json|r#"[{"k":"xyyx","extra":"u"}]"#|]
+      get "/simple_pk?k=like.*YY*" shouldRespondWith
+        [json|r#"[{"k":"xYYx","extra":"v"}]"#|]
 
-//     it "matches with like using not operator" $
-//       get "/simple_pk?k=not.like.*yx" shouldRespondWith
-//         [json|r#"[{"k":"xYYx","extra":"v"}]"#|]
+    it "matches with like using not operator" $
+      get "/simple_pk?k=not.like.*yx" shouldRespondWith
+        [json|r#"[{"k":"xYYx","extra":"v"}]"#|]
 
-//     it "matches with ilike" $ do
-//       get "/simple_pk?k=ilike.xy*&order=extra.asc" shouldRespondWith
-//         [json|r#"[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       get "/simple_pk?k=ilike.*YY*&order=extra.asc" shouldRespondWith
-//         [json|r#"[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "matches with ilike" $ do
+      get "/simple_pk?k=ilike.xy*&order=extra.asc" shouldRespondWith
+        [json|r#"[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+      get "/simple_pk?k=ilike.*YY*&order=extra.asc" shouldRespondWith
+        [json|r#"[{"k":"xyyx","extra":"u"},{"k":"xYYx","extra":"v"}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "matches with ilike using not operator" $
-//       get "/simple_pk?k=not.ilike.xy*&order=extra.asc" shouldRespondWith [json|"[]"|]
+    it "matches with ilike using not operator" $
+      get "/simple_pk?k=not.ilike.xy*&order=extra.asc" shouldRespondWith [json|"[]"|]
 
-//     describe "Full text search operator" $ do
-//       it "finds matches with to_tsquery" $
-//         get "/tsearch?text_search_vector=fts.impossible" shouldRespondWith
-//           [json|r#" [{"text_search_vector": "'fun':5 'imposs':9 'kind':3" }] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
+    describe "Full text search operator" $ do
+      it "finds matches with to_tsquery" $
+        get "/tsearch?text_search_vector=fts.impossible" shouldRespondWith
+          [json|r#" [{"text_search_vector": "'fun':5 'imposs':9 'kind':3" }] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//       it "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery" $ do
-//         get "/tsearch?text_search_vector=fts.fun%26possible" shouldRespondWith
-//           [json|r#" [ {"text_search_vector": "'also':2 'fun':3 'possibl':8"}] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
-//         get "/tsearch?text_search_vector=fts.impossible%7Cpossible" shouldRespondWith
-//           [json|r#" [
-//           {"text_search_vector": "'fun':5 'imposs':9 'kind':3"},
-//           {"text_search_vector": "'also':2 'fun':3 'possibl':8"}] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
-//         get "/tsearch?text_search_vector=fts.fun%26!possible" shouldRespondWith
-//           [json|r#" [ {"text_search_vector": "'fun':5 'imposs':9 'kind':3"}] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "can use lexeme boolean operators(&=%26, |=%7C, !) in to_tsquery" $ do
+        get "/tsearch?text_search_vector=fts.fun%26possible" shouldRespondWith
+          [json|r#" [ {"text_search_vector": "'also':2 'fun':3 'possibl':8"}] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
+        get "/tsearch?text_search_vector=fts.impossible%7Cpossible" shouldRespondWith
+          [json|r#" [
+          {"text_search_vector": "'fun':5 'imposs':9 'kind':3"},
+          {"text_search_vector": "'also':2 'fun':3 'possibl':8"}] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
+        get "/tsearch?text_search_vector=fts.fun%26!possible" shouldRespondWith
+          [json|r#" [ {"text_search_vector": "'fun':5 'imposs':9 'kind':3"}] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//       it "finds matches with plainto_tsquery" $
-//         get "/tsearch?text_search_vector=plfts.The%20Fat%20Rats" shouldRespondWith
-//           [json|r#" [ {"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "finds matches with plainto_tsquery" $
+        get "/tsearch?text_search_vector=plfts.The%20Fat%20Rats" shouldRespondWith
+          [json|r#" [ {"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//       //when (actualPgVersion >= pgVersion112) $ do
-//         it "finds matches with websearch_to_tsquery" $
-//             get "/tsearch?text_search_vector=wfts.The%20Fat%20Rats" shouldRespondWith
-//                 [json|r#" [ {"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] "#|]
-//                 { matchHeaders = ["Content-Type" <:> "application/json"] }
+      //when (actualPgVersion >= pgVersion112) $ do
+        it "finds matches with websearch_to_tsquery" $
+            get "/tsearch?text_search_vector=wfts.The%20Fat%20Rats" shouldRespondWith
+                [json|r#" [ {"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] "#|]
+                { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//         it "can use boolean operators(and, or, -) in websearch_to_tsquery" $ do
-//           get "/tsearch?text_search_vector=wfts.fun%20and%20possible"
-//             shouldRespondWith
-//               [json|r#" [ {"text_search_vector": "'also':2 'fun':3 'possibl':8"}] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
-//           get "/tsearch?text_search_vector=wfts.impossible%20or%20possible"
-//             shouldRespondWith
-//               [json|r#" [
-//                 {"text_search_vector": "'fun':5 'imposs':9 'kind':3"},
-//                 {"text_search_vector": "'also':2 'fun':3 'possibl':8"}]
-//                   "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
-//           get "/tsearch?text_search_vector=wfts.fun%20and%20-possible"
-//             shouldRespondWith
-//               [json|r#" [ {"text_search_vector": "'fun':5 'imposs':9 'kind':3"}] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+        it "can use boolean operators(and, or, -) in websearch_to_tsquery" $ do
+          get "/tsearch?text_search_vector=wfts.fun%20and%20possible"
+            shouldRespondWith
+              [json|r#" [ {"text_search_vector": "'also':2 'fun':3 'possibl':8"}] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
+          get "/tsearch?text_search_vector=wfts.impossible%20or%20possible"
+            shouldRespondWith
+              [json|r#" [
+                {"text_search_vector": "'fun':5 'imposs':9 'kind':3"},
+                {"text_search_vector": "'also':2 'fun':3 'possibl':8"}]
+                  "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
+          get "/tsearch?text_search_vector=wfts.fun%20and%20-possible"
+            shouldRespondWith
+              [json|r#" [ {"text_search_vector": "'fun':5 'imposs':9 'kind':3"}] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//       it "finds matches with different dictionaries" $ do
-//         get "/tsearch?text_search_vector=fts(french).amusant" shouldRespondWith
-//           [json|r#" [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
-//         get "/tsearch?text_search_vector=plfts(french).amusant%20impossible" shouldRespondWith
-//           [json|r#" [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "finds matches with different dictionaries" $ do
+        get "/tsearch?text_search_vector=fts(french).amusant" shouldRespondWith
+          [json|r#" [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
+        get "/tsearch?text_search_vector=plfts(french).amusant%20impossible" shouldRespondWith
+          [json|r#" [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//         //when (actualPgVersion >= pgVersion112) $
-//             get "/tsearch?text_search_vector=wfts(french).amusant%20impossible"
-//                 shouldRespondWith
-//                   [json|r#" [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] "#|]
-//                   { matchHeaders = ["Content-Type" <:> "application/json"] }
+        //when (actualPgVersion >= pgVersion112) $
+            get "/tsearch?text_search_vector=wfts(french).amusant%20impossible"
+                shouldRespondWith
+                  [json|r#" [{"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" }] "#|]
+                  { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//       it "can be negated with not operator" $ do
-//         get "/tsearch?text_search_vector=not.fts.impossible%7Cfat%7Cfun" shouldRespondWith
-//           [json|r#" [
-//             {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
-//             {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]"#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
-//         get "/tsearch?text_search_vector=not.fts(english).impossible%7Cfat%7Cfun" shouldRespondWith
-//           [json|r#" [
-//             {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
-//             {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]"#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
-//         get "/tsearch?text_search_vector=not.plfts.The%20Fat%20Rats" shouldRespondWith
-//           [json|r#" [
-//             {"text_search_vector": "'fun':5 'imposs':9 'kind':3"},
-//             {"text_search_vector": "'also':2 'fun':3 'possibl':8"},
-//             {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
-//             {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]"#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
-//         //when (actualPgVersion >= pgVersion112) $
-//             get "/tsearch?text_search_vector=not.wfts(english).impossible%20or%20fat%20or%20fun"
-//                 shouldRespondWith
-//                   [json|r#" [
-//                     {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
-//                     {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]"#|]
-//                   { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "can be negated with not operator" $ do
+        get "/tsearch?text_search_vector=not.fts.impossible%7Cfat%7Cfun" shouldRespondWith
+          [json|r#" [
+            {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
+            {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]"#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
+        get "/tsearch?text_search_vector=not.fts(english).impossible%7Cfat%7Cfun" shouldRespondWith
+          [json|r#" [
+            {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
+            {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]"#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
+        get "/tsearch?text_search_vector=not.plfts.The%20Fat%20Rats" shouldRespondWith
+          [json|r#" [
+            {"text_search_vector": "'fun':5 'imposs':9 'kind':3"},
+            {"text_search_vector": "'also':2 'fun':3 'possibl':8"},
+            {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
+            {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]"#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
+        //when (actualPgVersion >= pgVersion112) $
+            get "/tsearch?text_search_vector=not.wfts(english).impossible%20or%20fat%20or%20fun"
+                shouldRespondWith
+                  [json|r#" [
+                    {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
+                    {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]"#|]
+                  { matchHeaders = ["Content-Type" <:> "application/json"] }
 
 //       //when (actualPgVersion >= pgVersion96) $
-//         describe "Use of the phraseto_tsquery function" $ do
-//           it "finds matches" $
-//             get "/tsearch?text_search_vector=phfts.The%20Fat%20Cats" shouldRespondWith
-//               [json|r#" [{"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+        describe "Use of the phraseto_tsquery function" $ do
+          it "finds matches" $
+            get "/tsearch?text_search_vector=phfts.The%20Fat%20Cats" shouldRespondWith
+              [json|r#" [{"text_search_vector": "'ate':3 'cat':2 'fat':1 'rat':4" }] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//           it "finds matches with different dictionaries" $
-//             get "/tsearch?text_search_vector=phfts(german).Art%20Spass" shouldRespondWith
-//               [json|r#" [{"text_search_vector": "'art':4 'spass':5 'unmog':7" }] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "finds matches with different dictionaries" $
+            get "/tsearch?text_search_vector=phfts(german).Art%20Spass" shouldRespondWith
+              [json|r#" [{"text_search_vector": "'art':4 'spass':5 'unmog':7" }] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//           it "can be negated with not operator" $
-//             get "/tsearch?text_search_vector=not.phfts(english).The%20Fat%20Cats" shouldRespondWith
-//               [json|r#" [
-//                 {"text_search_vector": "'fun':5 'imposs':9 'kind':3"},
-//                 {"text_search_vector": "'also':2 'fun':3 'possibl':8"},
-//                 {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
-//                 {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]"#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "can be negated with not operator" $
+            get "/tsearch?text_search_vector=not.phfts(english).The%20Fat%20Cats" shouldRespondWith
+              [json|r#" [
+                {"text_search_vector": "'fun':5 'imposs':9 'kind':3"},
+                {"text_search_vector": "'also':2 'fun':3 'possibl':8"},
+                {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4"},
+                {"text_search_vector": "'art':4 'spass':5 'unmog':7"}]"#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//           it "can be used with or query param" $
-//             get "/tsearch?or=(text_search_vector.phfts(german).Art%20Spass, text_search_vector.phfts(french).amusant, text_search_vector.fts(english).impossible)" shouldRespondWith
-//               [json|r#"[
-//                 {"text_search_vector": "'fun':5 'imposs':9 'kind':3" },
-//                 {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" },
-//                 {"text_search_vector": "'art':4 'spass':5 'unmog':7"}
-//               ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "can be used with or query param" $
+            get "/tsearch?or=(text_search_vector.phfts(german).Art%20Spass, text_search_vector.phfts(french).amusant, text_search_vector.fts(english).impossible)" shouldRespondWith
+              [json|r#"[
+                {"text_search_vector": "'fun':5 'imposs':9 'kind':3" },
+                {"text_search_vector": "'amus':5 'fair':7 'impossibl':9 'peu':4" },
+                {"text_search_vector": "'art':4 'spass':5 'unmog':7"}
+              ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "matches with computed column" $
-//       get "/items?always_true=eq.true&order=id.asc" shouldRespondWith
-//         [json|r#" [{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "matches with computed column" $
+      get "/items?always_true=eq.true&order=id.asc" shouldRespondWith
+        [json|r#" [{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "order by computed column" $
-//       get "/items?order=anti_id.desc" shouldRespondWith
-//         [json|r#" [{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "order by computed column" $
+      get "/items?order=anti_id.desc" shouldRespondWith
+        [json|r#" [{"id":1},{"id":2},{"id":3},{"id":4},{"id":5},{"id":6},{"id":7},{"id":8},{"id":9},{"id":10},{"id":11},{"id":12},{"id":13},{"id":14},{"id":15}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "cannot access a computed column that is outside of the config schema" $
-//       get "/items?always_false=is.false" shouldRespondWith 400
+    it "cannot access a computed column that is outside of the config schema" $
+      get "/items?always_false=is.false" shouldRespondWith 400
 
-//     it "matches filtering nested items 2" $
-//       get "/clients?select=id,projects(id,tasks2(id,name))&projects.tasks.name=like.Design*" shouldRespondWith
-//         [json|r#" {
-//           "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
-//           "message":"Could not find a relationship between projects and tasks2 in the schema cache"}"#|]
-//         { matchStatus  = 400
-//         , matchHeaders = ["Content-Type" <:> "application/json"]
-//         }
+    it "matches filtering nested items 2" $
+      get "/clients?select=id,projects(id,tasks2(id,name))&projects.tasks.name=like.Design*" shouldRespondWith
+        [json|r#" {
+          "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
+          "message":"Could not find a relationship between projects and tasks2 in the schema cache"}"#|]
+        { matchStatus  = 400
+        , matchHeaders = ["Content-Type" <:> "application/json"]
+        }
 
-//     it "matches filtering nested items" $
-//       get "/clients?select=id,projects(id,tasks(id,name))&projects.tasks.name=like.Design*" shouldRespondWith
-//         [json|r#"[{"id":1,"projects":[{"id":1,"tasks":[{"id":1,"name":"Design w7"}]},{"id":2,"tasks":[{"id":3,"name":"Design w10"}]}]},{"id":2,"projects":[{"id":3,"tasks":[{"id":5,"name":"Design IOS"}]},{"id":4,"tasks":[{"id":7,"name":"Design OSX"}]}]}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "matches filtering nested items" $
+      get "/clients?select=id,projects(id,tasks(id,name))&projects.tasks.name=like.Design*" shouldRespondWith
+        [json|r#"[{"id":1,"projects":[{"id":1,"tasks":[{"id":1,"name":"Design w7"}]},{"id":2,"tasks":[{"id":3,"name":"Design w10"}]}]},{"id":2,"projects":[{"id":3,"tasks":[{"id":5,"name":"Design IOS"}]},{"id":4,"tasks":[{"id":7,"name":"Design OSX"}]}]}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "matches with cs operator" $
-//       get "/complex_items?select=id&arr_data=cs.{2}" shouldRespondWith
-//         [json|r#"[{"id":2},{"id":3}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "matches with cs operator" $
+      get "/complex_items?select=id&arr_data=cs.{2}" shouldRespondWith
+        [json|r#"[{"id":2},{"id":3}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "matches with cd operator" $
-//       get "/complex_items?select=id&arr_data=cd.{1,2,4}" shouldRespondWith
-//         [json|r#"[{"id":1},{"id":2}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "matches with cd operator" $
+      get "/complex_items?select=id&arr_data=cd.{1,2,4}" shouldRespondWith
+        [json|r#"[{"id":1},{"id":2}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
   describe "Shaping response with select parameter" $ do
     it "selectStar works in absense of parameter" $
@@ -530,24 +532,24 @@ spec actualPgVersion = do
         [json|r#"[{"user_id":2,"task_id":6,"comments":[{"content":"Needs to be delivered ASAP"}]}]"#|]
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-    // describe "computed columns" $ do
-    //   it "computed column on table" $
-    //     get "/items?id=eq.1&select=id,always_true" shouldRespondWith
-    //       [json|r#"[{"id":1,"always_true":true}]"#|]
-    //       { matchHeaders = ["Content-Type" <:> "application/json"] }
+    describe "computed columns" $ do
+      it "computed column on table" $
+        get "/items?id=eq.1&select=id,always_true" shouldRespondWith
+          [json|r#"[{"id":1,"always_true":true}]"#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     //   it "computed column on rpc" $
     //     get "/rpc/search?id=1&select=id,always_true" shouldRespondWith
     //       [json|r#"[{"id":1,"always_true":true}]"#|]
     //       { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//       it "overloaded computed columns on both tables" $ do
-//         get "/items?id=eq.1&select=id,computed_overload" shouldRespondWith
-//           [json|r#"[{"id":1,"computed_overload":true}]"#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
-//         get "/items2?id=eq.1&select=id,computed_overload" shouldRespondWith
-//           [json|r#"[{"id":1,"computed_overload":true}]"#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "overloaded computed columns on both tables" $ do
+        get "/items?id=eq.1&select=id,computed_overload" shouldRespondWith
+          [json|r#"[{"id":1,"computed_overload":true}]"#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
+        get "/items2?id=eq.1&select=id,computed_overload" shouldRespondWith
+          [json|r#"[{"id":1,"computed_overload":true}]"#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
 //       it "overloaded computed column on rpc" $
 //         get "/rpc/search?id=1&select=id,computed_overload" shouldRespondWith
@@ -555,80 +557,80 @@ spec actualPgVersion = do
 //           { matchHeaders = ["Content-Type" <:> "application/json"] }
 
 //     //when (actualPgVersion >= pgVersion110) $ do
-    //   describe "partitioned tables embedding" $ do
-    //     it "can request a table as parent from a partitioned table" $
-    //       get "/partitioned_a?id=in.(1,2)&select=id,name,reference_from_partitioned(id)&order=id.asc" shouldRespondWith
-    //         [json|r#"
-    //           [{"id":1,"name":"first","reference_from_partitioned":{"id":1}},
-    //            {"id":2,"name":"first","reference_from_partitioned":null}] "#|]
-    //         { matchHeaders = ["Content-Type" <:> "application/json"] }
+      describe "partitioned tables embedding" $ do
+        it "can request a table as parent from a partitioned table" $
+          get "/partitioned_a?id=in.(1,2)&select=id,name,reference_from_partitioned(id)&order=id.asc" shouldRespondWith
+            [json|r#"
+              [{"id":1,"name":"first","reference_from_partitioned":{"id":1}},
+               {"id":2,"name":"first","reference_from_partitioned":null}] "#|]
+            { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//         it "can request partitioned tables as children from a table" $
-//           get "/reference_from_partitioned?select=id,partitioned_a(id,name)&order=id.asc" shouldRespondWith
-//             [json|r#"
-//               [{"id":1,"partitioned_a":[{"id":1,"name":"first"}]},
-//                {"id":2,"partitioned_a":[]}] "#|]
-//             { matchHeaders = ["Content-Type" <:> "application/json"] }
+        it "can request partitioned tables as children from a table" $
+          get "/reference_from_partitioned?select=id,partitioned_a(id,name)&order=id.asc" shouldRespondWith
+            [json|r#"
+              [{"id":1,"partitioned_a":[{"id":1,"name":"first"}]},
+               {"id":2,"partitioned_a":[]}] "#|]
+            { matchHeaders = ["Content-Type" <:> "application/json"] }
 
 //         //when (actualPgVersion >= pgVersion121) $ do
-//           it "can request tables as children from a partitioned table" $
-//             get "/partitioned_a?id=in.(1,2)&select=id,name,reference_to_partitioned(id)&order=id.asc" shouldRespondWith
-//               [json|r#"
-//                 [{"id":1,"name":"first","reference_to_partitioned":[]},
-//                  {"id":2,"name":"first","reference_to_partitioned":[{"id":2}]}] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "can request tables as children from a partitioned table" $
+            get "/partitioned_a?id=in.(1,2)&select=id,name,reference_to_partitioned(id)&order=id.asc" shouldRespondWith
+              [json|r#"
+                [{"id":1,"name":"first","reference_to_partitioned":[]},
+                 {"id":2,"name":"first","reference_to_partitioned":[{"id":2}]}] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//           it "can request a partitioned table as parent from a table" $
-//             get "/reference_to_partitioned?select=id,partitioned_a(id,name)&order=id.asc" shouldRespondWith
-//               [json|r#"
-//                 [{"id":1,"partitioned_a":null},
-//                  {"id":2,"partitioned_a":{"id":2,"name":"first"}}] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "can request a partitioned table as parent from a table" $
+            get "/reference_to_partitioned?select=id,partitioned_a(id,name)&order=id.asc" shouldRespondWith
+              [json|r#"
+                [{"id":1,"partitioned_a":null},
+                 {"id":2,"partitioned_a":{"id":2,"name":"first"}}] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//           it "can request partitioned tables as children from a partitioned table" $
-//             get "/partitioned_a?id=in.(1,2,4)&select=id,name,partitioned_b(id,name)&order=id.asc" shouldRespondWith
-//               [json|r#"
-//                 [{"id":1,"name":"first","partitioned_b":[]},
-//                  {"id":2,"name":"first","partitioned_b":[{"id":2,"name":"first_b"}]},
-//                  {"id":4,"name":"second","partitioned_b":[{"id":4,"name":"second_b"}]}] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "can request partitioned tables as children from a partitioned table" $
+            get "/partitioned_a?id=in.(1,2,4)&select=id,name,partitioned_b(id,name)&order=id.asc" shouldRespondWith
+              [json|r#"
+                [{"id":1,"name":"first","partitioned_b":[]},
+                 {"id":2,"name":"first","partitioned_b":[{"id":2,"name":"first_b"}]},
+                 {"id":4,"name":"second","partitioned_b":[{"id":4,"name":"second_b"}]}] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//           it "can request a partitioned table as parent from a partitioned table" $ do
-//             get "/partitioned_b?id=in.(2,4)&select=id,name,partitioned_a(id,name)&order=id.asc" shouldRespondWith
-//               [json|r#"
-//                 [{"id":2,"name":"first_b","partitioned_a":{"id":2,"name":"first"}},
-//                  {"id":4,"name":"second_b","partitioned_a":{"id":4,"name":"second"}}] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "can request a partitioned table as parent from a partitioned table" $ do
+            get "/partitioned_b?id=in.(2,4)&select=id,name,partitioned_a(id,name)&order=id.asc" shouldRespondWith
+              [json|r#"
+                [{"id":2,"name":"first_b","partitioned_a":{"id":2,"name":"first"}},
+                 {"id":4,"name":"second_b","partitioned_a":{"id":4,"name":"second"}}] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//           it "can request partitions as children from a partitioned table" $
-//             get "/partitioned_a?id=in.(1,2,4)&select=id,name,first_partition_b(id)&order=id.asc" shouldRespondWith
-//               [json|r#"
-//                 [{"id":1,"name":"first","first_partition_b":[]},
-//                  {"id":2,"name":"first","first_partition_b":[{"id":2}]},
-//                  {"id":4,"name":"second","first_partition_b":[]}] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "can request partitions as children from a partitioned table" $
+            get "/partitioned_a?id=in.(1,2,4)&select=id,name,first_partition_b(id)&order=id.asc" shouldRespondWith
+              [json|r#"
+                [{"id":1,"name":"first","first_partition_b":[]},
+                 {"id":2,"name":"first","first_partition_b":[{"id":2}]},
+                 {"id":4,"name":"second","first_partition_b":[]}] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//           it "can request a partitioned table as parent from a partition" $
-//             get "/first_partition_b?select=id,name,partitioned_a(id,name)&order=id.asc" shouldRespondWith
-//               [json|r#"
-//                 [{"id":1,"name":"first_b","partitioned_a":null},
-//                  {"id":2,"name":"first_b","partitioned_a":{"id":2,"name":"first"}}] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "can request a partitioned table as parent from a partition" $
+            get "/first_partition_b?select=id,name,partitioned_a(id,name)&order=id.asc" shouldRespondWith
+              [json|r#"
+                [{"id":1,"name":"first_b","partitioned_a":null},
+                 {"id":2,"name":"first_b","partitioned_a":{"id":2,"name":"first"}}] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//           it "can request a partition as parent from a partitioned table" $
-//             get "/partitioned_b?id=in.(1,3,4)&select=id,name,second_partition_a(id,name)&order=id.asc" shouldRespondWith
-//               [json|r#"
-//                 [{"id":1,"name":"first_b","second_partition_a":null},
-//                  {"id":3,"name":"second_b","second_partition_a":null},
-//                  {"id":4,"name":"second_b","second_partition_a":{"id":4,"name":"second"}}] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "can request a partition as parent from a partitioned table" $
+            get "/partitioned_b?id=in.(1,3,4)&select=id,name,second_partition_a(id,name)&order=id.asc" shouldRespondWith
+              [json|r#"
+                [{"id":1,"name":"first_b","second_partition_a":null},
+                 {"id":3,"name":"second_b","second_partition_a":null},
+                 {"id":4,"name":"second_b","second_partition_a":{"id":4,"name":"second"}}] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//           it "can request partitioned tables as children from a partition" $
-//             get "/second_partition_a?select=id,name,partitioned_b(id,name)&order=id.asc" shouldRespondWith
-//               [json|r#"
-//                 [{"id":3,"name":"second","partitioned_b":[]},
-//                  {"id":4,"name":"second","partitioned_b":[{"id":4,"name":"second_b"}]}] "#|]
-//               { matchHeaders = ["Content-Type" <:> "application/json"] }
+          it "can request partitioned tables as children from a partition" $
+            get "/second_partition_a?select=id,name,partitioned_b(id,name)&order=id.asc" shouldRespondWith
+              [json|r#"
+                [{"id":3,"name":"second","partitioned_b":[]},
+                 {"id":4,"name":"second","partitioned_b":[{"id":4,"name":"second_b"}]}] "#|]
+              { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     describe "view embedding" $ do
       it "can detect fk relations through views to tables in the public schema" $
@@ -760,193 +762,193 @@ spec actualPgVersion = do
               "stores": [ {"id":3,"name":"store 3"}, {"id":4,"name":"store 4"}]}
           ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-    //   it "works with many to many relation" $
-    //     get "/users?select=id,designTasks:tasks(id,name),codeTasks:tasks(id,name)&designTasks.name=like.*Design*&codeTasks.name=like.*Code*" shouldRespondWith
-    //       [json|r#"[
-    //          { "id":1,
-    //            "designTasks":[ { "id":1, "name":"Design w7" }, { "id":3, "name":"Design w10" } ],
-    //            "codeTasks":[ { "id":2, "name":"Code w7" }, { "id":4, "name":"Code w10" } ] },
-    //          { "id":2,
-    //            "designTasks":[ { "id":5, "name":"Design IOS" }, { "id":7, "name":"Design OSX" } ],
-    //            "codeTasks":[ { "id":6, "name":"Code IOS" } ] },
-    //          { "id":3,
-    //            "designTasks":[ { "id":1, "name":"Design w7" }, { "id":5, "name":"Design IOS" } ],
-    //            "codeTasks":[ ] }
-    //       ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "works with many to many relation" $
+        get "/users?select=id,designTasks:tasks(id,name),codeTasks:tasks(id,name)&designTasks.name=like.*Design*&codeTasks.name=like.*Code*" shouldRespondWith
+          [json|r#"[
+             { "id":1,
+               "designTasks":[ { "id":1, "name":"Design w7" }, { "id":3, "name":"Design w10" } ],
+               "codeTasks":[ { "id":2, "name":"Code w7" }, { "id":4, "name":"Code w10" } ] },
+             { "id":2,
+               "designTasks":[ { "id":5, "name":"Design IOS" }, { "id":7, "name":"Design OSX" } ],
+               "codeTasks":[ { "id":6, "name":"Code IOS" } ] },
+             { "id":3,
+               "designTasks":[ { "id":1, "name":"Design w7" }, { "id":5, "name":"Design IOS" } ],
+               "codeTasks":[ ] }
+          ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-    //   it "works with an aliased child plus non aliased child" $
-    //     get "/projects?select=id,name,designTasks:tasks(name,users(id,name))&designTasks.name=like.*Design*&designTasks.users.id=in.(1,2)" shouldRespondWith
-    //       [json|r#"[
-    //         {
-    //           "id":1, "name":"Windows 7",
-    //           "designTasks":[ { "name":"Design w7", "users":[ { "id":1, "name":"Angela Martin" } ] } ] },
-    //         {
-    //           "id":2, "name":"Windows 10",
-    //           "designTasks":[ { "name":"Design w10", "users":[ { "id":1, "name":"Angela Martin" } ] } ] },
-    //         {
-    //           "id":3, "name":"IOS",
-    //           "designTasks":[ { "name":"Design IOS", "users":[ { "id":2, "name":"Michael Scott" } ] } ] },
-    //         {
-    //           "id":4, "name":"OSX",
-    //           "designTasks":[ { "name":"Design OSX", "users":[ { "id":2, "name":"Michael Scott" } ] } ] },
-    //         {
-    //           "id":5, "name":"Orphan",
-    //           "designTasks":[ ] }
-    //       ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "works with an aliased child plus non aliased child" $
+        get "/projects?select=id,name,designTasks:tasks(name,users(id,name))&designTasks.name=like.*Design*&designTasks.users.id=in.(1,2)" shouldRespondWith
+          [json|r#"[
+            {
+              "id":1, "name":"Windows 7",
+              "designTasks":[ { "name":"Design w7", "users":[ { "id":1, "name":"Angela Martin" } ] } ] },
+            {
+              "id":2, "name":"Windows 10",
+              "designTasks":[ { "name":"Design w10", "users":[ { "id":1, "name":"Angela Martin" } ] } ] },
+            {
+              "id":3, "name":"IOS",
+              "designTasks":[ { "name":"Design IOS", "users":[ { "id":2, "name":"Michael Scott" } ] } ] },
+            {
+              "id":4, "name":"OSX",
+              "designTasks":[ { "name":"Design OSX", "users":[ { "id":2, "name":"Michael Scott" } ] } ] },
+            {
+              "id":5, "name":"Orphan",
+              "designTasks":[ ] }
+          ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-    //   it "works with two aliased children embeds plus and/or" $
-    //     get "/entities?select=id,children:child_entities(id,gChildren:grandchild_entities(id))&children.and=(id.in.(1,2,3))&children.gChildren.or=(id.eq.1,id.eq.2)" shouldRespondWith
-    //       [json|r#"[
-    //         { "id":1,
-    //           "children":[
-    //             {"id":1,"gChildren":[{"id":1}, {"id":2}]},
-    //             {"id":2,"gChildren":[]}]},
-    //         { "id":2,
-    //           "children":[
-    //             {"id":3,"gChildren":[]}]},
-    //         { "id":3,"children":[]},
-    //         { "id":4,"children":[]}
-    //       ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "works with two aliased children embeds plus and/or" $
+        get "/entities?select=id,children:child_entities(id,gChildren:grandchild_entities(id))&children.and=(id.in.(1,2,3))&children.gChildren.or=(id.eq.1,id.eq.2)" shouldRespondWith
+          [json|r#"[
+            { "id":1,
+              "children":[
+                {"id":1,"gChildren":[{"id":1}, {"id":2}]},
+                {"id":2,"gChildren":[]}]},
+            { "id":2,
+              "children":[
+                {"id":3,"gChildren":[]}]},
+            { "id":3,"children":[]},
+            { "id":4,"children":[]}
+          ]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//   describe "ordering response" $ do
-//     it "by a column asc" $
-//       get "/items?id=lte.2&order=id.asc"
-//         shouldRespondWith [json|r#" [{"id":1},{"id":2}] "#|]
-//         { matchStatus  = 200
-//         , matchHeaders = ["Content-Range" <:> "0-1/*"]
-//         }
+  describe "ordering response" $ do
+    it "by a column asc" $
+      get "/items?id=lte.2&order=id.asc"
+        shouldRespondWith [json|r#" [{"id":1},{"id":2}] "#|]
+        { matchStatus  = 200
+        , matchHeaders = ["Content-Range" <:> "0-1/*"]
+        }
 
 
-//     it "by a column desc" $
-//       get "/items?id=lte.2&order=id.desc"
-//         shouldRespondWith [json|r#" [{"id":2},{"id":1}] "#|]
-//         { matchStatus  = 200
-//         , matchHeaders = ["Content-Range" <:> "0-1/*"]
-//         }
+    it "by a column desc" $
+      get "/items?id=lte.2&order=id.desc"
+        shouldRespondWith [json|r#" [{"id":2},{"id":1}] "#|]
+        { matchStatus  = 200
+        , matchHeaders = ["Content-Range" <:> "0-1/*"]
+        }
 
-//     it "by a column with nulls first" $
-//       get "/no_pk?order=a.nullsfirst"
-//         shouldRespondWith [json|r#" [{"a":null,"b":null},
-//                               {"a":"1","b":"0"},
-//                               {"a":"2","b":"0"}
-//                               ] "#|]
-//         { matchStatus = 200
-//         , matchHeaders = ["Content-Range" <:> "0-2/*"]
-//         }
+    it "by a column with nulls first" $
+      get "/no_pk?order=a.nullsfirst"
+        shouldRespondWith [json|r#" [{"a":null,"b":null},
+                              {"a":"1","b":"0"},
+                              {"a":"2","b":"0"}
+                              ] "#|]
+        { matchStatus = 200
+        , matchHeaders = ["Content-Range" <:> "0-2/*"]
+        }
 
-//     it "by a column asc with nulls last" $
-//       get "/no_pk?order=a.asc.nullslast"
-//         shouldRespondWith [json|r#" [{"a":"1","b":"0"},
-//                               {"a":"2","b":"0"},
-//                               {"a":null,"b":null}] "#|]
-//         { matchStatus = 200
-//         , matchHeaders = ["Content-Range" <:> "0-2/*"]
-//         }
+    it "by a column asc with nulls last" $
+      get "/no_pk?order=a.asc.nullslast"
+        shouldRespondWith [json|r#" [{"a":"1","b":"0"},
+                              {"a":"2","b":"0"},
+                              {"a":null,"b":null}] "#|]
+        { matchStatus = 200
+        , matchHeaders = ["Content-Range" <:> "0-2/*"]
+        }
 
-//     it "by a column desc with nulls first" $
-//       get "/no_pk?order=a.desc.nullsfirst"
-//         shouldRespondWith [json|r#" [{"a":null,"b":null},
-//                               {"a":"2","b":"0"},
-//                               {"a":"1","b":"0"}] "#|]
-//         { matchStatus = 200
-//         , matchHeaders = ["Content-Range" <:> "0-2/*"]
-//         }
+    it "by a column desc with nulls first" $
+      get "/no_pk?order=a.desc.nullsfirst"
+        shouldRespondWith [json|r#" [{"a":null,"b":null},
+                              {"a":"2","b":"0"},
+                              {"a":"1","b":"0"}] "#|]
+        { matchStatus = 200
+        , matchHeaders = ["Content-Range" <:> "0-2/*"]
+        }
 
-//     it "by a column desc with nulls last" $
-//       get "/no_pk?order=a.desc.nullslast"
-//         shouldRespondWith [json|r#" [{"a":"2","b":"0"},
-//                               {"a":"1","b":"0"},
-//                               {"a":null,"b":null}] "#|]
-//         { matchStatus = 200
-//         , matchHeaders = ["Content-Range" <:> "0-2/*"]
-//         }
+    it "by a column desc with nulls last" $
+      get "/no_pk?order=a.desc.nullslast"
+        shouldRespondWith [json|r#" [{"a":"2","b":"0"},
+                              {"a":"1","b":"0"},
+                              {"a":null,"b":null}] "#|]
+        { matchStatus = 200
+        , matchHeaders = ["Content-Range" <:> "0-2/*"]
+        }
 
-//     it "by two columns with nulls and direction specified" $
-//       get "/projects?select=client_id,id,name&order=client_id.desc.nullslast,id.desc"
-//         shouldRespondWith [json|r#"
-//           [{"client_id":2,"id":4,"name":"OSX"},
-//            {"client_id":2,"id":3,"name":"IOS"},
-//            {"client_id":1,"id":2,"name":"Windows 10"},
-//            {"client_id":1,"id":1,"name":"Windows 7"},
-//            {"client_id":null,"id":5,"name":"Orphan"}]
-//         "#|]
-//         { matchStatus  = 200
-//         , matchHeaders = ["Content-Range" <:> "0-4/*"]
-//         }
+    it "by two columns with nulls and direction specified" $
+      get "/projects?select=client_id,id,name&order=client_id.desc.nullslast,id.desc"
+        shouldRespondWith [json|r#"
+          [{"client_id":2,"id":4,"name":"OSX"},
+           {"client_id":2,"id":3,"name":"IOS"},
+           {"client_id":1,"id":2,"name":"Windows 10"},
+           {"client_id":1,"id":1,"name":"Windows 7"},
+           {"client_id":null,"id":5,"name":"Orphan"}]
+        "#|]
+        { matchStatus  = 200
+        , matchHeaders = ["Content-Range" <:> "0-4/*"]
+        }
 
-//     it "by a column with no direction or nulls specified" $
-//       get "/items?id=lte.2&order=id"
-//         shouldRespondWith [json|r#" [{"id":1},{"id":2}] "#|]
-//         { matchStatus  = 200
-//         , matchHeaders = ["Content-Range" <:> "0-1/*"]
-//         }
+    it "by a column with no direction or nulls specified" $
+      get "/items?id=lte.2&order=id"
+        shouldRespondWith [json|r#" [{"id":1},{"id":2}] "#|]
+        { matchStatus  = 200
+        , matchHeaders = ["Content-Range" <:> "0-1/*"]
+        }
 
-//     it "without other constraints" $
-//       get "/items?order=id.asc" shouldRespondWith 200
+    it "without other constraints" $
+      get "/items?order=id.asc" shouldRespondWith 200
 
-//     it "ordering embeded entities" $
-//       get "/projects?id=eq.1&select=id, name, tasks(id, name)&tasks.order=name.asc" shouldRespondWith
-//         [json|r#"[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "ordering embeded entities" $
+      get "/projects?id=eq.1&select=id, name, tasks(id, name)&tasks.order=name.asc" shouldRespondWith
+        [json|r#"[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "ordering embeded entities with alias" $
-//       get "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc" shouldRespondWith
-//         [json|r#"[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "ordering embeded entities with alias" $
+      get "/projects?id=eq.1&select=id, name, the_tasks:tasks(id, name)&tasks.order=name.asc" shouldRespondWith
+        [json|r#"[{"id":1,"name":"Windows 7","the_tasks":[{"id":2,"name":"Code w7"},{"id":1,"name":"Design w7"}]}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "ordering embeded entities, two levels" $
-//       get "/projects?id=eq.1&select=id, name, tasks(id, name, users(id, name))&tasks.order=name.asc&tasks.users.order=name.desc" shouldRespondWith
-//         [json|r#"[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7","users":[{"id":1,"name":"Angela Martin"}]},{"id":1,"name":"Design w7","users":[{"id":3,"name":"Dwight Schrute"},{"id":1,"name":"Angela Martin"}]}]}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "ordering embeded entities, two levels" $
+      get "/projects?id=eq.1&select=id, name, tasks(id, name, users(id, name))&tasks.order=name.asc&tasks.users.order=name.desc" shouldRespondWith
+        [json|r#"[{"id":1,"name":"Windows 7","tasks":[{"id":2,"name":"Code w7","users":[{"id":1,"name":"Angela Martin"}]},{"id":1,"name":"Design w7","users":[{"id":3,"name":"Dwight Schrute"},{"id":1,"name":"Angela Martin"}]}]}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "ordering embeded parents does not break things" $
-//       get "/projects?id=eq.1&select=id, name, clients(id, name)&clients.order=name.asc" shouldRespondWith
-//         [json|r#"[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]"#|]
+    it "ordering embeded parents does not break things" $
+      get "/projects?id=eq.1&select=id, name, clients(id, name)&clients.order=name.asc" shouldRespondWith
+        [json|r#"[{"id":1,"name":"Windows 7","clients":{"id":1,"name":"Microsoft"}}]"#|]
 
-//     describe "order syntax errors" $ do
-//       it "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled" $ do
-//         get "/items?order=id.ac" shouldRespondWith
-//           [json|r#"{"details":"unexpected \"c\" expecting \"asc\", \"desc\", \"nullsfirst\" or \"nullslast\"","message":"\"failed to parse order (id.ac)\" (line 1, column 4)"}"#|]
-//           { matchStatus  = 400
-//           , matchHeaders = ["Content-Type" <:> "application/json"]
-//           }
-//         get "/items?order=id.descc" shouldRespondWith
-//           [json|r#"{"details":"unexpected 'c' expecting delimiter (.), \",\" or end of input","message":"\"failed to parse order (id.descc)\" (line 1, column 8)"}"#|]
-//           { matchStatus  = 400
-//           , matchHeaders = ["Content-Type" <:> "application/json"]
-//           }
-//         get "/items?order=id.nulsfist" shouldRespondWith
-//           [json|r#"{"details":"unexpected \"n\" expecting \"asc\", \"desc\", \"nullsfirst\" or \"nullslast\"","message":"\"failed to parse order (id.nulsfist)\" (line 1, column 4)"}"#|]
-//           { matchStatus  = 400
-//           , matchHeaders = ["Content-Type" <:> "application/json"]
-//           }
-//         get "/items?order=id.nullslasttt" shouldRespondWith
-//           [json|r#"{"details":"unexpected 't' expecting \",\" or end of input","message":"\"failed to parse order (id.nullslasttt)\" (line 1, column 13)"}"#|]
-//           { matchStatus  = 400
-//           , matchHeaders = ["Content-Type" <:> "application/json"]
-//           }
-//         get "/items?order=id.smth34" shouldRespondWith
-//           [json|r#"{"details":"unexpected \"s\" expecting \"asc\", \"desc\", \"nullsfirst\" or \"nullslast\"","message":"\"failed to parse order (id.smth34)\" (line 1, column 4)"}"#|]
-//           { matchStatus  = 400
-//           , matchHeaders = ["Content-Type" <:> "application/json"]
-//           }
+    describe "order syntax errors" $ do
+      it "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled" $ do
+        get "/items?order=id.ac" shouldRespondWith
+          [json|r#"{"details":"Unexpected `a` Expected `nullsfirst` or `nullslast`","message":"\"failed to parse order (id.ac)\" (line 1, column 4)"}"#|]
+          { matchStatus  = 400
+          , matchHeaders = ["Content-Type" <:> "application/json"]
+          }
+        get "/items?order=id.descc" shouldRespondWith
+          [json|r#"{"details":"Unexpected `c` Expected `,`, `whitespaces` or `end of input`","message":"\"failed to parse order (id.descc)\" (line 1, column 8)"}"#|]
+          { matchStatus  = 400
+          , matchHeaders = ["Content-Type" <:> "application/json"]
+          }
+        get "/items?order=id.nulsfist" shouldRespondWith
+          [json|r#"{"details":"Unexpected `s`","message":"\"failed to parse order (id.nulsfist)\" (line 1, column 4)"}"#|]
+          { matchStatus  = 400
+          , matchHeaders = ["Content-Type" <:> "application/json"]
+          }
+        get "/items?order=id.nullslasttt" shouldRespondWith
+          [json|r#"{"details":"Unexpected `t` Expected `,`, `whitespaces` or `end of input`","message":"\"failed to parse order (id.nullslasttt)\" (line 1, column 13)"}"#|]
+          { matchStatus  = 400
+          , matchHeaders = ["Content-Type" <:> "application/json"]
+          }
+        get "/items?order=id.smth34" shouldRespondWith
+          [json|r#"{"details":"Unexpected `s` Expected `nullsfirst` or `nullslast`","message":"\"failed to parse order (id.smth34)\" (line 1, column 4)"}"#|]
+          { matchStatus  = 400
+          , matchHeaders = ["Content-Type" <:> "application/json"]
+          }
 
-//       it "gives meaningful error messages when nulls{first,last} are misspelled after asc/desc" $ do
-//         get "/items?order=id.asc.nlsfst" shouldRespondWith
-//           [json|r#"{"details":"unexpected \"l\" expecting \"nullsfirst\" or \"nullslast\"","message":"\"failed to parse order (id.asc.nlsfst)\" (line 1, column 8)"}"#|]
-//           { matchStatus  = 400
-//           , matchHeaders = ["Content-Type" <:> "application/json"]
-//           }
-//         get "/items?order=id.asc.nullslasttt" shouldRespondWith
-//           [json|r#"{"details":"unexpected 't' expecting \",\" or end of input","message":"\"failed to parse order (id.asc.nullslasttt)\" (line 1, column 17)"}"#|]
-//           { matchStatus  = 400
-//           , matchHeaders = ["Content-Type" <:> "application/json"]
-//           }
-//         get "/items?order=id.asc.smth34" shouldRespondWith
-//           [json|r#"{"details":"unexpected \"s\" expecting \"nullsfirst\" or \"nullslast\"","message":"\"failed to parse order (id.asc.smth34)\" (line 1, column 8)"}"#|]
-//           { matchStatus  = 400
-//           , matchHeaders = ["Content-Type" <:> "application/json"]
-//           }
+      it "gives meaningful error messages when nulls{first,last} are misspelled after asc/desc" $ do
+        get "/items?order=id.asc.nlsfst" shouldRespondWith
+          [json|r#"{"details":"Unexpected `l`","message":"\"failed to parse order (id.asc.nlsfst)\" (line 1, column 8)"}"#|]
+          { matchStatus  = 400
+          , matchHeaders = ["Content-Type" <:> "application/json"]
+          }
+        get "/items?order=id.asc.nullslasttt" shouldRespondWith
+          [json|r#"{"details":"Unexpected `t` Expected `,`, `whitespaces` or `end of input`","message":"\"failed to parse order (id.asc.nullslasttt)\" (line 1, column 17)"}"#|]
+          { matchStatus  = 400
+          , matchHeaders = ["Content-Type" <:> "application/json"]
+          }
+        get "/items?order=id.asc.smth34" shouldRespondWith
+          [json|r#"{"details":"Unexpected `s` Expected `nullsfirst` or `nullslast`","message":"\"failed to parse order (id.asc.smth34)\" (line 1, column 8)"}"#|]
+          { matchStatus  = 400
+          , matchHeaders = ["Content-Type" <:> "application/json"]
+          }
 
 //   describe "Accept headers" $ do
 //     it "should respond an unknown accept type with 415" $
@@ -1012,39 +1014,39 @@ spec actualPgVersion = do
 //     //     respHeaders `shouldSatisfy` matchHeader
 //     //       "Content-Location" "/simple_pk"
 
-//   describe "weird requests" $ do
-//     it "can query as normal" $ do
-//       get "/Escap3e;" shouldRespondWith
-//         [json|r#" [{"so6meIdColumn":1},{"so6meIdColumn":2},{"so6meIdColumn":3},{"so6meIdColumn":4},{"so6meIdColumn":5}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       get "/ghostBusters" shouldRespondWith
-//         [json|r#" [{"escapeId":1},{"escapeId":3},{"escapeId":5}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+  describe "weird requests" $ do
+    it "can query as normal" $ do
+      get "/Escap3e;" shouldRespondWith
+        [json|r#" [{"so6meIdColumn":1},{"so6meIdColumn":2},{"so6meIdColumn":3},{"so6meIdColumn":4},{"so6meIdColumn":5}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+      get "/ghostBusters" shouldRespondWith
+        [json|r#" [{"escapeId":1},{"escapeId":3},{"escapeId":5}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "fails if an operator is not given" $
-//       get "/ghostBusters?id=0" shouldRespondWith [json|r#" {"details":"unexpected \"0\" expecting \"not\" or operator (eq, gt, ...)","message":"\"failed to parse filter (0)\" (line 1, column 1)"} "#|]
-//         { matchStatus  = 400
-//         , matchHeaders = ["Content-Type" <:> "application/json"]
-//         }
+    it "fails if an operator is not given" $
+      get "/ghostBusters?id=0" shouldRespondWith [json|r#" {"details":"Unexpected `0` Expected `letter`, `in`, `not` or `.`","message":"\"failed to parse filter (0)\" (line 1, column 1)"} "#|]
+        { matchStatus  = 400
+        , matchHeaders = ["Content-Type" <:> "application/json"]
+        }
 
-//     it "will embed a collection" $
-//       get "/Escap3e;?select=ghostBusters(*)" shouldRespondWith
-//         [json|r#" [{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "will embed a collection" $
+      get "/Escap3e;?select=ghostBusters(*)" shouldRespondWith
+        [json|r#" [{"ghostBusters":[{"escapeId":1}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":3}]},{"ghostBusters":[]},{"ghostBusters":[{"escapeId":5}]}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "will select and filter a column that has spaces" $
-//       get "/Server%20Today?select=Just%20A%20Server%20Model&Just%20A%20Server%20Model=like.*91*" shouldRespondWith
-//         [json|r#"[
-//           {"Just A Server Model":" IBM,9113-550 (P5-550)"},
-//           {"Just A Server Model":" IBM,9113-550 (P5-550)"},
-//           {"Just A Server Model":" IBM,9131-52A (P5-52A)"},
-//           {"Just A Server Model":" IBM,9133-55A (P5-55A)"}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "will select and filter a column that has spaces" $
+      get "/Server%20Today?select=Just%20A%20Server%20Model&Just%20A%20Server%20Model=like.*91*" shouldRespondWith
+        [json|r#"[
+          {"Just A Server Model":" IBM,9113-550 (P5-550)"},
+          {"Just A Server Model":" IBM,9113-550 (P5-550)"},
+          {"Just A Server Model":" IBM,9131-52A (P5-52A)"},
+          {"Just A Server Model":" IBM,9133-55A (P5-55A)"}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "will select and filter a quoted column that has PostgREST reserved characters" $
-//       get "/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1" shouldRespondWith
-//         [json|r#"[{":arr->ow::cast":" arrow-1 ","(inside,parens)":" parens-1 ","a.dotted.column":" dotted-1 ","  col  w  space  ":" space-1"}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "will select and filter a quoted column that has PostgREST reserved characters" $
+      get "/pgrst_reserved_chars?select=%22:arr-%3Eow::cast%22,%22(inside,parens)%22,%22a.dotted.column%22,%22%20%20col%20%20w%20%20space%20%20%22&%22*id*%22=eq.1" shouldRespondWith
+        [json|r#"[{":arr->ow::cast":" arrow-1 ","(inside,parens)":" parens-1 ","a.dotted.column":" dotted-1 ","  col  w  space  ":" space-1"}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
 //   describe "binary output" $ do
 //     it "can query if a single column is selected" $
@@ -1088,17 +1090,17 @@ spec actualPgVersion = do
 //         , matchHeaders = ["Content-Type" <:> "application/octet-stream"]
 //         }
 
-//   describe "values with quotes in IN and NOT IN" $ do
-//     it "succeeds when only quoted values are present" $ do
-//       get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\")" shouldRespondWith
-//         [json|r#" [{"name":"Hebdon, John"}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")" shouldRespondWith
-//         [json|r#" [{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       get "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")&limit=3" shouldRespondWith
-//         [json|r#" [ { "name": "David White" }, { "name": "Larry Thompson" }, { "name": "Double O Seven(007)" }] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+  // describe "values with quotes in IN and NOT IN" $ do
+  //   it "succeeds when only quoted values are present" $ do
+  //     get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\")" shouldRespondWith
+  //       [json|r#" [{"name":"Hebdon, John"}] "#|]
+  //       { matchHeaders = ["Content-Type" <:> "application/json"] }
+  //     get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")" shouldRespondWith
+  //       [json|r#" [{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}] "#|]
+  //       { matchHeaders = ["Content-Type" <:> "application/json"] }
+  //     get "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")&limit=3" shouldRespondWith
+  //       [json|r#" [ { "name": "David White" }, { "name": "Larry Thompson" }, { "name": "Double O Seven(007)" }] "#|]
+  //       { matchHeaders = ["Content-Type" <:> "application/json"] }
 
 //     it "succeeds w/ and w/o quoted values" $ do
 //       get "/w_or_wo_comma_names?name=in.(David White,\"Hebdon, John\")" shouldRespondWith
@@ -1147,84 +1149,84 @@ spec actualPgVersion = do
 //         [json|r#" [ { "name": "/\\Slash/\\Beast/\\" } ] "#|]
 //         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//   describe "IN and NOT IN empty set" $ do
-//     describe "returns an empty result for IN when no value is present" $ do
-//       it "works for integer" $
-//         get "/items_with_different_col_types?int_data=in.()" shouldRespondWith
-//           [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       it "works for text" $
-//         get "/items_with_different_col_types?text_data=in.()" shouldRespondWith
-//           [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       it "works for bool" $
-//         get "/items_with_different_col_types?bool_data=in.()" shouldRespondWith
-//           [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       it "works for bytea" $
-//         get "/items_with_different_col_types?bin_data=in.()" shouldRespondWith
-//           [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       it "works for char" $
-//         get "/items_with_different_col_types?char_data=in.()" shouldRespondWith
-//           [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       it "works for date" $
-//         get "/items_with_different_col_types?date_data=in.()" shouldRespondWith
-//           [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       it "works for real" $
-//         get "/items_with_different_col_types?real_data=in.()" shouldRespondWith
-//           [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       it "works for time" $
-//         get "/items_with_different_col_types?time_data=in.()" shouldRespondWith
-//           [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+  describe "IN and NOT IN empty set" $ do
+    describe "returns an empty result for IN when no value is present" $ do
+      it "works for integer" $
+        get "/items_with_different_col_types?int_data=in.()" shouldRespondWith
+          [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "works for text" $
+        get "/items_with_different_col_types?text_data=in.()" shouldRespondWith
+          [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "works for bool" $
+        get "/items_with_different_col_types?bool_data=in.()" shouldRespondWith
+          [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "works for bytea" $
+        get "/items_with_different_col_types?bin_data=in.()" shouldRespondWith
+          [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "works for char" $
+        get "/items_with_different_col_types?char_data=in.()" shouldRespondWith
+          [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "works for date" $
+        get "/items_with_different_col_types?date_data=in.()" shouldRespondWith
+          [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "works for real" $
+        get "/items_with_different_col_types?real_data=in.()" shouldRespondWith
+          [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "works for time" $
+        get "/items_with_different_col_types?time_data=in.()" shouldRespondWith
+          [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "returns all results for not in when no value is present" $
-//       get "/items_with_different_col_types?int_data=not.in.()&select=int_data" shouldRespondWith
-//         [json|r#" [{int_data: 1}] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "returns all results for not in when no value is present" $
+      get "/items_with_different_col_types?int_data=not.in.()&select=int_data" shouldRespondWith
+        [json|r#" [{"int_data": 1}] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "returns an empty result ignoring spaces" $
-//       get "/items_with_different_col_types?int_data=in.(    )" shouldRespondWith
-//         [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "returns an empty result ignoring spaces" $
+      get "/items_with_different_col_types?int_data=in.(    )" shouldRespondWith
+        [json|r#" [] "#|] { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     // it "only returns an empty result set if the in value is empty" $
-//     //   get "/items_with_different_col_types?int_data=in.( ,3,4)"
-//     //     shouldRespondWith (
-//     //     if actualPgVersion >= pgVersion121 then
-//     //     [json|r#" {"hint":null,"details":null,"code":"22P02","message":"invalid input syntax for type integer: \"\""} "#|]
-//     //     else
-//     //     [json|r#" {"hint":null,"details":null,"code":"22P02","message":"invalid input syntax for integer: \"\""} "#|]
-//     //                         )
-//     //     { matchStatus = 400
-//     //     , matchHeaders = ["Content-Type" <:> "application/json"]
-//     //     }
+    // it "only returns an empty result set if the in value is empty" $
+    //   get "/items_with_different_col_types?int_data=in.( ,3,4)"
+    //     shouldRespondWith (
+    //     if actualPgVersion >= pgVersion121 then
+    //     [json|r#" {"hint":null,"details":null,"code":"22P02","message":"invalid input syntax for type integer: \"\""} "#|]
+    //     else
+    //     [json|r#" {"hint":null,"details":null,"code":"22P02","message":"invalid input syntax for integer: \"\""} "#|]
+    //                         )
+    //     { matchStatus = 400
+    //     , matchHeaders = ["Content-Type" <:> "application/json"]
+    //     }
 
-//   describe "Embedding when column name = table name" $ do
-//     it "works with child embeds" $
-//       get "/being?select=*,descendant(*)&limit=1" shouldRespondWith
-//         [json|r#"[{"being":1,"descendant":[{"descendant":1,"being":1},{"descendant":2,"being":1},{"descendant":3,"being":1}]}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
-//     it "works with many to many embeds" $
-//       get "/being?select=*,part(*)&limit=1" shouldRespondWith
-//         [json|r#"[{"being":1,"part":[{"part":1}]}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+  describe "Embedding when column name = table name" $ do
+    it "works with child embeds" $
+      get "/being?select=*,descendant(*)&limit=1" shouldRespondWith
+        [json|r#"[{"being":1,"descendant":[{"descendant":1,"being":1},{"descendant":2,"being":1},{"descendant":3,"being":1}]}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "works with many to many embeds" $
+      get "/being?select=*,part(*)&limit=1" shouldRespondWith
+        [json|r#"[{"being":1,"part":[{"part":1}]}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//   describe "Foreign table" $ do
-//     it "can be queried by using regular filters" $
-//       get "/projects_dump?id=in.(1,2,3)" shouldRespondWith
-//         [json|r#" [{"id":1,"name":"Windows 7","client_id":1}, {"id":2,"name":"Windows 10","client_id":1}, {"id":3,"name":"IOS","client_id":2}]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
-//     it "can be queried with select, order and limit" $
-//       get "/projects_dump?select=id,name&order=id.desc&limit=3" shouldRespondWith
-//         [json|r#" [{"id":5,"name":"Orphan"}, {"id":4,"name":"OSX"}, {"id":3,"name":"IOS"}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+  describe "Foreign table" $ do
+    it "can be queried by using regular filters" $
+      get "/projects_dump?id=in.(1,2,3)" shouldRespondWith
+        [json|r#" [{"id":1,"name":"Windows 7","client_id":1}, {"id":2,"name":"Windows 10","client_id":1}, {"id":3,"name":"IOS","client_id":2}]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "can be queried with select, order and limit" $
+      get "/projects_dump?select=id,name&order=id.desc&limit=3" shouldRespondWith
+        [json|r#" [{"id":5,"name":"Orphan"}, {"id":4,"name":"OSX"}, {"id":3,"name":"IOS"}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//   it "cannot use ltree(in public schema) extension operators if no extra search path added" $
-//     get "/ltree_sample?path=cd.Top.Science.Astronomy" shouldRespondWith 400
+  it "cannot use ltree(in public schema) extension operators if no extra search path added" $
+    get "/ltree_sample?path=cd.Top.Science.Astronomy" shouldRespondWith 400
 
-//   describe "VIEW that has a source FK based on a UNIQUE key" $
-//     it "can be embedded" $
-//       get "/referrals?select=site,link:pages(url)" shouldRespondWith
-//         [json|r#" [
-//          {"site":"github.com",     "link":{"url":"http://postgrest.org/en/v6.0/api.html"}},
-//          {"site":"hub.docker.com", "link":{"url":"http://postgrest.org/en/v6.0/admin.html"}}
-//         ]"#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+  describe "VIEW that has a source FK based on a UNIQUE key" $
+    it "can be embedded" $
+      get "/referrals?select=site,link:pages(url)" shouldRespondWith
+        [json|r#" [
+         {"site":"github.com",     "link":{"url":"http://postgrest.org/en/v6.0/api.html"}},
+         {"site":"hub.docker.com", "link":{"url":"http://postgrest.org/en/v6.0/admin.html"}}
+        ]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
 //   it "shouldn't produce a Content-Profile header since only a single schema is exposed" $ do
 //     r <- get "/items"

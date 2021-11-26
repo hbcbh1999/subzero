@@ -44,7 +44,13 @@ impl ToSql for ListVal {
     ) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
         match self {
             ListVal(v) => {
-                out.put_slice(format!("{{\"{}\"}}", v.join("\",\"")).as_str().as_bytes());
+                if v.len() > 0 {
+                    out.put_slice(format!("{{\"{}\"}}", v.join("\",\"")).as_str().as_bytes());
+                }
+                else {
+                    out.put_slice(format!("{{}}").as_str().as_bytes());
+                }
+                
                 Ok(IsNull::No)
             }
         }
@@ -88,7 +94,7 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + S
             " from " + from.iter().map(|f| fmt_qi(&Qi(schema.clone(), f.clone()))).collect::<Vec<_>>().join(", ") +
             " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
             " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi, where_) } else { sql("") } +
-            " " + fmt_order(order) +
+            " " + fmt_order(qi, order) +
             " " + fmt_limit(limit) +
             " " + fmt_offset(offset)
             
@@ -146,7 +152,7 @@ fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> SqlSnippet<'a, (dyn 
 fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
     match c {
         Single {field, filter, negate} => {
-            let fld = sql(format!("{}.{}", fmt_qi(qi), fmt_field(field)));
+            let fld = sql(format!("{}.{} ", fmt_qi(qi), fmt_field(field)));
 
             if *negate {
                 "not(" + fld + fmt_filter(filter) + ")"
@@ -175,7 +181,6 @@ fn fmt_filter(f: &Filter) -> SqlSnippet<(dyn ToSql + Sync + '_)>{
 
     match f {
         Op (o, v) => {
-            //let vv:&(dyn ToSql + Sync) = &Unknown(v);
             let vv:&(dyn ToSql + Sync) = v;
             fmt_operator(o) + param(vv)
         }
@@ -183,11 +188,21 @@ fn fmt_filter(f: &Filter) -> SqlSnippet<(dyn ToSql + Sync + '_)>{
             let ll:&(dyn ToSql + Sync) = l;
             fmt_operator(&"= any".to_string()) + ("(" + param(ll) + ")")
         },
+        Is (v) => {
+            let vv = match v {
+                TrileanVal::TriTrue=>"true", 
+                TrileanVal::TriFalse=>"false",
+                TrileanVal::TriNull=>"null",
+                TrileanVal::TriUnknown=>"unknown",
+            };
+            sql(format!("is {}", vv))
+        }
         Fts (o, lng, v) => {
             let vv:&(dyn ToSql + Sync) = v;
             match lng {
                 Some(l) => {
                     let ll:&(dyn ToSql + Sync) = l;
+                    println!("==formating {:?} {:?} {:?}", o, ll, vv);
                     fmt_operator(o) + ("(" + param(ll) + "," + param(vv) + ")")
                 }
                 None => fmt_operator(o) + ("(" + param(vv) + ")")
@@ -265,25 +280,25 @@ fn fmt_field(f: &Field) -> String {
     format!("{}{}", fmt_identity(&f.name), fmt_json_path(&f.json_path))
 }
 
-fn fmt_order(o: &Vec<OrderTerm>) -> String {
+fn fmt_order(qi: &Qi, o: &Vec<OrderTerm>) -> String {
     if o.len() > 0 {
-        format!("order by {}", o.iter().map(fmt_order_term).collect::<Vec<_>>().join(", "))
+        format!("order by {}", o.iter().map(|t| fmt_order_term(qi, t)).collect::<Vec<_>>().join(", "))
     }
     else {
         format!("")
     }
 }
 
-fn fmt_order_term(t: &OrderTerm) -> String {
+fn fmt_order_term(qi: &Qi, t: &OrderTerm) -> String {
     let direction = match &t.direction {
         None => "",
         Some(d) => match d { OrderDirection::Asc => "asc", OrderDirection::Desc => "desc" }
     };
     let nulls = match &t.null_order {
         None => "",
-        Some(n) => match n { OrderNulls::NullsFirst => "nullsfirst", OrderNulls::NullsLast => "nullslast" }
+        Some(n) => match n { OrderNulls::NullsFirst => "nulls first", OrderNulls::NullsLast => "nulls last" }
     };
-    format!("{} {} {}", fmt_field(&t.term), direction, nulls)
+    format!("{}.{} {} {}", fmt_qi(qi), fmt_field(&t.term), direction, nulls)
 }
 
 fn fmt_alias(a: &Option<String>) -> String {
@@ -459,11 +474,11 @@ mod tests {
 				from "api"."tasks"
 				where
 			
-					"api"."tasks"."project_id"= "subzero_source"."id"
+					"api"."tasks"."project_id" = "subzero_source"."id"
 					and
-					"api"."tasks"."id"> $2
+					"api"."tasks"."id" > $2
 					and
-					"api"."tasks"."id"= any ($3)
+					"api"."tasks"."id" = any ($3)
 			) as "tasks"), '[]') as "tasks"
 		from "subzero_source"
 		left join lateral (
@@ -472,9 +487,8 @@ mod tests {
 			from "api"."clients"
 			where
 			
-				"api"."clients"."id"= "subzero_source"."client_id"
-		) as "subzero_source_clients" on true
-		"#
+				"api"."clients"."id" = "subzero_source"."client_id"
+		) as "subzero_source_clients" on true"#
         , " "));
     }
 
@@ -566,11 +580,11 @@ mod tests {
 					"api"."tasks"."id"
 				from "api"."tasks"
 				where
-					"api"."tasks"."project_id"= "api"."projects"."id"
+					"api"."tasks"."project_id" = "api"."projects"."id"
 					and
-					"api"."tasks"."id"> $1
+					"api"."tasks"."id" > $1
 					and
-					"api"."tasks"."id"= any ($2)
+					"api"."tasks"."id" = any ($2)
 			) as "tasks"), '[]') as "tasks"
 		from "api"."projects"
 		left join lateral (
@@ -578,12 +592,12 @@ mod tests {
 				"api"."clients"."id"
 			from "api"."clients"
 			where
-				"api"."clients"."id"= "api"."projects"."client_id"
+				"api"."clients"."id" = "api"."projects"."client_id"
 		) as "projects_clients" on true
 		where
-			"api"."projects"."id">= $3
+			"api"."projects"."id" >= $3
 			and
-			not("api"."projects"."id"< $4)
+			not("api"."projects"."id" < $4)
 		"#,
         " "));
     }
@@ -620,7 +634,7 @@ mod tests {
                     ]
                 }
             ))),
-            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21> $1 and (\"schema\".\"table\".\"name\"> $2 and \"schema\".\"table\".\"name\"< $3)"), vec![SingleVal(s("2")), SingleVal(s("2")), SingleVal(s("5"))], 4))
+            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21 > $1 and (\"schema\".\"table\".\"name\" > $2 and \"schema\".\"table\".\"name\" < $3)"), vec![SingleVal(s("2")), SingleVal(s("2")), SingleVal(s("5"))], 4))
         );
     }
     
@@ -635,7 +649,7 @@ mod tests {
                     negate: false
                 }
             ))),
-            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21> $1"), vec![&SingleVal(s("2"))], 2))
+            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21 > $1"), vec![&SingleVal(s("2"))], 2))
         );
 
         assert_eq!(
@@ -647,7 +661,7 @@ mod tests {
                     negate: true
                 }
             ))),
-            format!("{:?}",(s("not(\"schema\".\"table\".\"name\"= any ($1))"), vec![ListVal(vec![s("5"), s("6")])],2))
+            format!("{:?}",(s("not(\"schema\".\"table\".\"name\" = any ($1))"), vec![ListVal(vec![s("5"), s("6")])],2))
         );
     }
     
@@ -655,7 +669,7 @@ mod tests {
     fn test_fmt_filter(){
         assert_eq!(format!("{:?}",generate(fmt_filter(&Op (s(">"), SingleVal(s("2")))))), format!("{:?}",(&s("> $1"), vec![SingleVal(s("2"))], 2)));
         assert_eq!(format!("{:?}",generate(fmt_filter(&In (ListVal(vec![s("5"), s("6")]))))), format!("{:?}",(&s("= any ($1)"), vec![ListVal(vec![s("5"), s("6")])],2)));
-        assert_eq!(format!("{:?}",generate(fmt_filter(&Fts (s("@@ to_tsquery"), Some(s("eng")), SingleVal(s("2")))))), r#"("@@ to_tsquery ($1,$2)", ["eng", SingleVal("2")], 3)"#.to_string());
+        assert_eq!(format!("{:?}",generate(fmt_filter(&Fts (s("@@ to_tsquery"), Some(SingleVal(s("eng"))), SingleVal(s("2")))))), r#"("@@ to_tsquery ($1,$2)", [SingleVal("eng"), SingleVal("2")], 3)"#.to_string());
         let p :Vec<&(dyn ToSql + Sync)> = vec![];
         assert_eq!(format!("{:?}",generate(fmt_filter(&Col (Qi(s("api"),s("projects")), Field {name: s("id"), json_path: None})))), format!("{:?}",(&s("= \"api\".\"projects\".\"id\""), p, 1)));
     }
