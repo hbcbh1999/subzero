@@ -14,8 +14,11 @@ use std::process::Command;
 use std::path::PathBuf;
 use std::env;
 use demonstrate::demonstrate;
+//use std::time::Instant;
+use async_once::AsyncOnce;
 
 static INIT: Once = Once::new();
+//static SERVER: Once = Once::new();
 use pretty_assertions::{assert_eq};
 
 lazy_static! {
@@ -26,10 +29,17 @@ lazy_static! {
             .select(Profile::from_env_or("SUBZERO_PROFILE", Profile::const_new("debug")))
     };
     // static ref DB_SCHEMA: DbSchema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
+    // static ref SERVER: AsyncOnce<Rocket<Build>> = AsyncOnce::new(async{
+    //   start(&CONFIG).await.unwrap()
+    //   Client::tracked(server().await).await.expect("valid client");
+    // });
+    static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
+      Client::untracked(server().await).await.expect("valid client")
+    });
 }
 
 fn setup() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    //let _ = env_logger::builder().is_test(true).try_init();
     INIT.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -45,7 +55,7 @@ fn setup() {
 
         let db_uri =  String::from_utf8_lossy(&output.stdout);
         env::set_var("SUBZERO_DB_URI", &*db_uri);
-        //env::set_var("SUBZERO_PORT", &"8002");
+        env::set_var("SUBZERO_DB_ANON_ROLE", &"postgrest_test_anonymous");
 
         env::set_var("SUBZERO_DB_SCHEMAS", "[test]");
 
@@ -56,7 +66,7 @@ fn setup() {
         assert!(output.status.success());
 
         lazy_static::initialize(&CONFIG);
-        // lazy_static::initialize(&DB_SCHEMA);
+        lazy_static::initialize(&CLIENT);
     });
 }
 
@@ -141,7 +151,9 @@ macro_rules! haskell_test {
                             it $it {
                                 $(
                                     {
-                                        let client = Client::tracked(server().await).await.expect("valid client");
+                                        //let server: &Rocket<Build> = SERVER.get().await;
+                                        //let client = Client::tracked(server().await).await.expect("valid client");
+                                        let client = CLIENT.get().await;
                                         $(let url = format!("/rest{}",$get1_url);)?
                                         $(let url = format!("/rest{}",$get2_url);)?
                                         println!("url ===\n{:?}\n", url);
@@ -159,7 +171,6 @@ macro_rules! haskell_test {
                                         $(haskell_test!(@status _status_code $status_simple);)?
                                         $($(haskell_test!(@status _status_code $status);)?)?
                                         $($($(haskell_test!(@header _headers $header_name $header_value);)*)?)?
-                                        
                                         
                                         //assert!(false);
                                     }

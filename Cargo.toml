@@ -22,7 +22,8 @@ bytes = "1.1.0"
 futures = "0.3.17"
 deadpool-postgres = "0.10.0"
 figment = { version = "0.10.6", features = ["toml", "env"] }
-ref-cast = "1.0.6"
+jsonwebtoken = "7.2.0"
+jsonpath_lib = "0.3.0"
 
 [patch.crates-io]
 tokio-postgres = { path = "./patched_libs/rust-postgres-subzero/tokio-postgres" }
@@ -39,6 +40,7 @@ criterion = "0.3"
 speculate = "0.1.2"
 demonstrate = "0.4.5"
 regex = "1.4.6"
+async_once = "0.2.1"
 
 [[bench]]
 name = "my_benchmark"

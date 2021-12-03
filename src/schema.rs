@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, };
 use std::collections::HashMap;
 use crate::api::{ForeignKey, Qi, };
 
-#[derive(Debug, PartialEq, Deserialize, Serialize, Clone)]
+#[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct DbSchema {
     #[serde(with = "schemas")]
     pub schemas: HashMap<String, Schema>,
@@ -12,13 +12,13 @@ mod schemas {
 
     use std::collections::HashMap;
 
-    use serde::ser::Serializer;
+    //use serde::ser::Serializer;
     use serde::de::{Deserialize, Deserializer};
-    pub fn serialize<S>(map: &HashMap<String, Schema>, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
-    {
-        serializer.collect_seq(map.values())
-    }
+    // pub fn serialize<S>(map: &HashMap<String, Schema>, serializer: S) -> Result<S::Ok, S::Error>
+    //     where S: Serializer
+    // {
+    //     serializer.collect_seq(map.values())
+    // }
 
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Schema>, D::Error>
@@ -32,24 +32,66 @@ mod schemas {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Clone, Deserialize)]
 pub struct Schema {
     pub name: String,
     #[serde(with = "objects")]
     pub objects: HashMap<String, Object>
 }
+
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub struct Object {
+    pub kind: ObjectType,
+    pub name: String,
+    #[serde(with = "columns")]
+    pub columns: HashMap<String, Column>,
+    #[serde(with = "foreign_keys")]
+    pub foreign_keys: Vec<ForeignKey>,
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub struct ForeignKeyDef {
+    name: String,
+    table: Qi,
+    columns: Vec<String>,
+    referenced_table: Qi,
+    referenced_columns: Vec<String>
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub enum ObjectType { 
+    #[serde(rename = "view")]
+    View,
+
+    #[serde(rename = "table")]
+    Table
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub struct Column {
+    #[serde(default)]
+    pub name: String,
+    pub data_type: String,
+    // #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(default)]
+    pub primary_key: bool,
+}
+
+
+// code for deserialization
+
 mod objects {
     use super::Object;
 
     use std::collections::HashMap;
 
-    use serde::ser::Serializer;
+    //use serde::ser::Serializer;
     use serde::de::{Deserialize, Deserializer};
-    pub fn serialize<S>(map: &HashMap<String, Object>, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
-    {
-        serializer.collect_seq(map.values())
-    }
+    // pub fn serialize<S>(map: &HashMap<String, Object>, serializer: S) -> Result<S::Ok, S::Error>
+    //     where S: Serializer
+    // {
+    //     serializer.collect_seq(map.values())
+    // }
 
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Object>, D::Error>
@@ -63,36 +105,26 @@ mod objects {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
-pub struct Object {
-    pub kind: ObjectType,
-    pub name: String,
-    #[serde(with = "columns")]
-    pub columns: HashMap<String, Column>,
-    #[serde(with = "foreign_keys")]
-    pub foreign_keys: Vec<ForeignKey>,
-}
-
 mod foreign_keys {
     use super::{ForeignKeyDef, ForeignKey};
 
     //use std::collections::HashMap;
 
-    use serde::ser::Serializer;
+    //use serde::ser::Serializer;
     use serde::de::{Deserialize, Deserializer};
-    pub fn serialize<S>(v: &Vec<ForeignKey>, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
-    {
-        serializer.collect_seq(v.iter().map(|f| 
-            ForeignKeyDef {
-                name: f.name.clone(),
-                table: f.table.clone(),
-                columns: f.columns.clone(),
-                referenced_table: f.referenced_table.clone(),
-                referenced_columns: f.referenced_columns.clone(),
-            }
-        ))
-    }
+    // pub fn serialize<S>(v: &Vec<ForeignKey>, serializer: S) -> Result<S::Ok, S::Error>
+    //     where S: Serializer
+    // {
+    //     serializer.collect_seq(v.iter().map(|f| 
+    //         ForeignKeyDef {
+    //             name: f.name.clone(),
+    //             table: f.table.clone(),
+    //             columns: f.columns.clone(),
+    //             referenced_table: f.referenced_table.clone(),
+    //             referenced_columns: f.referenced_columns.clone(),
+    //         }
+    //     ))
+    // }
 
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<ForeignKey>, D::Error>
@@ -117,13 +149,13 @@ mod columns {
 
     use std::collections::HashMap;
 
-    use serde::ser::Serializer;
+    //use serde::ser::Serializer;
     use serde::de::{Deserialize, Deserializer};
-    pub fn serialize<S>(map: &HashMap<String, Column>, serializer: S) -> Result<S::Ok, S::Error>
-        where S: Serializer
-    {
-        serializer.collect_seq(map.values())
-    }
+    // pub fn serialize<S>(map: &HashMap<String, Column>, serializer: S) -> Result<S::Ok, S::Error>
+    //     where S: Serializer
+    // {
+    //     serializer.collect_seq(map.values())
+    // }
 
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Column>, D::Error>
@@ -137,36 +169,9 @@ mod columns {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
-pub struct ForeignKeyDef {
-    name: String,
-    table: Qi,
-    columns: Vec<String>,
-    referenced_table: Qi,
-    referenced_columns: Vec<String>
-}
-
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
-pub enum ObjectType { 
-    #[serde(rename = "view")]
-    View,
-
-    #[serde(rename = "table")]
-    Table
-}
-
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
-pub struct Column {
-    #[serde(default)]
-    pub name: String,
-    pub data_type: String,
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub primary_key: bool,
-}
-
-fn is_default<T: Default + PartialEq>(t: &T) -> bool {
-    t == &T::default()
-}
+// fn is_default<T: Default + PartialEq>(t: &T) -> bool {
+//     t == &T::default()
+// }
 
 
 
@@ -185,7 +190,7 @@ mod tests {
         (k.to_string(), v)
     }
     #[test]
-    fn deserialize(){
+    fn deserialize_db_schema(){
         let db_schema = DbSchema {
             schemas: [
                 ("api", Schema {
@@ -266,10 +271,10 @@ mod tests {
 
         assert_eq!(deserialized, db_schema);
         
-        let serialized_result = serde_json::to_string(&db_schema);
-        println!("serialized_result = {:?}", serialized_result);
-        let serialized = serialized_result.unwrap_or(s("failed to serialize"));
-        assert_eq!(serde_json::from_str::<serde_json::Value>(serialized.as_str()).unwrap(), serde_json::from_str::<serde_json::Value>(json_schema).unwrap());
+        // let serialized_result = serde_json::to_string(&db_schema);
+        // println!("serialized_result = {:?}", serialized_result);
+        // let serialized = serialized_result.unwrap_or(s("failed to serialize"));
+        // assert_eq!(serde_json::from_str::<serde_json::Value>(serialized.as_str()).unwrap(), serde_json::from_str::<serde_json::Value>(json_schema).unwrap());
     }
 
     // #[test]

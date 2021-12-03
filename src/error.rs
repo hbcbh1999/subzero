@@ -77,11 +77,15 @@ pub enum Error {
     #[snafu(display("DbError {}", source))]
     DbError { source: PgError },
 
+    #[snafu(display("JwtTokenInvalid {}", message))]
+    JwtTokenInvalid { message: String }
+
 }
 
 impl Error {
     fn status_code(&self) -> u16 {
         match self {
+            Error::JwtTokenInvalid { .. } => 401,
             Error::ActionInappropriate => 405,
             Error::InvalidRange => 416,
             Error::InvalidBody {..} => 400,

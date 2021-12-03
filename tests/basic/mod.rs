@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::env;
 extern crate speculate;
 use demonstrate::demonstrate;
-
+use async_once::AsyncOnce;
 static INIT: Once = Once::new();
 
 lazy_static! {
@@ -23,6 +23,9 @@ lazy_static! {
             .select(Profile::from_env_or("SUBZERO_PROFILE", Profile::const_new("debug")))
     };
     // static ref DB_SCHEMA: DbSchema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
+    static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
+        Client::untracked(server().await).await.expect("valid client")
+      });
 }
 
 fn setup() {
@@ -34,7 +37,7 @@ fn setup() {
         let tmp_pg_cmd = project_dir.join("tests/bin/pg_tmp.sh");
         let init_file = project_dir.join("tests/basic/fixtures/init.sql");
 
-        let output = Command::new(tmp_pg_cmd).arg("-t").output().expect("failed to start temporary pg process");
+        let output = Command::new(tmp_pg_cmd).arg("-t").arg("-u").arg("anonymous").output().expect("failed to start temporary pg process");
         println!("status: {}", output.status);
         println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
         println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
@@ -42,6 +45,7 @@ fn setup() {
 
         let db_uri =  String::from_utf8_lossy(&output.stdout);
         env::set_var("SUBZERO_DB_URI", &*db_uri);
+        env::set_var("SUBZERO_DB_ANON_ROLE", &"anonymous");
         //env::set_var("SUBZERO_PORT", &"8001");
 
         let output = Command::new("psql").arg("-f").arg(init_file.to_str().unwrap()).arg(db_uri.into_owned()).output().expect("failed to execute process");
@@ -51,6 +55,7 @@ fn setup() {
         assert!(output.status.success());
 
         lazy_static::initialize(&CONFIG);
+        lazy_static::initialize(&CLIENT);
         //println!("{:?}", *CONFIG);
 
         // lazy_static::initialize(&DB_SCHEMA);
@@ -94,24 +99,28 @@ demonstrate! {
         use super::*;
         before {
             setup();
-            let client = Client::tracked(server().await).await.expect("valid client");
+            //let client = Client::tracked(server().await).await.expect("valid client");
+            
         }
         it "hello world" {
+            let client = CLIENT.get().await;
             let response = client.get("/").dispatch().await;
             assert_eq!(response.status(), Status::Ok);
             assert_eq!(response.into_string().await.unwrap(), "Hello, world!");
         }
     
         it "simple get" {
+            let client = CLIENT.get().await;
             let response = client.get("/rest/projects?select=id,name&id=gt.1&name=eq.IOS").dispatch().await;
             assert_eq!(response.status(), Status::Ok);
             assert_eq!(response.into_string().await.unwrap(), r#"[{"id":3,"name":"IOS"}]"#);
         }
     
         it "simple get two" {
+            let client = CLIENT.get().await;
             let response = client.get("/rest/projects?select=id&id=gt.1&name=eq.IOS").dispatch().await;
             assert_eq!(response.status(), Status::Ok);
-            println!("{:?}", response);
+            //println!("{:?}", response);
             assert_eq!(response.into_string().await.unwrap(), r#"[{"id":3}]"#);
             
             //assert!(false);

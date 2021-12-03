@@ -113,7 +113,7 @@ where Input: Stream<Token = char>
     lex(choice(( 
         quoted_value(), 
         sep_by1(
-            many1::<String, _, _>(choice((letter(),digit(),one_of("_ ".chars())))),
+            many1::<String, _, _>(choice((letter(),digit(),one_of("_ ".chars())))).map(|s| s.trim().to_owned()),
             dash
         ).map(|words: Vec<String>| words.join("-"))
     )))
@@ -1430,8 +1430,8 @@ pub mod tests {
                 ("select", "id-,na$me")
             ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
             Err(AppError::ParseRequestError{
-                message: s("failed to parse select parameter (id-,na$me) (line 1, column 3)"),
-                details: s("Unexpected `,` Expected `letter`, `digit` or `_`")
+                message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
+                details: s("Unexpected `,` Expected `letter`, `digit`, `_` or ` `")
             }).map_err(|e| format!("{}",e))
         );
     }
@@ -1509,12 +1509,12 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
                 ("select", "id"),
                 ("id","gt.10"),
-                ("columns","id,1 name"),
+                ("columns","id,1$name"),
             ], Some(&s(r#"{"id":10, "name":"john", "phone":"123"}"#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
             ,
             Err(AppError::ParseRequestError {
-                message: s("Failed to parse columns parameter (id,1 name)"),
-                details: s("Parse error at 5\nUnexpected `n`\nExpected `,`, `whitespaces` or `end of input`\nfailed to parse columns parameter\n"),
+                message: s("\"failed to parse columns parameter (id,1$name)\" (line 1, column 5)"),
+                details: s("Unexpected `$` Expected `,`, `whitespaces` or `end of input`"),
             }).map_err(|e| format!("{}",e))
         );
 
@@ -1524,9 +1524,8 @@ pub mod tests {
                 ("id","gt.10"),
             ], Some(&s(r#"{"id":10, "name""#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
             ,
-            Err(AppError::ParseRequestError {
-                message: s("Failed to parse json body"),
-                details: s(""),
+            Err(AppError::InvalidBody {
+                message: s("Failed to parse json body EOF while parsing an object at line 1 column 16")
             }).map_err(|e| format!("{}",e))
         );
 
@@ -1536,9 +1535,8 @@ pub mod tests {
                 ("id","gt.10"),
             ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
             ,
-            Err(AppError::ParseRequestError {
-                message: s("Failed to parse json body"),
-                details: s("All object keys must match"),
+            Err(AppError::InvalidBody {
+                message: s("All object keys must match"),
             }).map_err(|e| format!("{}",e))
         );
 
@@ -1556,8 +1554,8 @@ pub mod tests {
                 ("select", "id-,na$me")
             ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
             Err(AppError::ParseRequestError{
-                message: s("Failed to parse select parameter (id-,na$me)"),
-                details: s("Parse error at 3\nUnexpected `,`\nExpected `letter`, `digit` or `_`\nfailed to parse select parameter\n")
+                message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
+                details: s("Unexpected `,` Expected `letter`, `digit`, `_` or ` `")
             }).map_err(|e| format!("{}",e))
         );
 
@@ -1986,7 +1984,7 @@ pub mod tests {
 
     #[test]
     fn parse_field_name() {
-        assert_eq!(field_name().easy_parse("field rest"), Ok((s("field"),"rest")));
+        assert_eq!(field_name().easy_parse("field with space "), Ok((s("field with space"),"")));
         assert_eq!(field_name().easy_parse("field12"), Ok((s("field12"),"")));
         assert_ne!(field_name().easy_parse("field,invalid"), Ok((s("field,invalid"),"")));
         assert_eq!(field_name().easy_parse("field-name"), Ok((s("field-name"),"")));
@@ -2023,7 +2021,11 @@ pub mod tests {
             errors: vec![
                 Error::Unexpected('#'.into()),
                 Error::Expected("whitespace".into()),
-                Error::Expected("field name (* or [a..z0..9_])".into())
+                Error::Expected('"'.into()),
+                Error::Expected("letter".into()),
+                Error::Expected("digit".into()),
+                Error::Expected('_'.into()),
+                Error::Expected(' '.into()),
             ]
         }));
 
@@ -2032,19 +2034,23 @@ pub mod tests {
             errors: vec![
                 Error::Unexpected("end of input".into()),
                 Error::Expected("whitespace".into()),
-                Error::Expected("field name (* or [a..z0..9_])".into())
+                Error::Expected('"'.into()),
+                Error::Expected("letter".into()),
+                Error::Expected("digit".into()),
+                Error::Expected('_'.into()),
+                Error::Expected(' '.into()),
             ]
         }));
 
-        assert_eq!(columns().easy_parse(position::Stream::new("col1, col2 col3")), Err(Errors {
-            position: SourcePosition { line: 1, column: 12 },
-            errors: vec![
-                Error::Unexpected('c'.into()),
-                Error::Expected(','.into()),
-                Error::Expected("whitespaces".into()),
-                Error::Expected("end of input".into())
-            ]
-        }));
+        // assert_eq!(columns().easy_parse(position::Stream::new("col1, col2 col3")), Err(Errors {
+        //     position: SourcePosition { line: 1, column: 12 },
+        //     errors: vec![
+        //         Error::Unexpected('c'.into()),
+        //         Error::Expected(','.into()),
+        //         Error::Expected("whitespaces".into()),
+        //         Error::Expected("end of input".into())
+        //     ]
+        // }));
     }
 
     #[test]

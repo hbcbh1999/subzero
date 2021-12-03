@@ -33,6 +33,10 @@ use subzero::error::*;
 use subzero::config::{Config,  SchemaStructure::*};
 // use ref_cast::RefCast;
 use rocket::http::{Header, ContentType};
+use jsonwebtoken::errors::ErrorKind;
+use jsonwebtoken::{decode, DecodingKey, Validation};
+use serde_json::{Value as JsonValue};
+use jsonpath_lib::select;
 
 
 pub struct Headers<'r>(&'r rocket::http::HeaderMap<'r>);
@@ -81,11 +85,23 @@ impl<'r> std::ops::Deref for Headers<'r> {
 	}
 }
 
-fn get_postgrest_env(search_path: &Vec<String>, request: &ApiRequest) -> HashMap<String, String>{
+fn get_postgrest_env(role: &String, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>) -> HashMap<String, String>{
     let mut env = HashMap::new();
+    env.insert("role".to_string(), role.clone());
     env.insert("search_path".to_string(), search_path.join(", ").to_string());
     env.extend(request.headers.iter().map(|(k,v)| (format!("pgrst.header.{}",k),v.to_string())));
     env.extend(request.cookies.iter().map(|(k,v)| (format!("pgrst.cookie.{}",k),v.to_string())));
+    match jwt_claims {
+        Some(v) => {
+            match v.as_object() {
+                Some(claims) => {
+                    env.extend(claims.iter().map(|(k,v)| (format!("pgrst.jwt.claim.{}",k),v.to_string())));
+                }
+                None => {}
+            }
+        }
+        None => {}
+    }
     env
 }
 
@@ -103,6 +119,7 @@ struct ApiResponse {
 }
 
 async fn handle_postgrest_request(
+    config: &Config,
     schema_name: &String,
     root: &String,
     method: &Method,
@@ -114,10 +131,50 @@ async fn handle_postgrest_request(
     headers: HashMap<&str, &str>,
     cookies: HashMap<&str, &str>,
 ) -> Result<ApiResponse> {
-    //let schema_name = config.db_schema.clone();
+    // handle jwt
+    let jwt_claims = match &config.jwt_secret {
+        Some(key) => {
+            let token = match headers.get("Authorization"){
+                Some(&a) => {
+                    let token_str:Vec<&str> = a.split(' ').collect();
+                    match token_str[..] {
+                        ["Bearer", t] => t,
+                        ["bearer", t] => t,
+                        _ => ""
+                    }
+                }
+                None => ""
+            };
+            let validation = Validation::default();
+            
+            match decode::<JsonValue>(token, &DecodingKey::from_secret(key.as_bytes()), &validation){
+                Ok(c) => Ok(Some(c.claims)),
+                Err(err) => match *err.kind() {
+                    ErrorKind::InvalidToken => Err(Error::JwtTokenInvalid {message: format!("{}", err)}),
+                    //ErrorKind::InvalidIssuer => panic!("Issuer is invalid"), // Example on how to handle a specific error
+                    _ => Err(Error::JwtTokenInvalid {message: format!("{}", err)}),
+                }
+            }
+        }
+        None => Ok(None)
+    }?;
+
+    let role = match &jwt_claims {
+        Some(claims) => {
+            match select(&claims, format!("${}", config.role_claim_key).as_str()) {
+                Ok(v) => match &v[..] {
+                    [JsonValue::String(s)] => Ok(s),
+                    _ => Err(Error::JwtTokenInvalid { message: format!("failed to extract role claim ({})", config.role_claim_key)})
+                }
+                Err(e) => Err(Error::JwtTokenInvalid { message: format!("{}", e)})
+            }
+        }
+        None => Ok(&config.db_anon_role)
+    }?;
+    
     let request = parse(schema_name, root, db_schema, method, parameters, body, headers, cookies)?;
     let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request.query));
-    let env = get_postgrest_env(&vec![schema_name.clone()], &request);
+    let env = get_postgrest_env(role, &vec![schema_name.clone()], &request, &jwt_claims);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
     let mut client = pool.get().await.context(DbPoolError)?;
 
@@ -195,7 +252,7 @@ async fn get<'a>(
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
     
-    Ok(handle_postgrest_request(&schema_name, &root, &Method::GET, parameters, db_schema, pool, None, headers, cookies).await?)
+    Ok(handle_postgrest_request(&config, &schema_name, &root, &Method::GET, parameters, db_schema, pool, None, headers, cookies).await?)
 }
 
 #[post("/<root>?<parameters..>", data = "<body>")]
@@ -218,7 +275,7 @@ async fn post<'a>(
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&schema_name, &root, &Method::POST, parameters, db_schema, pool, Some(&body), headers, cookies).await?)
+    Ok(handle_postgrest_request(&config, &schema_name, &root, &Method::POST, parameters, db_schema, pool, Some(&body), headers, cookies).await?)
 }
 
 pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
