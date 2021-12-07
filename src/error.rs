@@ -8,7 +8,7 @@ use std::io::Cursor;
 
 use rocket::request::Request;
 use rocket::response::{self, Response, Responder};
-use rocket::http::{ContentType,Status};
+use rocket::http::{Status};
 use std::{io, path::PathBuf};
 use deadpool_postgres::PoolError;
 use tokio_postgres::Error as PgError;
@@ -20,11 +20,15 @@ impl<'r> Responder<'r, 'static> for Error {
     fn respond_to(self, _: &'r Request<'_>) -> response::Result<'static> {
         let status = Status::from_code(self.status_code()).unwrap();
         let body = self.json_body().to_string();
-        Response::build()
-            .header(ContentType::JSON)
-            .sized_body(body.len(), Cursor::new(body))
-            .status(status)
-            .ok()
+        let mut response = Response::build();
+        response.status(status);
+        response.sized_body(body.len(), Cursor::new(body));
+        
+        for (h,v) in self.headers() {
+            response.raw_header(h,v);
+        }
+
+        response.ok()
     }
 }
 
@@ -59,6 +63,9 @@ pub enum Error {
     #[snafu(display("UnknownRelation {}", relation))]
     UnknownRelation {relation: String},
 
+    #[snafu(display("NotFound"))]
+    NotFound,
+
     #[snafu(display("UnsupportedVerb"))]
     UnsupportedVerb,
 
@@ -83,6 +90,16 @@ pub enum Error {
 }
 
 impl Error {
+    fn headers(&self) -> Vec<(String, String)> {
+        match self {
+            Error::DbError { .. } => match self.status_code() {
+                401 => vec![("Content-Type".into(), "application/json".into()),("WWW-Authenticate".into(), "Bearer".into())],
+                _ =>  vec![("Content-Type".into(), "application/json".into())]
+            },
+            _ => vec![("Content-Type".into(), "application/json".into())]
+        }
+    }
+
     fn status_code(&self) -> u16 {
         match self {
             Error::JwtTokenInvalid { .. } => 401,
@@ -95,6 +112,7 @@ impl Error {
             Error::InvalidFilters => 405,
             Error::UnacceptableSchema {..} => 406,
             Error::UnknownRelation {..}  => 400,
+            Error::NotFound => 404,
             Error::UnsupportedVerb {..} => 405,
             Error::ReadFile  { .. }  => 500,
             Error::JsonDeserialize  { .. }  => 400,
@@ -162,6 +180,7 @@ impl Error {
             Error::InvalidFilters => json!({"message":"Filters must include all and only primary key columns with 'eq' operators"}),
             // Error::UnacceptableSchema {..} => 406,
             // Error::UnknownRelation {..}  => 400,
+            Error::NotFound => json!({}),
             Error::UnsupportedVerb => json!({"message":"Unsupported HTTP verb"}),
             // Error::ReadFile  { .. }  => 500,
             // Error::JsonDeserialize  { .. }  => 400,
@@ -169,14 +188,14 @@ impl Error {
             Error::DbError { source }  => match source.as_db_error() {
                 Some(db_err) => match db_err.code().code().chars().collect::<Vec<char>>()[..] {
                     ['P','T',..] => json!({
-                        "details": db_err.detail().unwrap_or("..."),
-                        "hints": db_err.hint().unwrap_or("...")
+                        "details": match db_err.detail() {Some(v) => v.into(), None => JsonValue::Null},
+                        "hint": match db_err.hint() {Some(v) => v.into(), None => JsonValue::Null}
                     }),
                     _         => json!({
                         "code": db_err.code().code(),
                         "message": db_err.message(),
-                        "details": db_err.detail().unwrap_or("..."),
-                        "hints": db_err.hint().unwrap_or("...")
+                        "details": match db_err.detail() {Some(v) => v.into(), None => JsonValue::Null},
+                        "hint": match db_err.hint() {Some(v) => v.into(), None => JsonValue::Null}
                     })
                 },
                 None => json!({"message": format!("Unhandled db error {}", source)})

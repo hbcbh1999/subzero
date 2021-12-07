@@ -91,6 +91,12 @@ lazy_static!{
         ,("wfts", "@@ websearch_to_tsquery")
 
     ].iter().copied().collect();
+
+    static ref OPERATORS_START: Vec<String> = {
+        OPERATORS.keys().chain(["not","in"].iter()).chain(FTS_OPERATORS.keys()).map(|&op| format!("{}.", op) )
+        .chain(FTS_OPERATORS.keys().map(|&op| format!("{}(", op) ))
+        .collect()
+    };
 }
 
 fn lex<Input, P>(p: P) -> impl Parser<Input, Output = P::Output>
@@ -526,6 +532,10 @@ fn is_logical(s: &str)->bool{ s == "and" || s == "or" || s.ends_with(".or") || s
 fn is_limit(s: &str)->bool{ s == "limit" || s.ends_with(".limit") }
 fn is_offset(s: &str)->bool{ s == "offset" || s.ends_with(".offset") }
 fn is_order(s: &str)->bool{ s == "order" || s.ends_with(".order") }
+fn has_operator(s: &str)->bool {
+    OPERATORS_START.iter().map(|op| s.starts_with(op) )
+    .any(|b| b)
+}
 
 fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
     move |mut e| {
@@ -565,13 +575,21 @@ pub fn parse<'r>(
     cookies: HashMap<&'r str, &'r str>,
 ) -> Result<ApiRequest<'r>> {
 
+    let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {schemas: vec![schema.to_owned()]})?;
+    // println!("--------------looking for {} {}->{}.{:?}", current_schema, origin, target, hint);
+    // println!("--------------got schema");
+    let root_obj = schema_obj.objects.get(root).context(NotFound)?;
+
+    //println!("root_obj {:#?}", root_obj);
     let mut select_items = vec![SelectItem::Star];
     let mut limits = vec![];
     let mut offsets = vec![];
     let mut orders = vec![];
     let mut conditions = vec![];
     let mut columns_ = None;
+    let mut fn_parameters = vec![];
 
+    // iterate over parameters, parse and collect them in the relevant vectors
     for (k,v) in parameters.into_iter() {
         match k {
             "select" => {
@@ -631,19 +649,38 @@ pub fn parse<'r>(
                 orders.push((tp, parsed_value));
             }
 
-            //is filter
+            //is filter or function parameter
             _ => {
                 let ((tp,field), _)= tree_path()
                     .message("failed to parser filter tree path")
                     .easy_parse(k).map_err(to_app_error(k))?;
-                let ((negate,filter), _) = negatable_filter()
-                    .message("failed to parse filter")
-                    .easy_parse(v).map_err(to_app_error(v))?;
-                //println!("----------------{:?} {:?} {:?}", tp, field, filter);
-                conditions.push((tp, Condition::Single {field, filter, negate}));
+
+                match root_obj.kind {
+                    ObjectType::Function {..} => {
+                        if tp.len() > 0 || has_operator(v) {
+                            // this is a filter
+                            let ((negate,filter), _) = negatable_filter()
+                                .message("failed to parse filter")
+                                .easy_parse(v).map_err(to_app_error(v))?;
+                            conditions.push((tp, Condition::Single {field, filter, negate}));
+                        }
+                        else {
+                            //this is a function parameter
+                            fn_parameters.push((k,v));
+                        }
+                    }
+                    _ => {
+                        let ((negate,filter), _) = negatable_filter()
+                        .message("failed to parse filter")
+                        .easy_parse(v).map_err(to_app_error(v))?;
+                        conditions.push((tp, Condition::Single {field, filter, negate}));
+
+                    }
+                };
             }
         }
     }
+
     let mut query = match *method {
         Method::GET => {
             let mut q = Select {
@@ -760,6 +797,7 @@ pub fn parse<'r>(
         let limit = match q {
             Select {limit, ..} => limit,
             Insert {..} => todo!(),
+            FunctionCall { .. } => todo!(),
         };
         for v in p {
             std::mem::swap(limit, &mut Some(v));
@@ -770,6 +808,7 @@ pub fn parse<'r>(
         let offset = match q {
             Select {offset, ..} => offset,
             Insert {..} => todo!(),
+            FunctionCall { .. } => todo!(),
         };
         for v in p {
             std::mem::swap(offset, &mut Some(v));
@@ -780,6 +819,7 @@ pub fn parse<'r>(
         let order = match q {
             Select {order, ..} => order,
             Insert {..} => todo!(),
+            FunctionCall { .. } => todo!(),
         };
         for mut o in p {
             std::mem::swap(order, &mut o);
@@ -983,6 +1023,7 @@ fn add_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema
     let (select, parent_table, parent_alias) : (&mut Vec<SelectItem>, &String, &String) = match query {
         Select {select, from, ..} => (select.as_mut(), from.get(0).unwrap(), from.get(0).unwrap()),
         Insert {select, into, ..} => (select.as_mut(), into, subzero_source),
+        FunctionCall { .. } => todo!(),
     };
     
     for s in select.iter_mut() {
@@ -1071,6 +1112,7 @@ fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>,
     let select = match query {
         Select {select,..} => select,
         Insert {select,..} => select,
+        FunctionCall { .. } => todo!(),
     };
 
     for s in select.iter_mut() {
@@ -1101,6 +1143,7 @@ fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)
         let query_conditions: &mut Vec<Condition> = match q {
             Select {where_, ..} => where_.conditions.as_mut(),
             Insert {where_, ..} => where_.conditions.as_mut(),
+            FunctionCall { .. } => todo!(),
         };
         p.into_iter().for_each(|c| query_conditions.push(c));
     });

@@ -278,6 +278,53 @@ async fn post<'a>(
     Ok(handle_postgrest_request(&config, &schema_name, &root, &Method::POST, parameters, db_schema, pool, Some(&body), headers, cookies).await?)
 }
 
+
+#[get("/rpc/<root>?<parameters..>")]
+async fn rpc_get<'a>(
+        root: String,
+        parameters: QueryStringParameters<'a>,
+        db_schema: &State<DbSchema>,
+        config: &State<Config>,
+        pool: &State<Pool>,
+        cookies: &CookieJar<'_>,
+        headers: Headers<'_>,
+) -> Result<ApiResponse> {
+    let schema_name = config.db_schemas.get(0).unwrap();
+    let parameters = parameters.0;
+    let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
+    let headers = headers.iter()
+        .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
+        .collect::<HashMap<_,_>>();
+    let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
+        .collect::<HashMap<_,_>>();
+    
+    Ok(handle_postgrest_request(&config, &schema_name, &root, &Method::GET, parameters, db_schema, pool, None, headers, cookies).await?)
+}
+
+#[post("/rpc/<root>?<parameters..>", data = "<body>")]
+async fn rpc_post<'a>(
+        root: String,
+        parameters: QueryStringParameters<'a>,
+        db_schema: &State<DbSchema>,
+        config: &State<Config>,
+        pool: &State<Pool>,
+        body: String,
+        cookies: &CookieJar<'_>,
+        headers: Headers<'_>,
+) -> Result<ApiResponse> {
+    let schema_name = config.db_schemas.get(0).unwrap();
+    let parameters = parameters.0;
+    
+    let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
+    let headers = headers.iter()
+        .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
+        .collect::<HashMap<_,_>>();
+    let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
+        .collect::<HashMap<_,_>>();
+    Ok(handle_postgrest_request(&config, &schema_name, &root, &Method::POST, parameters, db_schema, pool, Some(&body), headers, cookies).await?)
+}
+
+
 pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
     let app_config:Config = config.extract().expect("config");
 
@@ -339,7 +386,7 @@ pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
         .manage(app_config)
         .manage(pool)
         .mount("/", routes![index, test])
-        .mount("/rest", routes![get,post]))
+        .mount("/rest", routes![get,post,rpc_get,rpc_post]))
 }
 
 #[launch]
@@ -365,5 +412,5 @@ extern crate lazy_static;
 mod basic;
 
 #[cfg(test)]
-#[path = "../tests/postgrest/mod.rs"]
-mod postgrestinegration;
+#[path = "../tests/postgrest/core.rs"]
+mod postgrest_core;

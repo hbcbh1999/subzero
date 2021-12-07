@@ -167,6 +167,77 @@ schemas as (
       n.nspname = any ($1)
 ),
 
+functions as (
+  with
+  base_types as (
+    with recursive
+    recurse as (
+      select
+        oid,
+        typbasetype,
+        coalesce(nullif(typbasetype, 0), oid) as base
+      from pg_type
+      union
+      select
+        t.oid,
+        b.typbasetype,
+        coalesce(nullif(b.typbasetype, 0), b.oid) as base
+      from recurse t
+      join pg_type b on t.typbasetype = b.oid
+    )
+    select
+      oid,
+      base
+    from recurse
+    where typbasetype = 0
+  ),
+  arguments as (
+    select
+      oid,
+      json_agg(
+        json_build_object(
+          'name', coalesce(name, ''),
+          'type', type::regtype::text,
+          'required', idx <= (pronargs - pronargdefaults),
+          'variadic', coalesce(mode = 'v', false)
+        )
+        order by idx <= (pronargs - pronargdefaults)
+      ) as args
+    from pg_proc,
+         unnest(proargnames, proargtypes, proargmodes)
+           with ordinality as _ (name, type, mode, idx)
+    where type is not null -- only input arguments
+    group by oid
+  )
+  select
+    pn.oid as function_schema_oid,
+    pn.nspname as function_schema,
+    p.proname as function_name,
+    --d.description as proc_description,
+    coalesce(a.args, '[]') as parameters,
+    tn.nspname as return_type_schema,
+    coalesce(comp.relname, t.typname) as return_type,
+    comp.oid as return_type_oid,
+    p.proretset as setof,
+    (t.typtype = 'c'
+     -- if any table, inout or out arguments present, treat as composite
+     or coalesce(proargmodes::text[] && '{t,b,o}', false)
+    ) as composite,
+    p.provolatile as volatile,
+    p.provariadic > 0 as variadic
+  from pg_proc p
+  left join arguments a on a.oid = p.oid
+  join pg_namespace pn on pn.oid = p.pronamespace
+  join base_types bt on bt.oid = p.prorettype
+  join pg_type t on t.oid = bt.base
+  join pg_namespace tn on tn.oid = t.typnamespace
+  left join pg_class comp on comp.oid = t.typrelid
+  left join pg_catalog.pg_description as d on d.objoid = p.oid
+  
+  where pn.nspname = any ($1)
+  order by function_schema, function_name
+),
+
 -- This includes views
 tables as (
     select
@@ -424,37 +495,39 @@ relations as (
     select * from table_view_relations
     union all
     select * from view_view_relations
-)
+),
 
-select 
-    json_build_object (
-        'schemas', coalesce(schemas_agg.array_agg, array[]::record[])
-    )::text
-from
+json_schema as (
+  select 
+      json_build_object (
+          'schemas', coalesce(schemas_agg.array_agg, array[]::record[])
+      )::text as json_schema
+  from
     (
         select 
         array_agg(schemas_res)
         from (
             select 
                 s.schema_name as name,
-                coalesce((select json_agg(objects.*) from (
-                    select
-                        t.table_name as name,
-                        case t.relkind
+                coalesce((select json_agg(objects.v) from (
+                    select json_build_object(
+
+                        'name', t.table_name,
+                        'kind', case t.relkind
                             when 'r' then 'table'
                             when 'v' then 'view'
                             when 'm' then 'view'
                             else 'table'
-                        end as kind,
-                        coalesce((select json_agg(columns.*) from (
+                        end,
+                        'columns', coalesce((select json_agg(columns.*) from (
                             select
                                 c.col_name as name,
                                 c.col_is_primary_key as primary_key,
                                 c.col_type as data_type
                             from columns c
                             where c.col_table_oid= t.table_oid
-                        ) as columns), '[]') as columns,
-                        coalesce((select json_agg(foreign_keys.*) from (
+                        ) as columns), '[]'),
+                        'foreign_keys', coalesce((select json_agg(foreign_keys.*) from (
                             select
                                 r.constraint_name as name,
                                 array[r.table_schema, r.table_name] as "table",
@@ -466,10 +539,52 @@ from
                             r.table_oid= t.table_oid
                             and r.table_schema = any($1)
                             and r.foreign_table_schema = any($1)
-                        ) as foreign_keys), '[]') as foreign_keys
+                        ) as foreign_keys), '[]')
+                    ) as v
                     from tables t
-                    where t.schema_oid= s.schema_oid
+                    where t.schema_oid = s.schema_oid
+
+                    union all
+
+                    select json_build_object(
+                        'name', f.function_name,
+                        'kind', 'function',
+                        'parameters', f.parameters,
+                        'return_type_schema', f.return_type_schema,
+                        'return_type', f.return_type,
+                        'setof', f.setof,
+                        'composite', f.composite,
+                        'volatile', f.volatile,
+                        'variadic', f.variadic,
+                        -- 'columns', coalesce((select json_agg(columns.*) from (
+                        --     select
+                        --         c.col_name as name,
+                        --         c.col_is_primary_key as primary_key,
+                        --         c.col_type as data_type
+                        --     from columns c
+                        --     where c.col_table_oid= t.table_oid
+                        -- ) as columns), '[]'),
+                        'foreign_keys', coalesce((select json_agg(foreign_keys.*) from (
+                            select
+                                r.constraint_name as name,
+                                array[r.table_schema, r.table_name] as "table",
+                                r.columns,
+                                array[r.foreign_table_schema, r.foreign_table_name] as referenced_table,
+                                r.foreign_columns as referenced_columns
+                            from relations r
+                            where 
+                            r.table_oid= f.return_type_oid
+                            and r.table_schema = any($1)
+                            and r.foreign_table_schema = any($1)
+                        ) as foreign_keys), '[]')
+                    ) as v
+                    from functions f
+                    where f.function_schema_oid = s.schema_oid
+                    --and f.return_type_schema != 'pg_catalog'
                 ) as objects), '[]') as objects
             from schemas s
         ) schemas_res
     ) schemas_agg
+)
+
+select json_schema from json_schema

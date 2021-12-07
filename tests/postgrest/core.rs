@@ -2,11 +2,8 @@
 use super::*; //super in
 use serde_json::Value;
 
-use rocket::{Rocket, Build, Config as RocketConfig};
-//use rocket::http::{Accept};
-//use std::str::FromStr;
+use rocket::{Config as RocketConfig};
 use rocket::local::asynchronous::Client;
-// use rocket::http::Status;
 use figment::{Figment, Profile, };
 use figment::providers::{Env, Toml, Format};
 use std::sync::Once;
@@ -14,11 +11,9 @@ use std::process::Command;
 use std::path::PathBuf;
 use std::env;
 use demonstrate::demonstrate;
-//use std::time::Instant;
 use async_once::AsyncOnce;
 
 static INIT: Once = Once::new();
-//static SERVER: Once = Once::new();
 use pretty_assertions::{assert_eq};
 
 lazy_static! {
@@ -28,13 +23,8 @@ lazy_static! {
             .merge(Env::prefixed("SUBZERO_").ignore(&["PROFILE"]).global())
             .select(Profile::from_env_or("SUBZERO_PROFILE", Profile::const_new("debug")))
     };
-    // static ref DB_SCHEMA: DbSchema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
-    // static ref SERVER: AsyncOnce<Rocket<Build>> = AsyncOnce::new(async{
-    //   start(&CONFIG).await.unwrap()
-    //   Client::tracked(server().await).await.expect("valid client");
-    // });
     static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
-      Client::untracked(server().await).await.expect("valid client")
+      Client::untracked(start(&CONFIG).await.unwrap()).await.expect("valid client")
     });
 }
 
@@ -70,12 +60,6 @@ fn setup() {
     });
 }
 
-async fn server() -> Rocket<Build> {
-    //let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
-    //let db_schemas:Vec<String> = CONFIG.extract_inner("db_schemas").unwrap();
-    //print!("{:#?} {:?}", *CONFIG, db_schemas);
-    start(&CONFIG).await.unwrap()
-}
 
 macro_rules! haskell_test {
     (@status $status_code:ident $status:literal) => {
@@ -108,86 +92,258 @@ macro_rules! haskell_test {
         self::assert_eq!(body.as_str(),$text);
     };
     (
-        spec actualPgVersion = do
+        $(feature $feature:literal
         $(
             describe $describe:literal $dollar1:tt $(do)?
             $( 
                 it $it:literal $dollar2:tt $(do)?
                 $(
                     //request methodGet "/images?name=eq.A.png" (acceptHdrs "application/octet-stream") ""
+                    $(let $token_var:ident = $(authHeaderJWT)? $jwt_token:literal $(in)?)?
+                    
                     $(get $get1_url:literal)?
-                    $(request methodGet $get2_url:literal)?
+                   
+                    $(request methodGet $get2_url:literal $([$header:ident])? $($get2_body:literal)?)?
                     $(
                         (acceptHdrs $accept_header:literal) ""
                     )?
+
+                    $(post $post_url:literal [json|$json_body:literal|])?
+
+                    $(request methodPost $post2_url:literal [$post_header:ident] $([json|$json2_body:literal|])? $($json22_body:literal)?)?
+
                     shouldRespondWith
                     $($status_simple:literal)?
                     $([json|$json:literal|])?
                     $([text|$text:literal|])?
                     $({
-                        
                             $(matchStatus = $status:literal)?
                             $($(,)? matchHeaders = [
                                 $($header_name:literal <:> $header_value:literal),*
                             ])?
-                        
                     })?
                 )*
             )*
-            
+        )*
         )*
     ) => {
         demonstrate! {
+            $(
             #[rocket::async_test]
-            async describe "postgrest" {
+            async describe $feature {
                 use super::*;
                 before {
                     setup();
-                    //let client = Client::tracked(server().await).await.expect("valid client");
                 }
-                $(
-                    describe $describe {
-                        $(
-                            it $it {
-                                $(
-                                    {
-                                        //let server: &Rocket<Build> = SERVER.get().await;
-                                        //let client = Client::tracked(server().await).await.expect("valid client");
-                                        let client = CLIENT.get().await;
-                                        $(let url = format!("/rest{}",$get1_url);)?
-                                        $(let url = format!("/rest{}",$get2_url);)?
-                                        println!("url ===\n{:?}\n", url);
-                                        let request = client.get(url.replace(" ", "%20"));
-                                        $(
-                                        request.add_header(Accept::from_str($accept_header).unwrap());
-                                        )?
-                                        //println!("request ===\n{:?}\n", request);
-                                        let response = request.dispatch().await;
-                                        let _status_code = response.status().code;
-                                        let _headers = response.headers().iter().map(|h| (h.name().to_string(), h.value().to_string())).collect::<HashMap<_,_>>();
-                                        //println!("response ===\n{:?}\n", response);
-                                        $(haskell_test!(@body_json response $json);)?
-                                        $(haskell_test!(@body_text response $text);)?
-                                        $(haskell_test!(@status _status_code $status_simple);)?
-                                        $($(haskell_test!(@status _status_code $status);)?)?
-                                        $($($(haskell_test!(@header _headers $header_name $header_value);)*)?)?
-                                        
-                                        //assert!(false);
-                                    }
-                                )?
-                            }
-                        )*
-                    }
-                )*
+                  $(
+                      describe $describe {
+                          $(
+                              it $it {
+                                  $(
+                                      {
+                                          let client = CLIENT.get().await;
+                                          $(
+                                            let url = format!("/rest{}",$get1_url);
+                                            let request = client.get(url.replace(" ", "%20"));
+                                          )?
+                                          $(
+                                            let url = format!("/rest{}",$get2_url);
+                                            let request = client.get(url.replace(" ", "%20"));
+                                          )?
+
+                                          $(
+                                            let url = format!("/rest{}",$post_url);
+                                            let request = client.post(url.replace(" ", "%20"))
+                                                .body($json_body);
+                                          )?
+
+                                          $(
+                                            let url = format!("/rest{}",$post2_url);
+                                            let request = client.post(url.replace(" ", "%20"))
+                                                .body($($json2_body)? $($json22_body)?);
+                                          )?
+
+
+                                          println!("url ===\n{:?}\n", url);
+                                          
+                                          $(
+                                          request.add_header(Accept::from_str($accept_header).unwrap());
+                                          )?
+                                          //println!("request ===\n{:?}\n", request);
+                                          let response = request.dispatch().await;
+                                          let _status_code = response.status().code;
+                                          let _headers = response.headers().iter().map(|h| (h.name().to_string(), h.value().to_string())).collect::<HashMap<_,_>>();
+                                          //println!("response ===\n{:?}\n", response);
+                                          $(haskell_test!(@body_json response $json);)?
+                                          $(haskell_test!(@body_text response $text);)?
+                                          $(haskell_test!(@status _status_code $status_simple);)?
+                                          $($(haskell_test!(@status _status_code $status);)?)?
+                                          $($($(haskell_test!(@header _headers $header_name $header_value);)*)?)?
+                                          //assert!(false);
+                                      }
+                                  )?
+                              }
+                          )*
+                      }
+                  )*
             }
+            )*
             
         }
     } 
 }
 
 haskell_test! {
-spec actualPgVersion = do
 
+feature "auth"
+  describe "all" $
+    it "denies access to tables that anonymous does not own" $
+      get "/authors_only" shouldRespondWith
+        [json| r#"{
+          "hint":null,
+          "details":null,
+          "code":"42501",
+          "message":"permission denied for table authors_only"} "#|]
+      { matchStatus = 401
+      , matchHeaders = ["WWW-Authenticate" <:> "Bearer"]
+      }
+    it "denies access to tables that postgrest_test_author does not own" $
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIn0.Xod-F15qsGL0WhdOCr2j3DdKuTw9QJERVgoFD3vGaWA" in
+      request methodGet "/private_table" [auth]
+        shouldRespondWith
+          [json|r#" {
+            "hint":null,
+            "details":null,
+            "code":"42501",
+            "message":"permission denied for table private_table"} "#|]
+        { matchStatus = 403
+        , matchHeaders = []
+        }
+
+    it "denies execution on functions that anonymous does not own" $
+      post "/rpc/privileged_hello" [json|r#"{"name": "anonymous"}"#|] shouldRespondWith 401
+
+    it "allows execution on a function that postgrest_test_author owns" $
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIn0.Xod-F15qsGL0WhdOCr2j3DdKuTw9QJERVgoFD3vGaWA" in
+      request methodPost "/rpc/privileged_hello" [auth] [json|r#"{"name": "jdoe"}"#|]
+        shouldRespondWith [json|r#""Privileged hello to jdoe""#|]
+        { matchStatus = 200
+        , matchHeaders = ["Content-Type" <:> "application/json"]
+        }
+
+    it "returns jwt functions as jwt tokens" $
+      request methodPost "/rpc/login" [single]
+        [json|r#" { "id": "jdoe", "pass": "1234" } "#|]
+        shouldRespondWith [json|r#" {"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xuYW1lIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.KO-0PGp_rU-utcDBP6qwdd-Th2Fk-ICVt01I7QtTDWs"} "#|]
+          { matchStatus = 200
+          , matchHeaders = ["Content-Type" <:> "application/json"]
+          }
+
+    it "sql functions can encode custom and standard claims" $
+      request methodPost  "/rpc/jwt_test" [single] "{}"
+        shouldRespondWith [json|r#" {"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJqb2UiLCJzdWIiOiJmdW4iLCJhdWQiOiJldmVyeW9uZSIsImV4cCI6MTMwMDgxOTM4MCwibmJmIjoxMzAwODE5MzgwLCJpYXQiOjEzMDA4MTkzODAsImp0aSI6ImZvbyIsInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdCIsImh0dHA6Ly9wb3N0Z3Jlc3QuY29tL2ZvbyI6dHJ1ZX0.G2REtPnOQMUrVRDA9OnkPJTd8R0tf4wdYOlauh1E2Ek"} "#|]
+          { matchStatus = 200
+          , matchHeaders = ["Content-Type" <:> "application/vnd.pgrst.object+json"]
+          }
+
+    it "sql functions can read custom and standard claims variables" $ do
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmdW4iLCJqdGkiOiJmb28iLCJuYmYiOjEzMDA4MTkzODAsImV4cCI6OTk5OTk5OTk5OSwiaHR0cDovL3Bvc3RncmVzdC5jb20vZm9vIjp0cnVlLCJpc3MiOiJqb2UiLCJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWF0IjoxMzAwODE5MzgwfQ.V5fEpXfpb7feqwVqlcDleFdKu86bdwU2cBRT4fcMhXg"
+      request methodPost "/rpc/reveal_big_jwt" [auth] "{}"
+        shouldRespondWith [json|r#"[{"iss":"joe","sub":"fun","exp":9999999999,"nbf":1300819380,"iat":1300819380,"jti":"foo","http://postgrest.com/foo":true}]"#|]
+
+    it "allows users with permissions to see their tables" $ do
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.B-lReuGNDwAlU1GOC476MlO0vAt9JNoHIlxg2vwMaO0"
+      request methodGet "/authors_only" [auth] ""
+        shouldRespondWith 200
+
+    it "works with tokens which have extra fields" $ do
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIiwia2V5MSI6InZhbHVlMSIsImtleTIiOiJ2YWx1ZTIiLCJrZXkzIjoidmFsdWUzIiwiYSI6MSwiYiI6MiwiYyI6M30.b0eglDKYEmGi-hCvD-ddSqFl7vnDO5qkUaviaHXm3es"
+      request methodGet "/authors_only" [auth] ""
+        shouldRespondWith 200
+
+    //-- this test will stop working 9999999999s after the UNIX EPOCH
+    it "succeeds with an unexpired token" $ do
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjk5OTk5OTk5OTksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.Dpss-QoLYjec5OTsOaAc3FNVsSjA89wACoV-0ra3ClA"
+      request methodGet "/authors_only" [auth] ""
+        shouldRespondWith 200
+
+    it "fails with an expired token" $ do
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE0NDY2NzgxNDksInJvbGUiOiJwb3N0Z3Jlc3RfdGVzdF9hdXRob3IiLCJpZCI6Impkb2UifQ.f8__E6VQwYcDqwHmr9PG03uaZn8Zh1b0vbJ9DYS0AdM"
+      request methodGet "/authors_only" [auth] ""
+        shouldRespondWith [json|r#" {"message":"JWT expired"} "#|]
+          { matchStatus = 401
+          , matchHeaders = [
+              "WWW-Authenticate" <:>
+              "Bearer error=\"invalid_token\", error_description=\"JWT expired\""
+            ]
+          }
+
+    it "hides tables from users with invalid JWT" $ do
+      let auth = authHeaderJWT "ey9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.y4vZuu1dDdwAl0-S00MCRWRYMlJ5YAMSir6Es6WtWx0"
+      request methodGet "/authors_only" [auth] ""
+        shouldRespondWith [json|r#" {"message":"JWSError (CompactDecodeError Invalid number of parts: Expected 3 parts; got 2)"} "#|]
+          { matchStatus = 401
+          , matchHeaders = [
+              "WWW-Authenticate" <:>
+              "Bearer error=\"invalid_token\", error_description=\"JWSError (CompactDecodeError Invalid number of parts: Expected 3 parts; got 2)\""
+            ]
+          }
+
+    it "should fail when jwt contains no claims" $ do
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.CUIP5V9thWsGGFsFyGijSZf1fJMfarLHI9CEJL-TGNk"
+      request methodGet "/authors_only" [auth] ""
+        shouldRespondWith 401
+
+    it "hides tables from users with JWT that contain no claims about role" $ do
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Impkb2UifQ.RVlZDaSyKbFPvxUf3V_NQXybfRB4dlBIkAUQXVXLUAI"
+      request methodGet "/authors_only" [auth] ""
+        shouldRespondWith 401
+
+    // it "recovers after 401 error with logged in user" $ do
+    //   _ <- post "/authors_only" [json|r#" { "owner": "jdoe", "secret": "test content" } "#|]
+    //   let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.B-lReuGNDwAlU1GOC476MlO0vAt9JNoHIlxg2vwMaO0"
+    //   _ <- request methodPost "/rpc/problem" [auth] ""
+    //   request methodGet "/authors_only" [auth] ""
+    //     shouldRespondWith 200
+
+  //describe "custom pre-request proc acting on id claim" $ do
+
+    it "able to switch to postgrest_test_author role (id=1)" $
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MX0.gKw7qI50i9hMrSJW8BlTpdMEVmMXJYxlAqueGqpa_mE" in
+      request methodPost "/rpc/get_current_user" [auth]
+        [json|r#" {} "#|]
+         shouldRespondWith [json|r#""postgrest_test_author""#|]
+          { matchStatus = 200
+          , matchHeaders = []
+          }
+
+    it "able to switch to postgrest_test_default_role (id=2)" $
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Mn0.nwzjMI0YLvVGJQTeoCPEBsK983b__gxdpLXisBNaO2A" in
+      request methodPost "/rpc/get_current_user" [auth]
+        [json|r#" {} "#|]
+         shouldRespondWith [json|r#""postgrest_test_default_role""#|]
+          { matchStatus = 200
+          , matchHeaders = []
+          }
+
+    it "raises error (id=3)" $
+      let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6M30.OGxEJAf60NKZiTn-tIb2jy4rqKs_ZruLGWZ40TjrJsM" in
+      request methodPost "/rpc/get_current_user" [auth]
+        [json|r#" {} "#|]
+         shouldRespondWith [json|r#"{"hint":"Please contact administrator","details":null,"code":"P0001","message":"Disabled ID --> 3"}"#|]
+          { matchStatus = 400
+          , matchHeaders = []
+          }
+
+  // it "allows 'Bearer' and 'bearer' as authentication schemes" $ do
+  //   let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.B-lReuGNDwAlU1GOC476MlO0vAt9JNoHIlxg2vwMaO0"
+  //   request methodGet "/authors_only" [authHeader "Bearer" token] ""
+  //     shouldRespondWith 200
+  //   request methodGet "/authors_only" [authHeader "bearer" token] ""
+  //     shouldRespondWith 200
+
+
+feature "query"
   describe "Querying a table with a column called count" $
     it "should not confuse count column with pg_catalog count aggregate" $
       get "/has_count_column" shouldRespondWith 200

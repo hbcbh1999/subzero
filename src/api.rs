@@ -14,26 +14,32 @@ pub struct ApiRequest<'r> {
     pub headers: HashMap<&'r str, &'r str>,
     pub cookies: HashMap<&'r str, &'r str>,
 }
-/*
-query {
-    projects( where: {rating: {_gte: 4}} ) {
-        id
-        name
-        client {
-            id
-            name
-        }
 
-        tasks( where: {completed: {_eq: true}} ){
-            id
-            name
-        }
-    }
+#[derive(Debug, PartialEq, Clone)]
+pub struct ProcParam {
+    pub name: String,
+    pub type_: String,
+    pub required: bool,
+    pub variadic: bool,
 }
-*/
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum CallParams {
+    KeyParams(Vec<ProcParam>),
+    OnePosParam(ProcParam),
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Query<'r> {
+    FunctionCall {
+        fn_name: Qi,
+        parameters: CallParams,
+        payload: Option<&'r str>,
+        is_scalar: bool,
+        is_multiple_call: bool,
+        returning: Vec<String>,
+        select: Vec<SelectItem<'r>>,
+    },
     Select {
         select: Vec<SelectItem<'r>>,
         from: Vec<String>,

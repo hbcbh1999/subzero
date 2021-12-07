@@ -86,6 +86,7 @@ impl ToSql for SingleVal {
 
 fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
     match q {
+        FunctionCall { .. } => { todo!() },
         Select {select, from, where_, limit, offset, order} => {
             let qi = &Qi(schema.clone(),from.get(0).unwrap().clone());
             let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi, s)).unzip();
