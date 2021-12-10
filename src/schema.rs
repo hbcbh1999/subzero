@@ -66,7 +66,7 @@ pub enum ProcVolatility {Imutable, Stable, Volatile}
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 pub enum ProcReturnType {
-    Single (PgType),
+    One (PgType),
     SetOf (PgType),
 }
 
@@ -189,8 +189,8 @@ mod objects {
                             return_type: match (o.setof, o.composite) {
                                 (true,true) => SetOf(Composite(Qi(o.return_type_schema, o.return_type))),
                                 (true,false) =>SetOf(Scalar),
-                                (false,true) =>Single(Composite(Qi(o.return_type_schema, o.return_type))),
-                                (false,false) =>Single(Scalar),
+                                (false,true) =>One(Composite(Qi(o.return_type_schema, o.return_type))),
+                                (false,false) =>One(Scalar),
                             },
                             parameters: o.parameters,
                         },

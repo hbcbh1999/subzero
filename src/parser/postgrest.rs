@@ -2,15 +2,15 @@
 use crate::api::*;
 use crate::api::{
     LogicOperator::*,Join::*, Condition::*, Filter::*, Query::*,
-    
 };
-use crate::schema::*;
+use crate::schema::{*, ObjectType::*, ProcReturnType::*,PgType::*};
 use crate::error::*;
+//use rocket::tokio::runtime::Handle;
 //use combine::Positioned;
-use snafu::{OptionExt};
+use snafu::{OptionExt, ResultExt};
 use std::collections::HashMap;
 use std::collections::BTreeSet;
-use serde_json::Value as JsonValue;
+use serde_json::{Value as JsonValue};
 
 use combine::{
     //error::{ParseError},
@@ -64,6 +64,7 @@ use combine::error::{StreamError};
 // }
 
 lazy_static!{
+    //static ref STAR: String = "*".to_string();
     static ref OPERATORS: HashMap<&'static str, &'static str> = [
          ("eq", "=")
         ,("gte", ">=")
@@ -564,6 +565,32 @@ pub fn get_parameter<'a >(name: &str, parameters: &'a Vec<(&'a str, &'a str)>)->
     parameters.iter().filter(|v| v.0 == name).next()
 }
 
+fn get_returning(select: &Vec<SelectItem>) -> Result<Vec<String>> {
+    Ok(select.iter().map(|s|{
+        match s {
+            SelectItem::Simple {field, ..} => Ok(vec![&field.name]),
+            SelectItem::SubSelect {join:Some(j), ..} => {
+                match j {
+                    Child(fk) => Ok(fk.referenced_columns.iter().collect()),
+                    Parent(fk) => Ok(fk.columns.iter().collect()),
+                    Many(_,fk1,fk2) => {
+                        let mut f = vec![];
+                        f.extend(fk1.referenced_columns.iter());
+                        f.extend(fk2.referenced_columns.iter());
+                        Ok(f)
+                    },
+                }
+            },
+            SelectItem::Star => Ok(vec![]),
+            //TODO!! error here is wrong
+            _ => Err(Error::NoRelBetween {origin: "table".to_string(), target: "subselect".to_string()}) 
+            
+        }
+    })
+    .collect::<Result<Vec<_>, _>>()?
+    .into_iter().flatten().cloned().collect::<BTreeSet<_>>().into_iter().collect())
+}
+
 pub fn parse<'r>(
     schema: &String, 
     root: &String, 
@@ -587,7 +614,7 @@ pub fn parse<'r>(
     let mut orders = vec![];
     let mut conditions = vec![];
     let mut columns_ = None;
-    let mut fn_parameters = vec![];
+    let mut fn_arguments = vec![];
 
     // iterate over parameters, parse and collect them in the relevant vectors
     for (k,v) in parameters.into_iter() {
@@ -656,7 +683,7 @@ pub fn parse<'r>(
                     .easy_parse(k).map_err(to_app_error(k))?;
 
                 match root_obj.kind {
-                    ObjectType::Function {..} => {
+                    Function {..} => {
                         if tp.len() > 0 || has_operator(v) {
                             // this is a filter
                             let ((negate,filter), _) = negatable_filter()
@@ -666,7 +693,7 @@ pub fn parse<'r>(
                         }
                         else {
                             //this is a function parameter
-                            fn_parameters.push((k,v));
+                            fn_arguments.push((k,v));
                         }
                     }
                     _ => {
@@ -681,8 +708,77 @@ pub fn parse<'r>(
         }
     }
 
-    let mut query = match *method {
-        Method::GET => {
+    let mut query = match (method, root_obj.kind.clone()) {
+        (method, Function {return_type, parameters, ..}) => {
+            let arguments = match *method {
+                Method::GET => {
+                    let mut args:HashMap<String, JsonValue> = HashMap::new();
+                    for p in &parameters {
+                        let v:Vec<&str> = fn_arguments.iter().zip(std::iter::repeat(p.name.clone())).filter_map(|(&(k,v),n)| if k == n { Some(v) } else {None} ).collect();
+                        let vv = match (p.variadic, v.len()) {
+                            (_,0) => None,
+                            (true,_) => Some(JsonValue::Array(
+                                v.iter()
+                                .map(|s| JsonValue::String(s.to_string()))
+                                .collect()
+                            )),
+                            (false,1) => Some(JsonValue::String(v[0].to_string())),
+                            (false,_) => None,
+                        };
+                        if vv.is_some() {
+                            args.insert(p.name.clone(), vv.unwrap());
+                        }
+                    }
+                    Ok(args)
+                },
+                Method::POST => {
+                    let payload = body.context(InvalidBody {message: "body not available".to_string()})?;
+                    let json_payload = serde_json::from_str(payload).context(JsonDeserialize)?;
+                    Ok(json_payload)
+                },
+                _ => Err(Error::UnsupportedVerb)
+            }?;
+
+            let params = match (parameters.len(), parameters.get(0)) {
+                (1, Some(p)) if p.name == "" => CallParams::OnePosParam(p.clone()),
+                _ => {
+                    let specified_parameters = arguments.keys().collect::<Vec<_>>();
+                    CallParams::KeyParams(
+                        parameters.into_iter().filter(|p| specified_parameters.contains(&&p.name) ).collect::<Vec<_>>()
+                    )
+                },
+            };
+            
+            //TODO!!! check all the required arguments are available
+
+            let payload: String = serde_json::to_string(&arguments).context(JsonSerialize)?;
+            
+            let mut q = FunctionCall {
+                fn_name: Qi(schema.clone(), root.clone()),
+                parameters: params,
+                
+                //CallParams::KeyParams(vec![]),
+                payload: Some(payload),
+                
+                is_scalar: match return_type {
+                    One(Scalar) => true,
+                    SetOf(Scalar) => true,
+                    _ => false,
+                },
+                is_multiple_call: false,
+                returning: get_returning(&select_items)?,
+                select: select_items,
+                where_: ConditionTree { operator: And, conditions: vec![] },
+                return_table_type: match return_type {
+                    SetOf(Composite(q)) => Some(q),
+                    One(Composite(q)) => Some(q),
+                    _ => None,
+                },
+            };
+            add_join_conditions(&mut q, &schema, db_schema)?;
+            Ok(q)
+        },
+        (&Method::GET, _) => {
             let mut q = Select {
                 select: select_items,
                 from: vec![root.clone()],
@@ -692,7 +788,7 @@ pub fn parse<'r>(
             add_join_conditions(&mut q, &schema, db_schema)?;
             Ok(q)
         },
-        Method::POST => {
+        (&Method::POST,_) => {
             let payload = body.context(InvalidBody {message: "body not available".to_string()})?;
             let columns = match columns_ {
                 Some(c) => Ok(c),
@@ -738,39 +834,11 @@ pub fn parse<'r>(
                 columns: columns,
                 payload,
                 where_: ConditionTree { operator: And, conditions: vec![] },
-                returning: vec![],
+                returning: get_returning(&select_items)?,
                 select: select_items,
                 //, onConflict :: Maybe (PreferResolution, [FieldName])
             };
-            
             add_join_conditions(&mut q, &schema, db_schema)?;
-            let (select, table, returning) = match &mut q {
-                Insert {select,into,returning,..}=>(select,into,returning),
-                _ => panic!("q can not be of other types")
-            };
-            
-            let new_returning = select.iter().map(|s|{
-                match s {
-                    SelectItem::Simple {field, ..} => Ok(vec![&field.name]),
-                    SelectItem::SubSelect {join:Some(j), ..} => {
-                        match j {
-                            Child(fk) => Ok(fk.referenced_columns.iter().collect()),
-                            Parent(fk) => Ok(fk.columns.iter().collect()),
-                            Many(_,fk1,fk2) => {
-                                let mut f = vec![];
-                                f.extend(fk1.referenced_columns.iter());
-                                f.extend(fk2.referenced_columns.iter());
-                                Ok(f)
-                            },
-                        }
-                    },
-                    _ => Err(Error::NoRelBetween {origin: table.clone(), target: "subselect".to_string()})
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter().flatten().cloned().collect::<BTreeSet<_>>();
-
-            returning.extend(new_returning);
             Ok(q)
         },
         // Method::PATCH => Ok(Update),
@@ -1020,10 +1088,17 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
 
 fn add_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema )->Result<()>{
     let subzero_source = &"subzero_source".to_string();
+    let dummy_source = &"subzero_source".to_string();
     let (select, parent_table, parent_alias) : (&mut Vec<SelectItem>, &String, &String) = match query {
         Select {select, from, ..} => (select.as_mut(), from.get(0).unwrap(), from.get(0).unwrap()),
         Insert {select, into, ..} => (select.as_mut(), into, subzero_source),
-        FunctionCall { .. } => todo!(),
+        FunctionCall { select, return_table_type, .. } => {
+            let table = match return_table_type {
+                Some(q) => &q.1,
+                None => dummy_source,
+            };
+            (select.as_mut(), table, subzero_source)
+        },
     };
     
     for s in select.iter_mut() {
@@ -1112,7 +1187,7 @@ fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>,
     let select = match query {
         Select {select,..} => select,
         Insert {select,..} => select,
-        FunctionCall { .. } => todo!(),
+        FunctionCall {select, .. } => select,
     };
 
     for s in select.iter_mut() {
@@ -1143,7 +1218,7 @@ fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)
         let query_conditions: &mut Vec<Condition> = match q {
             Select {where_, ..} => where_.conditions.as_mut(),
             Insert {where_, ..} => where_.conditions.as_mut(),
-            FunctionCall { .. } => todo!(),
+            FunctionCall {where_, .. } => where_.conditions.as_mut(),
         };
         p.into_iter().for_each(|c| query_conditions.push(c));
     });
@@ -1171,6 +1246,23 @@ pub mod tests {
                             {
                                 "name":"api",
                                 "objects":[
+                                    {
+                                        "kind":"function",
+                                        "name":"myfunction",
+                                        "volatile":"v",
+                                        "composite":false,
+                                        "setof":false,
+                                        "return_type":"int4",
+                                        "return_type_schema":"pg_catalog",
+                                        "parameters":[
+                                            {
+                                                "name":"id",
+                                                "type":"integer",
+                                                "required":true,
+                                                "variadic":false
+                                            }
+                                        ]
+                                    },
                                     {
                                         "kind":"view",
                                         "name":"addresses",
@@ -1287,6 +1379,47 @@ pub mod tests {
     }
     
     #[test]
+    fn test_parse_get_function(){
+        
+        let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
+        let mut api_request = ApiRequest {
+            method: Method::GET,
+            headers: HashMap::new(),
+            cookies: HashMap::new(),
+            query: FunctionCall {
+                fn_name: Qi(s("api"), s("myfunction")),
+                parameters: CallParams::KeyParams(vec![
+                    ProcParam {
+                        name: s("id"),
+                        type_: s("integer"),
+                        required: true,
+                        variadic: false,
+                    }
+                ]),
+                payload: Some(s(r#"{"id":"10"}"#)),
+                is_scalar: true,
+                is_multiple_call: false,
+                returning: vec![s("*")],
+                select: vec![Star],
+                where_: ConditionTree { operator: And, conditions: vec![] },
+                return_table_type: None,
+            }
+            
+        };
+        let a = parse(&s("api"), &s("myfunction"), &db_schema, &Method::GET, vec![
+            ("id","10"),
+            ], None, HashMap::new(), HashMap::new());
+
+        assert_eq!(a.unwrap(),api_request);
+
+        api_request.method = Method::POST;
+
+        let body = s(r#"{"id":"10"}"#);
+        let b = parse(&s("api"), &s("myfunction"), &db_schema, &Method::POST, vec![], Some(&body), HashMap::new(), HashMap::new());
+        assert_eq!(b.unwrap(),api_request);
+    }
+
+    #[test]
     fn test_insert_conditions(){
        
         let mut query = Select { order: vec![], limit: None, offset: None,
@@ -1341,7 +1474,7 @@ pub mod tests {
             }
         );
     }
-    
+
     #[test]
     fn test_parse_get(){
         

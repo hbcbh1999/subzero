@@ -194,7 +194,15 @@ macro_rules! haskell_test {
 }
 
 haskell_test! {
-
+feature "rpc"
+  describe "a proc that returns a set" $ do
+    it "returns proper json" $ do
+      post "/rpc/getitemrange" [json| r#"{ "min": 2, "max": 4 }"# |] shouldRespondWith
+        [json| r#"[ {"id": 3}, {"id":4} ] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+      get "/rpc/getitemrange?min=2&max=4" shouldRespondWith
+        [json| r#"[ {"id": 3}, {"id":4} ] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 feature "auth"
   describe "all" $
     it "denies access to tables that anonymous does not own" $

@@ -86,7 +86,69 @@ impl ToSql for SingleVal {
 
 fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
     match q {
-        FunctionCall { .. } => { todo!() },
+        FunctionCall { fn_name, parameters, payload, is_scalar, is_multiple_call, returning, select, where_, .. } => {
+            let b = payload.as_ref().unwrap();
+            let bb:&(dyn ToSql + Sync + 'a) = b;
+            let (params_cte, arg_frag):(SqlSnippet<'a, (dyn ToSql + Sync + 'a)>,SqlSnippet<'a, (dyn ToSql + Sync + 'a)>) = match &parameters {
+                CallParams::OnePosParam(p) => (sql(" subzero_args as (select null)"), param(bb) + format!("::{}",p.type_)),
+                CallParams::KeyParams(p) if p.len() == 0 => (sql(" subzero_args as (select null)"),sql("")),
+                CallParams::KeyParams(prms) => (
+                        fmt_body(b) +
+                        ", subzero_args as ( " +
+                            "select * from json_to_recordset((select val from subzero_body)) as _(" +
+                                prms.iter().map(|p| format!("{} {}", fmt_identity(&p.name), p.type_ )).collect::<Vec<_>>().join(", ") +
+                            ")" +
+                        " )",
+                        sql(prms.iter().map(|p|{
+                            let variadic = if p.variadic {"variadic"} else {""};
+                            let ident = fmt_identity(&p.name);
+                            if *is_multiple_call {
+                                format!("{} {} := subzero_args.{}", variadic, ident, ident)
+                            }
+                            else {
+                                format!("{} {}  := (select {} from subzero_args limit 1)", variadic, ident, ident )
+                            }
+                        }).collect::<Vec<_>>().join(", "))
+                )
+            };
+            let call_it = fmt_qi(fn_name) + "(" + arg_frag + ")";
+            let returned_columns = if returning.len() == 0 {
+                    "*".to_string()
+                }
+                else {
+                    returning.iter().map(fmt_identity).collect::<Vec<_>>().join(",")
+                };
+
+            let args_body = if *is_multiple_call {
+                if *is_scalar {
+                    "select " + call_it + "subzero_scalar from subzero_args"
+                }
+                else {
+                    format!("select subzero_lat_args.* from subzero_args, lateral ( select {} from ", returned_columns) + 
+                    call_it + " ) subzero_lat_args"
+                }
+            }
+            else {
+                if *is_scalar {
+                    "select " + call_it + " as subzero_scalar"
+                }
+                else {
+                    format!("select {} from ",returned_columns) + call_it
+                }
+            };
+
+            let qi_subzero_source = &Qi(schema.clone(),"subzero_source".to_string());
+            let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).unzip();
+            
+            " with " +
+                params_cte +
+                ", subzero_source as ( " + args_body + " )" +
+            " select " + select.join(", ")  +
+            " from " + fmt_identity(&"subzero_source".to_string()) +
+            " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
+            " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
+
+        },
         Select {select, from, where_, limit, offset, order} => {
             let qi = &Qi(schema.clone(),from.get(0).unwrap().clone());
             let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi, s)).unzip();
@@ -100,36 +162,50 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + S
             " " + fmt_offset(offset)
             
         },
-        Insert {into, columns, payload, where_:_, returning, select} => {
+        Insert {into, columns, payload, where_, returning, select} => {
             let qi = &Qi(schema.clone(),into.clone());
-            let payload_param:&(dyn ToSql + Sync) = payload;
-            let qi_payload = &Qi(schema.clone(),"subzero_source".to_string());
-            let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi_payload, s)).unzip();
-            let mut from = vec![sql(fmt_qi(qi_payload))];
-            from.extend(joins.into_iter().flatten());
-            
-            let insert_snipet = 
-                " with subzero_source as ( with  subzero_payload as ( select " + param(payload_param) + "::json as json_data),"+
-                    " subzero_body as ("+
-                        " select"+
-                            " case when json_typeof(json_data) = 'array'"+
-                            " then json_data"+
-                            " else json_build_array(json_data)"+
-                            " end as val"+
-                        " from subzero_payload"+
-                    " )"+
-                format!( " insert into {} ({}) select {} from json_populate_recordset(null {}, (select val from subzero_body)) _ returning {} )",
+            let qi_subzero_source = &Qi(schema.clone(),"subzero_source".to_string());
+            let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).unzip();
+            //let from = vec![sql(fmt_qi(qi_payload))];
+            //from.extend(joins.into_iter().flatten());
+            let returned_columns = if returning.len() == 0 {
+                "*".to_string()
+            }
+            else {
+                returning.iter().map(fmt_identity).collect::<Vec<_>>().join(",")
+            };
+
+            " with " +
+            fmt_body(payload)+
+            ", subzero_source as ( " + 
+                format!( " insert into {} ({}) select {} from json_populate_recordset(null {}, (select val from subzero_body)) _ returning {}",
                     fmt_qi(qi), 
                     columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
                     columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
                     fmt_qi(qi),
                     //where_str,
-                    returning.iter().map(fmt_identity).collect::<Vec<_>>().join(",")
-                );
-
-            insert_snipet + " select " + select.join(", ")  +" from " + from.join(" ")
+                    returned_columns
+                ) +
+            " )" + 
+            " select " + select.join(", ")  +
+            " from " + fmt_identity(&"subzero_source".to_string()) +
+            " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
+            " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
         }
     }
+}
+
+fn fmt_body<'a>(payload: &'a String) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+    let payload_param:&(dyn ToSql + Sync) = payload;
+    " subzero_payload as ( select " + param(payload_param) + "::text::json as json_data ),"+
+    " subzero_body as ("+
+        " select"+
+            " case when json_typeof(json_data) = 'array'"+
+            " then json_data"+
+            " else json_build_array(json_data)"+
+            " end as val"+
+        " from subzero_payload"+
+    " )"
 }
 
 pub fn main_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
@@ -368,9 +444,65 @@ mod tests {
     fn s(s:&str) -> String {
         s.to_string()
     }
+    
+    #[test]
+    fn test_fmt_function_query(){
+        let payload = r#"{"id":"10"}"#.to_string();
+        let q = FunctionCall {
+            fn_name: Qi(s("api"), s("myfunction")),
+            parameters: CallParams::KeyParams(vec![
+                ProcParam {
+                    name: s("id"),
+                    type_: s("integer"),
+                    required: true,
+                    variadic: false,
+                }
+            ]),
+            payload: Some(payload.clone()),
+            is_scalar: true,
+            is_multiple_call: false,
+            returning: vec![s("*")],
+            select: vec![Star],
+            where_: ConditionTree { operator: And, conditions: vec![] },
+            return_table_type: None,
+        };
+
+        let (query_str, parameters, _) = generate(fmt_query(&s("api"), &q));
+        //let p = SingleVal(payload);
+        let pp: Vec<&(dyn ToSql + Sync)> = vec![&payload];
+        assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
+        let re = Regex::new(r"\s+").unwrap();
+        assert_eq!(
+            re.replace_all(query_str.as_str(), " "), 
+            re.replace_all(
+                r#"
+                with
+                    subzero_payload as ( select $1::json as json_data ),
+                    subzero_body as (
+                        select 
+                            case when json_typeof(json_data) = 'array' 
+                            then json_data 
+                            else json_build_array(json_data) 
+                            end as val 
+                        from subzero_payload
+                    ),
+                    subzero_args as (
+                        select * 
+                        from json_to_recordset((select val from subzero_body)) as _("id" integer)
+                    ),
+                    subzero_source as (
+                            select "api"."myfunction"( "id" := (select "id" from subzero_args limit 1)) as subzero_scalar
+                    )
+                select "subzero_source".* from "subzero_source"
+                "#
+                , " "
+            )
+        );
+    }
+
     #[test]
     fn test_fmt_insert_query(){
-        let payload = r#"[{"id":10, "a":"a field"}]"#;
+        let payload = r#"[{"id":10, "a":"a field"}]"#.to_string();
         let q = Insert {
             select: vec![
                 Simple {field: Field {name: s("a"), json_path: None}, alias: None},
@@ -436,7 +568,7 @@ mod tests {
                 // Single {filter: Op(s("<"),s("10")), field: Field {name: s("id"), json_path: None}, negate: true}
             ]},
             columns: vec![s("id"), s("a")],
-            payload: payload,
+            payload: &payload,
             returning: vec![s("id"), s("a")],
         };
 
@@ -447,49 +579,50 @@ mod tests {
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
         let re = Regex::new(r"\s+").unwrap();
         assert_eq!(re.replace_all(query_str.as_str(), " "), re.replace_all(
-		r#"
-		with subzero_source as (
-			with 
-				subzero_payload as ( select $1::json as json_data),
-				subzero_body as (
-					select
-						case when json_typeof(json_data) = 'array'
-						then json_data
-						else json_build_array(json_data)
-						end as val
-					from
-						subzero_payload
-				)
-				insert into "api"."projects" ("id","a")
-				select "id","a"
-				from json_populate_recordset(null "api"."projects", (select val from subzero_body)) _
-				returning "id","a"
-		)
-		select
-			"subzero_source"."a",
-			"subzero_source"."b"->1->>'key',
-			row_to_json("subzero_source_clients".*) as "clients",
-			coalesce((select json_agg("tasks".*) from (
-				select
-					"api"."tasks"."id"
-				from "api"."tasks"
-				where
-			
-					"api"."tasks"."project_id" = "subzero_source"."id"
-					and
-					"api"."tasks"."id" > $2
-					and
-					"api"."tasks"."id" = any ($3)
-			) as "tasks"), '[]') as "tasks"
-		from "subzero_source"
-		left join lateral (
-			select
-				"api"."clients"."id"
-			from "api"."clients"
-			where
-			
-				"api"."clients"."id" = "subzero_source"."client_id"
-		) as "subzero_source_clients" on true"#
+        r#"
+        with 
+        subzero_payload as ( select $1::json as json_data ),
+        subzero_body as (
+            select
+                case when json_typeof(json_data) = 'array'
+                then json_data
+                else json_build_array(json_data)
+                end as val
+            from
+                subzero_payload
+        ),
+        subzero_source as (
+            insert into "api"."projects" ("id","a")
+            select "id","a"
+            from json_populate_recordset(null "api"."projects", (select val from subzero_body)) _
+            returning "id","a"
+        )
+        select
+            "subzero_source"."a",
+            "subzero_source"."b"->1->>'key',
+            row_to_json("subzero_source_clients".*) as "clients",
+            coalesce((select json_agg("tasks".*) from (
+                select
+                    "api"."tasks"."id"
+                from "api"."tasks"
+                where
+            
+                    "api"."tasks"."project_id" = "subzero_source"."id"
+                    and
+                    "api"."tasks"."id" > $2
+                    and
+                    "api"."tasks"."id" = any ($3)
+            ) as "tasks"), '[]') as "tasks"
+        from "subzero_source"
+        left join lateral (
+            select
+                "api"."clients"."id"
+            from "api"."clients"
+            where
+            
+                "api"."clients"."id" = "subzero_source"."client_id"
+        ) as "subzero_source_clients" on true
+        "#
         , " "));
     }
 
@@ -571,35 +704,35 @@ mod tests {
         assert_eq!(format!("{:?}", parameters), "[SingleVal(\"50\"), ListVal([\"51\", \"52\"]), SingleVal(\"5\"), SingleVal(\"10\")]");
         let re = Regex::new(r"\s+").unwrap();
         assert_eq!(re.replace_all(query_str.as_str(), " "), re.replace_all(
-		r#"
-		 select
-			"api"."projects"."a",
-			"api"."projects"."b"->1->>'key',
-			row_to_json("projects_clients".*) as "clients",
-			coalesce((select json_agg("tasks".*) from (
-				select
-					"api"."tasks"."id"
-				from "api"."tasks"
-				where
-					"api"."tasks"."project_id" = "api"."projects"."id"
-					and
-					"api"."tasks"."id" > $1
-					and
-					"api"."tasks"."id" = any ($2)
-			) as "tasks"), '[]') as "tasks"
-		from "api"."projects"
-		left join lateral (
-			select
-				"api"."clients"."id"
-			from "api"."clients"
-			where
-				"api"."clients"."id" = "api"."projects"."client_id"
-		) as "projects_clients" on true
-		where
-			"api"."projects"."id" >= $3
-			and
-			not("api"."projects"."id" < $4)
-		"#,
+        r#"
+        select
+            "api"."projects"."a",
+            "api"."projects"."b"->1->>'key',
+            row_to_json("projects_clients".*) as "clients",
+            coalesce((select json_agg("tasks".*) from (
+                select
+                    "api"."tasks"."id"
+                from "api"."tasks"
+                where
+                    "api"."tasks"."project_id" = "api"."projects"."id"
+                    and
+                    "api"."tasks"."id" > $1
+                    and
+                    "api"."tasks"."id" = any ($2)
+            ) as "tasks"), '[]') as "tasks"
+        from "api"."projects"
+        left join lateral (
+            select
+                "api"."clients"."id"
+            from "api"."clients"
+            where
+                "api"."clients"."id" = "api"."projects"."client_id"
+        ) as "projects_clients" on true
+        where
+            "api"."projects"."id" >= $3
+            and
+            not("api"."projects"."id" < $4)
+        "#,
         " "));
     }
     

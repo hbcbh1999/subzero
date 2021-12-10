@@ -45,6 +45,9 @@ pub enum Error {
     #[snafu(display("InvalidBody {}", message))]
     InvalidBody {message: String},
 
+    #[snafu(display("InternalError {}", message))]
+    InternalError {message: String},
+
     #[snafu(display("ParseRequestError {}: {}", message, details))]
     ParseRequestError {message: String, details: String},
 
@@ -78,6 +81,9 @@ pub enum Error {
     #[snafu(display("Failed to deserialize json: {}", source))]
     JsonDeserialize  { source: serde_json::Error },
 
+    #[snafu(display("Failed to serialize json: {}", source))]
+    JsonSerialize  { source: serde_json::Error },
+
     #[snafu(display("DbPoolError {}", source))]
     DbPoolError { source: PoolError },
 
@@ -102,6 +108,7 @@ impl Error {
 
     fn status_code(&self) -> u16 {
         match self {
+            Error::InternalError { .. } => 500,
             Error::JwtTokenInvalid { .. } => 401,
             Error::ActionInappropriate => 405,
             Error::InvalidRange => 416,
@@ -116,6 +123,7 @@ impl Error {
             Error::UnsupportedVerb {..} => 405,
             Error::ReadFile  { .. }  => 500,
             Error::JsonDeserialize  { .. }  => 400,
+            Error::JsonSerialize  { .. }  => 500,
             Error::DbPoolError { source }  => match source {
                 PoolError::Timeout(_) => 503,
                 PoolError::Backend(_) => 503,
@@ -167,6 +175,7 @@ impl Error {
             Error::ActionInappropriate => json!({"message": "Bad Request"}),
             Error::InvalidRange => json!({"message": "HTTP Range error"}),
             Error::InvalidBody {message} => json!({"message": message}),
+            Error::InternalError {message} => json!({"message": message}),
             Error::ParseRequestError { message, details }  => json!({"message": message, "details": details}),
             Error::NoRelBetween {origin, target}  => json!({
                 "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
@@ -183,7 +192,8 @@ impl Error {
             Error::NotFound => json!({}),
             Error::UnsupportedVerb => json!({"message":"Unsupported HTTP verb"}),
             // Error::ReadFile  { .. }  => 500,
-            // Error::JsonDeserialize  { .. }  => 400,
+            Error::JsonDeserialize {..} => json!({"message": format!("{}", self)}),
+            Error::JsonSerialize {..} => json!({"message": format!("{}", self)}),
             Error::DbPoolError { source }  => json!({"message": format!("Db pool error {}", source)}),
             Error::DbError { source }  => match source.as_db_error() {
                 Some(db_err) => match db_err.code().code().chars().collect::<Vec<char>>()[..] {

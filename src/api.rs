@@ -34,11 +34,13 @@ pub enum Query<'r> {
     FunctionCall {
         fn_name: Qi,
         parameters: CallParams,
-        payload: Option<&'r str>,
+        payload: Option<String>,
+        return_table_type: Option<Qi>,
         is_scalar: bool,
         is_multiple_call: bool,
         returning: Vec<String>,
         select: Vec<SelectItem<'r>>,
+        where_: ConditionTree,
     },
     Select {
         select: Vec<SelectItem<'r>>,
@@ -51,7 +53,7 @@ pub enum Query<'r> {
     Insert {
         into: String,
         columns: Vec<String>,
-        payload: &'r str,
+        payload: &'r String,
         where_: ConditionTree, //used only for put
         returning: Vec<String>,
         select: Vec<SelectItem<'r>>,
