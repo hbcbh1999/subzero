@@ -4,6 +4,8 @@ use serde_json::Value;
 
 use rocket::{Config as RocketConfig};
 use rocket::local::asynchronous::Client;
+use rocket::http::Accept;
+use std::str::FromStr;
 use figment::{Figment, Profile, };
 use figment::providers::{Env, Toml, Format};
 use std::sync::Once;
@@ -146,7 +148,7 @@ macro_rules! haskell_test {
                                           let client = CLIENT.get().await;
                                           $(
                                             let url = format!("/rest{}",$get1_url);
-                                            let request = client.get(url.replace(" ", "%20"));
+                                            let mut request = client.get(url.replace(" ", "%20"));
                                           )?
                                           $(
                                             let url = format!("/rest{}",$get2_url);
@@ -155,7 +157,7 @@ macro_rules! haskell_test {
 
                                           $(
                                             let url = format!("/rest{}",$post_url);
-                                            let request = client.post(url.replace(" ", "%20"))
+                                            let mut request = client.post(url.replace(" ", "%20"))
                                                 .body($json_body);
                                           )?
 
@@ -167,13 +169,13 @@ macro_rules! haskell_test {
 
 
                                           println!("url ===\n{:?}\n", url);
-                                          
+                                          request.add_header(Accept::from_str("*/*").unwrap());
+
                                           $(
                                           request.add_header(Accept::from_str($accept_header).unwrap());
                                           )?
 
                                           $(
-                                            println!("sendint auth {}", $jwt_token);
                                             request.add_header(Header::new("Authorization", format!("Bearer {}",$jwt_token)));
                                           )?
                                           //println!("request ===\n{:?}\n", request);
