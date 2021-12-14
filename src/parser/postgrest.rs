@@ -2,6 +2,7 @@
 use crate::api::*;
 use crate::api::{
     LogicOperator::*,Join::*, Condition::*, Filter::*, Query::*,
+    ResponseContentType::*,
 };
 use crate::schema::{*, ObjectType::*, ProcReturnType::*,PgType::*};
 use crate::error::*;
@@ -485,6 +486,18 @@ where Input: Stream<Token = char>
     )).and_then(|v| v)
 }
 
+fn content_type<Input>() -> impl Parser<Input, Output = ResponseContentType>
+where Input: Stream<Token = char>
+{
+    choice((
+    string("*/*").map(|_| ApplicationJSON),
+    string("application/json").map(|_| ApplicationJSON),
+    string("application/vnd.pgrst.object").map(|_| SingularJSON),
+    string("application/vnd.pgrst.object+json").map(|_| SingularJSON),
+    string("text/csv").map(|_| TextCSV),
+    ))
+}
+
 fn logic_condition<Input>() -> impl Parser<Input, Output = Condition>
 where Input: Stream<Token = char>
 {
@@ -583,13 +596,14 @@ fn get_returning(select: &Vec<SelectItem>) -> Result<Vec<String>> {
             },
             SelectItem::Star => Ok(vec![]),
             //TODO!! error here is wrong
-            _ => Err(Error::NoRelBetween {origin: "table".to_string(), target: "subselect".to_string()}) 
+            x => Err(Error::NoRelBetween {origin: "table".to_string(), target: format!("x {:?}",x)}) 
             
         }
     })
     .collect::<Result<Vec<_>, _>>()?
     .into_iter().flatten().cloned().collect::<BTreeSet<_>>().into_iter().collect())
 }
+
 
 pub fn parse<'r>(
     schema: &String, 
@@ -615,6 +629,19 @@ pub fn parse<'r>(
     let mut conditions = vec![];
     let mut columns_ = None;
     let mut fn_arguments = vec![];
+
+    let accept_content_type = match headers.get("Accept") {
+        Some(accept_header) => {
+            let (act, _) = content_type()
+            .message("failed to parse accept header")
+            .easy_parse(*accept_header)
+            .map_err(to_app_error(accept_header))?;
+            Ok(act)
+        }
+        None => Ok(ApplicationJSON)
+    }?;
+    
+    
 
     // iterate over parameters, parse and collect them in the relevant vectors
     for (k,v) in parameters.into_iter() {
@@ -765,8 +792,13 @@ pub fn parse<'r>(
                     SetOf(Scalar) => true,
                     _ => false,
                 },
+                returns_single: match return_type {
+                    One(_) => true,
+                    SetOf(_) => false,
+                },
                 is_multiple_call: false,
-                returning: get_returning(&select_items)?,
+
+                returning: vec![],//get_returning(&select_items)?,
                 select: select_items,
                 where_: ConditionTree { operator: And, conditions: vec![] },
                 return_table_type: match return_type {
@@ -776,6 +808,11 @@ pub fn parse<'r>(
                 },
             };
             add_join_conditions(&mut q, &schema, db_schema)?;
+            
+            //we populate the returing becasue it relies on the "join" information
+            if let FunctionCall { ref mut returning, ref select, ..} = q {
+                returning.extend(get_returning(select)?);
+            }
             Ok(q)
         },
         (&Method::GET, _) => {
@@ -834,11 +871,15 @@ pub fn parse<'r>(
                 columns: columns,
                 payload,
                 where_: ConditionTree { operator: And, conditions: vec![] },
-                returning: get_returning(&select_items)?,
+                returning: vec![], //get_returning(&select_items)?,
                 select: select_items,
                 //, onConflict :: Maybe (PreferResolution, [FieldName])
             };
             add_join_conditions(&mut q, &schema, db_schema)?;
+            //we populate the returing becasue it relies on the "join" information
+            if let Insert { ref mut returning, ref select, ..} = q {
+                returning.extend(get_returning(select)?);
+            }
             Ok(q)
         },
         // Method::PATCH => Ok(Update),
@@ -898,6 +939,7 @@ pub fn parse<'r>(
     Ok(ApiRequest {
         method: method.clone(),
         query,
+        accept_content_type,
         headers,
         cookies,
     })
@@ -910,7 +952,7 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
     //     }
     // };
     let schema = db_schema.schemas.get(current_schema).context(UnacceptableSchema {schemas: vec![current_schema.to_owned()]})?;
-    // println!("--------------looking for {} {}->{}.{:?}", current_schema, origin, target, hint);
+    //println!("--------------looking for {} {}->{}.{:?}", current_schema, origin, target, hint);
     // println!("--------------got schema");
     let origin_table = schema.objects.get(origin).context(UnknownRelation {relation: origin.to_owned()})?;
     // println!("--------------got table");
@@ -1385,6 +1427,7 @@ pub mod tests {
         let mut api_request = ApiRequest {
             method: Method::GET,
             headers: HashMap::new(),
+            accept_content_type: ApplicationJSON,
             cookies: HashMap::new(),
             query: FunctionCall {
                 fn_name: Qi(s("api"), s("myfunction")),
@@ -1398,8 +1441,9 @@ pub mod tests {
                 ]),
                 payload: Some(s(r#"{"id":"10"}"#)),
                 is_scalar: true,
+                returns_single: true,
                 is_multiple_call: false,
-                returning: vec![s("*")],
+                returning: vec![],
                 select: vec![Star],
                 where_: ConditionTree { operator: And, conditions: vec![] },
                 return_table_type: None,
@@ -1493,6 +1537,7 @@ pub mod tests {
             ,
             ApiRequest {
                 method: Method::GET,
+                accept_content_type: ApplicationJSON,
                 headers: HashMap::new(),
                 cookies: HashMap::new(),
                 query: 
@@ -1626,6 +1671,7 @@ pub mod tests {
             ,
             Ok(ApiRequest {
                 method: Method::POST,
+                accept_content_type: ApplicationJSON,
                 headers: HashMap::new(),
                 cookies: HashMap::new(),
                 query: 
@@ -1657,6 +1703,7 @@ pub mod tests {
             ,
             Ok(ApiRequest {
                 method: Method::POST,
+                accept_content_type: ApplicationJSON,
                 headers: HashMap::new(),
                 cookies: HashMap::new(),
                 query: 
@@ -1743,6 +1790,7 @@ pub mod tests {
             ,
             Ok(ApiRequest {
                 method: Method::POST,
+                accept_content_type: ApplicationJSON,
                 headers: HashMap::new(),
                 cookies: HashMap::new(),
                 query: 
@@ -1775,6 +1823,7 @@ pub mod tests {
             ,
             Ok(ApiRequest {
                 method: Method::POST,
+                accept_content_type: ApplicationJSON,
                 headers: HashMap::new(),
                 cookies: HashMap::new(),
                 query: 

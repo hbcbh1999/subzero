@@ -48,6 +48,8 @@ fn setup() {
         env::set_var("SUBZERO_DB_ANON_ROLE", &"postgrest_test_anonymous");
 
         env::set_var("SUBZERO_DB_SCHEMAS", "[test]");
+        env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
+        env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
 
         let output = Command::new("psql").arg("-f").arg(init_file.to_str().unwrap()).arg(db_uri.into_owned()).output().expect("failed to execute process");
         // println!("status: {}", output.status);
@@ -148,7 +150,7 @@ macro_rules! haskell_test {
                                           )?
                                           $(
                                             let url = format!("/rest{}",$get2_url);
-                                            let request = client.get(url.replace(" ", "%20"));
+                                            let mut request = client.get(url.replace(" ", "%20"));
                                           )?
 
                                           $(
@@ -159,7 +161,7 @@ macro_rules! haskell_test {
 
                                           $(
                                             let url = format!("/rest{}",$post2_url);
-                                            let request = client.post(url.replace(" ", "%20"))
+                                            let mut request = client.post(url.replace(" ", "%20"))
                                                 .body($($json2_body)? $($json22_body)?);
                                           )?
 
@@ -168,6 +170,11 @@ macro_rules! haskell_test {
                                           
                                           $(
                                           request.add_header(Accept::from_str($accept_header).unwrap());
+                                          )?
+
+                                          $(
+                                            println!("sendint auth {}", $jwt_token);
+                                            request.add_header(Header::new("Authorization", format!("Bearer {}",$jwt_token)));
                                           )?
                                           //println!("request ===\n{:?}\n", request);
                                           let response = request.dispatch().await;
@@ -244,7 +251,7 @@ feature "auth"
         [json|r#" { "id": "jdoe", "pass": "1234" } "#|]
         shouldRespondWith [json|r#" {"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xuYW1lIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.KO-0PGp_rU-utcDBP6qwdd-Th2Fk-ICVt01I7QtTDWs"} "#|]
           { matchStatus = 200
-          , matchHeaders = ["Content-Type" <:> "application/json"]
+          , matchHeaders = ["Content-Type" <:> "application/vnd.pgrst.object+json"]
           }
 
     it "sql functions can encode custom and standard claims" $
@@ -289,11 +296,11 @@ feature "auth"
     it "hides tables from users with invalid JWT" $ do
       let auth = authHeaderJWT "ey9zdGdyZXN0X3Rlc3RfYXV0aG9yIiwiaWQiOiJqZG9lIn0.y4vZuu1dDdwAl0-S00MCRWRYMlJ5YAMSir6Es6WtWx0"
       request methodGet "/authors_only" [auth] ""
-        shouldRespondWith [json|r#" {"message":"JWSError (CompactDecodeError Invalid number of parts: Expected 3 parts; got 2)"} "#|]
+        shouldRespondWith [json|r#" {"message":"InvalidToken"} "#|]
           { matchStatus = 401
           , matchHeaders = [
               "WWW-Authenticate" <:>
-              "Bearer error=\"invalid_token\", error_description=\"JWSError (CompactDecodeError Invalid number of parts: Expected 3 parts; got 2)\""
+              "Bearer error=\"invalid_token\", error_description=\"InvalidToken\""
             ]
           }
 

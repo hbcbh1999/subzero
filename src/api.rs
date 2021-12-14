@@ -9,10 +9,18 @@ use std::collections::HashMap;
 pub struct ApiRequest<'r> {
     // pub root: String,
     pub method: Method,
+    pub accept_content_type: ResponseContentType,
     // pub headers: &'r HeaderMap<'r>,
     pub query: Query<'r>,
     pub headers: HashMap<&'r str, &'r str>,
     pub cookies: HashMap<&'r str, &'r str>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ResponseContentType {
+    ApplicationJSON,
+    SingularJSON,
+    TextCSV,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -37,6 +45,7 @@ pub enum Query<'r> {
         payload: Option<String>,
         return_table_type: Option<Qi>,
         is_scalar: bool,
+        returns_single: bool,
         is_multiple_call: bool,
         returning: Vec<String>,
         select: Vec<SelectItem<'r>>,

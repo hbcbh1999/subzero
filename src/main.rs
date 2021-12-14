@@ -1,7 +1,9 @@
 #![feature(drain_filter)]
-#![feature(in_band_lifetimes)]
+//#![feature(in_band_lifetimes)]
 
 #[macro_use] extern crate rocket;
+#[macro_use] extern crate lazy_static;
+
 // #[macro_use] extern crate combine;
 // #[macro_use] extern crate serde_derive;
 //#[macro_use] extern crate simple_error;
@@ -11,7 +13,7 @@ use snafu::{ResultExt};
 use http::Method;
 use rocket::http::{CookieJar};
 use rocket::{Rocket, Build, Config as RocketConfig};
-use subzero::api::ApiRequest;
+use subzero::api::{ApiRequest, Query::*, ResponseContentType::*,};
 // use core::slice::SlicePattern;
 use std::collections::HashMap;
 use rocket::{State,};
@@ -22,8 +24,9 @@ use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use tokio_postgres::{NoTls, IsolationLevel, types::ToSql};
 //use futures::future;
 use std::fs;
+use serde_json::{from_value};
 
-
+use std::time::{SystemTime, UNIX_EPOCH};
 use subzero::schema::DbSchema;
 use subzero::parser::postgrest::parse;
 use subzero::dynamic_statement::{generate, SqlSnippet, param, JoinIterator};
@@ -32,9 +35,11 @@ use subzero::error::{Result};
 use subzero::error::*;
 use subzero::config::{Config,  SchemaStructure::*};
 // use ref_cast::RefCast;
-use rocket::http::{Header, ContentType};
+use rocket::http::{Header, ContentType, Status};
+//use rocket::response::status;
 use jsonwebtoken::errors::ErrorKind;
 use jsonwebtoken::{decode, DecodingKey, Validation};
+
 use serde_json::{Value as JsonValue};
 use jsonpath_lib::select;
 
@@ -85,17 +90,25 @@ impl<'r> std::ops::Deref for Headers<'r> {
 	}
 }
 
+
+lazy_static!{
+    //static ref STAR: String = "*".to_string();
+    static ref SINGLE_CONTENT_TYPE: ContentType = ContentType::parse_flexible("application/vnd.pgrst.object+json").unwrap();
+}
 fn get_postgrest_env(role: &String, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>) -> HashMap<String, String>{
     let mut env = HashMap::new();
     env.insert("role".to_string(), role.clone());
     env.insert("search_path".to_string(), search_path.join(", ").to_string());
-    env.extend(request.headers.iter().map(|(k,v)| (format!("pgrst.header.{}",k),v.to_string())));
-    env.extend(request.cookies.iter().map(|(k,v)| (format!("pgrst.cookie.{}",k),v.to_string())));
+    env.extend(request.headers.iter().map(|(k,v)| (format!("request.header.{}",k),v.to_string())));
+    env.extend(request.cookies.iter().map(|(k,v)| (format!("request.cookie.{}",k),v.to_string())));
     match jwt_claims {
         Some(v) => {
             match v.as_object() {
                 Some(claims) => {
-                    env.extend(claims.iter().map(|(k,v)| (format!("pgrst.jwt.claim.{}",k),v.to_string())));
+                    env.extend(claims.iter().map(|(k,v)| (
+                        format!("request.jwt.claim.{}",k), 
+                        match v {JsonValue::String(s) => s.clone(), _=> format!("{}",v)}
+                    )));
                 }
                 None => {}
             }
@@ -111,11 +124,15 @@ fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'
 
 #[derive(Responder, Debug)]
 struct ApiResponse {
-    body: String,
-    content_type: ContentType,
-    content_range: Header<'static>
-    //status: Header<'static>,
-    //headers: Vec<Header<'r>>,
+    response: (Status, (ContentType, String)),
+    content_range: Header<'static>,
+}
+
+
+fn get_current_timestamp() -> u64 {
+    //TODO!!! optimize this to run once per second
+    let start = SystemTime::now();
+    start.duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs()
 }
 
 async fn handle_postgrest_request(
@@ -134,46 +151,54 @@ async fn handle_postgrest_request(
     // handle jwt
     let jwt_claims = match &config.jwt_secret {
         Some(key) => {
-            let token = match headers.get("Authorization"){
+            match headers.get("Authorization"){
                 Some(&a) => {
                     let token_str:Vec<&str> = a.split(' ').collect();
                     match token_str[..] {
-                        ["Bearer", t] => t,
-                        ["bearer", t] => t,
-                        _ => ""
+                        ["Bearer", t] | ["bearer", t] => {
+                            let validation = Validation {validate_exp: false, ..Default::default()};
+                            match decode::<JsonValue>(t, &DecodingKey::from_secret(key.as_bytes()), &validation){
+                                Ok(c) => {
+                                    if let Some(exp) = c.claims.get("exp") {
+                                        if from_value::<u64>(exp.clone()).context(JsonSerialize)? < get_current_timestamp() - 1 {
+                                            return Err(Error::JwtTokenInvalid {message: format!("JWT expired")});
+                                        }
+                                    }
+                                    Ok(Some(c.claims))
+                                },
+                                Err(err) => match *err.kind() {
+                                    ErrorKind::InvalidToken => Err(Error::JwtTokenInvalid {message: format!("{}", err)}),
+                                    //ErrorKind::InvalidIssuer => panic!("Issuer is invalid"), // Example on how to handle a specific error
+                                    _ => Err(Error::JwtTokenInvalid {message: format!("{}", err)}),
+                                }
+                            }
+                        },
+                        _ => Ok(None)
                     }
                 }
-                None => ""
-            };
-            let validation = Validation::default();
-            
-            match decode::<JsonValue>(token, &DecodingKey::from_secret(key.as_bytes()), &validation){
-                Ok(c) => Ok(Some(c.claims)),
-                Err(err) => match *err.kind() {
-                    ErrorKind::InvalidToken => Err(Error::JwtTokenInvalid {message: format!("{}", err)}),
-                    //ErrorKind::InvalidIssuer => panic!("Issuer is invalid"), // Example on how to handle a specific error
-                    _ => Err(Error::JwtTokenInvalid {message: format!("{}", err)}),
-                }
+                None => Ok(None)
             }
+
+            
         }
         None => Ok(None)
     }?;
 
-    let role = match &jwt_claims {
+    let (role, authenticated) = match &jwt_claims {
         Some(claims) => {
             match select(&claims, format!("${}", config.role_claim_key).as_str()) {
                 Ok(v) => match &v[..] {
-                    [JsonValue::String(s)] => Ok(s),
-                    _ => Err(Error::JwtTokenInvalid { message: format!("failed to extract role claim ({})", config.role_claim_key)})
+                    [JsonValue::String(s)] => Ok((s,true)),
+                    _ => Ok((&config.db_anon_role, false))
                 }
                 Err(e) => Err(Error::JwtTokenInvalid { message: format!("{}", e)})
             }
         }
-        None => Ok(&config.db_anon_role)
+        None => Ok((&config.db_anon_role, false))
     }?;
     
     let request = parse(schema_name, root, db_schema, method, parameters, body, headers, cookies)?;
-    let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request.query));
+    let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request));
     let env = get_postgrest_env(role, &vec![schema_name.clone()], &request, &jwt_claims);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
     let mut client = pool.get().await.context(DbPoolError)?;
@@ -186,13 +211,27 @@ async fn handle_postgrest_request(
         .isolation_level(IsolationLevel::Serializable)
         .read_only(true)
         .start()
-        .await.context(DbError)?;
+        .await.context(DbError {authenticated})?;
 
     //TODO!!! optimize this so we run both queries in paralel
-    let env_stm = transaction.prepare_cached(env_statement.as_str()).await.context(DbError)?;
-    let _ = transaction.query(&env_stm, env_parameters.as_slice()).await.context(DbError)?;
-    let main_stm = transaction.prepare_cached(main_statement.as_str()).await.context(DbError)?;
-    let rows = transaction.query(&main_stm, main_parameters.as_slice()).await.context(DbError)?;
+    let env_stm = transaction.prepare_cached(env_statement.as_str()).await.context(DbError {authenticated})?;
+    let _ = transaction.query(&env_stm, env_parameters.as_slice()).await.context(DbError {authenticated})?;
+
+    if let Some((s,f)) = &config.db_pre_request {
+        let fn_schema = match s.as_str() {
+            "" => schema_name,
+            _ => &s
+        };
+
+        let pre_request_statement = format!(r#"select "{}"."{}"()"#, fn_schema, f);
+        //println!("pre_request_statement:====================\n{}\n=================", pre_request_statement);
+        let pre_request_stm = transaction.prepare_cached(pre_request_statement.as_str()).await.context(DbError {authenticated})?;
+        transaction.query(&pre_request_stm, &[]).await.context(DbError {authenticated})?;
+        //println!("pre_request_statement qq:====================\n{:?}\n=================", qq);
+    }
+
+    let main_stm = transaction.prepare_cached(main_statement.as_str()).await.context(DbError {authenticated})?;
+    let rows = transaction.query(&main_stm, main_parameters.as_slice()).await.context(DbError {authenticated})?;
 
     // let (env_stm, main_stm) = future::try_join(
     //         transaction.prepare_cached(env_statement.as_str()),
@@ -204,14 +243,21 @@ async fn handle_postgrest_request(
     //     transaction.query(&main_stm, main_parameters.as_slice())
     // ).await.context(DbError)?;
     
-    transaction.commit().await.context(DbError)?;
+    transaction.commit().await.context(DbError {authenticated})?;
 
     let body: String = rows[0].get("body");
     let page_total: i64 = rows[0].get("page_total");
+    let content_type:ContentType = match ( &request.accept_content_type, &request.query) {
+        (SingularJSON, _) |
+        (_, FunctionCall { returns_single: true, is_scalar: false, .. })
+            => SINGLE_CONTENT_TYPE.clone(),
+        
+        _ => ContentType::JSON,
+    };
     
+    println!("jjjjjjj==========={:?}", ( &content_type, &request.accept_content_type, &request.query));
     Ok(ApiResponse {
-        body,
-        content_type: ContentType::JSON,
+        response: (Status::Ok, (content_type, body)),
         content_range: Header::new("Content-Range", format!("0-{}/*", page_total - 1))
     })
 }
@@ -361,7 +407,7 @@ pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
                                 //println!("got rows {:?}", value);
                                 serde_json::from_str::<DbSchema>(value).context(JsonDeserialize)
                             },
-                            Err(e) => Err(e).context(DbError)
+                            Err(e) => Err(e).context(DbError {authenticated:false})
                         }
                         //serde_json::from_str::<DbSchema>("ssss").context(JsonDeserialize)
                     },
@@ -404,8 +450,8 @@ async fn rocket() -> Rocket<Build> {
     }
 }
 
-#[cfg_attr(test, macro_use)]
-extern crate lazy_static;
+// #[cfg_attr(test, macro_use)]
+// extern crate lazy_static;
 
 #[cfg(test)]
 #[path = "../tests/basic/mod.rs"]

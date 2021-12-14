@@ -1,7 +1,7 @@
 use crate::api::{
     *,
     JsonOperation::*, SelectItem::*, JsonOperand::*, LogicOperator:: *,
-    Condition::*, Filter::*, Join::*, Query::*,
+    Condition::*, Filter::*, Join::*, Query::*, ResponseContentType::*,
 };
 // use crate::error::Error as AppError;
 // use crate::error::Error::*;
@@ -208,11 +208,35 @@ fn fmt_body<'a>(payload: &'a String) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> 
     " )"
 }
 
-pub fn main_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
-    " with subzero_source as(" + fmt_query(schema, q) + ") " +
+pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
+
+    let body_snippet = match (&request.accept_content_type, &request.query) {
+        (SingularJSON, FunctionCall {is_scalar:true, ..} ) |
+        (ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: true, ..} )
+            => "coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')",
+        (SingularJSON, FunctionCall {is_scalar:false, ..} ) |
+        (ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: false, ..} )
+            => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
+        
+        (ApplicationJSON,_) => "coalesce(json_agg(_subzero_t), '[]')::character varying",
+        (SingularJSON, _) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
+        (TextCSV, _) => r#"
+            (SELECT coalesce(string_agg(a.k, ','), '')
+              FROM (
+                SELECT json_object_keys(r)::text as k
+                FROM ( 
+                  SELECT row_to_json(hh) as r from subzero_source as hh limit 1
+                ) s
+              ) a
+            )
+            coalesce(string_agg(substring(_postgrest_t::text, 2, length(_postgrest_t::text) - 2), '\n'), '')
+        "#,
+    };
+
+    " with subzero_source as(" + fmt_query(schema, &request.query) + ") " +
     " select" +
     " pg_catalog.count(_subzero_t) AS page_total, "+
-    " coalesce(json_agg(_subzero_t), '[]')::character varying as body" +
+    body_snippet + " as body" +
     " from ( select * from subzero_source ) _subzero_t"
 }
 
@@ -460,6 +484,7 @@ mod tests {
             ]),
             payload: Some(payload.clone()),
             is_scalar: true,
+            returns_single: false,
             is_multiple_call: false,
             returning: vec![s("*")],
             select: vec![Star],
@@ -477,7 +502,7 @@ mod tests {
             re.replace_all(
                 r#"
                 with
-                    subzero_payload as ( select $1::json as json_data ),
+                    subzero_payload as ( select $1::text::json as json_data ),
                     subzero_body as (
                         select 
                             case when json_typeof(json_data) = 'array' 
@@ -581,7 +606,7 @@ mod tests {
         assert_eq!(re.replace_all(query_str.as_str(), " "), re.replace_all(
         r#"
         with 
-        subzero_payload as ( select $1::json as json_data ),
+        subzero_payload as ( select $1::text::json as json_data ),
         subzero_body as (
             select
                 case when json_typeof(json_data) = 'array'

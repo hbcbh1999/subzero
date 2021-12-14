@@ -88,7 +88,7 @@ pub enum Error {
     DbPoolError { source: PoolError },
 
     #[snafu(display("DbError {}", source))]
-    DbError { source: PgError },
+    DbError { source: PgError, authenticated: bool },
 
     #[snafu(display("JwtTokenInvalid {}", message))]
     JwtTokenInvalid { message: String }
@@ -102,6 +102,7 @@ impl Error {
                 401 => vec![("Content-Type".into(), "application/json".into()),("WWW-Authenticate".into(), "Bearer".into())],
                 _ =>  vec![("Content-Type".into(), "application/json".into())]
             },
+            Error::JwtTokenInvalid { message } => vec![("Content-Type".into(), "application/json".into()),("WWW-Authenticate".into(), format!("Bearer error=\"invalid_token\", error_description=\"{}\"", message))],
             _ => vec![("Content-Type".into(), "application/json".into())]
         }
     }
@@ -133,7 +134,7 @@ impl Error {
                 PoolError::PreRecycleHook(_) => 503,
                 PoolError::PostRecycleHook(_) => 503,
             },
-            Error::DbError { source }  => match source.code() {
+            Error::DbError { source, authenticated }  => match source.code() {
                 Some(c) => match c.code().chars().collect::<Vec<char>>()[..] {
                     ['0','8',..] => 503, // pg connection err
                     ['0','9',..] => 500, // triggered action exception
@@ -161,7 +162,7 @@ impl Error {
                     ['X','X',..] => 500, // internal Error
                     ['4','2','8','8','3']   => 404, // undefined function
                     ['4','2','P','0','1']   => 404, // undefined table
-                    ['4','2','5','0','1']   => 401,  //if authed then HTTP.status403 else HTTP.status401 -- insufficient privilege
+                    ['4','2','5','0','1']   => if *authenticated { 403 } else { 401 },
                     ['P','T',a,b,c] =>   match [a,b,c].iter().collect::<String>().parse::<u16>(){ Ok(c) => c, Err(_) => 500 },
                     _         => 400
                 },
@@ -177,6 +178,7 @@ impl Error {
             Error::InvalidBody {message} => json!({"message": message}),
             Error::InternalError {message} => json!({"message": message}),
             Error::ParseRequestError { message, details }  => json!({"message": message, "details": details}),
+            Error::JwtTokenInvalid {message} => json!({"message": message}),
             Error::NoRelBetween {origin, target}  => json!({
                 "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
                 "message": format!("Could not find a relationship between {} and {} in the schema cache", origin, target)
@@ -195,7 +197,7 @@ impl Error {
             Error::JsonDeserialize {..} => json!({"message": format!("{}", self)}),
             Error::JsonSerialize {..} => json!({"message": format!("{}", self)}),
             Error::DbPoolError { source }  => json!({"message": format!("Db pool error {}", source)}),
-            Error::DbError { source }  => match source.as_db_error() {
+            Error::DbError { source, .. }  => match source.as_db_error() {
                 Some(db_err) => match db_err.code().code().chars().collect::<Vec<char>>()[..] {
                     ['P','T',..] => json!({
                         "details": match db_err.detail() {Some(v) => v.into(), None => JsonValue::Null},

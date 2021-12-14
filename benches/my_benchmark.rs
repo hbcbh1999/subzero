@@ -156,7 +156,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     ));
 
     c.bench_function("generate query & prepare statement", |b| b.iter(|| 
-        generate(main_query(black_box(&s("api")), black_box(&REQUEST.query)))
+        generate(main_query(black_box(&s("api")), black_box(&REQUEST)))
     ));
 }
 
