@@ -1,100 +1,47 @@
 #![feature(drain_filter)]
-//#![feature(in_band_lifetimes)]
-
 #[macro_use] extern crate rocket;
 #[macro_use] extern crate lazy_static;
 
-// #[macro_use] extern crate combine;
-// #[macro_use] extern crate serde_derive;
-//#[macro_use] extern crate simple_error;
-// use snafu::ResultExt;
-use snafu::{ResultExt};
-
-use http::Method;
-use rocket::http::{CookieJar};
-use rocket::{Rocket, Build, Config as RocketConfig};
-use subzero::api::{ApiRequest, Query::*, ResponseContentType::*,};
-// use core::slice::SlicePattern;
-use std::collections::HashMap;
-use rocket::{State,};
-
-use figment::{Figment, Profile, };
-use figment::providers::{Env, Toml, Format};
+use serde_json::{from_value, Value as JsonValue};
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use tokio_postgres::{NoTls, IsolationLevel, types::ToSql};
-//use futures::future;
-use std::fs;
-use serde_json::{from_value};
-
-use std::time::{SystemTime, UNIX_EPOCH};
-use subzero::schema::DbSchema;
-use subzero::parser::postgrest::parse;
-use subzero::dynamic_statement::{generate, SqlSnippet, param, JoinIterator};
-use subzero::formatter::postgresql::{main_query};
-use subzero::error::{Result};
-use subzero::error::*;
-use subzero::config::{Config,  SchemaStructure::*};
-// use ref_cast::RefCast;
-use rocket::http::{Header, ContentType, Status};
-//use rocket::response::status;
-use jsonwebtoken::errors::ErrorKind;
-use jsonwebtoken::{decode, DecodingKey, Validation};
-
-use serde_json::{Value as JsonValue};
+use jsonwebtoken::{decode, DecodingKey, Validation, errors::ErrorKind};
 use jsonpath_lib::select;
+use snafu::{ResultExt};
+use http::Method;
 
+use rocket::{
+    http::{Header, ContentType, Status, CookieJar,},
+    Rocket, Build, Config as RocketConfig, State,
+};
 
-pub struct Headers<'r>(&'r rocket::http::HeaderMap<'r>);
-use rocket::form::{FromForm, ValueField, DataField, Options, Result as FormResult};
+use subzero::{
+    api::{ApiRequest, Query::*, ResponseContentType::*,},
+    schema::DbSchema,
+    error::{*, Result},
+    config::{Config,  SchemaStructure::*},
+    dynamic_statement::{SqlSnippet, JoinIterator, generate, param, },
+    rocket_util::{AllHeaders, QueryString, ApiResponse},
+    parser::postgrest::parse,
+    formatter::postgresql::main_query,
+};
 
-#[derive(Debug)]
-#[repr(transparent)]
-pub struct QueryStringParameters<'r> (Vec<(&'r str, &'r str)>);
+use figment::{
+    providers::{Env, Toml, Format},
+    Figment, Profile, 
+};
 
-#[rocket::async_trait]
-impl<'v> FromForm<'v> for QueryStringParameters<'v> {
-    type Context = Vec<(&'v str, &'v str)>;
-
-    fn init(_opts: Options) -> Self::Context {
-        vec![]
-    }
-
-    fn push_value(ctxt: &mut Self::Context, field: ValueField<'v>) {
-        ctxt.push((field.name.source(), field.value));
-    }
-
-    async fn push_data(_ctxt: &mut Self::Context, _field: DataField<'v, '_>) {
-    }
-
-    fn finalize(this: Self::Context) -> FormResult<'v, Self> {
-        Ok(QueryStringParameters(this))
-    }
-}
-
-#[rocket::async_trait]
-impl<'r> rocket::request::FromRequest<'r> for Headers<'r> {
-	type Error = std::convert::Infallible;
-
-	async fn from_request(
-		req: &'r rocket::Request<'_>,
-	) -> rocket::request::Outcome<Self, Self::Error> {
-		rocket::request::Outcome::Success(Headers(req.headers()))
-	}
-}
-
-impl<'r> std::ops::Deref for Headers<'r> {
-	type Target = rocket::http::HeaderMap<'r>;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
+use std::{
+    fs, 
+    collections::{HashMap},
+    time::{SystemTime, UNIX_EPOCH}
+};
 
 lazy_static!{
     //static ref STAR: String = "*".to_string();
     static ref SINGLE_CONTENT_TYPE: ContentType = ContentType::parse_flexible("application/vnd.pgrst.object+json").unwrap();
 }
+
 fn get_postgrest_env(role: &String, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>) -> HashMap<String, String>{
     let mut env = HashMap::new();
     env.insert("role".to_string(), role.clone());
@@ -122,13 +69,6 @@ fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'
     "select " + env.iter().map(|(k,v)| "set_config("+param(k as &(dyn ToSql + Sync + 'a))+", "+ param(v as &(dyn ToSql + Sync + 'a))+", true)"  ).join(",")
 }
 
-#[derive(Responder, Debug)]
-struct ApiResponse {
-    response: (Status, (ContentType, String)),
-    content_range: Header<'static>,
-}
-
-
 fn get_current_timestamp() -> u64 {
     //TODO!!! optimize this to run once per second
     let start = SystemTime::now();
@@ -137,17 +77,18 @@ fn get_current_timestamp() -> u64 {
 
 async fn handle_postgrest_request(
     config: &Config,
-    schema_name: &String,
     root: &String,
     method: &Method,
-    parameters: Vec<(&str, &str)>,
+    parameters: &Vec<(&str, &str)>,
     db_schema: &State<DbSchema>,
     //config: &State<Config>,
     pool: &State<Pool>,
     body: Option<&String>,
-    headers: HashMap<&str, &str>,
-    cookies: HashMap<&str, &str>,
+    headers: &HashMap<&str, &str>,
+    cookies: &HashMap<&str, &str>,
 ) -> Result<ApiResponse> {
+    let schema_name = config.db_schemas.get(0).unwrap();
+
     // handle jwt
     let jwt_claims = match &config.jwt_secret {
         Some(key) => {
@@ -178,8 +119,6 @@ async fn handle_postgrest_request(
                 }
                 None => Ok(None)
             }
-
-            
         }
         None => Ok(None)
     }?;
@@ -262,58 +201,41 @@ async fn handle_postgrest_request(
     })
 }
 
-// #[catch(400)]
-// fn not_found(req: &Request) -> String {
-//     format!("Sorry, '{}' is not a valid path.", req.uri())
-// }
-
 #[get("/")]
 fn index() -> &'static str {
     "Hello, world!"
 }
 
-
-#[get("/test?<parameters..>")]
-async fn test<'a>( parameters: QueryStringParameters<'a>) -> &'a str {
-    println!("parameters top {:#?}", parameters.0);
-    "ok"
-}
-
 #[get("/<root>?<parameters..>")]
 async fn get<'a>(
         root: String,
-        parameters: QueryStringParameters<'a>,
+        parameters: QueryString<'a>,
         db_schema: &State<DbSchema>,
         config: &State<Config>,
         pool: &State<Pool>,
-        cookies: &CookieJar<'_>,
-        headers: Headers<'_>,
+        cookies: &CookieJar<'a>,
+        headers: AllHeaders<'a>,
 ) -> Result<ApiResponse> {
-    let schema_name = config.db_schemas.get(0).unwrap();
-    let parameters = parameters.0;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    
-    Ok(handle_postgrest_request(&config, &schema_name, &root, &Method::GET, parameters, db_schema, pool, None, headers, cookies).await?)
+    Ok(handle_postgrest_request(&config, &root, &Method::GET, &parameters, db_schema, pool, None, &headers, &cookies).await?)
 }
 
 #[post("/<root>?<parameters..>", data = "<body>")]
 async fn post<'a>(
         root: String,
-        parameters: QueryStringParameters<'a>,
+        parameters: QueryString<'a>,
         db_schema: &State<DbSchema>,
         config: &State<Config>,
         pool: &State<Pool>,
         body: String,
-        cookies: &CookieJar<'_>,
-        headers: Headers<'_>,
+        cookies: &CookieJar<'a>,
+        headers: AllHeaders<'a>,
 ) -> Result<ApiResponse> {
-    let schema_name = config.db_schemas.get(0).unwrap();
-    let parameters = parameters.0;
     
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
@@ -321,73 +243,60 @@ async fn post<'a>(
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&config, &schema_name, &root, &Method::POST, parameters, db_schema, pool, Some(&body), headers, cookies).await?)
+    Ok(handle_postgrest_request(&config, &root, &Method::POST, &parameters, db_schema, pool, Some(&body), &headers, &cookies).await?)
 }
-
 
 #[get("/rpc/<root>?<parameters..>")]
 async fn rpc_get<'a>(
         root: String,
-        parameters: QueryStringParameters<'a>,
+        parameters: QueryString<'a>,
         db_schema: &State<DbSchema>,
         config: &State<Config>,
         pool: &State<Pool>,
-        cookies: &CookieJar<'_>,
-        headers: Headers<'_>,
+        cookies: &CookieJar<'a>,
+        headers: AllHeaders<'a>,
 ) -> Result<ApiResponse> {
-    let schema_name = config.db_schemas.get(0).unwrap();
-    let parameters = parameters.0;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    
-    Ok(handle_postgrest_request(&config, &schema_name, &root, &Method::GET, parameters, db_schema, pool, None, headers, cookies).await?)
+    Ok(handle_postgrest_request(&config, &root, &Method::GET, &parameters, db_schema, pool, None, &headers, &cookies).await?)
 }
 
 #[post("/rpc/<root>?<parameters..>", data = "<body>")]
 async fn rpc_post<'a>(
         root: String,
-        parameters: QueryStringParameters<'a>,
+        parameters: QueryString<'a>,
         db_schema: &State<DbSchema>,
         config: &State<Config>,
         pool: &State<Pool>,
         body: String,
-        cookies: &CookieJar<'_>,
-        headers: Headers<'_>,
+        cookies: &CookieJar<'a>,
+        headers: AllHeaders<'a>,
 ) -> Result<ApiResponse> {
-    let schema_name = config.db_schemas.get(0).unwrap();
-    let parameters = parameters.0;
     
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
+    
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&config, &schema_name, &root, &Method::POST, parameters, db_schema, pool, Some(&body), headers, cookies).await?)
+    Ok(handle_postgrest_request(&config, &root, &Method::POST, &parameters, db_schema, pool, Some(&body), &headers, &cookies).await?)
 }
 
 
 pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
     let app_config:Config = config.extract().expect("config");
 
-    //println!("{:#?}", app_config);
     //setup db connection
     let pg_uri = app_config.db_uri.clone();
-    let mut pg_config = pg_uri.parse::<tokio_postgres::Config>().unwrap();
-    if let None = pg_config.get_application_name() {
-        pg_config.application_name("subzero");
-    }
-    
-    let mgr_config = ManagerConfig {
-        recycling_method: RecyclingMethod::Fast
-    };
+    let pg_config = pg_uri.parse::<tokio_postgres::Config>().unwrap();
+    let mgr_config = ManagerConfig {recycling_method: RecyclingMethod::Fast};
     let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
     let pool = Pool::builder(mgr).max_size(10).build().unwrap();
-
 
     //read db schema
     let db_schema = match &app_config.db_schema_structure {
@@ -395,21 +304,12 @@ pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
             Ok(s) => {
                 match pool.get().await{
                     Ok(client) => {
-                       
-    
-                        let params = vec![app_config.db_schemas.iter().map(|s| s.as_str()).collect::<Vec<_>>()];
-                        let params: Vec<&(dyn ToSql + Sync)> = params.iter().map(|p| p as &(dyn ToSql + Sync)).collect();
-                        // let params:Vec<&(dyn ToSql + Sync)> = vec![&params];
-                        match client.query(&s, &params).await {
+                        match client.query(&s, &[&app_config.db_schemas]).await {
                             Ok(rows) => {
-                               
-                                let value:&str = rows[0].get(0);
-                                //println!("got rows {:?}", value);
-                                serde_json::from_str::<DbSchema>(value).context(JsonDeserialize)
+                                serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize)
                             },
                             Err(e) => Err(e).context(DbError {authenticated:false})
                         }
-                        //serde_json::from_str::<DbSchema>("ssss").context(JsonDeserialize)
                     },
                     Err(e) => Err(e).context(DbPoolError)
                 }
@@ -424,21 +324,18 @@ pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
         },
         JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize)
     }?;
-    //let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
-
 
     Ok(rocket::custom(config)
         .manage(db_schema)
         .manage(app_config)
         .manage(pool)
-        .mount("/", routes![index, test])
+        .mount("/", routes![index])
         .mount("/rest", routes![get,post,rpc_get,rpc_post]))
 }
 
 #[launch]
 async fn rocket() -> Rocket<Build> {
-    //env_logger::init();
-
+    
     let config = Figment::from(RocketConfig::default())
         .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
         .merge(Env::prefixed("SUBZERO_").ignore(&["PROFILE"]).global())
@@ -450,8 +347,6 @@ async fn rocket() -> Rocket<Build> {
     }
 }
 
-// #[cfg_attr(test, macro_use)]
-// extern crate lazy_static;
 
 #[cfg(test)]
 #[path = "../tests/basic/mod.rs"]

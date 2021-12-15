@@ -139,10 +139,6 @@ pub static JSON_SCHEMA:&str =
         static ref DB_SCHEMA:DbSchema = {
             serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap()
         };
-
-        static ref REQUEST:ApiRequest<'static> = {
-            parse(&s("api"), &s("projects"), &DB_SCHEMA, &Method::GET, PARAMETERS.to_vec(), None, HashMap::new(), HashMap::new()).unwrap()
-        };
     }
 fn s(s:&str) -> String {
     s.to_string()
@@ -150,13 +146,14 @@ fn s(s:&str) -> String {
 
 fn criterion_benchmark(c: &mut Criterion) {
     
-
+    let emtpy_hashmap = HashMap::new();
+    let request = parse(&s("api"), &s("projects"), &DB_SCHEMA, &Method::GET, &PARAMETERS.to_vec(), None, &emtpy_hashmap, &emtpy_hashmap).unwrap();
     c.bench_function("parse request", |b| b.iter(|| 
-        parse(black_box(&s("api")), black_box(&s("projects")), black_box(&DB_SCHEMA), black_box(&Method::GET), black_box(PARAMETERS.to_vec()), black_box(None), HashMap::new(), HashMap::new())
+        parse(black_box(&s("api")), black_box(&s("projects")), black_box(&DB_SCHEMA), black_box(&Method::GET), black_box(&PARAMETERS.to_vec()), black_box(None), &emtpy_hashmap, &emtpy_hashmap)
     ));
 
     c.bench_function("generate query & prepare statement", |b| b.iter(|| 
-        generate(main_query(black_box(&s("api")), black_box(&REQUEST)))
+        generate(main_query(black_box(&s("api")), black_box(&request)))
     ));
 }
 

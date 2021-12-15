@@ -1,68 +1,32 @@
 
-use crate::api::*;
+
+use std::collections::{HashMap,HashSet,BTreeSet};
+use std::iter::FromIterator;
 use crate::api::{
+    *,
     LogicOperator::*,Join::*, Condition::*, Filter::*, Query::*,
     ResponseContentType::*,
 };
 use crate::schema::{*, ObjectType::*, ProcReturnType::*,PgType::*};
 use crate::error::*;
-//use rocket::tokio::runtime::Handle;
-//use combine::Positioned;
 use snafu::{OptionExt, ResultExt};
-use std::collections::HashMap;
-use std::collections::BTreeSet;
 use serde_json::{Value as JsonValue};
-
 use combine::{
-    //error::{ParseError},
+    error::{StreamError},
     easy::{ParseError,Error as ParserError, Info},
-    //easy::Error as ParserError,
-    //easy::Error::fmt_errors,
-    //easy::{Errors,Error},
+    stream::StreamErrorFor,
+    Parser, Stream, EasyParser,
     parser::{
         char::{char, digit, letter, spaces, string},
         choice::{choice, optional},
         repeat::{many1, sep_by, sep_by1},
         sequence::{between},
-        token::{one_of, none_of},
-        
+        token::{one_of, none_of, any, eof,},
+        repeat::{many},
+        combinator::{attempt,not_followed_by,},
     },
-    stream::StreamErrorFor,
-    not_followed_by,
-    attempt, any, many, eof,
-    Parser, Stream, EasyParser
 };
 
-use std::collections::HashSet;
-use std::iter::FromIterator;
-
-
-use combine::error::{StreamError};
-
-// #[derive(Debug)]
-// pub struct PostgrestRequest<'r> ( pub ApiRequest );
-
-// #[rocket::async_trait]
-// impl<'r> FromRequest<'r> for PostgrestRequest<'r> {
-//     type Error = std::convert::Infallible;
-
-//     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-//         println!("postgrest parser used");
-//         Outcome::Success(
-//             PostgrestRequest ( ApiRequest{
-//                 // root: request.uri().to_string(),
-//                 // method: request.method(),
-//                 // headers: &request.headers(),
-//                 queries: vec![Query {
-//                     select: vec![],
-//                     from: "".to_string(),
-//                     from_alias: None,
-//                     where_: ConditionTree { operator: And, conditions: vec![]}
-//                 }],
-//             })
-//         )
-//     }
-// }
 
 lazy_static!{
     //static ref STAR: String = "*".to_string();
@@ -101,15 +65,349 @@ lazy_static!{
     };
 }
 
+pub fn parse<'r>(
+    schema: &String, 
+    root: &String, 
+    db_schema: &DbSchema, 
+    method: &Method, 
+    parameters: &Vec<(&str, &str)>, 
+    body: Option<&'r String>, 
+    headers: &'r HashMap<&'r str, &'r str>,
+    cookies: &'r HashMap<&'r str, &'r str>,
+) -> Result<ApiRequest<'r>> {
+
+    let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {schemas: vec![schema.to_owned()]})?;
+    // println!("--------------looking for {} {}->{}.{:?}", current_schema, origin, target, hint);
+    // println!("--------------got schema");
+    let root_obj = schema_obj.objects.get(root).context(NotFound)?;
+
+    //println!("root_obj {:#?}", root_obj);
+    let mut select_items = vec![SelectItem::Star];
+    let mut limits = vec![];
+    let mut offsets = vec![];
+    let mut orders = vec![];
+    let mut conditions = vec![];
+    let mut columns_ = None;
+    let mut fn_arguments = vec![];
+
+    let accept_content_type = match headers.get("Accept") {
+        Some(accept_header) => {
+            let (act, _) = content_type()
+            .message("failed to parse accept header")
+            .easy_parse(*accept_header)
+            .map_err(to_app_error(accept_header))?;
+            Ok(act)
+        }
+        None => Ok(ApplicationJSON)
+    }?;
+    
+    
+
+    // iterate over parameters, parse and collect them in the relevant vectors
+    for &(k,v) in parameters.iter() {
+        match k {
+            "select" => {
+                let (parsed_value, _) = select()
+                    .message("failed to parse select parameter")
+                    .easy_parse(v).map_err(to_app_error(v))?;
+                select_items = parsed_value;
+            }
+
+            "columns" => {
+                let (parsed_value, _) = columns()
+                    .message("failed to parse columns parameter")
+                    .easy_parse(v).map_err(to_app_error(v))?;
+                columns_ = Some(parsed_value);
+            }
+
+            kk if is_logical(kk) => {
+                let ((tp, n, lo), _) = logic_tree_path()
+                    .message("failed to parser logic tree path")
+                    .easy_parse(k).map_err(to_app_error(k))?;
+                let ns = if n { "not." } else { "" };
+                let los = if lo == And {  "and" } else { "or" };
+                let s = format!("{}{}{}", ns,los,v);
+                let (c, _) = logic_condition()
+                    .message("failed to parse logic tree")
+                    .easy_parse(s.as_str()).map_err(to_app_error(&s))?;
+                conditions.push((tp, c));
+            }
+
+            kk if is_limit(kk) => {
+                let ((tp,_), _)= tree_path()
+                    .message("failed to parser limit tree path")
+                    .easy_parse(k).map_err(to_app_error(k))?;
+                let (parsed_value,_) = limit()
+                    .message("failed to parse limit parameter")
+                    .easy_parse(v).map_err(to_app_error(v))?;
+                limits.push((tp, parsed_value));
+            }
+
+            kk if is_offset(kk) => {
+                let ((tp,_), _)= tree_path()
+                    .message("failed to parser offset tree path")
+                    .easy_parse(k).map_err(to_app_error(k))?;
+                let (parsed_value,_) = offset()
+                    .message("failed to parse limit parameter")
+                    .easy_parse(v).map_err(to_app_error(v))?;
+                offsets.push((tp, parsed_value));
+            }
+
+            kk if is_order(kk) => {
+                let ((tp,_), _)= tree_path()
+                    .message("failed to parser order tree path")
+                    .easy_parse(k).map_err(to_app_error(k))?;
+                let (parsed_value,_) = order()
+                    .message("failed to parse order")
+                    .easy_parse(v).map_err(to_app_error(v))?;
+                orders.push((tp, parsed_value));
+            }
+
+            //is filter or function parameter
+            _ => {
+                let ((tp,field), _)= tree_path()
+                    .message("failed to parser filter tree path")
+                    .easy_parse(k).map_err(to_app_error(k))?;
+
+                match root_obj.kind {
+                    Function {..} => {
+                        if tp.len() > 0 || has_operator(v) {
+                            // this is a filter
+                            let ((negate,filter), _) = negatable_filter()
+                                .message("failed to parse filter")
+                                .easy_parse(v).map_err(to_app_error(v))?;
+                            conditions.push((tp, Condition::Single {field, filter, negate}));
+                        }
+                        else {
+                            //this is a function parameter
+                            fn_arguments.push((k,v));
+                        }
+                    }
+                    _ => {
+                        let ((negate,filter), _) = negatable_filter()
+                        .message("failed to parse filter")
+                        .easy_parse(v).map_err(to_app_error(v))?;
+                        conditions.push((tp, Condition::Single {field, filter, negate}));
+
+                    }
+                };
+            }
+        }
+    }
+
+    let mut query = match (method, root_obj.kind.clone()) {
+        (method, Function {return_type, parameters, ..}) => {
+            let arguments = match *method {
+                Method::GET => {
+                    let mut args:HashMap<String, JsonValue> = HashMap::new();
+                    for p in &parameters {
+                        let v:Vec<&str> = fn_arguments.iter().zip(std::iter::repeat(p.name.clone())).filter_map(|(&(k,v),n)| if k == n { Some(v) } else {None} ).collect();
+                        let vv = match (p.variadic, v.len()) {
+                            (_,0) => None,
+                            (true,_) => Some(JsonValue::Array(
+                                v.iter()
+                                .map(|s| JsonValue::String(s.to_string()))
+                                .collect()
+                            )),
+                            (false,1) => Some(JsonValue::String(v[0].to_string())),
+                            (false,_) => None,
+                        };
+                        if vv.is_some() {
+                            args.insert(p.name.clone(), vv.unwrap());
+                        }
+                    }
+                    Ok(args)
+                },
+                Method::POST => {
+                    let payload = body.context(InvalidBody {message: "body not available".to_string()})?;
+                    let json_payload = serde_json::from_str(payload).context(JsonDeserialize)?;
+                    Ok(json_payload)
+                },
+                _ => Err(Error::UnsupportedVerb)
+            }?;
+
+            let params = match (parameters.len(), parameters.get(0)) {
+                (1, Some(p)) if p.name == "" => CallParams::OnePosParam(p.clone()),
+                _ => {
+                    let specified_parameters = arguments.keys().collect::<Vec<_>>();
+                    CallParams::KeyParams(
+                        parameters.into_iter().filter(|p| specified_parameters.contains(&&p.name) ).collect::<Vec<_>>()
+                    )
+                },
+            };
+            
+            //TODO!!! check all the required arguments are available
+
+            let payload: String = serde_json::to_string(&arguments).context(JsonSerialize)?;
+            
+            let mut q = FunctionCall {
+                fn_name: Qi(schema.clone(), root.clone()),
+                parameters: params,
+                
+                //CallParams::KeyParams(vec![]),
+                payload: Some(payload),
+                
+                is_scalar: match return_type {
+                    One(Scalar) => true,
+                    SetOf(Scalar) => true,
+                    _ => false,
+                },
+                returns_single: match return_type {
+                    One(_) => true,
+                    SetOf(_) => false,
+                },
+                is_multiple_call: false,
+
+                returning: vec![],//get_returning(&select_items)?,
+                select: select_items,
+                where_: ConditionTree { operator: And, conditions: vec![] },
+                return_table_type: match return_type {
+                    SetOf(Composite(q)) => Some(q),
+                    One(Composite(q)) => Some(q),
+                    _ => None,
+                },
+            };
+            add_join_conditions(&mut q, &schema, db_schema)?;
+            
+            //we populate the returing becasue it relies on the "join" information
+            if let FunctionCall { ref mut returning, ref select, ..} = q {
+                returning.extend(get_returning(select)?);
+            }
+            Ok(q)
+        },
+        (&Method::GET, _) => {
+            let mut q = Select {
+                select: select_items,
+                from: vec![root.clone()],
+                where_: ConditionTree { operator: And, conditions: vec![] },
+                limit: None, offset: None, order: vec![],
+            };
+            add_join_conditions(&mut q, &schema, db_schema)?;
+            Ok(q)
+        },
+        (&Method::POST,_) => {
+            let payload = body.context(InvalidBody {message: "body not available".to_string()})?;
+            let columns = match columns_ {
+                Some(c) => Ok(c),
+                None => {
+                    let json_payload: Result<JsonValue,serde_json::Error> = serde_json::from_str(payload);
+                    match json_payload {
+                        Ok(j) => {
+                            match j {
+                                JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
+                                JsonValue::Array(v) => {
+                                    match v.get(0) {
+                                        Some(JsonValue::Object(m)) => {
+                                            let canonical_set:HashSet<&String> = HashSet::from_iter(m.keys());
+                                            let all_keys_match = v.iter().all(|vv|
+                                                match vv {
+                                                    JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
+                                                    _ => false
+                                                }
+                                            );
+                                            if all_keys_match {
+                                                Ok(m.keys().cloned().collect())
+                                            }
+                                            else {
+                                                Err(Error::InvalidBody {message: format!("All object keys must match")})
+                                            }
+                                            
+                                        },
+                                        _ => Ok(vec![])
+                                    }
+                                },
+                                _ => Ok(vec![])
+                            }
+                        },
+                        Err(e) => {
+                            Err(Error::InvalidBody {message: format!("Failed to parse json body {}", e)})
+                        }
+                    }
+                }
+            }?;
+
+            let mut q = Insert {
+                into: root.clone(),
+                columns: columns,
+                payload,
+                where_: ConditionTree { operator: And, conditions: vec![] },
+                returning: vec![], //get_returning(&select_items)?,
+                select: select_items,
+                //, onConflict :: Maybe (PreferResolution, [FieldName])
+            };
+            add_join_conditions(&mut q, &schema, db_schema)?;
+            //we populate the returing becasue it relies on the "join" information
+            if let Insert { ref mut returning, ref select, ..} = q {
+                returning.extend(get_returning(select)?);
+            }
+            Ok(q)
+        },
+        // Method::PATCH => Ok(Update),
+        // Method::PUT => Ok(Upsert),
+        // Method::DELETE => Ok(Delete),
+        _ => Err(Error::UnsupportedVerb)
+    }?;
+
+    //add_join_conditions(&mut query, &schema, db_schema)?;
+    insert_conditions(&mut query, conditions);
+    //insert_limits(&mut query, limits);
+    //insert_offsets(&mut query, offsets);
+    //insert_orders(&mut query, orders);
+
+    // insert_properties(&mut query, conditions, |q, p|{
+    //     let query_conditions: &mut Vec<Condition> = match q {
+    //         Select {where_, ..} => where_.conditions.as_mut(),
+    //         Insert {where_, ..} => where_.conditions.as_mut(),
+    //     };
+    //     p.into_iter().for_each(|c| query_conditions.push(c));
+    // });
+
+    insert_properties(&mut query, limits, |q, p|{
+        let limit = match q {
+            Select {limit, ..} => limit,
+            Insert {..} => todo!(),
+            FunctionCall { .. } => todo!(),
+        };
+        for v in p {
+            std::mem::swap(limit, &mut Some(v));
+        }
+    });
+
+    insert_properties(&mut query, offsets, |q, p|{
+        let offset = match q {
+            Select {offset, ..} => offset,
+            Insert {..} => todo!(),
+            FunctionCall { .. } => todo!(),
+        };
+        for v in p {
+            std::mem::swap(offset, &mut Some(v));
+        }
+    });
+
+    insert_properties(&mut query, orders, |q, p|{
+        let order = match q {
+            Select {order, ..} => order,
+            Insert {..} => todo!(),
+            FunctionCall { .. } => todo!(),
+        };
+        for mut o in p {
+            std::mem::swap(order, &mut o);
+        }
+    });
+    
+
+    Ok(ApiRequest {
+        method: method.clone(),
+        query,
+        accept_content_type,
+        headers,
+        cookies,
+    })
+}
+
+// parser functions
 fn lex<Input, P>(p: P) -> impl Parser<Input, Output = P::Output>
-where
-    P: Parser<Input>,
-    Input: Stream<Token = char>,
-    // <Input as StreamOnce>::Error: ParseError<
-    //     <Input as StreamOnce>::Token,
-    //     <Input as StreamOnce>::Range,
-    //     <Input as StreamOnce>::Position,
-    // >,
+where P: Parser<Input>, Input: Stream<Token = char>,
 {
     p.skip(spaces())
 }
@@ -427,22 +725,6 @@ where Input: Stream<Token = char>
     )).and_then(|r| r)
 }
 
-fn order<Input>() -> impl Parser<Input, Output = Vec<OrderTerm>>
-where Input: Stream<Token = char>
-{
-    sep_by1(order_term(), lex(char(','))).skip(eof())
-}
-
-fn order_term<Input>() -> impl Parser<Input, Output = OrderTerm>
-where Input: Stream<Token = char>
-{
-    let direction = attempt(dot().and(string("asc").map(|_| OrderDirection::Asc).or(string("desc").map(|_| OrderDirection::Desc))).map(|(_,v)| v));
-    let nulls = dot().and(
-        attempt(string("nullsfirst").map(|_| OrderNulls::NullsFirst)).or(string("nullslast").map(|_| OrderNulls::NullsLast))
-    ).map(|(_,v)| v);
-    field().and(optional(direction).and(optional(nulls))).map(|(term, (direction, null_order))| OrderTerm{term, direction, null_order})
-}
-
 fn logic_filter<Input>() -> impl Parser<Input, Output = Filter>
 where Input: Stream<Token = char>
 {
@@ -484,6 +766,22 @@ where Input: Stream<Token = char>
             .and(logic_single_value())
             .map(|((o,l),v)| Ok(Filter::Fts (o,l,SingleVal(v)))),
     )).and_then(|v| v)
+}
+
+fn order<Input>() -> impl Parser<Input, Output = Vec<OrderTerm>>
+where Input: Stream<Token = char>
+{
+    sep_by1(order_term(), lex(char(','))).skip(eof())
+}
+
+fn order_term<Input>() -> impl Parser<Input, Output = OrderTerm>
+where Input: Stream<Token = char>
+{
+    let direction = attempt(dot().and(string("asc").map(|_| OrderDirection::Asc).or(string("desc").map(|_| OrderDirection::Desc))).map(|(_,v)| v));
+    let nulls = dot().and(
+        attempt(string("nullsfirst").map(|_| OrderNulls::NullsFirst)).or(string("nullslast").map(|_| OrderNulls::NullsLast))
+    ).map(|(_,v)| v);
+    field().and(optional(direction).and(optional(nulls))).map(|(term, (direction, null_order))| OrderTerm{term, direction, null_order})
 }
 
 fn content_type<Input>() -> impl Parser<Input, Output = ResponseContentType>
@@ -542,408 +840,7 @@ parser! {
     }
 }
 
-fn is_logical(s: &str)->bool{ s == "and" || s == "or" || s.ends_with(".or") || s.ends_with(".and") }
-fn is_limit(s: &str)->bool{ s == "limit" || s.ends_with(".limit") }
-fn is_offset(s: &str)->bool{ s == "offset" || s.ends_with(".offset") }
-fn is_order(s: &str)->bool{ s == "order" || s.ends_with(".order") }
-fn has_operator(s: &str)->bool {
-    OPERATORS_START.iter().map(|op| s.starts_with(op) )
-    .any(|b| b)
-}
-
-fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
-    move |mut e| {
-        let m = e.errors.drain_filter(|v| 
-            match v {
-                ParserError::Message(_) => true,
-                _ => false
-            }
-        ).collect::<Vec<_>>();
-        let position = e.position.translate_position(s);
-        let message = match m.as_slice() {
-            [ParserError::Message(Info::Static(s))] => s,
-            _ => ""
-        };
-        let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
-        let details = format!("{}", e)
-            .replace(format!("Parse error at {}", e.position).as_str(), "")
-            .replace("\n", " ")
-            .trim()
-            .to_string();
-        Error::ParseRequestError {message, details}
-    }
-}
-
-pub fn get_parameter<'a >(name: &str, parameters: &'a Vec<(&'a str, &'a str)>)->Option<&'a (&'a str, &'a str)> {
-    parameters.iter().filter(|v| v.0 == name).next()
-}
-
-fn get_returning(select: &Vec<SelectItem>) -> Result<Vec<String>> {
-    Ok(select.iter().map(|s|{
-        match s {
-            SelectItem::Simple {field, ..} => Ok(vec![&field.name]),
-            SelectItem::SubSelect {join:Some(j), ..} => {
-                match j {
-                    Child(fk) => Ok(fk.referenced_columns.iter().collect()),
-                    Parent(fk) => Ok(fk.columns.iter().collect()),
-                    Many(_,fk1,fk2) => {
-                        let mut f = vec![];
-                        f.extend(fk1.referenced_columns.iter());
-                        f.extend(fk2.referenced_columns.iter());
-                        Ok(f)
-                    },
-                }
-            },
-            SelectItem::Star => Ok(vec![]),
-            //TODO!! error here is wrong
-            x => Err(Error::NoRelBetween {origin: "table".to_string(), target: format!("x {:?}",x)}) 
-            
-        }
-    })
-    .collect::<Result<Vec<_>, _>>()?
-    .into_iter().flatten().cloned().collect::<BTreeSet<_>>().into_iter().collect())
-}
-
-
-pub fn parse<'r>(
-    schema: &String, 
-    root: &String, 
-    db_schema: &DbSchema, 
-    method: &Method, 
-    parameters: Vec<(&str, &str)>, 
-    body: Option<&'r String>, 
-    headers: HashMap<&'r str, &'r str>,
-    cookies: HashMap<&'r str, &'r str>,
-) -> Result<ApiRequest<'r>> {
-
-    let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {schemas: vec![schema.to_owned()]})?;
-    // println!("--------------looking for {} {}->{}.{:?}", current_schema, origin, target, hint);
-    // println!("--------------got schema");
-    let root_obj = schema_obj.objects.get(root).context(NotFound)?;
-
-    //println!("root_obj {:#?}", root_obj);
-    let mut select_items = vec![SelectItem::Star];
-    let mut limits = vec![];
-    let mut offsets = vec![];
-    let mut orders = vec![];
-    let mut conditions = vec![];
-    let mut columns_ = None;
-    let mut fn_arguments = vec![];
-
-    let accept_content_type = match headers.get("Accept") {
-        Some(accept_header) => {
-            let (act, _) = content_type()
-            .message("failed to parse accept header")
-            .easy_parse(*accept_header)
-            .map_err(to_app_error(accept_header))?;
-            Ok(act)
-        }
-        None => Ok(ApplicationJSON)
-    }?;
-    
-    
-
-    // iterate over parameters, parse and collect them in the relevant vectors
-    for (k,v) in parameters.into_iter() {
-        match k {
-            "select" => {
-                let (parsed_value, _) = select()
-                    .message("failed to parse select parameter")
-                    .easy_parse(v).map_err(to_app_error(v))?;
-                select_items = parsed_value;
-            }
-
-            "columns" => {
-                let (parsed_value, _) = columns()
-                    .message("failed to parse columns parameter")
-                    .easy_parse(v).map_err(to_app_error(v))?;
-                columns_ = Some(parsed_value);
-            }
-
-            kk if is_logical(kk) => {
-                let ((tp, n, lo), _) = logic_tree_path()
-                    .message("failed to parser logic tree path")
-                    .easy_parse(k).map_err(to_app_error(k))?;
-                let ns = if n { "not." } else { "" };
-                let los = if lo == And {  "and" } else { "or" };
-                let s = format!("{}{}{}", ns,los,v);
-                let (c, _) = logic_condition()
-                    .message("failed to parse logic tree")
-                    .easy_parse(s.as_str()).map_err(to_app_error(&s))?;
-                conditions.push((tp, c));
-            }
-
-            kk if is_limit(kk) => {
-                let ((tp,_), _)= tree_path()
-                    .message("failed to parser limit tree path")
-                    .easy_parse(k).map_err(to_app_error(k))?;
-                let (parsed_value,_) = limit()
-                    .message("failed to parse limit parameter")
-                    .easy_parse(v).map_err(to_app_error(v))?;
-                limits.push((tp, parsed_value));
-            }
-
-            kk if is_offset(kk) => {
-                let ((tp,_), _)= tree_path()
-                    .message("failed to parser offset tree path")
-                    .easy_parse(k).map_err(to_app_error(k))?;
-                let (parsed_value,_) = offset()
-                    .message("failed to parse limit parameter")
-                    .easy_parse(v).map_err(to_app_error(v))?;
-                offsets.push((tp, parsed_value));
-            }
-
-            kk if is_order(kk) => {
-                let ((tp,_), _)= tree_path()
-                    .message("failed to parser order tree path")
-                    .easy_parse(k).map_err(to_app_error(k))?;
-                let (parsed_value,_) = order()
-                    .message("failed to parse order")
-                    .easy_parse(v).map_err(to_app_error(v))?;
-                orders.push((tp, parsed_value));
-            }
-
-            //is filter or function parameter
-            _ => {
-                let ((tp,field), _)= tree_path()
-                    .message("failed to parser filter tree path")
-                    .easy_parse(k).map_err(to_app_error(k))?;
-
-                match root_obj.kind {
-                    Function {..} => {
-                        if tp.len() > 0 || has_operator(v) {
-                            // this is a filter
-                            let ((negate,filter), _) = negatable_filter()
-                                .message("failed to parse filter")
-                                .easy_parse(v).map_err(to_app_error(v))?;
-                            conditions.push((tp, Condition::Single {field, filter, negate}));
-                        }
-                        else {
-                            //this is a function parameter
-                            fn_arguments.push((k,v));
-                        }
-                    }
-                    _ => {
-                        let ((negate,filter), _) = negatable_filter()
-                        .message("failed to parse filter")
-                        .easy_parse(v).map_err(to_app_error(v))?;
-                        conditions.push((tp, Condition::Single {field, filter, negate}));
-
-                    }
-                };
-            }
-        }
-    }
-
-    let mut query = match (method, root_obj.kind.clone()) {
-        (method, Function {return_type, parameters, ..}) => {
-            let arguments = match *method {
-                Method::GET => {
-                    let mut args:HashMap<String, JsonValue> = HashMap::new();
-                    for p in &parameters {
-                        let v:Vec<&str> = fn_arguments.iter().zip(std::iter::repeat(p.name.clone())).filter_map(|(&(k,v),n)| if k == n { Some(v) } else {None} ).collect();
-                        let vv = match (p.variadic, v.len()) {
-                            (_,0) => None,
-                            (true,_) => Some(JsonValue::Array(
-                                v.iter()
-                                .map(|s| JsonValue::String(s.to_string()))
-                                .collect()
-                            )),
-                            (false,1) => Some(JsonValue::String(v[0].to_string())),
-                            (false,_) => None,
-                        };
-                        if vv.is_some() {
-                            args.insert(p.name.clone(), vv.unwrap());
-                        }
-                    }
-                    Ok(args)
-                },
-                Method::POST => {
-                    let payload = body.context(InvalidBody {message: "body not available".to_string()})?;
-                    let json_payload = serde_json::from_str(payload).context(JsonDeserialize)?;
-                    Ok(json_payload)
-                },
-                _ => Err(Error::UnsupportedVerb)
-            }?;
-
-            let params = match (parameters.len(), parameters.get(0)) {
-                (1, Some(p)) if p.name == "" => CallParams::OnePosParam(p.clone()),
-                _ => {
-                    let specified_parameters = arguments.keys().collect::<Vec<_>>();
-                    CallParams::KeyParams(
-                        parameters.into_iter().filter(|p| specified_parameters.contains(&&p.name) ).collect::<Vec<_>>()
-                    )
-                },
-            };
-            
-            //TODO!!! check all the required arguments are available
-
-            let payload: String = serde_json::to_string(&arguments).context(JsonSerialize)?;
-            
-            let mut q = FunctionCall {
-                fn_name: Qi(schema.clone(), root.clone()),
-                parameters: params,
-                
-                //CallParams::KeyParams(vec![]),
-                payload: Some(payload),
-                
-                is_scalar: match return_type {
-                    One(Scalar) => true,
-                    SetOf(Scalar) => true,
-                    _ => false,
-                },
-                returns_single: match return_type {
-                    One(_) => true,
-                    SetOf(_) => false,
-                },
-                is_multiple_call: false,
-
-                returning: vec![],//get_returning(&select_items)?,
-                select: select_items,
-                where_: ConditionTree { operator: And, conditions: vec![] },
-                return_table_type: match return_type {
-                    SetOf(Composite(q)) => Some(q),
-                    One(Composite(q)) => Some(q),
-                    _ => None,
-                },
-            };
-            add_join_conditions(&mut q, &schema, db_schema)?;
-            
-            //we populate the returing becasue it relies on the "join" information
-            if let FunctionCall { ref mut returning, ref select, ..} = q {
-                returning.extend(get_returning(select)?);
-            }
-            Ok(q)
-        },
-        (&Method::GET, _) => {
-            let mut q = Select {
-                select: select_items,
-                from: vec![root.clone()],
-                where_: ConditionTree { operator: And, conditions: vec![] },
-                limit: None, offset: None, order: vec![],
-            };
-            add_join_conditions(&mut q, &schema, db_schema)?;
-            Ok(q)
-        },
-        (&Method::POST,_) => {
-            let payload = body.context(InvalidBody {message: "body not available".to_string()})?;
-            let columns = match columns_ {
-                Some(c) => Ok(c),
-                None => {
-                    let json_payload: Result<JsonValue,serde_json::Error> = serde_json::from_str(payload);
-                    match json_payload {
-                        Ok(j) => {
-                            match j {
-                                JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
-                                JsonValue::Array(v) => {
-                                    match v.get(0) {
-                                        Some(JsonValue::Object(m)) => {
-                                            let canonical_set:HashSet<&String> = HashSet::from_iter(m.keys());
-                                            let all_keys_match = v.iter().all(|vv|
-                                                match vv {
-                                                    JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
-                                                    _ => false
-                                                }
-                                            );
-                                            if all_keys_match {
-                                                Ok(m.keys().cloned().collect())
-                                            }
-                                            else {
-                                                Err(Error::InvalidBody {message: format!("All object keys must match")})
-                                            }
-                                            
-                                        },
-                                        _ => Ok(vec![])
-                                    }
-                                },
-                                _ => Ok(vec![])
-                            }
-                        },
-                        Err(e) => {
-                            Err(Error::InvalidBody {message: format!("Failed to parse json body {}", e)})
-                        }
-                    }
-                }
-            }?;
-
-            let mut q = Insert {
-                into: root.clone(),
-                columns: columns,
-                payload,
-                where_: ConditionTree { operator: And, conditions: vec![] },
-                returning: vec![], //get_returning(&select_items)?,
-                select: select_items,
-                //, onConflict :: Maybe (PreferResolution, [FieldName])
-            };
-            add_join_conditions(&mut q, &schema, db_schema)?;
-            //we populate the returing becasue it relies on the "join" information
-            if let Insert { ref mut returning, ref select, ..} = q {
-                returning.extend(get_returning(select)?);
-            }
-            Ok(q)
-        },
-        // Method::PATCH => Ok(Update),
-        // Method::PUT => Ok(Upsert),
-        // Method::DELETE => Ok(Delete),
-        _ => Err(Error::UnsupportedVerb)
-    }?;
-
-    //add_join_conditions(&mut query, &schema, db_schema)?;
-    insert_conditions(&mut query, conditions);
-    //insert_limits(&mut query, limits);
-    //insert_offsets(&mut query, offsets);
-    //insert_orders(&mut query, orders);
-
-    // insert_properties(&mut query, conditions, |q, p|{
-    //     let query_conditions: &mut Vec<Condition> = match q {
-    //         Select {where_, ..} => where_.conditions.as_mut(),
-    //         Insert {where_, ..} => where_.conditions.as_mut(),
-    //     };
-    //     p.into_iter().for_each(|c| query_conditions.push(c));
-    // });
-
-    insert_properties(&mut query, limits, |q, p|{
-        let limit = match q {
-            Select {limit, ..} => limit,
-            Insert {..} => todo!(),
-            FunctionCall { .. } => todo!(),
-        };
-        for v in p {
-            std::mem::swap(limit, &mut Some(v));
-        }
-    });
-
-    insert_properties(&mut query, offsets, |q, p|{
-        let offset = match q {
-            Select {offset, ..} => offset,
-            Insert {..} => todo!(),
-            FunctionCall { .. } => todo!(),
-        };
-        for v in p {
-            std::mem::swap(offset, &mut Some(v));
-        }
-    });
-
-    insert_properties(&mut query, orders, |q, p|{
-        let order = match q {
-            Select {order, ..} => order,
-            Insert {..} => todo!(),
-            FunctionCall { .. } => todo!(),
-        };
-        for mut o in p {
-            std::mem::swap(order, &mut o);
-        }
-    });
-    
-
-    Ok(ApiRequest {
-        method: method.clone(),
-        query,
-        accept_content_type,
-        headers,
-        cookies,
-    })
-}
+// helper functions
 
 fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, target: &String, hint: &mut Option<String>) -> Result<Join>{
     // let match_fk = | s: &String, t:&String, n:&String | {
@@ -1266,6 +1163,70 @@ fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)
     });
 }
 
+fn is_logical(s: &str)->bool{ s == "and" || s == "or" || s.ends_with(".or") || s.ends_with(".and") }
+
+fn is_limit(s: &str)->bool{ s == "limit" || s.ends_with(".limit") }
+
+fn is_offset(s: &str)->bool{ s == "offset" || s.ends_with(".offset") }
+
+fn is_order(s: &str)->bool{ s == "order" || s.ends_with(".order") }
+
+fn has_operator(s: &str)->bool {
+    OPERATORS_START.iter().map(|op| s.starts_with(op) )
+    .any(|b| b)
+}
+
+fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
+    move |mut e| {
+        let m = e.errors.drain_filter(|v| 
+            match v {
+                ParserError::Message(_) => true,
+                _ => false
+            }
+        ).collect::<Vec<_>>();
+        let position = e.position.translate_position(s);
+        let message = match m.as_slice() {
+            [ParserError::Message(Info::Static(s))] => s,
+            _ => ""
+        };
+        let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
+        let details = format!("{}", e)
+            .replace(format!("Parse error at {}", e.position).as_str(), "")
+            .replace("\n", " ")
+            .trim()
+            .to_string();
+        Error::ParseRequestError {message, details}
+    }
+}
+
+fn get_returning(select: &Vec<SelectItem>) -> Result<Vec<String>> {
+    Ok(select.iter().map(|s|{
+        match s {
+            SelectItem::Simple {field, ..} => Ok(vec![&field.name]),
+            SelectItem::SubSelect {join:Some(j), ..} => {
+                match j {
+                    Child(fk) => Ok(fk.referenced_columns.iter().collect()),
+                    Parent(fk) => Ok(fk.columns.iter().collect()),
+                    Many(_,fk1,fk2) => {
+                        let mut f = vec![];
+                        f.extend(fk1.referenced_columns.iter());
+                        f.extend(fk2.referenced_columns.iter());
+                        Ok(f)
+                    },
+                }
+            },
+            SelectItem::Star => Ok(vec![]),
+            //TODO!! error here is wrong
+            x => Err(Error::NoRelBetween {origin: "table".to_string(), target: format!("x {:?}",x)}) 
+            
+        }
+    })
+    .collect::<Result<Vec<_>, _>>()?
+    .into_iter().flatten().cloned().collect::<BTreeSet<_>>().into_iter().collect())
+}
+
+
+
 #[cfg(test)]
 pub mod tests {
     use std::matches;
@@ -1422,13 +1383,13 @@ pub mod tests {
     
     #[test]
     fn test_parse_get_function(){
-        
+        let emtpy_hashmap = HashMap::new();
         let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
         let mut api_request = ApiRequest {
             method: Method::GET,
-            headers: HashMap::new(),
+            headers: &emtpy_hashmap,
             accept_content_type: ApplicationJSON,
-            cookies: HashMap::new(),
+            cookies: &emtpy_hashmap,
             query: FunctionCall {
                 fn_name: Qi(s("api"), s("myfunction")),
                 parameters: CallParams::KeyParams(vec![
@@ -1450,16 +1411,16 @@ pub mod tests {
             }
             
         };
-        let a = parse(&s("api"), &s("myfunction"), &db_schema, &Method::GET, vec![
+        let a = parse(&s("api"), &s("myfunction"), &db_schema, &Method::GET, &vec![
             ("id","10"),
-            ], None, HashMap::new(), HashMap::new());
+            ], None, &emtpy_hashmap, &emtpy_hashmap);
 
         assert_eq!(a.unwrap(),api_request);
 
         api_request.method = Method::POST;
 
         let body = s(r#"{"id":"10"}"#);
-        let b = parse(&s("api"), &s("myfunction"), &db_schema, &Method::POST, vec![], Some(&body), HashMap::new(), HashMap::new());
+        let b = parse(&s("api"), &s("myfunction"), &db_schema, &Method::POST, &vec![], Some(&body), &emtpy_hashmap, &emtpy_hashmap);
         assert_eq!(b.unwrap(),api_request);
     }
 
@@ -1521,16 +1482,16 @@ pub mod tests {
 
     #[test]
     fn test_parse_get(){
-        
+        let emtpy_hashmap = HashMap::new();
         let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
        
-        let a = parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
+        let a = parse(&s("api"), &s("projects"), &db_schema, &Method::GET, &vec![
             ("select", "id,name,clients(id),tasks(id)"),
             ("id","not.gt.10"),
             ("tasks.id","lt.500"),
             ("not.or", "(id.eq.11,id.eq.12)"),
             ("tasks.or", "(id.eq.11,id.eq.12)"),
-            ], None, HashMap::new(), HashMap::new());
+            ], None, &emtpy_hashmap, &emtpy_hashmap);
 
         assert_eq!(
             a.unwrap()
@@ -1538,8 +1499,8 @@ pub mod tests {
             ApiRequest {
                 method: Method::GET,
                 accept_content_type: ApplicationJSON,
-                headers: HashMap::new(),
-                cookies: HashMap::new(),
+                headers: &emtpy_hashmap,
+                cookies: &emtpy_hashmap,
                 query: 
                     Select { order: vec![], limit: None, offset: None,
                         select: vec![
@@ -1640,16 +1601,16 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, &vec![
                 ("select", "id,name,unknown(id)")
-            ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
+            ], None, &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e)),
             Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")}).map_err(|e| format!("{}",e))
         );
 
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, &vec![
                 ("select", "id-,na$me")
-            ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
+            ], None, &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e)),
             Err(AppError::ParseRequestError{
                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
                 details: s("Unexpected `,` Expected `letter`, `digit`, `_` or ` `")
@@ -1659,21 +1620,21 @@ pub mod tests {
 
     #[test]
     fn test_parse_post(){
-        
+        let emtpy_hashmap = HashMap::new();
         let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
        
         let payload = s(r#"{"id":10, "name":"john"}"#);
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, &vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&payload), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
+            ], Some(&payload), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: HashMap::new(),
-                cookies: HashMap::new(),
+                headers: &emtpy_hashmap,
+                cookies: &emtpy_hashmap,
                 query: 
                     Insert {
                         select: vec![
@@ -1695,17 +1656,17 @@ pub mod tests {
             })
         );
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, &vec![
                 ("select", "id,name"),
                 ("id","gt.10"),
                 ("columns","id,name"),
-            ], Some(&payload), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
+            ], Some(&payload), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: HashMap::new(),
-                cookies: HashMap::new(),
+                headers: &emtpy_hashmap,
+                cookies: &emtpy_hashmap,
                 query: 
                     Insert {
                         select: vec![
@@ -1729,11 +1690,11 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, &vec![
                 ("select", "id"),
                 ("id","gt.10"),
                 ("columns","id,1$name"),
-            ], Some(&s(r#"{"id":10, "name":"john", "phone":"123"}"#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
+            ], Some(&s(r#"{"id":10, "name":"john", "phone":"123"}"#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Err(AppError::ParseRequestError {
                 message: s("\"failed to parse columns parameter (id,1$name)\" (line 1, column 5)"),
@@ -1742,10 +1703,10 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, &vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&s(r#"{"id":10, "name""#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
+            ], Some(&s(r#"{"id":10, "name""#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Err(AppError::InvalidBody {
                 message: s("Failed to parse json body EOF while parsing an object at line 1 column 16")
@@ -1753,10 +1714,10 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, &vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Err(AppError::InvalidBody {
                 message: s("All object keys must match"),
@@ -1766,16 +1727,16 @@ pub mod tests {
         
 
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, &vec![
                 ("select", "id,name,unknown(id)")
-            ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
+            ], None, &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e)),
             Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")}).map_err(|e| format!("{}",e))
         );
 
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::GET, &vec![
                 ("select", "id-,na$me")
-            ], None, HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e)),
+            ], None, &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e)),
             Err(AppError::ParseRequestError{
                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
                 details: s("Unexpected `,` Expected `letter`, `digit`, `_` or ` `")
@@ -1783,16 +1744,16 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, &vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: HashMap::new(),
-                cookies: HashMap::new(),
+                headers: &emtpy_hashmap,
+                cookies: &emtpy_hashmap,
                 query: 
                     Insert {
                         select: vec![
@@ -1815,17 +1776,17 @@ pub mod tests {
         );
 
         assert_eq!(
-            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, vec![
+            parse(&s("api"), &s("projects"), &db_schema, &Method::POST, &vec![
                 ("select", "id,name,tasks(id),clients(id)"),
                 ("id","gt.10"),
                 ("tasks.id","gt.20"),
-            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), HashMap::new(), HashMap::new()).map_err(|e| format!("{}",e))
+            ], Some(&s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: HashMap::new(),
-                cookies: HashMap::new(),
+                headers: &emtpy_hashmap,
+                cookies: &emtpy_hashmap,
                 query: 
                     Insert {
                         select: vec![

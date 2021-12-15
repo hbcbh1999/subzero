@@ -1,16 +1,14 @@
 use std::ops::Add;
 
-//use std::slice::Join;
+#[derive(Debug, PartialEq)]
+pub enum SqlSnippetChunk<'a, T:?Sized> {
+    Sql (String),
+    Param (&'a T),
+}
 
 #[derive(Debug, PartialEq)]
 pub struct SqlSnippet<'a, T:?Sized>(pub Vec<SqlSnippetChunk<'a, T>>);
 
-#[derive(Debug, PartialEq)]
-pub enum SqlSnippetChunk<'a, T:?Sized> 
-{
-    Sql (String),
-    Param (&'a T),
-}
 impl<'a, T:?Sized> SqlSnippet<'a, T>{
     pub fn len(&self) -> usize {
         match self {
@@ -19,39 +17,12 @@ impl<'a, T:?Sized> SqlSnippet<'a, T>{
     }
 }
 
-
-// the method `join` exists for struct `Vec<SqlSnippet<'_, &str>>`, but its trait bounds were not satisfied
-// the following trait bounds were not satisfied:
-// `<[SqlSnippet<'_, &str>] as std::slice::Join<_>>::Output = _`
-
-// impl<'a, T:?Sized> Join<&str> for [SqlSnippet<'a, T>] {
-//     type Output = SqlSnippet<'a, T>;
-
-//     fn join(slice: &Self, sep: &str) -> Self::Output {
-//         match slice.into_iter().fold(
-//             SqlSnippet(vec![]),
-//             |SqlSnippet(mut acc), SqlSnippet(v)| {
-//                 acc.push(SqlSnippetChunk::Sql(sep.to_string()));
-//                 acc.extend(v.into_iter());
-//                 SqlSnippet(acc)
-//             }
-//         ) {
-//             SqlSnippet(mut v) => {
-//                 v.remove(0);
-//                 SqlSnippet(v)
-//             }
-//         }
-//     }
-// }
-
 pub trait JoinIterator<'a, T:?Sized> {
     fn join(self, sep: &str) -> SqlSnippet<'a, T>;
 }
 
 impl<'a, I, T:?Sized + 'a> JoinIterator<'a, T> for I
-where
-    I: IntoIterator<Item = SqlSnippet<'a, T>>
-{
+where I: IntoIterator<Item = SqlSnippet<'a, T>> {
     fn join(self, sep: &str) -> SqlSnippet<'a, T> {
         match self.into_iter().fold(
             SqlSnippet(vec![]),
@@ -70,25 +41,6 @@ where
         }
     }
 }
-
-// impl<I, T> JoinIterator for I
-// where
-//     I: IntoIterator<Item = T>,
-//     T: std::fmt::Display,
-// {
-//     fn join(self, sep: &str) -> String {
-//         use std::fmt::Write;
-
-//         let mut it = self.into_iter();
-//         let first = it.next().map(|f| f.to_string()).unwrap_or_default();
-
-//         it.fold(first, |mut acc, s| {
-//             write!(acc, "{}{}", sep, s).expect("Writing in a String shouldn't fail");
-//             acc
-//         })
-
-//     }
-// }
 
 pub trait IntoSnippet<'a, T:?Sized> {
     fn into(self) -> SqlSnippet<'a, T>;
@@ -117,11 +69,13 @@ impl<'a, T:?Sized> Add for SqlSnippet<'a, T> {
 
     fn add(self, other: Self) -> Self::Output {
         match (self, other) {
-            (SqlSnippet(l),SqlSnippet(r)) => {
-                let mut n = vec![];
-                n.extend(l.into_iter());
-                n.extend(r.into_iter());
-                SqlSnippet(n)
+            (SqlSnippet(mut l),SqlSnippet(r)) => {
+                // let mut n = vec![];
+                // n.extend(l.into_iter());
+                // n.extend(r.into_iter());
+                // SqlSnippet(n)
+                l.extend(r.into_iter());
+                SqlSnippet(l)
             }
         }
     }
@@ -131,10 +85,12 @@ impl<'a, T:?Sized> Add<SqlSnippet<'a, T>> for &'a str {
     type Output = SqlSnippet<'a, T>;
     fn add(self, snippet: SqlSnippet<'a, T>) -> SqlSnippet<'a, T> {
         match snippet {
-            SqlSnippet(r) => {
-                let mut n = vec![SqlSnippetChunk::Sql(self.to_string())];
-                n.extend(r.into_iter());
-                SqlSnippet(n)
+            SqlSnippet(mut r) => {
+                // let mut n = vec![SqlSnippetChunk::Sql(self.to_string())];
+                // n.extend(r.into_iter());
+                // SqlSnippet(n)
+                r.insert(0, SqlSnippetChunk::Sql(self.to_string()));
+                SqlSnippet(r)
             }
         }
     }
@@ -144,11 +100,13 @@ impl<'a, T:?Sized> Add<&'a str> for SqlSnippet<'a, T>{
     type Output = SqlSnippet<'a, T>;
     fn add(self, s: &'a str) -> SqlSnippet<'a, T> {
         match self {
-            SqlSnippet(l) => {
-                let mut n = vec![];
-                n.extend(l.into_iter());
-                n.push(SqlSnippetChunk::Sql(s.to_string()));
-                SqlSnippet(n)
+            SqlSnippet(mut l) => {
+                // let mut n = vec![];
+                // n.extend(l.into_iter());
+                // n.push(SqlSnippetChunk::Sql(s.to_string()));
+                // SqlSnippet(n)
+                l.push(SqlSnippetChunk::Sql(s.to_string()));
+                SqlSnippet(l)
             }
         }
     }
@@ -158,10 +116,12 @@ impl<'a, T:?Sized> Add<SqlSnippet<'a, T>> for String {
     type Output = SqlSnippet<'a, T>;
     fn add(self, snippet: SqlSnippet<'a, T>) -> SqlSnippet<'a, T> {
         match snippet {
-            SqlSnippet(r) => {
-                let mut n = vec![SqlSnippetChunk::Sql(self)];
-                n.extend(r.into_iter());
-                SqlSnippet(n)
+            SqlSnippet(mut r) => {
+                // let mut n = vec![SqlSnippetChunk::Sql(self)];
+                // n.extend(r.into_iter());
+                // SqlSnippet(n)
+                r.insert(0, SqlSnippetChunk::Sql(self));
+                SqlSnippet(r)
             }
         }
     }
@@ -171,23 +131,17 @@ impl<'a, T:?Sized> Add<String> for SqlSnippet<'a, T>{
     type Output = SqlSnippet<'a, T>;
     fn add(self, s: String) -> SqlSnippet<'a, T> {
         match self {
-            SqlSnippet(l) => {
-                let mut n = vec![];
-                n.extend(l.into_iter());
-                n.push(SqlSnippetChunk::Sql(s));
-                SqlSnippet(n)
+            SqlSnippet(mut l) => {
+                // let mut n = vec![];
+                // n.extend(l.into_iter());
+                // n.push(SqlSnippetChunk::Sql(s));
+                // SqlSnippet(n)
+                l.push(SqlSnippetChunk::Sql(s));
+                SqlSnippet(l)
             }
         }
     }
 }
-
-// impl<T:?Sized> Join<&str> for [SqlSnippet<'a, T>] {
-//     type Output = SqlSnippet<'a, T>;
-
-//     fn join(slice: &Self, sep: &str) -> Output {
-//         todo!();//unsafe { String::from_utf8_unchecked(join_generic_copy(slice, sep.as_bytes())) }
-//     }
-// }
 
 pub fn generate<'a, T:?Sized>( s: SqlSnippet<'a, T> ) -> (String, Vec<&T>, u32){
     match s {

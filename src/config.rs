@@ -24,8 +24,7 @@ pub struct Config {
 
 fn role_claim_key() -> String {".role".to_string()}
 fn to_tuple<'de, D>(deserializer: D) -> Result<Option<(String, String)>, D::Error>
-where
-    D: Deserializer<'de>,
+where D: Deserializer<'de>,
 {
     let o: Option<String> = Deserialize::deserialize(deserializer)?;
 
@@ -39,8 +38,6 @@ where
         }
         None => None
     })
-    
-    
 }
 
 #[cfg(test)]

@@ -12,8 +12,8 @@ pub struct ApiRequest<'r> {
     pub accept_content_type: ResponseContentType,
     // pub headers: &'r HeaderMap<'r>,
     pub query: Query<'r>,
-    pub headers: HashMap<&'r str, &'r str>,
-    pub cookies: HashMap<&'r str, &'r str>,
+    pub headers: &'r HashMap<&'r str, &'r str>,
+    pub cookies: &'r HashMap<&'r str, &'r str>,
 }
 
 #[derive(Debug, PartialEq)]

@@ -3,38 +3,12 @@ use crate::api::{
     JsonOperation::*, SelectItem::*, JsonOperand::*, LogicOperator:: *,
     Condition::*, Filter::*, Join::*, Query::*, ResponseContentType::*,
 };
-// use crate::error::Error as AppError;
-// use crate::error::Error::*;
 use crate::dynamic_statement::{
     sql, param, SqlSnippet, JoinIterator,
 };
 use postgres_types::{ToSql, Type, to_sql_checked, IsNull, Format};
-//use rocket::tokio::time::Timeout;
 use std::error::Error;
 use bytes::{BufMut, BytesMut};
-
-// use deadpool_postgres::PoolError;
-// use tokio_postgres::Error as DbError;
-
-// pub fn pool_err_to_app_err(e: PoolError) -> AppError {
-//     match e {
-//         PoolError::Timeout (_) => PgError {code: "0".to_string(), message: "database connection timout".to_string(), details: "".to_string(), hint: "".to_string()},
-//         PoolError::Closed => PgError {code: "0".to_string(), message: "database connection closed".to_string(), details: "".to_string(), hint: "".to_string()},
-//         PoolError::Backend(e) => PgError {code: "0".to_string(), message: "database connection error".to_string(), details: format!("{}", e), hint: "".to_string()},
-//         _ => PgError {code: "0".to_string(), message: "unknown database pool error".to_string(), details: "".to_string(), hint: "".to_string()},
-//     }
-// }
-
-// pub fn pg_error_to_app_err(e: DbError) -> AppError {
-//     if let Some(ee) = e.as_db_error() {
-//         let code = ee.code().code().to_string();
-//         let message = ee.message().to_string();
-//         let details = (match ee.detail() { Some(d) => d, None => ""}).to_string();
-//         let hint = (match ee.hint() { Some(h) => h, None => ""}).to_string();
-//         return PgError {code,message,details,hint};
-//     }
-//     PgError {code: "0".to_string(), message: "unknown database".to_string(), details: format!("{}", e), hint: "".to_string()}
-// }
 
 impl ToSql for ListVal {
     fn to_sql(
@@ -84,12 +58,48 @@ impl ToSql for SingleVal {
     to_sql_checked!();
 }
 
-fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
+// helper type aliases
+type SqlParam<'a> = (dyn ToSql + Sync + 'a);
+type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
+
+pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
+
+    let body_snippet = match (&request.accept_content_type, &request.query) {
+        (SingularJSON, FunctionCall {is_scalar:true, ..} ) |
+        (ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: true, ..} )
+            => "coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')",
+        (SingularJSON, FunctionCall {is_scalar:false, ..} ) |
+        (ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: false, ..} )
+            => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
+        
+        (ApplicationJSON,_) => "coalesce(json_agg(_subzero_t), '[]')::character varying",
+        (SingularJSON, _) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
+        (TextCSV, _) => r#"
+            (SELECT coalesce(string_agg(a.k, ','), '')
+              FROM (
+                SELECT json_object_keys(r)::text as k
+                FROM ( 
+                  SELECT row_to_json(hh) as r from subzero_source as hh limit 1
+                ) s
+              ) a
+            )
+            coalesce(string_agg(substring(_postgrest_t::text, 2, length(_postgrest_t::text) - 2), '\n'), '')
+        "#,
+    };
+
+    " with subzero_source as(" + fmt_query(schema, &request.query) + ") " +
+    " select" +
+    " pg_catalog.count(_subzero_t) AS page_total, "+
+    body_snippet + " as body" +
+    " from ( select * from subzero_source ) _subzero_t"
+}
+
+fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
     match q {
         FunctionCall { fn_name, parameters, payload, is_scalar, is_multiple_call, returning, select, where_, .. } => {
             let b = payload.as_ref().unwrap();
             let bb:&(dyn ToSql + Sync + 'a) = b;
-            let (params_cte, arg_frag):(SqlSnippet<'a, (dyn ToSql + Sync + 'a)>,SqlSnippet<'a, (dyn ToSql + Sync + 'a)>) = match &parameters {
+            let (params_cte, arg_frag):(Snippet<'a>,Snippet<'a>) = match &parameters {
                 CallParams::OnePosParam(p) => (sql(" subzero_args as (select null)"), param(bb) + format!("::{}",p.type_)),
                 CallParams::KeyParams(p) if p.len() == 0 => (sql(" subzero_args as (select null)"),sql("")),
                 CallParams::KeyParams(prms) => (
@@ -195,7 +205,7 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> SqlSnippet<'a, (dyn ToSql + S
     }
 }
 
-fn fmt_body<'a>(payload: &'a String) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+fn fmt_body<'a>(payload: &'a String) -> Snippet<'a> {
     let payload_param:&(dyn ToSql + Sync) = payload;
     " subzero_payload as ( select " + param(payload_param) + "::text::json as json_data ),"+
     " subzero_body as ("+
@@ -208,39 +218,7 @@ fn fmt_body<'a>(payload: &'a String) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> 
     " )"
 }
 
-pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)>{
-
-    let body_snippet = match (&request.accept_content_type, &request.query) {
-        (SingularJSON, FunctionCall {is_scalar:true, ..} ) |
-        (ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: true, ..} )
-            => "coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')",
-        (SingularJSON, FunctionCall {is_scalar:false, ..} ) |
-        (ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: false, ..} )
-            => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
-        
-        (ApplicationJSON,_) => "coalesce(json_agg(_subzero_t), '[]')::character varying",
-        (SingularJSON, _) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
-        (TextCSV, _) => r#"
-            (SELECT coalesce(string_agg(a.k, ','), '')
-              FROM (
-                SELECT json_object_keys(r)::text as k
-                FROM ( 
-                  SELECT row_to_json(hh) as r from subzero_source as hh limit 1
-                ) s
-              ) a
-            )
-            coalesce(string_agg(substring(_postgrest_t::text, 2, length(_postgrest_t::text) - 2), '\n'), '')
-        "#,
-    };
-
-    " with subzero_source as(" + fmt_query(schema, &request.query) + ") " +
-    " select" +
-    " pg_catalog.count(_subzero_t) AS page_total, "+
-    body_snippet + " as body" +
-    " from ( select * from subzero_source ) _subzero_t"
-}
-
-fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> Snippet<'a> {
     
     match t {
         ConditionTree {operator, conditions} => {
@@ -250,7 +228,7 @@ fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> SqlSnippet<'a, (dyn 
     }
 }
 
-fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> Snippet<'a> {
     match c {
         Single {field, filter, negate} => {
             let fld = sql(format!("{}.{} ", fmt_qi(qi), fmt_field(field)));
@@ -313,7 +291,7 @@ fn fmt_filter(f: &Filter) -> SqlSnippet<(dyn ToSql + Sync + '_)>{
     }
 }
 
-fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> (SqlSnippet<'a, (dyn ToSql + Sync + 'a)>, Vec<SqlSnippet<'a, (dyn ToSql + Sync + 'a)>>) {
+fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> (Snippet<'a>, Vec<Snippet<'a>>) {
     match i {
         Star => (sql(format!("{}.*", fmt_qi(qi))), vec![]),
         Simple {field, alias} => (sql(format!("{}.{}{}", fmt_qi(qi), fmt_field(field), fmt_alias(alias))), vec![]),
@@ -409,7 +387,7 @@ fn fmt_alias(a: &Option<String>) -> String {
     }
 }
 
-fn fmt_limit<'a>(l: &'a Option<SingleVal>) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+fn fmt_limit<'a>(l: &'a Option<SingleVal>) -> Snippet<'a> {
     match l {
         Some(ll) => {
             let vv:&(dyn ToSql + Sync) = ll;
@@ -419,7 +397,7 @@ fn fmt_limit<'a>(l: &'a Option<SingleVal>) -> SqlSnippet<'a, (dyn ToSql + Sync +
     }
 }
 
-fn fmt_offset<'a>(o: &'a Option<SingleVal>) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+fn fmt_offset<'a>(o: &'a Option<SingleVal>) -> Snippet<'a> {
     match o {
         Some(oo) => {
             let vv:&(dyn ToSql + Sync) = oo;
