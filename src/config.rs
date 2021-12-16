@@ -16,7 +16,33 @@ impl Default for SchemaStructure {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct  Config {
+    #[serde(with="vhosts")]
     pub vhosts: HashMap<String, VhostConfig>,
+}
+
+mod vhosts {
+    use super::VhostConfig;
+
+    use std::collections::HashMap;
+
+    use serde::ser::Serializer;
+    use serde::de::{Deserialize, Deserializer};
+    
+    pub fn serialize<S>(map: &HashMap<String, VhostConfig>, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer
+    {
+        serializer.collect_map(map.iter().map(|(k,v)| (k.replace(".", "_"), v) ).collect::<HashMap<String, &VhostConfig>>())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, VhostConfig>, D::Error>
+    where D: Deserializer<'de>
+    {
+        let mut map = HashMap::new();
+        for (k,v) in HashMap::<String, VhostConfig>::deserialize(deserializer)? {
+            map.insert(k.replace("_", "."), v);
+        }
+        Ok(map)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -59,7 +85,7 @@ mod test {
     #[test]
     fn deserialize_config(){
         let config = Config{
-            vhosts : HashMap::from([("default".to_string(),
+            vhosts : HashMap::from([("domain.com".to_string(),
             VhostConfig {
                 db_uri: "db_uri".to_string(),
                 db_schemas: vec!["db_schema".to_string()],
@@ -72,7 +98,7 @@ mod test {
             })])
         };
         let json_config = r#"
-        {"vhosts":{"default":{"db_uri":"db_uri","db_schemas":["db_schema"],"db_schema_structure":{"sql_file":"sql_file"}, "db_anon_role": "anonymous", "db_pre_request": "api.test"}}}
+        {"vhosts":{"domain_com":{"db_uri":"db_uri","db_schemas":["db_schema"],"db_schema_structure":{"sql_file":"sql_file"}, "db_anon_role": "anonymous", "db_pre_request": "api.test"}}}
         "#;
 
 
@@ -81,7 +107,6 @@ mod test {
         println!("deserialized_result = {:?}", deserialized_result);
 
         assert_eq!(deserialized_result.map_err(|e| format!("{}",e)), Ok(config));
-
         // let serialized_result = serde_json::to_string(&config);
         // println!("serialized_result = {:?}", serialized_result);
         //let serialized = serialized_result.unwrap_or("failed to serialize".to_string());

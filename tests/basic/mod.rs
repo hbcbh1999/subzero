@@ -50,6 +50,7 @@ fn setup() {
 
         let db_uri =  String::from_utf8_lossy(&output.stdout);
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", &*db_uri);
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[public]");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"anonymous");
         //env::set_var("SUBZERO_PORT", &"8001");
 

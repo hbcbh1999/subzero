@@ -275,8 +275,7 @@ mod columns {
     // }
 
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Column>, D::Error>
-        where D: Deserializer<'de>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Column>, D::Error> where D: Deserializer<'de>
     {
         let mut map = HashMap::new();
         for column in Vec::<Column>::deserialize(deserializer)? {
