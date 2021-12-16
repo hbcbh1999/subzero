@@ -42,7 +42,6 @@ use std::{
 };
 
 lazy_static!{
-    //static ref STAR: String = "*".to_string();
     static ref SINGLE_CONTENT_TYPE: ContentType = ContentType::parse_flexible("application/vnd.pgrst.object+json").unwrap();
 }
 
@@ -85,7 +84,6 @@ async fn handle_postgrest_request(
     method: &Method,
     parameters: &Vec<(&str, &str)>,
     db_schema: &DbSchema,
-    //config: &State<Config>,
     pool: &Pool,
     body: Option<&String>,
     headers: &HashMap<&str, &str>,
@@ -343,14 +341,20 @@ async fn create_vhost_resources(vhost: &String, config: VhostConfig, store: Arc<
         JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize)
     }?;
 
-    store.insert(vhost.clone(), VhostResources {db_pool,db_schema,config,});
+    let key = vhost.clone();
+
+    if let Some((_, r)) = store.remove(&key) {
+        r.db_pool.close();
+    }
+
+    store.insert(key, VhostResources {db_pool,db_schema,config,});
     Ok(())
     
 }
+
 pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
     let app_config:Config = config.extract().expect("config");
     let vhost_resources = Arc::new(DashMap::new());
-    //let vhost_resources = Arc::new(RwLock::new(HashMap::new()));
     
     for (vhost, vhost_config) in app_config.vhosts {
         let vhost_resources = vhost_resources.clone();
