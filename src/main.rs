@@ -7,8 +7,11 @@ use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use tokio_postgres::{NoTls, IsolationLevel, types::ToSql};
 use jsonwebtoken::{decode, DecodingKey, Validation, errors::ErrorKind};
 use jsonpath_lib::select;
-use snafu::{ResultExt,OptionExt};
+use snafu::{ResultExt,};
 use http::Method;
+use tokio;
+use dashmap::{DashMap, };
+//use tokio::time::{sleep, Duration};
 
 use rocket::{
     http::{Header, ContentType, Status, CookieJar,},
@@ -32,7 +35,8 @@ use figment::{
 };
 
 use std::{
-    fs, 
+    fs,
+    sync::{Arc,},
     collections::{HashMap},
     time::{SystemTime, UNIX_EPOCH}
 };
@@ -200,14 +204,22 @@ fn index() -> &'static str {
     "Hello, world!"
 }
 
-fn get_vhost_resources<'a>(vhost: &Option<&str>, store: &'a HashMap<String, VhostResources>) -> Result<&'a VhostResources> {
-    match vhost {
+fn get_vhost_resources<'a>(vhost: &Option<&str>, store: &'a Arc<DashMap<String, VhostResources>>) -> Result<&'a VhostResources> {
+    let gg = match vhost {
         None => store.get("default"),
         Some(v) => match store.get(*v) {
             Some(r) => Some(r),
             None => store.get("default")
         }
-    }.context(NotFound)
+    };
+
+    if gg.is_some() {
+        Ok(gg.unwrap().value())
+    }
+    else {
+        Err(Error::NotFound)
+    }
+
 }
 
 #[get("/<root>?<parameters..>")]
@@ -217,7 +229,7 @@ async fn get<'a>(
         cookies: &CookieJar<'a>,
         headers: AllHeaders<'a>,
         vhost: Vhost<'a>,
-        vhosts: &State<HashMap<String, VhostResources>>,
+        vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
 
     let resources = get_vhost_resources(&vhost, vhosts)?;
@@ -238,7 +250,7 @@ async fn post<'a>(
         cookies: &CookieJar<'a>,
         headers: AllHeaders<'a>,
         vhost: Vhost<'a>,
-        vhosts: &State<HashMap<String, VhostResources>>,
+        vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_vhost_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
@@ -257,7 +269,7 @@ async fn rpc_get<'a>(
         cookies: &CookieJar<'a>,
         headers: AllHeaders<'a>,
         vhost: Vhost<'a>,
-        vhosts: &State<HashMap<String, VhostResources>>,
+        vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_vhost_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
@@ -277,7 +289,7 @@ async fn rpc_post<'a>(
         cookies: &CookieJar<'a>,
         headers: AllHeaders<'a>,
         vhost: Vhost<'a>,
-        vhosts: &State<HashMap<String, VhostResources>>,
+        vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_vhost_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
@@ -295,7 +307,7 @@ struct VhostResources {
     config: VhostConfig,
 }
 
-async fn create_vhost_resources(vhost: &String, config: VhostConfig, store: &mut HashMap<String, VhostResources>) -> Result<()> {
+async fn create_vhost_resources(vhost: &String, config: VhostConfig, store: Arc<DashMap<String, VhostResources>>) -> Result<()> {
 
     //setup db connection
     let pg_uri = config.db_uri.clone();
@@ -337,13 +349,18 @@ async fn create_vhost_resources(vhost: &String, config: VhostConfig, store: &mut
 }
 pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
     let app_config:Config = config.extract().expect("config");
-    let mut vhost_resources: HashMap<String, VhostResources> = HashMap::new();
+    let vhost_resources = Arc::new(DashMap::new());
+    //let vhost_resources = Arc::new(RwLock::new(HashMap::new()));
     
     for (vhost, vhost_config) in app_config.vhosts {
-        match create_vhost_resources(&vhost, vhost_config, &mut vhost_resources).await {
-            Ok(_) => println!("[{}] loaded config", vhost),
-            Err(e) => println!("[{}] config load failed ({})", vhost, e)
-        }
+        let vhost_resources = vhost_resources.clone();
+        tokio::spawn(async move {
+            //sleep(Duration::from_millis(30 * 1000)).await;
+            match create_vhost_resources(&vhost, vhost_config, vhost_resources).await {
+                Ok(_) => println!("[{}] loaded config", vhost),
+                Err(e) => println!("[{}] config load failed ({})", vhost, e)
+            }
+        });
     }
 
     Ok(rocket::custom(config)

@@ -357,6 +357,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b799062aaf67eb976af3bdca031ee6f846d2f0a5710ddbb0d2efee33f3cc4760"
+dependencies = [
+ "cfg-if",
+ "num_cpus",
+ "parking_lot",
+]
+
+[[package]]
 name = "deadpool"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1938,6 +1949,7 @@ dependencies = [
  "bytes",
  "combine",
  "criterion",
+ "dashmap",
  "deadpool-postgres",
  "demonstrate",
  "dyn_partial_eq",
@@ -1948,7 +1960,6 @@ dependencies = [
  "jsonpath_lib",
  "jsonwebtoken",
  "lazy_static",
- "log",
  "postgres-types",
  "pretty_assertions",
  "regex",
@@ -1959,6 +1970,7 @@ dependencies = [
  "simple-error",
  "snafu",
  "speculate",
+ "tokio",
  "tokio-postgres",
  "url",
 ]
