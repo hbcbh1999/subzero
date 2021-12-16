@@ -1948,6 +1948,7 @@ dependencies = [
  "jsonpath_lib",
  "jsonwebtoken",
  "lazy_static",
+ "log",
  "postgres-types",
  "pretty_assertions",
  "regex",

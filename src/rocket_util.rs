@@ -3,7 +3,7 @@
 use rocket::{
     http::{HeaderMap,},
     form::{FromForm, ValueField, DataField, Options, Result as FormResult},
-    request::{FromRequest, Outcome, },
+    request::{FromRequest, Outcome, Request},
     http::{Header, ContentType, Status,},
 };
 
@@ -56,4 +56,19 @@ impl<'r> Deref for AllHeaders<'r> {
 pub struct ApiResponse {
     pub response: (Status, (ContentType, String)),
     pub content_range: Header<'static>,
+}
+
+
+pub struct Vhost<'a>(pub Option<&'a str>);
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for Vhost<'r> {
+    type Error = ();
+
+    async fn from_request(request: &'r Request<'_>) -> rocket::request::Outcome<Self, Self::Error> {
+        Outcome::Success(Vhost(request.headers().get_one("Host")))
+    }
+}
+impl<'r> Deref for Vhost<'r> {
+	type Target = Option<&'r str>;
+	fn deref(&self) -> &Self::Target {&self.0}
 }

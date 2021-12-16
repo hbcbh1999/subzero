@@ -24,6 +24,7 @@ deadpool-postgres = "0.10.0"
 figment = { version = "0.10.6", features = ["toml", "env"] }
 jsonwebtoken = "7.2.0"
 jsonpath_lib = "0.3.0"
+log = { version = "0.4", features = ["std"] }
 
 [patch.crates-io]
 tokio-postgres = { path = "./patched_libs/rust-postgres-subzero/tokio-postgres" }

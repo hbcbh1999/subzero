@@ -1,5 +1,5 @@
-[default]
-db_uri = "postgres://root:root@localhost/app"
+[vhosts.default]
+db_uri = "postgres://localhost/app"
 db_schemas = ["public"]
-db_anon_role = "root"
-db_schema_structure = { sql_file = "structure_query.sql" }
+db_anon_role = "anonymous"
+# db_schema_structure = { sql_file = "structure_query.sql" }

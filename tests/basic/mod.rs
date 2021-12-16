@@ -17,10 +17,15 @@ static INIT: Once = Once::new();
 
 lazy_static! {
     static ref CONFIG: Figment = { 
+        #[cfg(debug_assertions)]
+        let profile = RocketConfig::DEBUG_PROFILE;
+
+        #[cfg(not(debug_assertions))]
+        let profile = RocketConfig::RELEASE_PROFILE;
         Figment::from(RocketConfig::default())
             .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
-            .merge(Env::prefixed("SUBZERO_").ignore(&["PROFILE"]).global())
-            .select(Profile::from_env_or("SUBZERO_PROFILE", Profile::const_new("debug")))
+            .merge(Env::prefixed("SUBZERO_").split("__").ignore(&["PROFILE"]).global())
+            .select(Profile::from_env_or("SUBZERO_PROFILE", profile))
     };
     // static ref DB_SCHEMA: DbSchema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
     static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
@@ -44,8 +49,8 @@ fn setup() {
         assert!(output.status.success());
 
         let db_uri =  String::from_utf8_lossy(&output.stdout);
-        env::set_var("SUBZERO_DB_URI", &*db_uri);
-        env::set_var("SUBZERO_DB_ANON_ROLE", &"anonymous");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", &*db_uri);
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"anonymous");
         //env::set_var("SUBZERO_PORT", &"8001");
 
         let output = Command::new("psql").arg("-f").arg(init_file.to_str().unwrap()).arg(db_uri.into_owned()).output().expect("failed to execute process");

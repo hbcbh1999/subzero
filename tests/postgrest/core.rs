@@ -19,11 +19,16 @@ static INIT: Once = Once::new();
 use pretty_assertions::{assert_eq};
 
 lazy_static! {
-    static ref CONFIG: Figment = { 
-        Figment::from(RocketConfig::default())
-            .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
-            .merge(Env::prefixed("SUBZERO_").ignore(&["PROFILE"]).global())
-            .select(Profile::from_env_or("SUBZERO_PROFILE", Profile::const_new("debug")))
+    static ref CONFIG: Figment = {
+      #[cfg(debug_assertions)]
+      let profile = RocketConfig::DEBUG_PROFILE;
+
+      #[cfg(not(debug_assertions))]
+      let profile = RocketConfig::RELEASE_PROFILE;
+      Figment::from(RocketConfig::default())
+        .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
+        .merge(Env::prefixed("SUBZERO_").split("__").ignore(&["PROFILE"]).global())
+        .select(Profile::from_env_or("SUBZERO_PROFILE", profile))
     };
     static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
       Client::untracked(start(&CONFIG).await.unwrap()).await.expect("valid client")
@@ -46,12 +51,12 @@ fn setup() {
         assert!(output.status.success());
 
         let db_uri =  String::from_utf8_lossy(&output.stdout);
-        env::set_var("SUBZERO_DB_URI", &*db_uri);
-        env::set_var("SUBZERO_DB_ANON_ROLE", &"postgrest_test_anonymous");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", &*db_uri);
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"postgrest_test_anonymous");
 
-        env::set_var("SUBZERO_DB_SCHEMAS", "[test]");
-        env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
-        env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[test]");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");
 
         let output = Command::new("psql").arg("-f").arg(init_file.to_str().unwrap()).arg(db_uri.into_owned()).output().expect("failed to execute process");
         // println!("status: {}", output.status);

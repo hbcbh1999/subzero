@@ -7,7 +7,7 @@ use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use tokio_postgres::{NoTls, IsolationLevel, types::ToSql};
 use jsonwebtoken::{decode, DecodingKey, Validation, errors::ErrorKind};
 use jsonpath_lib::select;
-use snafu::{ResultExt};
+use snafu::{ResultExt,OptionExt};
 use http::Method;
 
 use rocket::{
@@ -19,9 +19,9 @@ use subzero::{
     api::{ApiRequest, Query::*, ResponseContentType::*,},
     schema::DbSchema,
     error::{*, Result},
-    config::{Config,  SchemaStructure::*},
+    config::{Config, VhostConfig, SchemaStructure::*},
     dynamic_statement::{SqlSnippet, JoinIterator, generate, param, },
-    rocket_util::{AllHeaders, QueryString, ApiResponse},
+    rocket_util::{AllHeaders, QueryString, ApiResponse, Vhost},
     parser::postgrest::parse,
     formatter::postgresql::main_query,
 };
@@ -76,13 +76,13 @@ fn get_current_timestamp() -> u64 {
 }
 
 async fn handle_postgrest_request(
-    config: &Config,
+    config: &VhostConfig,
     root: &String,
     method: &Method,
     parameters: &Vec<(&str, &str)>,
-    db_schema: &State<DbSchema>,
+    db_schema: &DbSchema,
     //config: &State<Config>,
-    pool: &State<Pool>,
+    pool: &Pool,
     body: Option<&String>,
     headers: &HashMap<&str, &str>,
     cookies: &HashMap<&str, &str>,
@@ -142,9 +142,6 @@ async fn handle_postgrest_request(
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
     let mut client = pool.get().await.context(DbPoolError)?;
 
-    println!("statements:====================\n{}\n{:?}\n===\n{}\n{:?}\n=================", env_statement, env_parameters, main_statement,main_parameters);
-     
-
     let transaction = client
         .build_transaction()
         .isolation_level(IsolationLevel::Serializable)
@@ -163,10 +160,8 @@ async fn handle_postgrest_request(
         };
 
         let pre_request_statement = format!(r#"select "{}"."{}"()"#, fn_schema, f);
-        //println!("pre_request_statement:====================\n{}\n=================", pre_request_statement);
         let pre_request_stm = transaction.prepare_cached(pre_request_statement.as_str()).await.context(DbError {authenticated})?;
         transaction.query(&pre_request_stm, &[]).await.context(DbError {authenticated})?;
-        //println!("pre_request_statement qq:====================\n{:?}\n=================", qq);
     }
 
     let main_stm = transaction.prepare_cached(main_statement.as_str()).await.context(DbError {authenticated})?;
@@ -194,7 +189,6 @@ async fn handle_postgrest_request(
         _ => ContentType::JSON,
     };
     
-    println!("jjjjjjj==========={:?}", ( &content_type, &request.accept_content_type, &request.query));
     Ok(ApiResponse {
         response: (Status::Ok, (content_type, body)),
         content_range: Header::new("Content-Range", format!("0-{}/*", page_total - 1))
@@ -206,105 +200,117 @@ fn index() -> &'static str {
     "Hello, world!"
 }
 
+fn get_vhost_resources<'a>(vhost: &Option<&str>, store: &'a HashMap<String, VhostResources>) -> Result<&'a VhostResources> {
+    match vhost {
+        None => store.get("default"),
+        Some(v) => match store.get(*v) {
+            Some(r) => Some(r),
+            None => store.get("default")
+        }
+    }.context(NotFound)
+}
+
 #[get("/<root>?<parameters..>")]
 async fn get<'a>(
         root: String,
         parameters: QueryString<'a>,
-        db_schema: &State<DbSchema>,
-        config: &State<Config>,
-        pool: &State<Pool>,
         cookies: &CookieJar<'a>,
         headers: AllHeaders<'a>,
+        vhost: Vhost<'a>,
+        vhosts: &State<HashMap<String, VhostResources>>,
 ) -> Result<ApiResponse> {
+
+    let resources = get_vhost_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&config, &root, &Method::GET, &parameters, db_schema, pool, None, &headers, &cookies).await?)
+    Ok(handle_postgrest_request(&resources.config, &root, &Method::GET, &parameters, &resources.db_schema, &resources.db_pool, None, &headers, &cookies).await?)
 }
 
 #[post("/<root>?<parameters..>", data = "<body>")]
 async fn post<'a>(
         root: String,
         parameters: QueryString<'a>,
-        db_schema: &State<DbSchema>,
-        config: &State<Config>,
-        pool: &State<Pool>,
         body: String,
         cookies: &CookieJar<'a>,
         headers: AllHeaders<'a>,
+        vhost: Vhost<'a>,
+        vhosts: &State<HashMap<String, VhostResources>>,
 ) -> Result<ApiResponse> {
-    
+    let resources = get_vhost_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&config, &root, &Method::POST, &parameters, db_schema, pool, Some(&body), &headers, &cookies).await?)
+    Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, &parameters, &resources.db_schema, &resources.db_pool, Some(&body), &headers, &cookies).await?)
 }
 
 #[get("/rpc/<root>?<parameters..>")]
 async fn rpc_get<'a>(
         root: String,
         parameters: QueryString<'a>,
-        db_schema: &State<DbSchema>,
-        config: &State<Config>,
-        pool: &State<Pool>,
         cookies: &CookieJar<'a>,
         headers: AllHeaders<'a>,
+        vhost: Vhost<'a>,
+        vhosts: &State<HashMap<String, VhostResources>>,
 ) -> Result<ApiResponse> {
+    let resources = get_vhost_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&config, &root, &Method::GET, &parameters, db_schema, pool, None, &headers, &cookies).await?)
+    Ok(handle_postgrest_request(&resources.config, &root, &Method::GET, &parameters, &resources.db_schema, &resources.db_pool, None, &headers, &cookies).await?)
 }
 
 #[post("/rpc/<root>?<parameters..>", data = "<body>")]
 async fn rpc_post<'a>(
         root: String,
         parameters: QueryString<'a>,
-        db_schema: &State<DbSchema>,
-        config: &State<Config>,
-        pool: &State<Pool>,
         body: String,
         cookies: &CookieJar<'a>,
         headers: AllHeaders<'a>,
+        vhost: Vhost<'a>,
+        vhosts: &State<HashMap<String, VhostResources>>,
 ) -> Result<ApiResponse> {
-    
+    let resources = get_vhost_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
-    
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&config, &root, &Method::POST, &parameters, db_schema, pool, Some(&body), &headers, &cookies).await?)
+    Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, &parameters, &resources.db_schema, &resources.db_pool, Some(&body), &headers, &cookies).await?)
 }
 
+struct VhostResources {
+    db_pool: Pool,
+    db_schema: DbSchema,
+    config: VhostConfig,
+}
 
-pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
-    let app_config:Config = config.extract().expect("config");
+async fn create_vhost_resources(vhost: &String, config: VhostConfig, store: &mut HashMap<String, VhostResources>) -> Result<()> {
 
     //setup db connection
-    let pg_uri = app_config.db_uri.clone();
+    let pg_uri = config.db_uri.clone();
     let pg_config = pg_uri.parse::<tokio_postgres::Config>().unwrap();
     let mgr_config = ManagerConfig {recycling_method: RecyclingMethod::Fast};
     let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
-    let pool = Pool::builder(mgr).max_size(10).build().unwrap();
+    let db_pool = Pool::builder(mgr).max_size(10).build().unwrap();
 
     //read db schema
-    let db_schema = match &app_config.db_schema_structure {
+    let db_schema = match &config.db_schema_structure {
         SqlFile(f) => match fs::read_to_string(f) {
             Ok(s) => {
-                match pool.get().await{
+                match db_pool.get().await{
                     Ok(client) => {
-                        match client.query(&s, &[&app_config.db_schemas]).await {
+                        match client.query(&s, &[&config.db_schemas]).await {
                             Ok(rows) => {
                                 serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize)
                             },
@@ -325,10 +331,23 @@ pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
         JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize)
     }?;
 
+    store.insert(vhost.clone(), VhostResources {db_pool,db_schema,config,});
+    Ok(())
+    
+}
+pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
+    let app_config:Config = config.extract().expect("config");
+    let mut vhost_resources: HashMap<String, VhostResources> = HashMap::new();
+    
+    for (vhost, vhost_config) in app_config.vhosts {
+        match create_vhost_resources(&vhost, vhost_config, &mut vhost_resources).await {
+            Ok(_) => println!("[{}] loaded config", vhost),
+            Err(e) => println!("[{}] config load failed ({})", vhost, e)
+        }
+    }
+
     Ok(rocket::custom(config)
-        .manage(db_schema)
-        .manage(app_config)
-        .manage(pool)
+        .manage(vhost_resources)
         .mount("/", routes![index])
         .mount("/rest", routes![get,post,rpc_get,rpc_post]))
 }
@@ -336,11 +355,17 @@ pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
 #[launch]
 async fn rocket() -> Rocket<Build> {
     
+    #[cfg(debug_assertions)]
+    let profile = RocketConfig::DEBUG_PROFILE;
+
+    #[cfg(not(debug_assertions))]
+    let profile = RocketConfig::RELEASE_PROFILE;
+
     let config = Figment::from(RocketConfig::default())
         .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
-        .merge(Env::prefixed("SUBZERO_").ignore(&["PROFILE"]).global())
-        .select(Profile::from_env_or("SUBZERO_PROFILE", Profile::const_new("debug")));
-    
+        .merge(Env::prefixed("SUBZERO_").split("__").ignore(&["PROFILE"]).global())
+        .select(Profile::from_env_or("SUBZERO_PROFILE", profile));
+
     match start(&config).await {
         Ok(r) => r,
         Err(e) => panic!("{}", e)
