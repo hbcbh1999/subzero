@@ -3,15 +3,14 @@
 #[macro_use] extern crate lazy_static;
 
 use serde_json::{from_value, Value as JsonValue};
-use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
-use tokio_postgres::{NoTls, IsolationLevel, types::ToSql};
+use deadpool_postgres::{Pool};
+use tokio_postgres::{IsolationLevel, types::ToSql};
 use jsonwebtoken::{decode, DecodingKey, Validation, errors::ErrorKind};
 use jsonpath_lib::select;
 use snafu::{ResultExt,};
 use http::Method;
 use tokio;
 use dashmap::{DashMap, };
-//use tokio::time::{sleep, Duration};
 
 use rocket::{
     http::{Header, ContentType, Status, CookieJar,},
@@ -22,9 +21,10 @@ use subzero::{
     api::{ApiRequest, Query::*, ResponseContentType::*,},
     schema::DbSchema,
     error::{*, Result},
-    config::{Config, VhostConfig, SchemaStructure::*},
+    config::{Config, VhostConfig, },
     dynamic_statement::{SqlSnippet, JoinIterator, generate, param, },
     rocket_util::{AllHeaders, QueryString, ApiResponse, Vhost},
+    vhosts::{VhostResources, get_resources, create_resources,},
     parser::postgrest::parse,
     formatter::postgresql::main_query,
 };
@@ -35,7 +35,6 @@ use figment::{
 };
 
 use std::{
-    fs,
     sync::{Arc,},
     collections::{HashMap},
     time::{SystemTime, UNIX_EPOCH}
@@ -202,24 +201,6 @@ fn index() -> &'static str {
     "Hello, world!"
 }
 
-fn get_vhost_resources<'a>(vhost: &Option<&str>, store: &'a Arc<DashMap<String, VhostResources>>) -> Result<&'a VhostResources> {
-    let gg = match vhost {
-        None => store.get("default"),
-        Some(v) => match store.get(*v) {
-            Some(r) => Some(r),
-            None => store.get("default")
-        }
-    };
-
-    if gg.is_some() {
-        Ok(gg.unwrap().value())
-    }
-    else {
-        Err(Error::NotFound)
-    }
-
-}
-
 #[get("/<root>?<parameters..>")]
 async fn get<'a>(
         root: String,
@@ -230,7 +211,7 @@ async fn get<'a>(
         vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
 
-    let resources = get_vhost_resources(&vhost, vhosts)?;
+    let resources = get_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -250,7 +231,7 @@ async fn post<'a>(
         vhost: Vhost<'a>,
         vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
-    let resources = get_vhost_resources(&vhost, vhosts)?;
+    let resources = get_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -269,7 +250,7 @@ async fn rpc_get<'a>(
         vhost: Vhost<'a>,
         vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
-    let resources = get_vhost_resources(&vhost, vhosts)?;
+    let resources = get_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -289,7 +270,7 @@ async fn rpc_post<'a>(
         vhost: Vhost<'a>,
         vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
-    let resources = get_vhost_resources(&vhost, vhosts)?;
+    let resources = get_resources(&vhost, vhosts)?;
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -299,60 +280,19 @@ async fn rpc_post<'a>(
     Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, &parameters, &resources.db_schema, &resources.db_pool, Some(&body), &headers, &cookies).await?)
 }
 
-struct VhostResources {
-    db_pool: Pool,
-    db_schema: DbSchema,
-    config: VhostConfig,
-}
+async fn start() -> Result<Rocket<Build>> {
 
-async fn create_vhost_resources(vhost: &String, config: VhostConfig, store: Arc<DashMap<String, VhostResources>>) -> Result<()> {
+    #[cfg(debug_assertions)]
+    let profile = RocketConfig::DEBUG_PROFILE;
 
-    //setup db connection
-    let pg_uri = config.db_uri.clone();
-    let pg_config = pg_uri.parse::<tokio_postgres::Config>().unwrap();
-    let mgr_config = ManagerConfig {recycling_method: RecyclingMethod::Fast};
-    let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
-    let db_pool = Pool::builder(mgr).max_size(10).build().unwrap();
+    #[cfg(not(debug_assertions))]
+    let profile = RocketConfig::RELEASE_PROFILE;
 
-    //read db schema
-    let db_schema = match &config.db_schema_structure {
-        SqlFile(f) => match fs::read_to_string(f) {
-            Ok(s) => {
-                match db_pool.get().await{
-                    Ok(client) => {
-                        match client.query(&s, &[&config.db_schemas]).await {
-                            Ok(rows) => {
-                                serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize)
-                            },
-                            Err(e) => Err(e).context(DbError {authenticated:false})
-                        }
-                    },
-                    Err(e) => Err(e).context(DbPoolError)
-                }
-            },
-            Err(e) => Err(e).context(ReadFile {path: f})
-        },
-        JsonFile(f) => {
-            match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
-                Err(e) => Err(e).context(ReadFile {path: f})
-            }
-        },
-        JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize)
-    }?;
-
-    let key = vhost.clone();
-
-    if let Some((_, r)) = store.remove(&key) {
-        r.db_pool.close();
-    }
-
-    store.insert(key, VhostResources {db_pool,db_schema,config,});
-    Ok(())
+    let config = Figment::from(RocketConfig::default())
+        .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
+        .merge(Env::prefixed("SUBZERO_").split("__").ignore(&["PROFILE"]).global())
+        .select(Profile::from_env_or("SUBZERO_PROFILE", profile));
     
-}
-
-pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
     let app_config:Config = config.extract().expect("config");
     let vhost_resources = Arc::new(DashMap::new());
     
@@ -360,7 +300,7 @@ pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
         let vhost_resources = vhost_resources.clone();
         tokio::spawn(async move {
             //sleep(Duration::from_millis(30 * 1000)).await;
-            match create_vhost_resources(&vhost, vhost_config, vhost_resources).await {
+            match create_resources(&vhost, vhost_config, vhost_resources).await {
                 Ok(_) => println!("[{}] loaded config", vhost),
                 Err(e) => println!("[{}] config load failed ({})", vhost, e)
             }
@@ -375,19 +315,8 @@ pub async fn start(config: &Figment) -> Result<Rocket<Build>> {
 
 #[launch]
 async fn rocket() -> Rocket<Build> {
-    
-    #[cfg(debug_assertions)]
-    let profile = RocketConfig::DEBUG_PROFILE;
 
-    #[cfg(not(debug_assertions))]
-    let profile = RocketConfig::RELEASE_PROFILE;
-
-    let config = Figment::from(RocketConfig::default())
-        .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
-        .merge(Env::prefixed("SUBZERO_").split("__").ignore(&["PROFILE"]).global())
-        .select(Profile::from_env_or("SUBZERO_PROFILE", profile));
-
-    match start(&config).await {
+    match start().await {
         Ok(r) => r,
         Err(e) => panic!("{}", e)
     }

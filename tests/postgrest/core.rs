@@ -2,12 +2,11 @@
 use super::*; //super in
 use serde_json::Value;
 
-use rocket::{Config as RocketConfig};
+
 use rocket::local::asynchronous::Client;
 use rocket::http::Accept;
 use std::str::FromStr;
-use figment::{Figment, Profile, };
-use figment::providers::{Env, Toml, Format};
+
 use std::sync::Once;
 use std::process::Command;
 use std::path::PathBuf;
@@ -19,19 +18,9 @@ static INIT: Once = Once::new();
 use pretty_assertions::{assert_eq};
 
 lazy_static! {
-    static ref CONFIG: Figment = {
-      #[cfg(debug_assertions)]
-      let profile = RocketConfig::DEBUG_PROFILE;
-
-      #[cfg(not(debug_assertions))]
-      let profile = RocketConfig::RELEASE_PROFILE;
-      Figment::from(RocketConfig::default())
-        .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
-        .merge(Env::prefixed("SUBZERO_").split("__").ignore(&["PROFILE"]).global())
-        .select(Profile::from_env_or("SUBZERO_PROFILE", profile))
-    };
+    
     static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
-      Client::untracked(start(&CONFIG).await.unwrap()).await.expect("valid client")
+      Client::untracked(start().await.unwrap()).await.expect("valid client")
     });
 }
 
@@ -64,7 +53,7 @@ fn setup() {
         // println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         assert!(output.status.success());
 
-        lazy_static::initialize(&CONFIG);
+        
         lazy_static::initialize(&CLIENT);
     });
 }

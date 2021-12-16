@@ -1,11 +1,10 @@
 
 use super::*; //super in this case is src/main.rs
-use rocket::{Rocket, Build, Config as RocketConfig};
+use rocket::{Rocket, Build, };
 // use rocket::local::blocking::Client;
 use rocket::local::asynchronous::Client;
 use rocket::http::Status;
-use figment::{Figment, Profile, };
-use figment::providers::{Env, Toml, Format};
+
 use std::sync::Once;
 use std::process::Command;
 use std::path::PathBuf;
@@ -16,17 +15,7 @@ use async_once::AsyncOnce;
 static INIT: Once = Once::new();
 
 lazy_static! {
-    static ref CONFIG: Figment = { 
-        #[cfg(debug_assertions)]
-        let profile = RocketConfig::DEBUG_PROFILE;
-
-        #[cfg(not(debug_assertions))]
-        let profile = RocketConfig::RELEASE_PROFILE;
-        Figment::from(RocketConfig::default())
-            .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
-            .merge(Env::prefixed("SUBZERO_").split("__").ignore(&["PROFILE"]).global())
-            .select(Profile::from_env_or("SUBZERO_PROFILE", profile))
-    };
+   
     // static ref DB_SCHEMA: DbSchema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
     static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
         Client::untracked(server().await).await.expect("valid client")
@@ -60,7 +49,7 @@ fn setup() {
         println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         assert!(output.status.success());
 
-        lazy_static::initialize(&CONFIG);
+        
         lazy_static::initialize(&CLIENT);
         //println!("{:?}", *CONFIG);
 
@@ -70,7 +59,7 @@ fn setup() {
 
 async fn server() -> Rocket<Build> {
     //let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).expect("failed to parse json schema");
-    start(&CONFIG).await.unwrap()
+    start().await.unwrap()
 }
 
 
