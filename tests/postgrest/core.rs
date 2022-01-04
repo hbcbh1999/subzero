@@ -100,16 +100,11 @@ macro_rules! haskell_test {
                     $(let $token_var:ident = $(authHeaderJWT)? $jwt_token:literal $(in)?)?
                     
                     $(get $get1_url:literal)?
-                   
-                    $(request methodGet $get2_url:literal $([$header:ident])? $($get2_body:literal)?)?
-                    $(
-                        (acceptHdrs $accept_header:literal) ""
-                    )?
-
                     $(post $post_url:literal [json|$json_body:literal|])?
-
-                    $(request methodPost $post2_url:literal [$post_header:ident] $([json|$json2_body:literal|])? $($json22_body:literal)?)?
-
+                   
+                    $(request methodGet $get2_url:literal $([$header:ident])? $((acceptHdrs $get2_accept_header:literal))? $($get2_body:literal)?)?
+                    $(request methodPost $post2_url:literal $([$post2_header:ident])? $((acceptHdrs $post2_accept_header:literal))? $([json|$json2_body:literal|])? $($json22_body:literal)?)?
+                    
                     shouldRespondWith
                     $($status_simple:literal)?
                     $([json|$json:literal|])?
@@ -143,31 +138,35 @@ macro_rules! haskell_test {
                                           $(
                                             let url = format!("/rest{}",$get1_url);
                                             let mut request = client.get(url.replace(" ", "%20"));
+                                            request.add_header(Accept::from_str("*/*").unwrap());
                                           )?
                                           $(
                                             let url = format!("/rest{}",$get2_url);
                                             let mut request = client.get(url.replace(" ", "%20"));
+                                            request.add_header(Accept::from_str("*/*").unwrap());
+                                            $(request.add_header(Accept::from_str($get2_accept_header).unwrap());)?
                                           )?
 
                                           $(
                                             let url = format!("/rest{}",$post_url);
                                             let mut request = client.post(url.replace(" ", "%20"))
                                                 .body($json_body);
+                                            request.add_header(Accept::from_str("*/*").unwrap());
                                           )?
 
                                           $(
                                             let url = format!("/rest{}",$post2_url);
                                             let mut request = client.post(url.replace(" ", "%20"))
                                                 .body($($json2_body)? $($json22_body)?);
+                                            request.add_header(Accept::from_str("*/*").unwrap());
+                                            $(request.add_header(Accept::from_str($post2_accept_header).unwrap());)?
                                           )?
 
 
                                           println!("url ===\n{:?}\n", url);
-                                          request.add_header(Accept::from_str("*/*").unwrap());
-
-                                          $(
-                                          request.add_header(Accept::from_str($accept_header).unwrap());
-                                          )?
+                                          //request.add_header(Accept::from_str("*/*").unwrap());
+                                          
+                                          
 
                                           $(
                                             request.add_header(Header::new("Authorization", format!("Bearer {}",$jwt_token)));
@@ -206,6 +205,69 @@ feature "rpc"
       get "/rpc/getitemrange?min=2&max=4" shouldRespondWith
         [json| r#"[ {"id": 3}, {"id":4} ] "#|]
         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    
+    it "returns CSV" $ do
+        request methodPost "/rpc/getitemrange"
+                (acceptHdrs "text/csv")
+                [json|  r#"{ "min": 2, "max": 4 }"# |]
+           shouldRespondWith [text|"id\n3\n4"|]
+            { matchStatus = 200
+            , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
+            }
+        request methodGet "/rpc/getitemrange?min=2&max=4"
+                (acceptHdrs "text/csv") ""
+           shouldRespondWith [text|"id\n3\n4"|]
+            { matchStatus = 200
+            , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
+            }
+  describe "unknown function" $ do
+    it "returns 404" $
+      post "/rpc/fakefunc" [json| "{}" |] shouldRespondWith 404
+
+    it "should fail with 404 on unknown proc name" $
+      get "/rpc/fake" shouldRespondWith 404
+
+    it "should fail with 404 on unknown proc args" $ do
+      get "/rpc/sayhello" shouldRespondWith 404
+      get "/rpc/sayhello?any_arg=value" shouldRespondWith 404
+
+    it "should not ignore unknown args and fail with 404" $
+      get "/rpc/add_them?a=1&b=2&smthelse=blabla" shouldRespondWith
+      [json| r#"{
+        "hint":"If a new function was created in the database with this name and parameters, try reloading the schema cache.",
+        "message":"Could not find the test.add_them(a, b, smthelse) function in the schema cache" }"# |]
+      { matchStatus  = 404
+      , matchHeaders = ["Content-Type" <:> "application/json"]
+      }
+
+    it "should fail with 404 when no json arg is found with prefer single object" $
+      // request methodPost "/rpc/sayhello"
+      //   [("Prefer","params=single-object")]
+      //   [json|"{}"|]
+      // shouldRespondWith
+      //   [json| r#"{
+      //     "hint":"If a new function was created in the database with this name and parameters, try reloading the schema cache.",
+      //     "message":"Could not find the test.sayhello function with a single json or jsonb parameter in the schema cache" }"# |]
+      // { matchStatus  = 404
+      // , matchHeaders = ["Content-Type" <:> "application/json"]
+      // }
+
+    it "should fail with 404 for overloaded functions with unknown args" $ do
+      get "/rpc/overloaded?wrong_arg=value" shouldRespondWith
+        [json| r#"{
+          "hint":"If a new function was created in the database with this name and parameters, try reloading the schema cache.",
+          "message":"Could not find the test.overloaded(wrong_arg) function in the schema cache" }"# |]
+        { matchStatus  = 404
+        , matchHeaders = ["Content-Type" <:> "application/json"]
+        }
+      get "/rpc/overloaded?a=1&b=2&wrong_arg=value" shouldRespondWith
+        [json| r#"{
+          "hint":"If a new function was created in the database with this name and parameters, try reloading the schema cache.",
+          "message":"Could not find the test.overloaded(a, b, wrong_arg) function in the schema cache" }"# |]
+        { matchStatus  = 404
+        , matchHeaders = ["Content-Type" <:> "application/json"]
+        }
+
 feature "auth"
   describe "all" $
     it "denies access to tables that anonymous does not own" $
@@ -1169,13 +1231,13 @@ feature "query"
 //               (acceptHdrs "text/unknowntype, text/csv") ""
 //         shouldRespondWith 200
 
-//     it "should respond with CSV to 'text/csv' request" $
-//       request methodGet "/simple_pk"
-//               (acceptHdrs "text/csv; version=1") ""
-//         shouldRespondWith [text|"k,extra\nxyyx,u\nxYYx,v"|]
-//         { matchStatus  = 200
-//         , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
-//         }
+    it "should respond with CSV to 'text/csv' request" $
+      request methodGet "/simple_pk"
+              (acceptHdrs "text/csv; version=1") ""
+        shouldRespondWith [text|"k,extra\nxyyx,u\nxYYx,v"|]
+        { matchStatus  = 200
+        , matchHeaders = ["Content-Type" <:> "text/csv; charset=utf-8"]
+        }
 
 //   describe "Canonical location" $ do
 //     it "Sets Content-Location with alphabetized params" $

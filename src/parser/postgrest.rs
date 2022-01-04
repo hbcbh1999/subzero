@@ -199,6 +199,23 @@ pub fn parse<'r>(
         (method, Function {return_type, parameters, ..}) => {
             let arguments = match *method {
                 Method::GET => {
+
+                    let a:HashSet<&str> = HashSet::from_iter(fn_arguments.iter().map(|(k,_)|*k));
+                    let p:HashSet<&str> = HashSet::from_iter(parameters.iter().map(|p| p.name.as_str()));
+                    // check if all parameters are supplied
+                    if a != p {
+                        return Err(
+                            Error::NoRpc {
+                                schema: schema.clone(),
+                                proc_name: root.clone(),
+                                argument_keys: fn_arguments.iter().map(|(k,_)| format!("{}",k)).collect(),
+                                has_prefer_single_object: false,
+                                content_type: accept_content_type,
+                                is_inv_post: false
+                            }
+                        )
+                    }
+
                     let mut args:HashMap<String, JsonValue> = HashMap::new();
                     for p in &parameters {
                         let v:Vec<&str> = fn_arguments.iter().zip(std::iter::repeat(p.name.clone())).filter_map(|(&(k,v),n)| if k == n { Some(v) } else {None} ).collect();

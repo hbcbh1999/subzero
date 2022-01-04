@@ -1,5 +1,5 @@
 use snafu::{Snafu};
-use crate::api::{Join};
+use crate::api::{Join, ResponseContentType, ResponseContentType::*};
 // use combine::easy::Error as ParseError;
 //use combine::error::StringStreamError;
 //use combine;
@@ -69,6 +69,10 @@ pub enum Error {
     #[snafu(display("NotFound"))]
     NotFound,
 
+    //schema proc_name argument_keys has_prefer_single_object content_type is_inv_post
+    #[snafu(display("NoRpc {}.{}", schema, proc_name))]
+    NoRpc {schema: String, proc_name: String, argument_keys: Vec<String>, has_prefer_single_object: bool,  content_type: ResponseContentType,  is_inv_post: bool},
+
     #[snafu(display("UnsupportedVerb"))]
     UnsupportedVerb,
 
@@ -121,6 +125,7 @@ impl Error {
             Error::UnacceptableSchema {..} => 406,
             Error::UnknownRelation {..}  => 400,
             Error::NotFound => 404,
+            Error::NoRpc {..} => 404,
             Error::UnsupportedVerb {..} => 405,
             Error::ReadFile  { .. }  => 500,
             Error::JsonDeserialize  { .. }  => 400,
@@ -193,6 +198,20 @@ impl Error {
             // Error::UnknownRelation {..}  => 400,
             Error::NotFound => json!({}),
             Error::UnsupportedVerb => json!({"message":"Unsupported HTTP verb"}),
+            Error::NoRpc {schema, proc_name, argument_keys, has_prefer_single_object, content_type, is_inv_post} => {
+                let prms = format!("({})", argument_keys.join(", "));
+                let msg_part = match (has_prefer_single_object, is_inv_post, content_type) {
+                    (true, _, _)                 => format!(" function with a single json or jsonb parameter"),
+                    (_, true, &TextCSV)       => format!(" function with a single unnamed text parameter"),
+                    //(_, true, CTOctetStream)     => " function with a single unnamed bytea parameter",
+                    (_, true, &ApplicationJSON) => format!("{} function or the {}.{} function with a single unnamed json or jsonb parameter", prms, schema, proc_name),
+                    _                            => format!("{} function", prms),
+                };
+                json!({
+                    "hint": "If a new function was created in the database with this name and parameters, try reloading the schema cache.",
+                    "message": format!("Could not find the {}.{}{} in the schema cache", schema, proc_name, msg_part)
+                })
+            },
             // Error::ReadFile  { .. }  => 500,
             Error::JsonDeserialize {..} => json!({"message": format!("{}", self)}),
             Error::JsonSerialize {..} => json!({"message": format!("{}", self)}),

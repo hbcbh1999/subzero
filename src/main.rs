@@ -139,7 +139,9 @@ async fn handle_postgrest_request(
     
     // parse request and generate the query
     let request = parse(schema_name, root, db_schema, method, parameters, body, headers, cookies)?;
+    //println!("request: \n{:#?}", request);
     let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request));
+    //println!("main_statement: \n{}", main_statement);
     let env = get_postgrest_env(role, &vec![schema_name.clone()], &request, &jwt_claims);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
     
@@ -190,7 +192,7 @@ async fn handle_postgrest_request(
         (SingularJSON, _) |
         (_, FunctionCall { returns_single: true, is_scalar: false, .. })
             => SINGLE_CONTENT_TYPE.clone(),
-        
+        (TextCSV, _) => ContentType::CSV,
         _ => ContentType::JSON,
     };
     
