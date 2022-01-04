@@ -1,5 +1,5 @@
 
-use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Timeouts};
+use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Timeouts, Runtime};
 use tokio_postgres::{NoTls,};
 use snafu::{ResultExt,};
 use dashmap::{DashMap, };
@@ -33,7 +33,7 @@ pub fn get_resources<'a>(vhost: &Option<&str>, store: &'a Arc<DashMap<String, Vh
             None => store.get("default")
         }
     };
-
+    
     if gg.is_some() {
         Ok(gg.unwrap().value())
     }
@@ -55,7 +55,11 @@ pub async fn create_resources(vhost: &String, config: VhostConfig, store: Arc<Da
         wait: None,
         recycle: None,
     };
-    let db_pool = Pool::builder(mgr).max_size(10).timeouts(timeouts).build().unwrap();
+    let db_pool = Pool::builder(mgr)
+        .runtime(Runtime::Tokio1)
+        .max_size(10)
+        .timeouts(timeouts)
+        .build().unwrap();
 
     //read db schema
     let db_schema = match &config.db_schema_structure {

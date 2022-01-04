@@ -9,7 +9,7 @@ use jsonwebtoken::{decode, DecodingKey, Validation, errors::ErrorKind};
 use jsonpath_lib::select;
 use snafu::{ResultExt,};
 use http::Method;
-use tokio;
+//use tokio;
 use dashmap::{DashMap, };
 
 use rocket::{
@@ -90,7 +90,7 @@ async fn handle_postgrest_request(
 ) -> Result<ApiResponse> {
     let schema_name = config.db_schemas.get(0).unwrap();
 
-    // handle jwt
+    // check jwt
     let jwt_claims = match &config.jwt_secret {
         Some(key) => {
             match headers.get("Authorization"){
@@ -137,12 +137,14 @@ async fn handle_postgrest_request(
         None => Ok((&config.db_anon_role, false))
     }?;
     
+    // parse request and generate the query
     let request = parse(schema_name, root, db_schema, method, parameters, body, headers, cookies)?;
     let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request));
     let env = get_postgrest_env(role, &vec![schema_name.clone()], &request, &jwt_claims);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
+    
+    // fetch response from the database
     let mut client = pool.get().await.context(DbPoolError)?;
-
     let transaction = client
         .build_transaction()
         .isolation_level(IsolationLevel::Serializable)
@@ -180,6 +182,8 @@ async fn handle_postgrest_request(
     
     transaction.commit().await.context(DbError {authenticated})?;
 
+
+    // create and return the response to the client
     let body: String = rows[0].get("body");
     let page_total: i64 = rows[0].get("page_total");
     let content_type:ContentType = match ( &request.accept_content_type, &request.query) {
@@ -298,13 +302,13 @@ async fn start() -> Result<Rocket<Build>> {
     
     for (vhost, vhost_config) in app_config.vhosts {
         let vhost_resources = vhost_resources.clone();
-        tokio::spawn(async move {
+        //tokio::spawn(async move {
             //sleep(Duration::from_millis(30 * 1000)).await;
             match create_resources(&vhost, vhost_config, vhost_resources).await {
                 Ok(_) => println!("[{}] loaded config", vhost),
                 Err(e) => println!("[{}] config load failed ({})", vhost, e)
             }
-        });
+        //});
     }
 
     Ok(rocket::custom(config)
