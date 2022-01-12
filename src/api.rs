@@ -9,9 +9,10 @@ use std::collections::HashMap;
 pub struct ApiRequest<'r> {
     // pub root: String,
     pub method: Method,
+    pub path: String,
     pub accept_content_type: ResponseContentType,
     // pub headers: &'r HeaderMap<'r>,
-    pub query: Query<'r>,
+    pub query: Query,
     pub headers: &'r HashMap<&'r str, &'r str>,
     pub cookies: &'r HashMap<&'r str, &'r str>,
 }
@@ -38,21 +39,24 @@ pub enum CallParams {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Query<'r> {
+pub enum Query {
     FunctionCall {
         fn_name: Qi,
         parameters: CallParams,
-        payload: Option<String>,
+        payload: Payload,
         return_table_type: Option<Qi>,
         is_scalar: bool,
         returns_single: bool,
         is_multiple_call: bool,
         returning: Vec<String>,
-        select: Vec<SelectItem<'r>>,
+        select: Vec<SelectItem>,
         where_: ConditionTree,
+        limit: Option<SingleVal>,
+        offset: Option<SingleVal>,
+        order: Vec<OrderTerm>
     },
     Select {
-        select: Vec<SelectItem<'r>>,
+        select: Vec<SelectItem>,
         from: Vec<String>,
         where_: ConditionTree,
         limit: Option<SingleVal>,
@@ -62,10 +66,10 @@ pub enum Query<'r> {
     Insert {
         into: String,
         columns: Vec<String>,
-        payload: &'r String,
+        payload: Payload,
         where_: ConditionTree, //used only for put
         returning: Vec<String>,
-        select: Vec<SelectItem<'r>>,
+        select: Vec<SelectItem>,
         //, onConflict :: Maybe (PreferResolution, [FieldName])
     }
     
@@ -117,7 +121,7 @@ pub enum Join {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum SelectItem<'r> {
+pub enum SelectItem {
     //TODO!!! better name
     Star,
     Simple {
@@ -125,7 +129,7 @@ pub enum SelectItem<'r> {
         alias: Option<String>,
     },
     SubSelect {
-        query: Query<'r>,
+        query: Query,
         alias: Option<String>,
         hint: Option<JoinHint>,
         join: Option<Join>
@@ -185,12 +189,18 @@ pub enum JsonOperand {
 
 
 pub type Operator = String;
+pub type Negate = bool;
+pub type Language = SingleVal;
+
+#[derive(Debug, PartialEq)]
+pub struct Payload(pub String);
+
 #[derive(Debug,PartialEq,Clone)]
 pub struct SingleVal(pub String);
-pub type Language = SingleVal;
+
 #[derive(Debug,PartialEq,Clone)]
 pub struct ListVal(pub Vec<String>);
-pub type Negate = bool;
+
 
 // impl From<ListVal> for &str {
 //     fn from(l: ListVal) -> Self {

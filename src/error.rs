@@ -95,7 +95,13 @@ pub enum Error {
     DbError { source: PgError, authenticated: bool },
 
     #[snafu(display("JwtTokenInvalid {}", message))]
-    JwtTokenInvalid { message: String }
+    JwtTokenInvalid { message: String },
+
+    #[snafu(display("GucHeadersError"))]
+    GucHeadersError,
+    
+    #[snafu(display("GucStatusError"))]
+    GucStatusError,
 
 }
 
@@ -113,6 +119,8 @@ impl Error {
 
     fn status_code(&self) -> u16 {
         match self {
+            Error::GucHeadersError => 500,
+            Error::GucStatusError => 500,
             Error::InternalError { .. } => 500,
             Error::JwtTokenInvalid { .. } => 401,
             Error::ActionInappropriate => 405,
@@ -178,6 +186,8 @@ impl Error {
 
     fn json_body(&self) -> JsonValue {
         match self {
+            Error::GucHeadersError => json!({"message": "response.headers guc must be a JSON array composed of objects with a single key and a string value"}),
+            Error::GucStatusError => json!({"message":"response.status guc must be a valid status code"}),
             Error::ActionInappropriate => json!({"message": "Bad Request"}),
             Error::InvalidRange => json!({"message": "HTTP Range error"}),
             Error::InvalidBody {message} => json!({"message": message}),

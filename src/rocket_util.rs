@@ -4,6 +4,7 @@ use rocket::{
     http::{HeaderMap,},
     form::{FromForm, ValueField, DataField, Options, Result as FormResult},
     request::{FromRequest, Outcome, Request},
+    response::{Responder, Result, Response},
     http::{Header, ContentType, Status,},
 };
 
@@ -37,6 +38,7 @@ impl<'r> Deref for QueryString<'r> {
 	fn deref(&self) -> &Self::Target {&self.0}
 }
 
+#[derive(Debug)]
 pub struct AllHeaders<'r>(&'r rocket::http::HeaderMap<'r>);
 
 #[rocket::async_trait]
@@ -52,10 +54,21 @@ impl<'r> Deref for AllHeaders<'r> {
 	fn deref(&self) -> &Self::Target {&self.0}
 }
 
-#[derive(Responder, Debug)]
+#[derive(Debug)]
 pub struct ApiResponse {
     pub response: (Status, (ContentType, String)),
-    pub content_range: Header<'static>,
+    pub headers: Vec<Header<'static>>,
+    //pub content_range: Header<'static>,
+}
+
+impl<'r> Responder<'r, 'static> for ApiResponse {
+    fn respond_to(self, req: &'r Request<'_>) -> Result<'static> {
+        let mut response = Response::build_from(self.response.respond_to(&req)?);
+        for h in self.headers {
+            response.header_adjoin(h);
+        }
+        response.ok()
+    }
 }
 
 

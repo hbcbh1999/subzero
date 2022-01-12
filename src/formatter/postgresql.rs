@@ -58,6 +58,27 @@ impl ToSql for SingleVal {
     to_sql_checked!();
 }
 
+impl ToSql for Payload {
+    fn to_sql(
+        &self,
+        _ty: &Type,
+        out: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        match self {
+            Payload(v) => {
+                out.put_slice(v.as_str().as_bytes());
+                Ok(IsNull::No)
+            }
+        }
+    }
+
+    fn accepts(_ty: &Type) -> bool { true }
+
+    fn encode_format(&self) -> Format { Format::Text }
+
+    to_sql_checked!();
+}
+
 // helper type aliases
 type SqlParam<'a> = (dyn ToSql + Sync + 'a);
 type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
@@ -91,20 +112,23 @@ pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
     " with subzero_source as(" + fmt_query(schema, &request.query) + ") " +
     " select" +
     " pg_catalog.count(_subzero_t) AS page_total, "+
-    body_snippet + " as body" +
+    body_snippet + " as body, " +
+    " nullif(current_setting('response.headers', true), '') as response_headers, " +
+    " nullif(current_setting('response.status', true), '') AS response_status " +
     " from ( select * from subzero_source ) _subzero_t"
 }
 
 fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
+    //let body_param:&(dyn ToSql + Sync + 'a) = &BodyParam(payload);
     match q {
-        FunctionCall { fn_name, parameters, payload, is_scalar, is_multiple_call, returning, select, where_, .. } => {
-            let b = payload.as_ref().unwrap();
-            let bb:&(dyn ToSql + Sync + 'a) = b;
+        FunctionCall { fn_name, parameters, payload, is_scalar, is_multiple_call, returning, select, where_, limit, offset, order, .. } => {
+            //let b = payload.as_ref().unwrap();
+            let bb:&(dyn ToSql + Sync + 'a) = payload;
             let (params_cte, arg_frag):(Snippet<'a>,Snippet<'a>) = match &parameters {
-                CallParams::OnePosParam(p) => (sql(" subzero_args as (select null)"), param(bb) + format!("::{}",p.type_)),
+                CallParams::OnePosParam(_p) => (sql(" subzero_args as (select null)"), param(bb)),
                 CallParams::KeyParams(p) if p.len() == 0 => (sql(" subzero_args as (select null)"),sql("")),
                 CallParams::KeyParams(prms) => (
-                        fmt_body(b) +
+                        fmt_body(payload) +
                         ", subzero_args as ( " +
                             "select * from json_to_recordset((select val from subzero_body)) as _(" +
                                 prms.iter().map(|p| format!("{} {}", fmt_identity(&p.name), p.type_ )).collect::<Vec<_>>().join(", ") +
@@ -157,7 +181,10 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
             " select " + select.join(", ")  +
             " from " + fmt_identity(&"subzero_source".to_string()) +
             " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
-            " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
+            " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") } +
+            " " + fmt_order(qi_subzero_source, order) +
+            " " + fmt_limit(limit) +
+            " " + fmt_offset(offset)
 
         },
         Select {select, from, where_, limit, offset, order} => {
@@ -206,9 +233,9 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
     }
 }
 
-fn fmt_body<'a>(payload: &'a String) -> Snippet<'a> {
+fn fmt_body<'a>(payload: &'a Payload) -> Snippet<'a> {
     let payload_param:&(dyn ToSql + Sync) = payload;
-    " subzero_payload as ( select " + param(payload_param) + "::text::json as json_data ),"+
+    " subzero_payload as ( select " + param(payload_param) + "::json as json_data ),"+
     " subzero_body as ("+
         " select"+
             " case when json_typeof(json_data) = 'array'"+
@@ -461,7 +488,7 @@ mod tests {
                     variadic: false,
                 }
             ]),
-            payload: Some(payload.clone()),
+            payload: Payload(payload.clone()),
             is_scalar: true,
             returns_single: false,
             is_multiple_call: false,
@@ -469,11 +496,12 @@ mod tests {
             select: vec![Star],
             where_: ConditionTree { operator: And, conditions: vec![] },
             return_table_type: None,
+            limit: None, offset: None, order: vec![],
         };
 
         let (query_str, parameters, _) = generate(fmt_query(&s("api"), &q));
-        //let p = SingleVal(payload);
-        let pp: Vec<&(dyn ToSql + Sync)> = vec![&payload];
+        let p = Payload(payload);
+        let pp: Vec<&(dyn ToSql + Sync)> = vec![&p];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
         let re = Regex::new(r"\s+").unwrap();
         assert_eq!(
@@ -481,7 +509,7 @@ mod tests {
             re.replace_all(
                 r#"
                 with
-                    subzero_payload as ( select $1::text::json as json_data ),
+                    subzero_payload as ( select $1::json as json_data ),
                     subzero_body as (
                         select 
                             case when json_typeof(json_data) = 'array' 
@@ -572,20 +600,21 @@ mod tests {
                 // Single {filter: Op(s("<"),s("10")), field: Field {name: s("id"), json_path: None}, negate: true}
             ]},
             columns: vec![s("id"), s("a")],
-            payload: &payload,
+            payload: Payload(payload.clone()),
             returning: vec![s("id"), s("a")],
         };
 
         let (query_str, parameters, _) = generate(fmt_query(&s("api"), &q));
         let p0:&(dyn ToSql + Sync) = &ListVal(vec![s("51"), s("52")]);
         let p1:&(dyn ToSql + Sync) = &SingleVal(s("50"));
-        let pp: Vec<&(dyn ToSql + Sync)> = vec![&payload, p1, p0];
+        let p = Payload(payload);
+        let pp: Vec<&(dyn ToSql + Sync)> = vec![&p, p1, p0];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
         let re = Regex::new(r"\s+").unwrap();
         assert_eq!(re.replace_all(query_str.as_str(), " "), re.replace_all(
         r#"
         with 
-        subzero_payload as ( select $1::text::json as json_data ),
+        subzero_payload as ( select $1::json as json_data ),
         subzero_body as (
             select
                 case when json_typeof(json_data) = 'array'

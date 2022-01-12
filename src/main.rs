@@ -7,14 +7,15 @@ use deadpool_postgres::{Pool};
 use tokio_postgres::{IsolationLevel, types::ToSql};
 use jsonwebtoken::{decode, DecodingKey, Validation, errors::ErrorKind};
 use jsonpath_lib::select;
-use snafu::{ResultExt,};
+use snafu::{ResultExt,OptionExt};
 use http::Method;
 //use tokio;
 use dashmap::{DashMap, };
 
 use rocket::{
-    http::{Header, ContentType, Status, CookieJar,},
+    http::{Header, ContentType, Status, CookieJar, uri::{Origin}},
     Rocket, Build, Config as RocketConfig, State,
+
 };
 
 use subzero::{
@@ -47,8 +48,12 @@ lazy_static!{
 fn get_postgrest_env(role: &String, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>) -> HashMap<String, String>{
     let mut env = HashMap::new();
     env.insert("role".to_string(), role.clone());
+    env.insert("request.method".to_string(), format!("{}", request.method));
+    env.insert("request.path".to_string(), format!("{}", request.path));
+    //pathSql = setConfigLocal mempty ("request.path", iPath req)
+    env.insert("request.jwt.claim.role".to_string(), role.clone());
     env.insert("search_path".to_string(), search_path.join(", ").to_string());
-    env.extend(request.headers.iter().map(|(k,v)| (format!("request.header.{}",k),v.to_string())));
+    env.extend(request.headers.iter().map(|(k,v)| (format!("request.header.{}",k.to_lowercase()),v.to_string())));
     env.extend(request.cookies.iter().map(|(k,v)| (format!("request.cookie.{}",k),v.to_string())));
     match jwt_claims {
         Some(v) => {
@@ -81,10 +86,11 @@ async fn handle_postgrest_request(
     config: &VhostConfig,
     root: &String,
     method: &Method,
+    path: String,
     parameters: &Vec<(&str, &str)>,
     db_schema: &DbSchema,
     pool: &Pool,
-    body: Option<&String>,
+    body: Option<String>,
     headers: &HashMap<&str, &str>,
     cookies: &HashMap<&str, &str>,
 ) -> Result<ApiResponse> {
@@ -138,12 +144,16 @@ async fn handle_postgrest_request(
     }?;
     
     // parse request and generate the query
-    let request = parse(schema_name, root, db_schema, method, parameters, body, headers, cookies)?;
+    let request = parse(schema_name, root, db_schema, method, path, parameters, body, headers, cookies)?;
     //println!("request: \n{:#?}", request);
     let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request));
-    //println!("main_statement: \n{}", main_statement);
+    println!("main_statement: \n{}\n{:?}", main_statement, main_parameters);
     let env = get_postgrest_env(role, &vec![schema_name.clone()], &request, &jwt_claims);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
+    println!("env_parameters: \n{:#?}", env_parameters);
+    // println!("headers: \n{:#?}", headers);
+    // println!("cookies: \n{:#?}", cookies);
+    
     
     // fetch response from the database
     let mut client = pool.get().await.context(DbPoolError)?;
@@ -186,7 +196,6 @@ async fn handle_postgrest_request(
 
 
     // create and return the response to the client
-    let body: String = rows[0].get("body");
     let page_total: i64 = rows[0].get("page_total");
     let content_type:ContentType = match ( &request.accept_content_type, &request.query) {
         (SingularJSON, _) |
@@ -195,10 +204,44 @@ async fn handle_postgrest_request(
         (TextCSV, _) => ContentType::CSV,
         _ => ContentType::JSON,
     };
-    
+    let mut headers = vec![Header::new("Content-Range", format!("0-{}/*", page_total - 1))];
+    if let Some(response_headers_str) = rows[0].get("response_headers") {
+        //println!("response_headers_str: {:?}", response_headers_str);
+        match serde_json::from_str(response_headers_str) {
+            Ok(JsonValue::Array(headers_json)) =>  {
+                for h in headers_json {
+                    match h {
+                        JsonValue::Object(o) => {
+                            for (k,v) in o.into_iter() {
+                                match v {
+                                    JsonValue::String(s) => {
+                                        headers.push(Header::new(k, s));
+                                        Ok(())
+                                    }
+                                    _ => Err(Error::GucHeadersError)
+                                }?
+                            }
+                            Ok(())
+                        }
+                        _ => Err(Error::GucHeadersError)
+                    }?
+                }
+                Ok(())
+            },
+            _ => Err(Error::GucHeadersError),
+        }?
+    }
+    println!("headers: {:?}", headers);
+    let mut status = Status::Ok;
+    let response_status:Option<&str> = rows[0].get("response_status");
+    if let Some(response_status_str) = response_status {
+        status = Status::from_code(response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError)?).context(GucStatusError)?;
+    }
+
+    let body: String = rows[0].get("body");
     Ok(ApiResponse {
-        response: (Status::Ok, (content_type, body)),
-        content_range: Header::new("Content-Range", format!("0-{}/*", page_total - 1))
+        response: (status, (content_type, body)),
+        headers
     })
 }
 
@@ -210,6 +253,7 @@ fn index() -> &'static str {
 #[get("/<root>?<parameters..>")]
 async fn get<'a>(
         root: String,
+        origin: &Origin<'_>,
         parameters: QueryString<'a>,
         cookies: &CookieJar<'a>,
         headers: AllHeaders<'a>,
@@ -224,12 +268,13 @@ async fn get<'a>(
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&resources.config, &root, &Method::GET, &parameters, &resources.db_schema, &resources.db_pool, None, &headers, &cookies).await?)
+    Ok(handle_postgrest_request(&resources.config, &root, &Method::GET, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, None, &headers, &cookies).await?)
 }
 
 #[post("/<root>?<parameters..>", data = "<body>")]
 async fn post<'a>(
         root: String,
+        origin: &Origin<'_>,
         parameters: QueryString<'a>,
         body: String,
         cookies: &CookieJar<'a>,
@@ -244,12 +289,13 @@ async fn post<'a>(
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, &parameters, &resources.db_schema, &resources.db_pool, Some(&body), &headers, &cookies).await?)
+    Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, Some(body), &headers, &cookies).await?)
 }
 
 #[get("/rpc/<root>?<parameters..>")]
 async fn rpc_get<'a>(
         root: String,
+        origin: &Origin<'_>,
         parameters: QueryString<'a>,
         cookies: &CookieJar<'a>,
         headers: AllHeaders<'a>,
@@ -263,27 +309,29 @@ async fn rpc_get<'a>(
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&resources.config, &root, &Method::GET, &parameters, &resources.db_schema, &resources.db_pool, None, &headers, &cookies).await?)
+    Ok(handle_postgrest_request(&resources.config, &root, &Method::GET, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, None, &headers, &cookies).await?)
 }
 
 #[post("/rpc/<root>?<parameters..>", data = "<body>")]
 async fn rpc_post<'a>(
         root: String,
+        origin: &Origin<'_>,
         parameters: QueryString<'a>,
         body: String,
-        cookies: &CookieJar<'a>,
+        cookies: &'a CookieJar<'_>,
         headers: AllHeaders<'a>,
         vhost: Vhost<'a>,
         vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
+    
     let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
     let headers = headers.iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_,_>>();
     let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
         .collect::<HashMap<_,_>>();
-    Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, &parameters, &resources.db_schema, &resources.db_pool, Some(&body), &headers, &cookies).await?)
+    Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, Some(body), &headers, &cookies).await?)
 }
 
 async fn start() -> Result<Rocket<Build>> {
