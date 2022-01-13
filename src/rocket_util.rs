@@ -8,7 +8,16 @@ use rocket::{
     http::{Header, ContentType, Status,},
 };
 
+use crate::{
+    api::{ResponseContentType::{self, *},},
+};
+
 use std::ops::Deref;
+
+
+lazy_static!{
+    static ref SINGLE_CONTENT_TYPE: ContentType = ContentType::parse_flexible("application/vnd.pgrst.object+json").unwrap();
+}
 
 #[derive(Debug)]
 pub struct QueryString<'r> (Vec<(&'r str, &'r str)>);
@@ -39,7 +48,7 @@ impl<'r> Deref for QueryString<'r> {
 }
 
 #[derive(Debug)]
-pub struct AllHeaders<'r>(&'r rocket::http::HeaderMap<'r>);
+pub struct AllHeaders<'r>(&'r HeaderMap<'r>);
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AllHeaders<'r> {
@@ -84,4 +93,13 @@ impl<'r> FromRequest<'r> for Vhost<'r> {
 impl<'r> Deref for Vhost<'r> {
 	type Target = Option<&'r str>;
 	fn deref(&self) -> &Self::Target {&self.0}
+}
+
+
+pub fn to_rocket_content_type(ct: ResponseContentType) -> ContentType {
+    match ct {
+        SingularJSON => SINGLE_CONTENT_TYPE.clone(),
+        TextCSV => ContentType::CSV,
+        ApplicationJSON => ContentType::JSON,
+    }
 }

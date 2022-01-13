@@ -4,7 +4,7 @@ use serde_json::Value;
 
 
 use rocket::local::asynchronous::Client;
-use rocket::http::{Accept, Cookie};
+use rocket::http::{Accept, Cookie, Header};
 use std::str::FromStr;
 
 use std::sync::Once;

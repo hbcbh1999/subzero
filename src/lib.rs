@@ -13,3 +13,4 @@ pub mod dynamic_statement;
 pub mod config;
 pub mod rocket_util;
 pub mod vhosts;
+pub mod postgrest;
