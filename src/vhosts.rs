@@ -1,6 +1,6 @@
 
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Timeouts, Runtime};
-use tokio_postgres::{NoTls,};
+use tokio_postgres::{NoTls,IsolationLevel};
 use snafu::{ResultExt,};
 use dashmap::{DashMap, };
 use tokio::time::{Duration};
@@ -66,12 +66,23 @@ pub async fn create_resources(vhost: &String, config: VhostConfig, store: Arc<Da
         SqlFile(f) => match fs::read_to_string(f) {
             Ok(s) => {
                 match db_pool.get().await{
-                    Ok(client) => {
-                        match client.query(&s, &[&config.db_schemas]).await {
+                    Ok(mut client) => {
+                        let transaction = client
+                            .build_transaction()
+                            .isolation_level(IsolationLevel::Serializable)
+                            .read_only(true)
+                            .start()
+                            .await.context(DbError {authenticated:false})?;
+                        let _ = transaction.query("set local schema ''", &[]).await;
+                        match transaction.query(&s, &[&config.db_schemas]).await {
                             Ok(rows) => {
+                                transaction.commit().await.context(DbError {authenticated:false})?;
                                 serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize)
                             },
-                            Err(e) => Err(e).context(DbError {authenticated:false})
+                            Err(e) => {
+                                transaction.rollback().await.context(DbError {authenticated:false})?;
+                                Err(e).context(DbError {authenticated:false})
+                            }
                         }
                     },
                     Err(e) => Err(e).context(DbPoolError)

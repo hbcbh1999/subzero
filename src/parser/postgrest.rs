@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap,HashSet,BTreeSet};
 use std::iter::FromIterator;
+
 use crate::api::{
     *,
     LogicOperator::*,Join::*, Condition::*, Filter::*, Query::*,
@@ -9,6 +10,7 @@ use crate::api::{
 };
 use crate::schema::{*, ObjectType::*, ProcReturnType::*,PgType::*};
 use crate::error::*;
+
 use snafu::{OptionExt, ResultExt};
 use serde_json::{Value as JsonValue};
 use combine::{
@@ -90,13 +92,14 @@ pub fn parse<'r>(
     let mut conditions = vec![];
     let mut columns_ = None;
     let mut fn_arguments = vec![];
-
     let accept_content_type = match headers.get("Accept") {
+        //TODO!!! accept header can have multiple content types
         Some(accept_header) => {
             let (act, _) = content_type()
             .message("failed to parse accept header")
             .easy_parse(*accept_header)
-            .map_err(to_app_error(accept_header))?;
+            .map_err(|_| Error::ContentTypeError {message: format!("None of these Content-Types are available: {}", accept_header)})?;
+            // .map_err(to_app_error(t))?;
             Ok(act)
         }
         None => Ok(ApplicationJSON)
@@ -106,13 +109,12 @@ pub fn parse<'r>(
             let (act, _) = content_type()
             .message("failed to parse content-type header")
             .easy_parse(*t)
-            .map_err(to_app_error(t))?;
+            .map_err(|_| Error::ContentTypeError {message: format!("None of these Content-Types are available: {}", t)})?;
+            // .map_err(to_app_error(t))?;
             Ok(act)
         }
         None => Ok(ApplicationJSON)
     }?;
-    
-    
 
     // iterate over parameters, parse and collect them in the relevant vectors
     for &(k,v) in parameters.iter() {

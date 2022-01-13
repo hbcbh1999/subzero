@@ -103,6 +103,9 @@ pub enum Error {
     #[snafu(display("GucStatusError"))]
     GucStatusError,
 
+    #[snafu(display("ContentTypeError {}", message))]
+    ContentTypeError { message: String },
+
 }
 
 impl Error {
@@ -119,6 +122,7 @@ impl Error {
 
     fn status_code(&self) -> u16 {
         match self {
+            Error::ContentTypeError { .. } => 415,
             Error::GucHeadersError => 500,
             Error::GucStatusError => 500,
             Error::InternalError { .. } => 500,
@@ -186,6 +190,7 @@ impl Error {
 
     fn json_body(&self) -> JsonValue {
         match self {
+            Error::ContentTypeError {message}=> json!({"message": message}),
             Error::GucHeadersError => json!({"message": "response.headers guc must be a JSON array composed of objects with a single key and a string value"}),
             Error::GucStatusError => json!({"message":"response.status guc must be a valid status code"}),
             Error::ActionInappropriate => json!({"message": "Bad Request"}),

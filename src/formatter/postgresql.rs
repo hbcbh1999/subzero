@@ -89,6 +89,8 @@ pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
         (SingularJSON, FunctionCall {is_scalar:true, ..} ) |
         (ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: true, ..} )
             => "coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')",
+        (ApplicationJSON, FunctionCall {returns_single:false, is_multiple_call: false, is_scalar: true, ..} )
+            => "coalesce((json_agg(_subzero_t.subzero_scalar))::text, '[]')",
         (SingularJSON, FunctionCall {is_scalar:false, ..} ) |
         (ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: false, ..} )
             => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
@@ -100,7 +102,7 @@ pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
               FROM (
                 SELECT json_object_keys(r)::text as k
                 FROM ( 
-                  SELECT row_to_json(hh) as r from subzero_source as hh limit 1
+                  SELECT row_to_json(hh) as r from _subzero_query as hh limit 1
                 ) s
               ) a
             )
@@ -109,13 +111,13 @@ pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
         "#,
     };
 
-    " with subzero_source as(" + fmt_query(schema, &request.query) + ") " +
+    " with _subzero_query as(" + fmt_query(schema, &request.query) + ") " +
     " select" +
     " pg_catalog.count(_subzero_t) AS page_total, "+
     body_snippet + " as body, " +
     " nullif(current_setting('response.headers', true), '') as response_headers, " +
     " nullif(current_setting('response.status', true), '') AS response_status " +
-    " from ( select * from subzero_source ) _subzero_t"
+    " from ( select * from _subzero_query ) _subzero_t"
 }
 
 fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
@@ -125,15 +127,15 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
             //let b = payload.as_ref().unwrap();
             let bb:&(dyn ToSql + Sync + 'a) = payload;
             let (params_cte, arg_frag):(Snippet<'a>,Snippet<'a>) = match &parameters {
-                CallParams::OnePosParam(_p) => (sql(" subzero_args as (select null)"), param(bb)),
-                CallParams::KeyParams(p) if p.len() == 0 => (sql(" subzero_args as (select null)"),sql("")),
+                CallParams::OnePosParam(_p) => (sql(" "), param(bb)),
+                CallParams::KeyParams(p) if p.len() == 0 => (sql(" "),sql("")),
                 CallParams::KeyParams(prms) => (
                         fmt_body(payload) +
                         ", subzero_args as ( " +
                             "select * from json_to_recordset((select val from subzero_body)) as _(" +
                                 prms.iter().map(|p| format!("{} {}", fmt_identity(&p.name), p.type_ )).collect::<Vec<_>>().join(", ") +
                             ")" +
-                        " )",
+                        " ), ",
                         sql(prms.iter().map(|p|{
                             let variadic = if p.variadic {"variadic"} else {""};
                             let ident = fmt_identity(&p.name);
@@ -177,7 +179,7 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
             
             " with " +
                 params_cte +
-                ", subzero_source as ( " + args_body + " )" +
+                " subzero_source as ( " + args_body + " )" +
             " select " + select.join(", ")  +
             " from " + fmt_identity(&"subzero_source".to_string()) +
             " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
@@ -375,11 +377,9 @@ fn fmt_identity(i: &String) -> String{
 }
 
 fn fmt_qi(qi: &Qi) -> String{
-    if qi.1.as_str() == "subzero_source" {
-        format!("{}", fmt_identity(&qi.1))
-    }
-    else {
-        format!("{}.{}", fmt_identity(&qi.0), fmt_identity(&qi.1))
+    match qi.1.as_str() {
+        "subzero_source" | "subzero_fn_call" => format!("{}", fmt_identity(&qi.1)),
+        _ => format!("{}.{}", fmt_identity(&qi.0), fmt_identity(&qi.1))
     }
 }
 

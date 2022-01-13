@@ -1,5 +1,7 @@
 \set api_schemas '''{test}'''
 \set extra_search_path '''{public}'''
+begin;
+set local schema '';
 
 with view_source_columns as (
     with recursive pks_fks as (
@@ -591,4 +593,7 @@ json_schema as (
 )
 --select * from tables where table_name = 'projects';
 select json_schema from json_schema;
+--select  * from functions where function_name = 'ret_setof_integers';
 --select return_type_oid from functions where function_name = 'getproject';
+--select * from pg_proc;
+commit;
