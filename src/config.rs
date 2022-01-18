@@ -52,6 +52,8 @@ pub struct VhostConfig {
     #[serde(default)]
     pub db_schema_structure: SchemaStructure,
     pub db_anon_role: String,
+    #[serde(default)]
+    pub db_tx_rollback: bool,
     #[serde(deserialize_with = "to_tuple", default)]
     pub db_pre_request: Option<(String, String)>,
     pub jwt_secret: Option<String>,
@@ -91,6 +93,7 @@ mod test {
                 db_schemas: vec!["db_schema".to_string()],
                 db_schema_structure: SchemaStructure::SqlFile("sql_file".to_string()),
                 db_anon_role: "anonymous".to_string(),
+                db_tx_rollback: false,
                 db_pre_request: Some(("api".to_string(), "test".to_string())),
                 jwt_secret: None,
                 jwt_aud: None,

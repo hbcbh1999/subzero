@@ -5,18 +5,18 @@ use rocket::{
     form::{FromForm, ValueField, DataField, Options, Result as FormResult},
     request::{FromRequest, Outcome, Request},
     response::{Responder, Result, Response},
-    http::{Header, ContentType, Status,},
+    http::{Header, ContentType as HTTPContentType, Status,},
 };
 
 use crate::{
-    api::{ResponseContentType::{self, *},},
+    api::{ContentType::{self, *},},
 };
 
 use std::ops::Deref;
 
 
 lazy_static!{
-    static ref SINGLE_CONTENT_TYPE: ContentType = ContentType::parse_flexible("application/vnd.pgrst.object+json").unwrap();
+    static ref SINGLE_CONTENT_TYPE: HTTPContentType = HTTPContentType::parse_flexible("application/vnd.pgrst.object+json").unwrap();
 }
 
 #[derive(Debug)]
@@ -65,7 +65,7 @@ impl<'r> Deref for AllHeaders<'r> {
 
 #[derive(Debug)]
 pub struct ApiResponse {
-    pub response: (Status, (ContentType, String)),
+    pub response: (Status, (HTTPContentType, String)),
     pub headers: Vec<Header<'static>>,
     //pub content_range: Header<'static>,
 }
@@ -96,10 +96,10 @@ impl<'r> Deref for Vhost<'r> {
 }
 
 
-pub fn to_rocket_content_type(ct: ResponseContentType) -> ContentType {
+pub fn to_rocket_content_type(ct: ContentType) -> HTTPContentType {
     match ct {
         SingularJSON => SINGLE_CONTENT_TYPE.clone(),
-        TextCSV => ContentType::CSV,
-        ApplicationJSON => ContentType::JSON,
+        TextCSV => HTTPContentType::CSV,
+        ApplicationJSON => HTTPContentType::JSON,
     }
 }

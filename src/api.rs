@@ -6,19 +6,38 @@ pub use http::Method;
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq)]
+pub enum Resolution {MergeDuplicates, IgnoreDuplicates}
+#[derive(Debug, PartialEq)]
+pub enum Representation {Full, None, HeadersOnly}
+// #[derive(Debug, PartialEq)]
+// pub enum Parameters {SingleObject, MultipleObjects}
+#[derive(Debug, PartialEq)]
+pub enum Count {ExactCount, PlannedCount, EstimatedCount}
+// #[derive(Debug, PartialEq)]
+// pub enum Transaction {Commit, Rollback}
+
+#[derive(Debug, PartialEq)]
+pub struct Preferences {
+    pub resolution: Option<Resolution>,
+    pub representation: Option<Representation>,
+    // pub parameters: Option<Parameters>,
+    pub count: Option<Count>,
+    //pub transaction: Option<Transaction>,
+}
+
+#[derive(Debug, PartialEq)]
 pub struct ApiRequest<'r> {
-    // pub root: String,
     pub method: Method,
     pub path: String,
-    pub accept_content_type: ResponseContentType,
-    // pub headers: &'r HeaderMap<'r>,
+    pub accept_content_type: ContentType,
     pub query: Query,
+    pub preferences: Option<Preferences>,
     pub headers: &'r HashMap<&'r str, &'r str>,
     pub cookies: &'r HashMap<&'r str, &'r str>,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ResponseContentType {
+pub enum ContentType {
     ApplicationJSON,
     SingularJSON,
     TextCSV,

@@ -6,13 +6,14 @@ use std::iter::FromIterator;
 use crate::api::{
     *,
     LogicOperator::*,Join::*, Condition::*, Filter::*, Query::*,
-    ResponseContentType::*,
+    ContentType::*,
 };
 use crate::schema::{*, ObjectType::*, ProcReturnType::*,PgType::*};
 use crate::error::*;
 
 use snafu::{OptionExt, ResultExt};
 use serde_json::{Value as JsonValue};
+use csv::{Reader, StringRecord};
 use combine::{
     error::{StreamError},
     easy::{ParseError,Error as ParserError, Info},
@@ -114,6 +115,15 @@ pub fn parse<'r>(
             Ok(act)
         }
         None => Ok(ApplicationJSON)
+    }?;
+    let preferences = match headers.get("Prefer") {
+        Some(&pref) => {
+            let (p, _) = preferences()
+            .message("failed to parse Prefer header ")
+            .easy_parse(pref).map_err(to_app_error(pref))?;
+            Ok(Some(p))
+        },
+        None => Ok(None)
     }?;
 
     // iterate over parameters, parse and collect them in the relevant vectors
@@ -348,12 +358,15 @@ pub fn parse<'r>(
             Ok(q)
         },
         (&Method::POST,_) => {
-            let payload = body.context(InvalidBody {message: "body not available".to_string()})?;
-            let columns = match columns_ {
-                Some(c) => Ok(c),
-                None => {
-                    let json_payload: Result<JsonValue,serde_json::Error> = serde_json::from_str(&payload);
-                    match json_payload {
+            let _body = body.context(InvalidBody {message: "body not available".to_string()})?;
+
+            let (payload, columns) = match (content_type, columns_) {
+                (ApplicationJSON, Some(c)) |
+                (SingularJSON, Some(c)) => Ok((_body, c)),
+                (ApplicationJSON, None) |
+                (SingularJSON, None) => {
+                    let json_payload: Result<JsonValue,serde_json::Error> = serde_json::from_str(&_body);
+                    let columns = match json_payload {
                         Ok(j) => {
                             match j {
                                 JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
@@ -384,9 +397,91 @@ pub fn parse<'r>(
                         Err(e) => {
                             Err(Error::InvalidBody {message: format!("Failed to parse json body {}", e)})
                         }
+                    }?;
+                    Ok((_body, columns))
+                },
+                (TextCSV, cols) => {
+                    let mut rdr = Reader::from_reader(_body.as_bytes());
+                    let mut res: Vec<HashMap<String, String>> = Vec::new();
+                    let header: StringRecord = match cols {
+                        Some(c) => Ok(StringRecord::from(c)),
+                        None => Ok((rdr.headers().context(CsvDeserialize)?).clone())
+                    }?;
+                    for record in rdr.records() {
+                        res.push(
+                            header
+                            .clone()
+                            .into_iter()
+                            .map(|s| s.to_owned())
+                            .zip(record.context(CsvDeserialize)?.into_iter().map(|s| s.to_owned()))
+                            .collect()
+                        );
                     }
+                    Ok((serde_json::to_string(&res).context(JsonDeserialize)?, header.iter().map(|h| h.to_string()).collect()))
                 }
             }?;
+
+
+            // let payload = body.context(InvalidBody {message: "body not available".to_string()})?;
+            // let columns = match columns_ {
+            //     Some(c) => Ok(c),
+            //     None => {
+            //         match content_type {
+            //             ApplicationJSON | SingularJSON => {
+            //                 let json_payload: Result<JsonValue,serde_json::Error> = serde_json::from_str(&payload);
+            //                 match json_payload {
+            //                     Ok(j) => {
+            //                         match j {
+            //                             JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
+            //                             JsonValue::Array(v) => {
+            //                                 match v.get(0) {
+            //                                     Some(JsonValue::Object(m)) => {
+            //                                         let canonical_set:HashSet<&String> = HashSet::from_iter(m.keys());
+            //                                         let all_keys_match = v.iter().all(|vv|
+            //                                             match vv {
+            //                                                 JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
+            //                                                 _ => false
+            //                                             }
+            //                                         );
+            //                                         if all_keys_match {
+            //                                             Ok(m.keys().cloned().collect())
+            //                                         }
+            //                                         else {
+            //                                             Err(Error::InvalidBody {message: format!("All object keys must match")})
+            //                                         }
+                                                    
+            //                                     },
+            //                                     _ => Ok(vec![])
+            //                                 }
+            //                             },
+            //                             _ => Ok(vec![])
+            //                         }
+            //                     },
+            //                     Err(e) => {
+            //                         Err(Error::InvalidBody {message: format!("Failed to parse json body {}", e)})
+            //                     }
+            //                 }
+            //             },
+            //             TextCSV => {
+            //                 let mut rdr = Reader::from_reader(payload.as_bytes());
+            //                 let header: StringRecord = (rdr.headers().context(CsvDeserialize)?).clone();
+            //                 let mut res: Vec<HashMap<String, String>> = Vec::new();
+            //                 for record in rdr.records() {
+            //                     res.push(
+            //                         header
+            //                         .clone()
+            //                         .into_iter()
+            //                         .map(|s| s.to_owned())
+            //                         .zip(record.context(CsvDeserialize)?.into_iter().map(|s| s.to_owned()))
+            //                         .collect()
+            //                     );
+            //                 }
+            //                 Ok(vec![])
+            //             }
+            //         }
+                    
+            //     }
+            // }?;
 
             let mut q = Insert {
                 into: root.clone(),
@@ -459,6 +554,7 @@ pub fn parse<'r>(
     
 
     Ok(ApiRequest {
+        preferences,
         method: method.clone(),
         path,
         query,
@@ -847,7 +943,7 @@ where Input: Stream<Token = char>
     field().and(optional(direction).and(optional(nulls))).map(|(term, (direction, null_order))| OrderTerm{term, direction, null_order})
 }
 
-fn content_type<Input>() -> impl Parser<Input, Output = ResponseContentType>
+fn content_type<Input>() -> impl Parser<Input, Output = ContentType>
 where Input: Stream<Token = char>
 {
     choice((
@@ -857,6 +953,41 @@ where Input: Stream<Token = char>
     string("application/vnd.pgrst.object+json").map(|_| SingularJSON),
     string("text/csv").map(|_| TextCSV),
     ))
+}
+
+fn preferences<Input>() -> impl Parser<Input, Output = Preferences>
+where Input: Stream<Token = char>
+{
+    (
+        optional(choice((
+            string("return=representation").map(|_| Representation::Full),
+            string("return=minimal").map(|_| Representation::None),
+            string("return=headers-only").map(|_| Representation::HeadersOnly),
+        ))),
+        optional(choice((
+            string("resolution=merge-duplicates").map(|_| Resolution::MergeDuplicates),
+            string("resolution=ignore-duplicates").map(|_| Resolution::IgnoreDuplicates),
+        ))),
+        // optional(choice((
+        //     string("params=single-object").map(|_| Parameters::SingleObject),
+        //     string("params=multiple-objects").map(|_| Parameters::MultipleObjects),
+        // ))),
+        optional(choice((
+            string("count=exact").map(|_| Count::ExactCount),
+            string("count=planned").map(|_| Count::PlannedCount),
+            string("count=estimated").map(|_| Count::EstimatedCount),
+        ))),
+        // optional(choice((
+        //     string("tx=commit").map(|_| Transaction::Commit),
+        //     string("tx=rollback").map(|_| Transaction::Rollback),
+        // ))),
+    ).map(|(representation,resolution,count)|
+        Preferences {
+            resolution,
+            representation,
+            count,
+        }
+    )
 }
 
 fn logic_condition<Input>() -> impl Parser<Input, Output = Condition>
@@ -1449,6 +1580,7 @@ pub mod tests {
         let emtpy_hashmap = HashMap::new();
         let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
         let mut api_request = ApiRequest {
+            preferences: None,
             path: s("dummy"),
             method: Method::GET,
             headers: &emtpy_hashmap,
@@ -1561,6 +1693,7 @@ pub mod tests {
             a.unwrap()
             ,
             ApiRequest {
+                preferences: None,
                 path: s("dummy"),
                 method: Method::GET,
                 accept_content_type: ApplicationJSON,
@@ -1696,6 +1829,7 @@ pub mod tests {
             ], Some(payload.clone()), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
+                preferences: None,
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
@@ -1729,6 +1863,7 @@ pub mod tests {
             ], Some(payload.clone()), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
+                preferences: None,
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
@@ -1817,6 +1952,7 @@ pub mod tests {
             ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
+                preferences: None,
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
@@ -1851,6 +1987,7 @@ pub mod tests {
             ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
+                preferences: None,
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,

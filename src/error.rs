@@ -1,5 +1,5 @@
 use snafu::{Snafu};
-use crate::api::{Join, ResponseContentType, ResponseContentType::*};
+use crate::api::{Join, ContentType, ContentType::*};
 // use combine::easy::Error as ParseError;
 //use combine::error::StringStreamError;
 //use combine;
@@ -71,7 +71,7 @@ pub enum Error {
 
     //schema proc_name argument_keys has_prefer_single_object content_type is_inv_post
     #[snafu(display("NoRpc {}.{}", schema, proc_name))]
-    NoRpc {schema: String, proc_name: String, argument_keys: Vec<String>, has_prefer_single_object: bool,  content_type: ResponseContentType,  is_inv_post: bool},
+    NoRpc {schema: String, proc_name: String, argument_keys: Vec<String>, has_prefer_single_object: bool,  content_type: ContentType,  is_inv_post: bool},
 
     #[snafu(display("UnsupportedVerb"))]
     UnsupportedVerb,
@@ -84,6 +84,9 @@ pub enum Error {
 
     #[snafu(display("Failed to deserialize json: {}", source))]
     JsonDeserialize  { source: serde_json::Error },
+
+    #[snafu(display("Failed to deserialize csv: {}", source))]
+    CsvDeserialize  { source: csv::Error },
 
     #[snafu(display("Failed to serialize json: {}", source))]
     JsonSerialize  { source: serde_json::Error },
@@ -141,6 +144,7 @@ impl Error {
             Error::UnsupportedVerb {..} => 405,
             Error::ReadFile  { .. }  => 500,
             Error::JsonDeserialize  { .. }  => 400,
+            Error::CsvDeserialize  { .. }  => 400,
             Error::JsonSerialize  { .. }  => 500,
             Error::DbPoolError { source }  => match source {
                 PoolError::Timeout(_) => 503,
@@ -229,6 +233,7 @@ impl Error {
             },
             // Error::ReadFile  { .. }  => 500,
             Error::JsonDeserialize {..} => json!({"message": format!("{}", self)}),
+            Error::CsvDeserialize {..} => json!({"message": format!("{}", self)}),
             Error::JsonSerialize {..} => json!({"message": format!("{}", self)}),
             Error::DbPoolError { source }  => json!({"message": format!("Db pool error {}", source)}),
             Error::DbError { source, .. }  => match source.as_db_error() {

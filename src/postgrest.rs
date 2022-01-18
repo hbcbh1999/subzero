@@ -9,7 +9,7 @@ use snafu::{ResultExt};
 use http::Method;
 
 use crate::{
-    api::{ApiRequest, Query::*, ResponseContentType, ResponseContentType::*,},
+    api::{ApiRequest, Query::*, ContentType, ContentType::*,},
     schema::DbSchema,
     error::{*, Result},
     config::{VhostConfig, },
@@ -74,7 +74,7 @@ pub async fn handle_postgrest_request(
     headers: &HashMap<&str, &str>,
     cookies: &HashMap<&str, &str>,
 //) -> Result<ApiResponse> {
-) -> Result<(u16, ResponseContentType, Vec<(String, String)>, String)> {
+) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
     let schema_name = config.db_schemas.get(0).unwrap();
 
     // check jwt
@@ -138,10 +138,16 @@ pub async fn handle_postgrest_request(
     
     // fetch response from the database
     let mut client = pool.get().await.context(DbPoolError)?;
+    let readonly = match (method, &request){
+        (&Method::GET, _) => true,
+        //TODO!!! optimize not volatile function call can be read only
+        //(&Method::POST, ApiRequest { query: FunctionCall {..}, .. }) => true,
+        _ => false,
+    };
     let transaction = client
         .build_transaction()
-        .isolation_level(IsolationLevel::Serializable)
-        .read_only(true)
+        .isolation_level(IsolationLevel::ReadCommitted)
+        .read_only(readonly)
         .start()
         .await.context(DbError {authenticated})?;
 
@@ -172,8 +178,12 @@ pub async fn handle_postgrest_request(
     //     transaction.query(&env_stm, env_parameters.as_slice()),
     //     transaction.query(&main_stm, main_parameters.as_slice())
     // ).await.context(DbError)?;
-    
-    transaction.commit().await.context(DbError {authenticated})?;
+    if config.db_tx_rollback {
+        transaction.rollback().await.context(DbError {authenticated})?;
+    }
+    else {
+        transaction.commit().await.context(DbError {authenticated})?;
+    }
 
 
     // create and return the response to the client
@@ -214,7 +224,11 @@ pub async fn handle_postgrest_request(
         }?
     }
     //let mut status = Status::Ok;
-    let mut status = 200;
+    let mut status = match (method, &request.query) {
+        (&Method::POST, Insert {..}) => 201,
+        _ => 200,
+    };
+
     let response_status:Option<&str> = rows[0].get("response_status");
     if let Some(response_status_str) = response_status {
         //status = Status::from_code(response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError)?).context(GucStatusError)?;

@@ -1,7 +1,7 @@
 use crate::api::{
     *,
     JsonOperation::*, SelectItem::*, JsonOperand::*, LogicOperator:: *,
-    Condition::*, Filter::*, Join::*, Query::*, ResponseContentType::*,
+    Condition::*, Filter::*, Join::*, Query::*, ContentType::*,
 };
 use crate::dynamic_statement::{
     sql, param, SqlSnippet, JoinIterator,
@@ -83,21 +83,32 @@ impl ToSql for Payload {
 type SqlParam<'a> = (dyn ToSql + Sync + 'a);
 type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
 
-pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
+fn return_representation<'a>(request: &'a ApiRequest) -> bool {
+    match (&request.method, &request.query, &request.preferences) {
+        (&Method::POST, Insert {..}, None) |
+        (&Method::POST, Insert {..}, Some(Preferences { representation: Some(Representation::None), ..})) |
+        (&Method::POST, Insert {..}, Some(Preferences { representation: Some(Representation::HeadersOnly), ..}))
+            => false,
+        _ => true,
+    }
+}
 
-    let body_snippet = match (&request.accept_content_type, &request.query) {
-        (SingularJSON, FunctionCall {is_scalar:true, ..} ) |
-        (ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: true, ..} )
+pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
+    let return_representation = return_representation(request);
+    let body_snippet = match (return_representation, &request.accept_content_type, &request.query) {
+        (false, _, _) => "''",
+        (true, SingularJSON, FunctionCall {is_scalar:true, ..} ) |
+        (true, ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: true, ..} )
             => "coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')",
-        (ApplicationJSON, FunctionCall {returns_single:false, is_multiple_call: false, is_scalar: true, ..} )
+        (true, ApplicationJSON, FunctionCall {returns_single:false, is_multiple_call: false, is_scalar: true, ..} )
             => "coalesce((json_agg(_subzero_t.subzero_scalar))::text, '[]')",
-        (SingularJSON, FunctionCall {is_scalar:false, ..} ) |
-        (ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: false, ..} )
+        (true, SingularJSON, FunctionCall {is_scalar:false, ..} ) |
+        (true, ApplicationJSON, FunctionCall {returns_single:true, is_multiple_call: false, is_scalar: false, ..} )
             => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
         
-        (ApplicationJSON,_) => "coalesce(json_agg(_subzero_t), '[]')::character varying",
-        (SingularJSON, _) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
-        (TextCSV, _) => r#"
+        (true, ApplicationJSON,_) => "coalesce(json_agg(_subzero_t), '[]')::character varying",
+        (true, SingularJSON, _) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
+        (true, TextCSV, _) => r#"
             (SELECT coalesce(string_agg(a.k, ','), '')
               FROM (
                 SELECT json_object_keys(r)::text as k
@@ -111,7 +122,7 @@ pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
         "#,
     };
 
-    " with _subzero_query as(" + fmt_query(schema, &request.query) + ") " +
+    fmt_query(schema, return_representation, Some("_subzero_query"), &request.query) +
     " select" +
     " pg_catalog.count(_subzero_t) AS page_total, "+
     body_snippet + " as body, " +
@@ -120,9 +131,9 @@ pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
     " from ( select * from _subzero_query ) _subzero_t"
 }
 
-fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
+fn fmt_query<'a>(schema: &String, return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query) -> Snippet<'a>{
     //let body_param:&(dyn ToSql + Sync + 'a) = &BodyParam(payload);
-    match q {
+    let (cte_snippet, query_snippet) = match q {
         FunctionCall { fn_name, parameters, payload, is_scalar, is_multiple_call, returning, select, where_, limit, offset, order, .. } => {
             //let b = payload.as_ref().unwrap();
             let bb:&(dyn ToSql + Sync + 'a) = payload;
@@ -177,9 +188,12 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
             let qi_subzero_source = &Qi(schema.clone(),"subzero_source".to_string());
             let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).unzip();
             
-            " with " +
-                params_cte +
-                " subzero_source as ( " + args_body + " )" +
+            (
+                Some (
+                    params_cte +
+                    " subzero_source as ( " + args_body + " )"
+                )
+            ,
             " select " + select.join(", ")  +
             " from " + fmt_identity(&"subzero_source".to_string()) +
             " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
@@ -187,20 +201,22 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
             " " + fmt_order(qi_subzero_source, order) +
             " " + fmt_limit(limit) +
             " " + fmt_offset(offset)
+            )
 
         },
         Select {select, from, where_, limit, offset, order} => {
             let qi = &Qi(schema.clone(),from.get(0).unwrap().clone());
             let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi, s)).unzip();
-
-            " select "+select.join(", ") +
-            " from " + from.iter().map(|f| fmt_qi(&Qi(schema.clone(), f.clone()))).collect::<Vec<_>>().join(", ") +
-            " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
-            " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi, where_) } else { sql("") } +
-            " " + fmt_order(qi, order) +
-            " " + fmt_limit(limit) +
-            " " + fmt_offset(offset)
-            
+            (
+                None,
+                " select "+select.join(", ") +
+                " from " + from.iter().map(|f| fmt_qi(&Qi(schema.clone(), f.clone()))).collect::<Vec<_>>().join(", ") +
+                " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
+                " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi, where_) } else { sql("") } +
+                " " + fmt_order(qi, order) +
+                " " + fmt_limit(limit) +
+                " " + fmt_offset(offset)
+            )
         },
         Insert {into, columns, payload, where_, returning, select} => {
             let qi = &Qi(schema.clone(),into.clone());
@@ -215,22 +231,47 @@ fn fmt_query<'a>(schema: &String, q: &'a Query) -> Snippet<'a>{
                 returning.iter().map(fmt_identity).collect::<Vec<_>>().join(",")
             };
 
-            " with " +
-            fmt_body(payload)+
-            ", subzero_source as ( " + 
-                format!( " insert into {} ({}) select {} from json_populate_recordset(null {}, (select val from subzero_body)) _ returning {}",
-                    fmt_qi(qi), 
-                    columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
-                    columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
-                    fmt_qi(qi),
-                    //where_str,
-                    returned_columns
-                ) +
-            " )" + 
-            " select " + select.join(", ")  +
-            " from " + fmt_identity(&"subzero_source".to_string()) +
-            " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
-            " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
+            (
+                Some(
+                    fmt_body(payload)+
+                    ", subzero_source as ( " + 
+                        format!( " insert into {} ({}) select {} from json_populate_recordset(null::{}, (select val from subzero_body)) _ returning {}",
+                            fmt_qi(qi), 
+                            columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
+                            columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
+                            fmt_qi(qi),
+                            //where_str,
+                            returned_columns
+                        ) +
+                    " )"
+                ),
+                if return_representation {
+                    " select " + select.join(", ")  +
+                    " from " + fmt_identity(&"subzero_source".to_string()) +
+                    " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
+                    " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
+                }
+                else {
+                    sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
+                }
+            )
+        }
+    };
+
+    
+
+    match wrapin_cte {
+        Some(cte_name) => {
+            match cte_snippet {
+                Some(cte) => " with " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )",
+                None => format!(" with {} as ( ", cte_name) + query_snippet + " )",
+            }
+        },
+        None => {
+            match cte_snippet {
+                Some(cte) => " with " + cte + query_snippet,
+                None => query_snippet
+            }
         }
     }
 }
@@ -330,7 +371,7 @@ fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> (Snippet<'a>, Vec<Snippet
                 Parent (fk) => {
                     let alias_or_name = alias.as_ref().unwrap_or(&fk.referenced_table.1);
                     let local_table_name = format!("{}_{}", qi.1, alias_or_name);
-                    let subquery = fmt_query(&qi.0, query);
+                    let subquery = fmt_query(&qi.0, true, None, query);
                     
                     (
                         sql(format!("row_to_json({}.*) as {}",fmt_identity(&local_table_name), fmt_identity(alias_or_name))),
@@ -340,7 +381,7 @@ fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> (Snippet<'a>, Vec<Snippet
                 Child (fk) => {
                     let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk.table.1));
                     let local_table_name = fmt_identity(&fk.table.1);
-                    let subquery = fmt_query(&qi.0, query);
+                    let subquery = fmt_query(&qi.0, true, None, query);
                     (
                         ("coalesce((select json_agg("+sql(local_table_name.clone())+".*) from ("+subquery+") as "+sql(local_table_name.clone())+"), '[]') as " + sql(alias_or_name)),
                         vec![]
@@ -349,7 +390,7 @@ fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> (Snippet<'a>, Vec<Snippet
                 Many (_table, _fk1, fk2) => {
                     let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
                     let local_table_name = fmt_identity(&fk2.referenced_table.1);
-                    let subquery = fmt_query(&qi.0, query);
+                    let subquery = fmt_query(&qi.0, true, None, query);
                     (
                         ("coalesce((select json_agg("+sql(local_table_name.clone())+".*) from ("+subquery+") as "+sql(local_table_name.clone())+"), '[]') as " + sql(alias_or_name)),
                         vec![]
@@ -499,7 +540,7 @@ mod tests {
             limit: None, offset: None, order: vec![],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), &q));
+        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q));
         let p = Payload(payload);
         let pp: Vec<&(dyn ToSql + Sync)> = vec![&p];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
@@ -604,7 +645,7 @@ mod tests {
             returning: vec![s("id"), s("a")],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), &q));
+        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q));
         let p0:&(dyn ToSql + Sync) = &ListVal(vec![s("51"), s("52")]);
         let p1:&(dyn ToSql + Sync) = &SingleVal(s("50"));
         let p = Payload(payload);
@@ -627,7 +668,7 @@ mod tests {
         subzero_source as (
             insert into "api"."projects" ("id","a")
             select "id","a"
-            from json_populate_recordset(null "api"."projects", (select val from subzero_body)) _
+            from json_populate_recordset(null::"api"."projects", (select val from subzero_body)) _
             returning "id","a"
         )
         select
@@ -733,7 +774,7 @@ mod tests {
             ]}
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), &q));
+        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q));
         assert_eq!(format!("{:?}", parameters), "[SingleVal(\"50\"), ListVal([\"51\", \"52\"]), SingleVal(\"5\"), SingleVal(\"10\")]");
         let re = Regex::new(r"\s+").unwrap();
         assert_eq!(re.replace_all(query_str.as_str(), " "), re.replace_all(

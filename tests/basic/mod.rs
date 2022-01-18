@@ -23,7 +23,7 @@ lazy_static! {
 }
 
 fn setup() {
-    let _ = env_logger::builder().is_test(true).try_init();
+    //let _ = env_logger::builder().is_test(true).try_init();
     INIT.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
