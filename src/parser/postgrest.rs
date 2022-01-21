@@ -32,7 +32,7 @@ use combine::{
 
 
 lazy_static!{
-    //static ref STAR: String = "*".to_string();
+    static ref STAR: String = "*".to_string();
     static ref OPERATORS: HashMap<&'static str, &'static str> = [
          ("eq", "=")
         ,("gte", ">=")
@@ -86,7 +86,7 @@ pub fn parse<'r>(
     let root_obj = schema_obj.objects.get(root).context(NotFound)?;
 
     //println!("root_obj {:#?}", root_obj);
-    let mut select_items = vec![SelectItem::Star];
+    //let mut select_items = vec![SelectItem::Star];
     let mut limits = vec![];
     let mut offsets = vec![];
     let mut orders = vec![];
@@ -125,6 +125,10 @@ pub fn parse<'r>(
         },
         None => Ok(None)
     }?;
+    let mut select_items = match (method, &preferences) {
+        (&Method::POST, Some(Preferences { representation: Some(Representation::None), ..})) => vec![],
+        _ => vec![SelectItem::Star],
+    };
 
     // iterate over parameters, parse and collect them in the relevant vectors
     for &(k,v) in parameters.iter() {
@@ -395,7 +399,7 @@ pub fn parse<'r>(
                             }
                         },
                         Err(e) => {
-                            Err(Error::InvalidBody {message: format!("Failed to parse json body {}", e)})
+                            Err(Error::InvalidBody {message: format!("Failed to parse json body: {}", e)})
                         }
                     }?;
                     Ok((_body, columns))
@@ -955,39 +959,58 @@ where Input: Stream<Token = char>
     ))
 }
 
-fn preferences<Input>() -> impl Parser<Input, Output = Preferences>
+
+fn preferences<'a, Input>() -> impl Parser<Input, Output = Preferences>
 where Input: Stream<Token = char>
 {
-    (
-        optional(choice((
-            string("return=representation").map(|_| Representation::Full),
-            string("return=minimal").map(|_| Representation::None),
-            string("return=headers-only").map(|_| Representation::HeadersOnly),
-        ))),
-        optional(choice((
-            string("resolution=merge-duplicates").map(|_| Resolution::MergeDuplicates),
-            string("resolution=ignore-duplicates").map(|_| Resolution::IgnoreDuplicates),
-        ))),
-        // optional(choice((
-        //     string("params=single-object").map(|_| Parameters::SingleObject),
-        //     string("params=multiple-objects").map(|_| Parameters::MultipleObjects),
-        // ))),
-        optional(choice((
-            string("count=exact").map(|_| Count::ExactCount),
-            string("count=planned").map(|_| Count::PlannedCount),
-            string("count=estimated").map(|_| Count::EstimatedCount),
-        ))),
-        // optional(choice((
-        //     string("tx=commit").map(|_| Transaction::Commit),
-        //     string("tx=rollback").map(|_| Transaction::Rollback),
-        // ))),
-    ).map(|(representation,resolution,count)|
+    sep_by1(
+        choice((
+            attempt(string("return=")
+                .and(
+                    choice(( string("representation"),string("minimal"),string("headers-only") ))
+                )),
+            attempt(string("count=")
+                .and(
+                    choice(( string("exact"),string("planned"),string("estimated") ))
+                )),
+            attempt(string("resolution=")
+                .and(
+                    choice(( string("merge-duplicates"),string("ignore-duplicates") ))
+                ))
+        ))
+        ,lex(char(','))
+    ).map(|v:Vec<(&str,&str)>| {
+        let m = v.into_iter().collect::<HashMap<_,_>>();
         Preferences {
-            resolution,
-            representation,
-            count,
+            resolution: match m.get("resolution="){
+                Some(r) => match *r {
+                    "merge-duplicates" => Some(Resolution::MergeDuplicates),
+                    "ignore-duplicates" => Some(Resolution::IgnoreDuplicates),
+                    _ => None
+                },
+                None => None
+            },
+            representation: match m.get("return="){
+                Some(r) => match *r {
+                    "representation" => Some(Representation::Full),
+                    "minimal" => Some(Representation::None),
+                    "headers-only" => Some(Representation::HeadersOnly),
+                    _ => None
+                },
+                None => None
+            },
+            count: match m.get("count="){
+                Some(r) => match *r {
+                    "exact" => Some(Count::ExactCount),
+                    "planned" => Some(Count::PlannedCount),
+                    "estimated" => Some(Count::EstimatedCount),
+                    _ => None
+                },
+                None => None
+            },
         }
-    )
+    })
+    
 }
 
 fn logic_condition<Input>() -> impl Parser<Input, Output = Condition>
@@ -1409,7 +1432,7 @@ fn get_returning(select: &Vec<SelectItem>) -> Result<Vec<String>> {
                     },
                 }
             },
-            SelectItem::Star => Ok(vec![]),
+            SelectItem::Star => Ok(vec![&*STAR]),
             //TODO!! error here is wrong
             x => Err(Error::NoRelBetween {origin: "table".to_string(), target: format!("x {:?}",x)}) 
             
@@ -1600,7 +1623,7 @@ pub mod tests {
                 is_scalar: true,
                 returns_single: true,
                 is_multiple_call: false,
-                returning: vec![],
+                returning: vec![s("*")],
                 select: vec![Star],
                 where_: ConditionTree { operator: And, conditions: vec![] },
                 return_table_type: None,
@@ -1911,7 +1934,7 @@ pub mod tests {
             ], Some(s(r#"{"id":10, "name""#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
             ,
             Err(AppError::InvalidBody {
-                message: s("Failed to parse json body EOF while parsing an object at line 1 column 16")
+                message: s("Failed to parse json body: EOF while parsing an object at line 1 column 16")
             }).map_err(|e| format!("{}",e))
         );
 
@@ -2208,6 +2231,21 @@ pub mod tests {
             Err(AppError::AmbiguousRelBetween {..})
         ));
 
+    }
+
+
+    #[test]
+    fn parse_preferences() {
+        assert_eq!(
+            preferences().easy_parse("return=minimal, resolution=merge-duplicates, count=planned, count=exact"),
+            Ok((
+                Preferences {
+                    representation: Some(Representation::None),
+                    resolution: Some(Resolution::MergeDuplicates),
+                    count: Some(Count::ExactCount)
+                }
+            ,""))
+        );
     }
 
     #[test]

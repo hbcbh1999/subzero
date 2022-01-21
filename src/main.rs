@@ -140,5 +140,5 @@ async fn rocket() -> Rocket<Build> {
 mod basic;
 
 #[cfg(test)]
-#[path = "../tests/postgrest/core.rs"]
+#[path = "../tests/postgrest/mod.rs"]
 mod postgrest_core;

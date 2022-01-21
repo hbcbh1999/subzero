@@ -94,6 +94,11 @@ fn return_representation<'a>(request: &'a ApiRequest) -> bool {
 }
 
 pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
+    let count = match &request.preferences {
+        Some(Preferences { count: Some(Count::ExactCount), ..}) => true,
+        _ => false,
+    };
+
     let return_representation = return_representation(request);
     let body_snippet = match (return_representation, &request.accept_content_type, &request.query) {
         (false, _, _) => "''",
@@ -123,8 +128,10 @@ pub fn main_query<'a>(schema: &String, request: &'a ApiRequest) -> Snippet<'a>{
     };
 
     fmt_query(schema, return_representation, Some("_subzero_query"), &request.query) +
+    " , " + if count { fmt_count_query(schema, Some("_subzero_count_query"), &request.query)} else {sql("_subzero_count_query AS (select 1)")} +
     " select" +
     " pg_catalog.count(_subzero_t) AS page_total, "+
+    if count {"(SELECT pg_catalog.count(*) FROM _subzero_count_query)"} else { "null::bigint" } + " as total_result_set, " +
     body_snippet + " as body, " +
     " nullif(current_setting('response.headers', true), '') as response_headers, " +
     " nullif(current_setting('response.status', true), '') AS response_status " +
@@ -164,7 +171,9 @@ fn fmt_query<'a>(schema: &String, return_representation: bool, wrapin_cte: Optio
                     "*".to_string()
                 }
                 else {
-                    returning.iter().map(fmt_identity).collect::<Vec<_>>().join(",")
+                    returning.iter()
+                    .map(|r| if r.as_str() == "*" {format!("*")} else{fmt_identity(r)})
+                    .collect::<Vec<_>>().join(",")
                 };
 
             let args_body = if *is_multiple_call {
@@ -225,20 +234,24 @@ fn fmt_query<'a>(schema: &String, return_representation: bool, wrapin_cte: Optio
             //let from = vec![sql(fmt_qi(qi_payload))];
             //from.extend(joins.into_iter().flatten());
             let returned_columns = if returning.len() == 0 {
-                "*".to_string()
+                "1".to_string()
             }
             else {
-                returning.iter().map(fmt_identity).collect::<Vec<_>>().join(",")
+                returning.iter()
+                .map(|r| if r.as_str() == "*" {format!("*")} else{fmt_identity(r)})
+                .collect::<Vec<_>>().join(",")
             };
 
+            let into_columns = if columns.len() > 0 { format!("({})", columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","))} else { format!("") };
+            let select_columns = columns.iter().map(fmt_identity).collect::<Vec<_>>().join(",");
             (
                 Some(
                     fmt_body(payload)+
                     ", subzero_source as ( " + 
-                        format!( " insert into {} ({}) select {} from json_populate_recordset(null::{}, (select val from subzero_body)) _ returning {}",
+                        format!( " insert into {} {} select {} from json_populate_recordset(null::{}, (select val from subzero_body)) _ returning {}",
                             fmt_qi(qi), 
-                            columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
-                            columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","),
+                            into_columns,
+                            select_columns,
                             fmt_qi(qi),
                             //where_str,
                             returned_columns
@@ -258,8 +271,6 @@ fn fmt_query<'a>(schema: &String, return_representation: bool, wrapin_cte: Optio
         }
     };
 
-    
-
     match wrapin_cte {
         Some(cte_name) => {
             match cte_snippet {
@@ -272,6 +283,34 @@ fn fmt_query<'a>(schema: &String, return_representation: bool, wrapin_cte: Optio
                 Some(cte) => " with " + cte + query_snippet,
                 None => query_snippet
             }
+        }
+    }
+}
+
+fn fmt_count_query<'a>(schema: &String, wrapin_cte: Option<&'static str>, q: &'a Query) -> Snippet<'a>{
+    let query_snippet = match q {
+        FunctionCall { .. } => {
+            
+            sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string())))
+        },
+        Select {select, from, where_, ..} => {
+            let qi = &Qi(schema.clone(),from.get(0).unwrap().clone());
+            let (_select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(qi, s)).unzip();
+            sql(" select 1 from ") + from.iter().map(|f| fmt_qi(&Qi(schema.clone(), f.clone()))).collect::<Vec<_>>().join(", ") +
+            " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
+            " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi, where_) } else { sql("") }
+        },
+        Insert {..} => {
+            sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string())))
+        }
+    };
+
+    match wrapin_cte {
+        Some(cte_name) => {
+            format!(" {} as ( ", cte_name) + query_snippet + " )"
+        },
+        None => {
+            query_snippet
         }
     }
 }

@@ -188,6 +188,8 @@ pub async fn handle_postgrest_request(
 
     // create and return the response to the client
     let page_total: i64 = rows[0].get("page_total");
+    let total_result_set: Option<i64> = rows[0].get("total_result_set");
+    let top_level_offset: i64 = 0;
     let content_type = match ( &request.accept_content_type, &request.query) {
         (SingularJSON, _) |
         (_, FunctionCall { returns_single: true, is_scalar: false, .. })
@@ -196,7 +198,12 @@ pub async fn handle_postgrest_request(
         _ => ApplicationJSON,
     };
     //let mut headers = vec![Header::new("Content-Range", format!("0-{}/*", page_total - 1))];
-    let mut headers = vec![(format!("Content-Range"), format!("0-{}/*", page_total - 1))];
+    let content_range = match (method, &request.query, page_total, total_result_set) {
+        (&Method::POST, Insert {..}, _pt,t) => content_range_header(1,0,t),
+        // (_,_,pt,qt) => content_range_header(1,0,Some(pt)),
+        (_,_,pt,t) => content_range_header(top_level_offset, top_level_offset + pt -1, t)
+    };
+    let mut headers = vec![(format!("Content-Range"), content_range)];
     if let Some(response_headers_str) = rows[0].get("response_headers") {
         //println!("response_headers_str: {:?}", response_headers_str);
         match serde_json::from_str(response_headers_str) {
@@ -224,9 +231,9 @@ pub async fn handle_postgrest_request(
         }?
     }
     //let mut status = Status::Ok;
-    let mut status = match (method, &request.query) {
-        (&Method::POST, Insert {..}) => 201,
-        _ => 200,
+    let mut status = match (method, &request.query, page_total, total_result_set) {
+        (&Method::POST, Insert {..},_,_) => 201,
+        (_,_,pt,t) => content_range_status(top_level_offset, top_level_offset + pt -1, t),
     };
 
     let response_status:Option<&str> = rows[0].get("response_status");
@@ -243,3 +250,30 @@ pub async fn handle_postgrest_request(
 
     Ok((status, content_type, headers, body))
 }
+
+fn content_range_header( lower: i64,  upper: i64,  total: Option<i64>) -> String {
+    let range_string = if total != Some(0) && lower <= upper { format!("{}-{}", lower, upper) } else {format!("*")};
+    let total_string = match total {
+        Some(t) => format!("{}", t),
+        None => format!("*")
+    };
+    format!("{}/{}",range_string,total_string)
+}
+
+fn content_range_status( lower: i64,  upper: i64,  total: Option<i64>) -> u16 {
+    match (lower, upper, total){
+        //(_, _, None) => 200,
+        (l, _, Some(t)) if l > t => 406,
+        (l, u, Some(t)) if (1 + u - l) < t => 206,
+        _ => 200,
+    }
+}
+
+// total_result_set -> tableTotal
+// page_total -> queryTotal
+//fn range_status_header :: NonnegRange -> Int64 -> Maybe Int64 -> (Status, Header)
+// fn range_status_header(top_level_offset: i64, query_total: i64, table_total: Option<i64>) -> (u16, String){
+//     let lower = top_level_offset;
+//     let upper = lower + query_total - 1;
+//     (content_range_status(lower, upper, table_total), content_range_header(lower, upper, table_total))
+// }
