@@ -1,7 +1,7 @@
 
 
 use std::collections::{HashMap,HashSet,BTreeSet};
-use std::iter::FromIterator;
+use std::iter::{FromIterator,zip};
 
 use crate::api::{
     *,
@@ -343,7 +343,7 @@ pub fn parse<'r>(
                 },
                 limit: None, offset: None, order: vec![],
             };
-            add_join_conditions(&mut q, &schema, db_schema)?;
+            add_join_info(&mut q, &schema, db_schema)?;
             
             //we populate the returing becasue it relies on the "join" information
             if let FunctionCall { ref mut returning, ref select, ..} = q {
@@ -358,7 +358,7 @@ pub fn parse<'r>(
                 where_: ConditionTree { operator: And, conditions: vec![] },
                 limit: None, offset: None, order: vec![],
             };
-            add_join_conditions(&mut q, &schema, db_schema)?;
+            add_join_info(&mut q, &schema, db_schema)?;
             Ok(q)
         },
         (&Method::POST,_) => {
@@ -406,7 +406,7 @@ pub fn parse<'r>(
                 },
                 (TextCSV, cols) => {
                     let mut rdr = Reader::from_reader(_body.as_bytes());
-                    let mut res: Vec<HashMap<String, String>> = Vec::new();
+                    let mut res: Vec<JsonValue> = vec![];
                     let header: StringRecord = match cols {
                         Some(c) => Ok(StringRecord::from(c)),
                         None => Ok((rdr.headers().context(CsvDeserialize)?).clone())
@@ -416,77 +416,14 @@ pub fn parse<'r>(
                             header
                             .clone()
                             .into_iter()
-                            .map(|s| s.to_owned())
-                            .zip(record.context(CsvDeserialize)?.into_iter().map(|s| s.to_owned()))
+                            .zip(record.context(CsvDeserialize)?.into_iter())
+                            .map(|(k,v)| (k, match v { "NULL" => JsonValue::Null, _ => JsonValue::String(v.to_string()) }))
                             .collect()
                         );
                     }
-                    Ok((serde_json::to_string(&res).context(JsonDeserialize)?, header.iter().map(|h| h.to_string()).collect()))
+                   Ok((serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserialize)?, header.iter().map(|h| h.to_string()).collect()))
                 }
             }?;
-
-
-            // let payload = body.context(InvalidBody {message: "body not available".to_string()})?;
-            // let columns = match columns_ {
-            //     Some(c) => Ok(c),
-            //     None => {
-            //         match content_type {
-            //             ApplicationJSON | SingularJSON => {
-            //                 let json_payload: Result<JsonValue,serde_json::Error> = serde_json::from_str(&payload);
-            //                 match json_payload {
-            //                     Ok(j) => {
-            //                         match j {
-            //                             JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
-            //                             JsonValue::Array(v) => {
-            //                                 match v.get(0) {
-            //                                     Some(JsonValue::Object(m)) => {
-            //                                         let canonical_set:HashSet<&String> = HashSet::from_iter(m.keys());
-            //                                         let all_keys_match = v.iter().all(|vv|
-            //                                             match vv {
-            //                                                 JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
-            //                                                 _ => false
-            //                                             }
-            //                                         );
-            //                                         if all_keys_match {
-            //                                             Ok(m.keys().cloned().collect())
-            //                                         }
-            //                                         else {
-            //                                             Err(Error::InvalidBody {message: format!("All object keys must match")})
-            //                                         }
-                                                    
-            //                                     },
-            //                                     _ => Ok(vec![])
-            //                                 }
-            //                             },
-            //                             _ => Ok(vec![])
-            //                         }
-            //                     },
-            //                     Err(e) => {
-            //                         Err(Error::InvalidBody {message: format!("Failed to parse json body {}", e)})
-            //                     }
-            //                 }
-            //             },
-            //             TextCSV => {
-            //                 let mut rdr = Reader::from_reader(payload.as_bytes());
-            //                 let header: StringRecord = (rdr.headers().context(CsvDeserialize)?).clone();
-            //                 let mut res: Vec<HashMap<String, String>> = Vec::new();
-            //                 for record in rdr.records() {
-            //                     res.push(
-            //                         header
-            //                         .clone()
-            //                         .into_iter()
-            //                         .map(|s| s.to_owned())
-            //                         .zip(record.context(CsvDeserialize)?.into_iter().map(|s| s.to_owned()))
-            //                         .collect()
-            //                     );
-            //                 }
-            //                 Ok(vec![])
-            //             }
-            //         }
-                    
-            //     }
-            // }?;
-
             let mut q = Insert {
                 into: root.clone(),
                 columns: columns,
@@ -496,7 +433,7 @@ pub fn parse<'r>(
                 select: select_items,
                 //, onConflict :: Maybe (PreferResolution, [FieldName])
             };
-            add_join_conditions(&mut q, &schema, db_schema)?;
+            add_join_info(&mut q, &schema, db_schema)?;
             //we populate the returing becasue it relies on the "join" information
             if let Insert { ref mut returning, ref select, ..} = q {
                 returning.extend(get_returning(select)?);
@@ -509,19 +446,8 @@ pub fn parse<'r>(
         _ => Err(Error::UnsupportedVerb)
     }?;
 
-    //add_join_conditions(&mut query, &schema, db_schema)?;
+    insert_join_conditions(&mut query, &schema, db_schema);
     insert_conditions(&mut query, conditions);
-    //insert_limits(&mut query, limits);
-    //insert_offsets(&mut query, offsets);
-    //insert_orders(&mut query, orders);
-
-    // insert_properties(&mut query, conditions, |q, p|{
-    //     let query_conditions: &mut Vec<Condition> = match q {
-    //         Select {where_, ..} => where_.conditions.as_mut(),
-    //         Insert {where_, ..} => where_.conditions.as_mut(),
-    //     };
-    //     p.into_iter().for_each(|c| query_conditions.push(c));
-    // });
 
     insert_properties(&mut query, limits, |q, p|{
         let limit = match q {
@@ -1059,7 +985,7 @@ parser! {
 
 // helper functions
 
-fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, target: &String, hint: &mut Option<String>) -> Result<Join>{
+fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, target: &String, hint: &Option<String>) -> Result<Join>{
     // let match_fk = | s: &String, t:&String, n:&String | {
     //     | fk: &&ForeignKey |{
     //         &fk.name == n && &fk.referenced_table.0 == s
@@ -1217,13 +1143,14 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
                 // the target is a foreign key name
                 // projects?select=projects_client_id_fkey(*)
                 // TODO! when views are involved there may be multiple fks with the same name
+                // TODO! this is not tested, the relation can be either Parent or Child
                 Some (fk) => Ok(Child(fk.clone())),
                 // the target is a foreign key column
                 // projects?select=client_id(*)
                 None => {
                     let joins = origin_table.foreign_keys.iter()
                         .filter(|&fk| &fk.referenced_table.0 == current_schema && fk.columns.len() == 1 && fk.columns.contains(target) )
-                        .map(|fk| Child(fk.clone()))
+                        .map(|fk| Parent(fk.clone()))
                         .collect::<Vec<_>>();
                     //Ok(joins)
                     if joins.len() == 1 {
@@ -1242,95 +1169,129 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
     
 }
 
-fn add_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema )->Result<()>{
-    let subzero_source = &"subzero_source".to_string();
+fn add_join_info( query: &mut Query, schema: &String, db_schema: &DbSchema )->Result<()>{
     let dummy_source = &"subzero_source".to_string();
-    let (select, parent_table, parent_alias) : (&mut Vec<SelectItem>, &String, &String) = match query {
-        Select {select, from, ..} => (select.as_mut(), from.get(0).unwrap(), from.get(0).unwrap()),
-        Insert {select, into, ..} => (select.as_mut(), into, subzero_source),
+    let (select, parent_table) : (&mut Vec<SelectItem>, &String) = match query {
+        Select {select, from, ..} => (select.as_mut(), from.get(0).unwrap()),
+        Insert {select, into, ..} => (select.as_mut(), into),
         FunctionCall { select, return_table_type, .. } => {
             let table = match return_table_type {
                 Some(q) => &q.1,
                 None => dummy_source,
             };
-            (select.as_mut(), table, subzero_source)
+            (select.as_mut(), table)
         },
     };
     
     for s in select.iter_mut() {
         match s {
-            SelectItem::SubSelect{query: q, join, hint, ..} => {
-                let from = match q {
-                    Select {from, ..} => from,
-                    _ => panic!("there should not be any Insert queries as subselects"),
-                };
-                let child_table = from.get(0).unwrap();
+            SelectItem::SubSelect{query: q @ Select {..}, join, hint, alias, ..} => {
+                let child_table = match q {
+                    Select {from, ..} => from.get_mut(0).unwrap(),
+                    _ => panic!("this should be unreachable")
+                };//from.get(0).unwrap();
                 let new_join = get_join(schema, db_schema, parent_table, child_table, hint)?;
+                //println!("new join: {:#?}", new_join);
                 match &new_join {
-                    Parent (fk) => {
-                        let mut conditions = vec![];
-                        for i in 0..fk.columns.len() {
-                            conditions.push((
-                                vec![],
-                                Single { //tasks
-                                    field: Field {name: fk.referenced_columns[i].clone(), json_path: None},
-                                    filter: Col (Qi (schema.clone(), parent_alias.clone()), Field {name: fk.columns[i].clone(), json_path: None}),
-                                    negate: false
-                                }
-                            ));
+                    Parent (fk) if &fk.referenced_table.1 != child_table  => {
+                        if alias.is_none(){
+                            std::mem::swap(alias, &mut Some(child_table.clone()));
                         }
-                        insert_conditions(q, conditions);
-                    },
-                    Child (fk) => {
-                        let mut conditions = vec![];
-                        for i in 0..fk.columns.len() {
-                            conditions.push((
-                                vec![],
-                                Single { //tasks
-                                    field: Field {name: fk.columns[i].clone(), json_path: None},
-                                    filter: Col (Qi (schema.clone(), parent_alias.clone()), Field {name: fk.referenced_columns[i].clone(), json_path: None}),
-                                    negate: false
-                                }
-                            ));
-                        }
-                        insert_conditions(q, conditions);
-                    },
-                    //TODO!!! insert many to many conditions
-                    Many (join_table, fk1, fk2) => {
-                        let mut conditions = vec![];
-                        //fk1 is for origin table
-                        for i in 0..fk1.columns.len() {
-                            conditions.push((
-                                vec![],
-                                Foreign {
-                                    left: (Qi (schema.clone(), parent_alias.clone()), Field {name: fk1.referenced_columns[i].clone(), json_path: None}),
-                                    right: (Qi (join_table.0.clone(), join_table.1.clone()), Field {name: fk1.columns[i].clone(), json_path: None})
-                                }
-                            ));
-                        }
-                        //fk2 is for target table
-                        for i in 0..fk2.columns.len() {
-                            conditions.push((
-                                vec![],
-                                Single {
-                                    field: Field {name: fk2.referenced_columns[i].clone(), json_path: None},
-                                    filter: Col (Qi (join_table.0.clone(), join_table.1.clone()), Field {name: fk2.columns[i].clone(), json_path: None}),
-                                    negate: false
-                                }
-                            ));
-                        }
-                        from.push(join_table.1.clone());
-                        insert_conditions(q, conditions);
-                        
+                        std::mem::swap(child_table, &mut fk.referenced_table.1.clone());
                     }
+                    _ => {}
                 }
                 std::mem::swap(join, &mut Some(new_join));
-                add_join_conditions( q, schema, db_schema)?
+                add_join_info( q, schema, db_schema)?
             }
             _ => {}
         }
     }
     Ok(())
+}
+
+fn insert_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema ){
+    let subzero_source = &"subzero_source".to_string();
+    let (select, parent_alias) : (&mut Vec<SelectItem>, &String) = match query {
+        Select {select, from, ..} => (select.as_mut(), from.get(0).unwrap()),
+        Insert {select, ..} => (select.as_mut(), subzero_source),
+        FunctionCall { select, .. } => {
+            (select.as_mut(),subzero_source)
+        },
+    };
+    
+    for s in select.iter_mut() {
+        match s {
+            SelectItem::SubSelect{query: q, join: Some(join), ..} => {
+                let from = match q {
+                    Select {from, ..} => from,
+                    _ => panic!("there should not be any Insert queries as subselects"),
+                };
+                if let Many (join_table, _,_) = &join {
+                    from.push(join_table.1.clone());
+                }
+
+                let conditions = match join {
+                    Parent (fk) => {
+                        zip(&fk.columns, &fk.referenced_columns)
+                        .map(|(col,ref_col)|
+                            (
+                                vec![],
+                                Single {
+                                    field: Field {name: ref_col.clone(), json_path: None},
+                                    filter: Col (Qi (schema.clone(), parent_alias.clone()), Field {name: col.clone(), json_path: None}),
+                                    negate: false
+                                }
+                            )
+                        ).collect()
+                    },
+                    Child (fk) => {
+                        zip(&fk.columns, &fk.referenced_columns)
+                        .map(|(col,ref_col)|
+                            (
+                                vec![],
+                                Single {
+                                    field: Field {name: col.clone(), json_path: None},
+                                    filter: Col (Qi (schema.clone(), parent_alias.clone()), Field {name: ref_col.clone(), json_path: None}),
+                                    negate: false
+                                }
+                            )
+                        ).collect()
+                    },
+                    Many (join_table, fk1, fk2) => {
+
+                        //fk1 is for origin table
+                        zip(&fk1.columns, &fk1.referenced_columns)
+                        .map(|(col,ref_col)|
+                            (
+                                vec![],
+                                Foreign {
+                                    left: (Qi (schema.clone(), parent_alias.clone()), Field {name: ref_col.clone(), json_path: None}),
+                                    right: (Qi (join_table.0.clone(), join_table.1.clone()), Field {name: col.clone(), json_path: None})
+                                }
+                            )
+                        ).chain(
+                            //fk2 is for target table
+                            zip(&fk2.columns, &fk2.referenced_columns)
+                            .map(|(col,ref_col)|
+                                (
+                                    vec![],
+                                    Single {
+                                        field: Field {name: ref_col.clone(), json_path: None},
+                                        filter: Col (Qi (join_table.0.clone(), join_table.1.clone()), Field {name: col.clone(), json_path: None}),
+                                        negate: false
+                                    }
+                                )
+                            )
+                        ).collect()
+                    }
+                };
+                insert_conditions(q, conditions);
+                insert_join_conditions( q, schema, db_schema);
+            }
+            _ => {}
+        }
+    }
 }
 
 fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>, f: fn(&mut Query, Vec<T>),  ) {

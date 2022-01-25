@@ -108,11 +108,9 @@ pub enum OrderDirection { Asc, Desc}
 pub enum OrderNulls { NullsFirst, NullsLast }
 
 pub type JoinHint = String;
+
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub struct Qi (pub String, pub String);
-
-//#[derive(Debug, PartialEq, Clone)]
-// pub enum JoinType {Child, Parent, Many}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ForeignKey {
@@ -123,20 +121,11 @@ pub struct ForeignKey {
     pub referenced_columns: Vec<String>
 }
 
-//#[derive(Debug, PartialEq, Clone)]
-// pub enum QueryType {
-//     Select, Insert, Update, Delete, Upsert
-// }
-
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum Join {
     Child (ForeignKey),
     Parent (ForeignKey),
     Many (Qi, ForeignKey, ForeignKey),
-
-    // pub kind: JoinType,
-    // pub foreign_key: ForeignKey,
 }
 
 #[derive(Debug, PartialEq)]
@@ -220,51 +209,5 @@ pub struct SingleVal(pub String);
 #[derive(Debug,PartialEq,Clone)]
 pub struct ListVal(pub Vec<String>);
 
-
-// impl From<ListVal> for &str {
-//     fn from(l: ListVal) -> Self {
-//         match l {
-//             ListVal(v) => format!("{{\"{}\"}}", v.join("\",\"")).as_str()
-//         }
-//     }
-// }
-
-
-
-// pub trait Param where Self: core::fmt::Debug + Sync{
-//     fn as_strr<'a>(self) -> String;
-// }
-
-// impl From<&dyn Param> for String {
-//     fn from(l: &dyn Param) -> Self {
-//         l.as_strr()
-//     }
-// }
-
-// impl Debug for dyn Param {
-//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-//         write!(f, "{:?}", self)
-//     }
-// }
-
-// impl Param for SingleVal {
-//     fn as_strr<'a>(self) -> String{
-//         self
-//     }
-// }
-
-// impl Param for ListVal {
-//     fn as_strr<'a>(self) -> String{
-//         match self {
-//             ListVal(v) => format!("{{\"{}\"}}", v.join("\",\""))
-//         }
-//     }
-// }
-
 #[derive(Debug, PartialEq, Clone)]
 pub enum LogicOperator { And, Or }
-
-
-
-
-

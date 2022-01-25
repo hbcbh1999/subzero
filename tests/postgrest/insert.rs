@@ -523,7 +523,10 @@ feature "insert"
         shouldRespondWith
         [json|r#"[{"id":6,"name":"wot","parent_content":{"name":"wut"}}]"#|]
         { matchStatus  = 201
-        , matchHeaders = [ "Content-Type" <:> "application/json" , "Location" <:> "/web_content?id=eq.6" ]
+        , matchHeaders = [ 
+          "Content-Type" <:> "application/json"
+          //, "Location" <:> "/web_content?id=eq.6" 
+          ]
         }
 
   describe "table with limited privileges" $ do
