@@ -227,9 +227,7 @@ feature "query"
 
     it "matches filtering nested items 2" $
       get "/clients?select=id,projects(id,tasks2(id,name))&projects.tasks.name=like.Design*" shouldRespondWith
-        [json|r#" {
-          "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
-          "message":"Could not find a relationship between projects and tasks2 in the schema cache"}"#|]
+        [json|r#"{"message":"Could not find foreign keys between these entities. No relationship found between projects and tasks2"}"#|]
         { matchStatus  = 400
         , matchHeaders = ["Content-Type" <:> "application/json"]
         }

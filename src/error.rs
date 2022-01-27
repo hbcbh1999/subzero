@@ -203,9 +203,12 @@ impl Error {
             Error::InternalError {message} => json!({"message": message}),
             Error::ParseRequestError { message, details }  => json!({"message": message, "details": details}),
             Error::JwtTokenInvalid {message} => json!({"message": message}),
+            // Error::NoRelBetween {origin, target}  => json!({
+            //     "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
+            //     "message": format!("Could not find a relationship between {} and {} in the schema cache", origin, target)
+            // }),
             Error::NoRelBetween {origin, target}  => json!({
-                "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
-                "message": format!("Could not find a relationship between {} and {} in the schema cache", origin, target)
+                "message": format!("Could not find foreign keys between these entities. No relationship found between {} and {}", origin, target)
             }),
             Error::AmbiguousRelBetween {origin, target, relations}  => json!({
                 "hint":     format!("Try changing {} to one of the following: {}. Find the desired relationship in the 'details' key.",target, "..."),

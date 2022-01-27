@@ -358,6 +358,7 @@ pub fn parse<'r>(
                 where_: ConditionTree { operator: And, conditions: vec![] },
                 limit: None, offset: None, order: vec![],
             };
+            //println!("query {:#?}", q);
             add_join_info(&mut q, &schema, db_schema)?;
             Ok(q)
         },
@@ -707,7 +708,6 @@ where Input: Stream<Token = char>
     integer()
 }
 
-
 fn logic_single_value<Input>() -> impl Parser<Input, Output = String>
 where Input: Stream<Token = char>
 {
@@ -996,158 +996,169 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
     // println!("--------------got schema");
     let origin_table = schema.objects.get(origin).context(UnknownRelation {relation: origin.to_owned()})?;
     // println!("--------------got table");
-    match schema.objects.get(target) {
-        // the target is an existing table
-        Some(target_table) => {
-            // println!("--------------got target table");
-            match hint {
-                Some(h) => {
-                    // projects?select=clients!projects_client_id_fkey(*)
-                    if let Some(fk) = origin_table.foreign_keys.iter().find(|&fk|
-                        &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target
-                    ) {
-                        return Ok(Parent(fk.clone()));
-                    }
-                    if let Some(fk) = target_table.foreign_keys.iter().find(|&fk|
-                        &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin
-                    ) {
-                        return Ok(Child(fk.clone()));
-                    }
 
-                    // users?select=tasks!users_tasks(*)
-                    // TODO!!! handle
-                    if let Some(join_table) = schema.objects.get(h) {
-                        let ofk1 = join_table.foreign_keys.iter().find_map(|fk| {
-                            if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
-                                Some(fk)
-                            }
-                            else { None }
-                        });
-                        let ofk2 = join_table.foreign_keys.iter().find_map(|fk| {
-                            if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
-                                Some(fk)
-                            }
-                            else { None }
-                        });
-                        if let (Some(fk1), Some(fk2)) = (ofk1, ofk2){
-                            return Ok( Many(Qi(current_schema.clone(),join_table.name.clone()), fk1.clone(), fk2.clone()) )
-                        }
-                        else {
-                            return Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
-                        }
-                        
-                    }
-
-                    // projects?select=clients!client_id(*)
-                    // projects?select=clients!id(*)
-                    let mut joins = vec![];
-                    
-                    joins.extend(origin_table.foreign_keys.iter()
-                        .filter(|&fk|
-                               &fk.referenced_table.0 == current_schema 
-                            && &fk.referenced_table.1 == target
-                            && fk.columns.len() == 1
-                            && ( fk.columns.contains(h) || fk.referenced_columns.contains(h) )
-                        )
-                        .map(|fk| Parent(fk.clone()))
-                        .collect::<Vec<_>>()
-                    );
-                    joins.extend(target_table.foreign_keys.iter()
-                    .filter(|&fk|
-                           &fk.referenced_table.0 == current_schema 
-                        && &fk.referenced_table.1 == origin
-                        && fk.columns.len() == 1
-                        && ( fk.columns.contains(h) || fk.referenced_columns.contains(h) )
-                    )
-                    .map(|fk| Parent(fk.clone()))
-                    .collect::<Vec<_>>()
-                    );
-                    
-                    if joins.len() == 1 {
-                        Ok(joins[0].clone())
-                    }
-                    else if joins.len() == 0 {
-                        Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
-                    }
-                    else{
-                        Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: joins})
-                    }
-                    
-                    //Ok(joins)
-                }, 
-                // there is no hint, look for foreign keys between the two tables
-                None => {
-                    // check child relations
-                    // projects?select=tasks(*)
-                    let child_joins = target_table.foreign_keys.iter()
-                    .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin )
-                    .map(|fk| Child(fk.clone()))
-                    .collect::<Vec<_>>();
-                    // println!("target tbl fks: {:#?}", target_table);
-                    
-                    // check parent relations
-                    // projects?select=clients(*)
-                    let parent_joins = origin_table.foreign_keys.iter()
-                    .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target )
-                    .map(|fk| Parent(fk.clone()))
-                    .collect::<Vec<_>>();
-
-                    let mut joins = vec![];
-                    joins.extend(child_joins);
-                    joins.extend(parent_joins);
-                    
-                    if joins.len() == 1 {
-                        // println!("--------------found 1 {:?}", joins[0].clone());
-                        Ok(joins[0].clone())
-                    }
-                    else if joins.len() == 0 {
-                        // check many to many relations
-                        // users?select=tasks(*)
-                        let many_joins = schema.objects.values().filter_map(|join_table|{
-                            let fk1 = join_table.foreign_keys.iter().find_map(|fk| {
-                                if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
-                                    Some(fk)
-                                }
-                                else { None }
-                            })?;
-                            let fk2 = join_table.foreign_keys.iter().find_map(|fk| {
-                                if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
-                                    Some(fk)
-                                }
-                                else { None }
-                            })?;
-                            Some( Many(Qi(current_schema.clone(),join_table.name.clone()), fk1.clone(), fk2.clone()) )
-                        }).collect::<Vec<_>>();
-                        if many_joins.len() == 1 {
-                            // println!("--------------found many join");
-                            Ok(many_joins[0].clone())
-                        }
-                        else if many_joins.len() == 0 {
-                            // println!("--------------nothing found");
-                            Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
-                        }
-                        else{
-                            Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: many_joins})
-                        }
-                    }
-                    else{
-                        Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: joins})
-                    }
-                }
+    match origin_table.foreign_keys.iter().find(|&fk| &fk.name == target && &fk.referenced_table.0 == current_schema) {
+        // the target is a foreign key name
+        // projects?select=projects_client_id_fkey(*)
+        // TODO! when views are involved there may be multiple fks with the same name
+        Some (fk) => {
+            //println!("found FK {:?}", fk);
+            if origin == &fk.table.1 {
+                Ok(Parent(fk.clone()))
+            }
+            else {
+                Ok(Child(fk.clone()))
             }
         },
-        // the target is not a table
         None => {
-            // println!("--------------no target table");
-            match origin_table.foreign_keys.iter().find(|&fk| &fk.name == target && &fk.referenced_table.0 == current_schema) {
-                // the target is a foreign key name
-                // projects?select=projects_client_id_fkey(*)
-                // TODO! when views are involved there may be multiple fks with the same name
-                // TODO! this is not tested, the relation can be either Parent or Child
-                Some (fk) => Ok(Child(fk.clone())),
-                // the target is a foreign key column
-                // projects?select=client_id(*)
+            match schema.objects.get(target) {
+                // the target is an existing table
+                Some(target_table) => {
+                    //println!("--------------got target table");
+                    match hint {
+                        Some(h) => {
+                            //println!("--------------got hint {:?}", origin_table.foreign_keys);
+                            // projects?select=clients!projects_client_id_fkey(*)
+                            if let Some(fk) = origin_table.foreign_keys.iter().find(|&fk|
+                                &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target
+                            ) {
+                                return Ok(Parent(fk.clone()));
+                            }
+                            if let Some(fk) = target_table.foreign_keys.iter().find(|&fk|
+                                &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin
+                            ) {
+                                return Ok(Child(fk.clone()));
+                            }
+        
+                            // users?select=tasks!users_tasks(*)
+                            if let Some(join_table) = schema.objects.get(h) {
+                                let ofk1 = join_table.foreign_keys.iter().find_map(|fk| {
+                                    if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
+                                        Some(fk)
+                                    }
+                                    else { None }
+                                });
+                                let ofk2 = join_table.foreign_keys.iter().find_map(|fk| {
+                                    if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
+                                        Some(fk)
+                                    }
+                                    else { None }
+                                });
+                                if let (Some(fk1), Some(fk2)) = (ofk1, ofk2){
+                                    return Ok( Many(Qi(current_schema.clone(),join_table.name.clone()), fk1.clone(), fk2.clone()) )
+                                }
+                                else {
+                                    return Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
+                                }
+                                
+                            }
+        
+                            
+                            let mut joins = vec![];
+                            // projects?select=clients!client_id(*)
+                            if origin_table != target_table {
+                            joins.extend(origin_table.foreign_keys.iter()
+                                .filter(|&fk|
+                                       &fk.referenced_table.0 == current_schema 
+                                    && &fk.referenced_table.1 == target
+                                    && fk.columns.len() == 1
+                                    && ( fk.columns.contains(h) || fk.referenced_columns.contains(h) )
+                                )
+                                .map(|fk| Parent(fk.clone()))
+                                .collect::<Vec<_>>()
+                            );
+                        }
+                           
+                                // projects?select=clients!id(*)
+                                joins.extend(target_table.foreign_keys.iter()
+                                .filter(|&fk|
+                                    &fk.referenced_table.0 == current_schema 
+                                    && &fk.referenced_table.1 == origin
+                                    && fk.columns.len() == 1
+                                    && ( fk.columns.contains(h) || fk.referenced_columns.contains(h) )
+                                )
+                                .map(|fk| Child(fk.clone()))
+                                .collect::<Vec<_>>()
+                                );
+                            
+                            //println!("joins vector: {:#?}", joins);
+                            if joins.len() == 1 {
+                                Ok(joins[0].clone())
+                            }
+                            else if joins.len() == 0 {
+                                Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
+                            }
+                            else{
+                                Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: joins})
+                            }
+                            
+                            //Ok(joins)
+                        }, 
+                        // there is no hint, look for foreign keys between the two tables
+                        None => {
+                            // check child relations
+                            // projects?select=tasks(*)
+                            let child_joins = target_table.foreign_keys.iter()
+                            .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin )
+                            .map(|fk| Child(fk.clone()))
+                            .collect::<Vec<_>>();
+                            //println!("target tbl fks: {:#?}", target_table);
+                            
+                            // check parent relations
+                            // projects?select=clients(*)
+                            let parent_joins = origin_table.foreign_keys.iter()
+                            .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target )
+                            .map(|fk| Parent(fk.clone()))
+                            .collect::<Vec<_>>();
+        
+                            let mut joins = vec![];
+                            joins.extend(child_joins);
+                            joins.extend(parent_joins);
+                            
+                            if joins.len() == 1 {
+                                // println!("--------------found 1 {:?}", joins[0].clone());
+                                Ok(joins[0].clone())
+                            }
+                            else if joins.len() == 0 {
+                                // check many to many relations
+                                // users?select=tasks(*)
+                                let many_joins = schema.objects.values().filter_map(|join_table|{
+                                    let fk1 = join_table.foreign_keys.iter().find_map(|fk| {
+                                        if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
+                                            Some(fk)
+                                        }
+                                        else { None }
+                                    })?;
+                                    let fk2 = join_table.foreign_keys.iter().find_map(|fk| {
+                                        if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
+                                            Some(fk)
+                                        }
+                                        else { None }
+                                    })?;
+                                    Some( Many(Qi(current_schema.clone(),join_table.name.clone()), fk1.clone(), fk2.clone()) )
+                                }).collect::<Vec<_>>();
+                                if many_joins.len() == 1 {
+                                    // println!("--------------found many join");
+                                    Ok(many_joins[0].clone())
+                                }
+                                else if many_joins.len() == 0 {
+                                    // println!("--------------nothing found");
+                                    Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
+                                }
+                                else{
+                                    Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: many_joins})
+                                }
+                            }
+                            else{
+                                Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: joins})
+                            }
+                        }
+                    }
+                },
+                // the target is not a table
                 None => {
+                    // the target is a foreign key column
+                    // projects?select=client_id(*)
                     let joins = origin_table.foreign_keys.iter()
                         .filter(|&fk| &fk.referenced_table.0 == current_schema && fk.columns.len() == 1 && fk.columns.contains(target) )
                         .map(|fk| Parent(fk.clone()))
@@ -1166,6 +1177,7 @@ fn get_join(current_schema: &String, db_schema: &DbSchema, origin: &String, targ
             }
         }
     }
+    
     
 }
 
@@ -1194,6 +1206,7 @@ fn add_join_info( query: &mut Query, schema: &String, db_schema: &DbSchema )->Re
                 //println!("new join: {:#?}", new_join);
                 match &new_join {
                     Parent (fk) if &fk.referenced_table.1 != child_table  => {
+                        // println!("entering swap section: fk:{:#?}\nct:{:#?}\nal:{:#?}", fk, child_table, alias);
                         if alias.is_none(){
                             std::mem::swap(alias, &mut Some(child_table.clone()));
                         }
@@ -1212,6 +1225,8 @@ fn add_join_info( query: &mut Query, schema: &String, db_schema: &DbSchema )->Re
 
 fn insert_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema ){
     let subzero_source = &"subzero_source".to_string();
+
+    ////TODO based on join/depth we need to create a parent_qi
     let (select, parent_alias) : (&mut Vec<SelectItem>, &String) = match query {
         Select {select, from, ..} => (select.as_mut(), from.get(0).unwrap()),
         Insert {select, ..} => (select.as_mut(), subzero_source),
@@ -2501,6 +2516,28 @@ pub mod tests {
 
         assert_eq!(
             select_item().easy_parse("table!hint ( column0->key, column1 ,  alias2:column2 )"), 
+            Ok((
+                SubSelect{
+                    query: Select { order: vec![], limit: None, offset: None,
+                        select: vec![
+                            Simple {field: Field {name:s("column0"), json_path: Some(vec![JArrow(JKey(s("key")))])}, alias:  None},
+                            Simple {field: Field {name:s("column1"), json_path: None}, alias:  None},
+                            Simple {field: Field {name:s("column2"), json_path: None}, alias:  Some(s("alias2"))},
+                        ],
+                        from: vec![s("table")],
+                        //from_alias: None,
+                        where_: ConditionTree { operator: And, conditions: vec![]}
+                    },
+                    alias: None,
+                    hint: Some(s("hint")),
+                    join: None
+                }
+                ,""
+            ))
+        );
+
+        assert_eq!(
+            select_item().easy_parse("table.hint ( column0->key, column1 ,  alias2:column2 )"), 
             Ok((
                 SubSelect{
                     query: Select { order: vec![], limit: None, offset: None,
