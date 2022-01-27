@@ -592,8 +592,10 @@ json_schema as (
     ) schemas_agg
 )
 --select * from tables where table_name = 'projects';
-select json_schema from json_schema;
+
 --select  * from functions where function_name = 'ret_setof_integers';
 --select return_type_oid from functions where function_name = 'getproject';
 --select * from pg_proc;
+--select * from relations where table_name like 'what%';
+select json_schema from json_schema;
 commit;

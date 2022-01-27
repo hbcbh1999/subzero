@@ -25,20 +25,18 @@ feature "embed_disambiguation"
             r#"{
               "details": [
                 {
-                    "cardinality": "m2o",
+                    "cardinality": "many-to-one",
                     "relationship": "message_sender_fkey[sender][id]",
-                    "origin": "test.message",
-                    "target": "test.person"
+                    "embedding": "message with person"
                 },
                 {
-                    "cardinality": "m2o",
+                    "cardinality": "many-to-one",
                     "relationship": "message_sender_fkey[sender][id]",
-                    "origin": "test.message",
-                    "target": "test.person_detail"
+                    "embedding": "message with person_detail"
                 }
               ],
-              "hint": "By following the 'details' key, disambiguate the request by changing the url to /origin?select=relationship(*) or /origin?select=target!relationship(*)",
-              "message": "More than one relationship was found for message and sender"
+              "hint": "Try changing 'sender' to one of the following: 'person!message_sender_fkey', 'person_detail!message_sender_fkey'. Find the desired relationship in the 'details' key.",
+              "message": "Could not embed because more than one relationship was found for 'message' and 'sender'"
             }"#
           |]
           { matchStatus  = 300
@@ -51,26 +49,23 @@ feature "embed_disambiguation"
             r#"{
               "details": [
                 {
-                  "cardinality": "m2o",
+                  "cardinality": "many-to-one",
                   "relationship": "main_project[main_project_id][big_project_id]",
-                  "origin": "test.sites",
-                  "target": "test.big_projects"
+                  "embedding": "sites with big_projects"
                 },
                 {
-                  "cardinality": "m2m",
+                  "cardinality": "many-to-many",
                   "relationship": "test.jobs[jobs_site_id_fkey][jobs_big_project_id_fkey]",
-                  "origin": "test.sites",
-                  "target": "test.big_projects"
+                  "embedding": "sites with big_projects"
                 },
                 {
-                  "cardinality": "m2m",
+                  "cardinality": "many-to-many",
                   "relationship": "test.main_jobs[jobs_site_id_fkey][jobs_big_project_id_fkey]",
-                  "origin": "test.sites",
-                  "target": "test.big_projects"
+                  "embedding": "sites with big_projects"
                 }
               ],
-              "hint": "By following the 'details' key, disambiguate the request by changing the url to /origin?select=relationship(*) or /origin?select=target!relationship(*)",
-              "message": "More than one relationship was found for sites and big_projects"
+              "hint": "Try changing 'big_projects' to one of the following: 'big_projects!main_project', 'big_projects!jobs', 'big_projects!main_jobs'. Find the desired relationship in the 'details' key.",
+              "message": "Could not embed because more than one relationship was found for 'sites' and 'big_projects'"
             }"#
           |]
           { matchStatus  = 300
@@ -81,22 +76,20 @@ feature "embed_disambiguation"
         get "/agents?select=*,departments(*)" shouldRespondWith
           [json|
             r#"{
+              "hint": "Try changing 'departments' to one of the following: 'departments!departments_head_id_fkey', 'departments!agents_department_id_fkey'. Find the desired relationship in the 'details' key.",
+              "message": "Could not embed because more than one relationship was found for 'agents' and 'departments'",
               "details": [
                 {
-                    "cardinality": "m2o",
-                    "relationship": "agents_department_id_fkey[department_id][id]",
-                    "origin": "test.agents",
-                    "target": "test.departments"
+                    "cardinality": "one-to-many",
+                    "relationship": "departments_head_id_fkey[id][head_id]",
+                    "embedding": "agents with departments"
                 },
                 {
-                    "cardinality": "o2m",
-                    "relationship": "departments_head_id_fkey[id][head_id]",
-                    "origin": "test.agents",
-                    "target": "test.departments"
+                    "cardinality": "many-to-one",
+                    "relationship": "agents_department_id_fkey[department_id][id]",
+                    "embedding": "agents with departments"
                 }
-              ],
-              "hint": "By following the 'details' key, disambiguate the request by changing the url to /origin?select=relationship(*) or /origin?select=target!relationship(*)",
-              "message": "More than one relationship was found for agents and departments"
+              ]
             }"#
            |]
           { matchStatus  = 300

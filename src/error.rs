@@ -1,5 +1,5 @@
 use snafu::{Snafu};
-use crate::api::{Join, ContentType, ContentType::*};
+use crate::api::{Join, Join::*, ContentType, ContentType::*};
 // use combine::easy::Error as ParseError;
 //use combine::error::StringStreamError;
 //use combine;
@@ -211,9 +211,9 @@ impl Error {
                 "message": format!("Could not find foreign keys between these entities. No relationship found between {} and {}", origin, target)
             }),
             Error::AmbiguousRelBetween {origin, target, relations}  => json!({
-                "hint":     format!("Try changing {} to one of the following: {}. Find the desired relationship in the 'details' key.",target, "..."),
+                "details": relations.iter().map(compressed_rel).collect::<JsonValue>(),
+                "hint":     format!("Try changing '{}' to one of the following: {}. Find the desired relationship in the 'details' key.",target, rel_hint(relations)),
                 "message":  format!("Could not embed because more than one relationship was found for '{}' and '{}'", origin, target),
-                "details": format!("{:?}", relations)
             }),
             Error::InvalidFilters => json!({"message":"Filters must include all and only primary key columns with 'eq' operators"}),
             // Error::UnacceptableSchema {..} => 406,
@@ -258,5 +258,60 @@ impl Error {
         }
     }
 }
+
+fn rel_hint(joins: &Vec<Join>)->String {
+    joins.iter()
+    .map(|j| 
+        match j {
+            Child(fk) => format!("'{}!{}'", fk.table.1, fk.name),
+            Parent(fk) => format!("'{}!{}'", fk.referenced_table.1, fk.name),
+            Many(t, _fk1, fk2) => format!("'{}!{}'", fk2.referenced_table.1, t.1),
+        }
+    )
+    .collect::<Vec<_>>()
+    .join(", ")
+}
+
+fn compressed_rel(join: &Join) -> JsonValue {
+    match join {
+        Child(fk) => json!({
+            "cardinality": "one-to-many",
+            "relationship": format!("{}[{}][{}]", fk.name, fk.referenced_columns.join(","), fk.columns.join(",")),
+            "embedding": format!("{} with {}", fk.referenced_table.1, fk.table.1 )
+        }),
+        Parent(fk) => json!({
+            "cardinality": "many-to-one",
+            "relationship": format!("{}[{}][{}]", fk.name, fk.columns.join(","), fk.referenced_columns.join(",")),
+            "embedding": format!("{} with {}", fk.table.1, fk.referenced_table.1 )
+        }),
+        Many(t, fk1, fk2) => json!({
+            "cardinality": "many-to-many",
+            "relationship": format!("{}.{}[{}][{}]", t.0, t.1, fk1.name, fk2.name),
+            "embedding": format!("{} with {}", fk1.referenced_table.1, fk2.referenced_table.1 )
+        }),
+    }
+}
+
+// compressedRel :: Relationship -> JSON.Value
+// compressedRel Relationship{..} =
+//   let
+//     fmtTbl Table{..} = tableSchema <> "." <> tableName
+//     fmtEls els = "[" <> T.intercalate ", " els <> "]"
+//   in
+//   JSON.object $
+//     ("embedding" .= (tableName relTable <> " with " <> tableName relForeignTable :: Text))
+//     : case relCardinality of
+//         M2M Junction{..} -> [
+//             "cardinality" .= ("many-to-many" :: Text)
+//           , "relationship" .= (fmtTbl junTable <> fmtEls [junConstraint1] <> fmtEls [junConstraint2])
+//           ]
+//         M2O cons -> [
+//             "cardinality" .= ("many-to-one" :: Text)
+//           , "relationship" .= (cons <> fmtEls (colName <$> relColumns) <> fmtEls (colName <$> relForeignColumns))
+//           ]
+//         O2M cons -> [
+//             "cardinality" .= ("one-to-many" :: Text)
+//           , "relationship" .= (cons <> fmtEls (colName <$> relColumns) <> fmtEls (colName <$> relForeignColumns))
+//           ]
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

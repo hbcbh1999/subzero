@@ -76,7 +76,8 @@ pub enum Query {
     },
     Select {
         select: Vec<SelectItem>,
-        from: Vec<String>,
+        from: (String, Option<String>),
+        join_tables: Vec<String>,
         where_: ConditionTree,
         limit: Option<SingleVal>,
         offset: Option<SingleVal>,

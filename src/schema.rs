@@ -1,5 +1,7 @@
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
+use std::collections::BTreeMap;
+
 use crate::api::{ForeignKey, Qi, ProcParam};
 
 #[derive(Debug, PartialEq, Deserialize, Clone)]
@@ -12,7 +14,7 @@ pub struct DbSchema {
 pub struct Schema {
     pub name: String,
     #[serde(with = "objects")]
-    pub objects: HashMap<String, Object>
+    pub objects: BTreeMap<String, Object>
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
@@ -160,7 +162,8 @@ mod objects {
 
     use super::{Object, ObjectDef, ObjectType, ProcVolatility, ProcReturnType::*, PgType::*};
 
-    use std::collections::HashMap;
+    //use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
     //use serde::ser::Serializer;
     use serde::de::{Deserialize, Deserializer};
@@ -171,10 +174,10 @@ mod objects {
     // }
 
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Object>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<BTreeMap<String, Object>, D::Error>
         where D: Deserializer<'de>
     {
-        let mut map = HashMap::new();
+        let mut map = BTreeMap::new();
         for o in Vec::<ObjectDef>::deserialize(deserializer)? {
             
             map.insert(o.name.clone(), match o.kind.as_str() {
