@@ -105,32 +105,28 @@ feature "embed_disambiguation"
             r#"{
               "details": [
                 {
-                  "cardinality": "m2m",
+                  "cardinality": "many-to-many",
                   "relationship": "test.whatev_jobs[whatev_jobs_site_id_1_fkey][whatev_jobs_project_id_1_fkey]",
-                  "origin": "test.whatev_sites",
-                  "target": "test.whatev_projects"
+                  "embedding": "whatev_sites with whatev_projects"
                 },
                 {
-                  "cardinality": "m2m",
+                  "cardinality": "many-to-many",
                   "relationship": "test.whatev_jobs[whatev_jobs_site_id_1_fkey][whatev_jobs_project_id_2_fkey]",
-                  "origin": "test.whatev_sites",
-                  "target": "test.whatev_projects"
+                  "embedding": "whatev_sites with whatev_projects"
                 },
                 {
-                  "cardinality": "m2m",
+                  "cardinality": "many-to-many",
                   "relationship": "test.whatev_jobs[whatev_jobs_site_id_2_fkey][whatev_jobs_project_id_1_fkey]",
-                  "origin": "test.whatev_sites",
-                  "target": "test.whatev_projects"
+                  "embedding": "whatev_sites with whatev_projects"
                 },
                 {
-                  "cardinality": "m2m",
+                  "cardinality": "many-to-many",
                   "relationship": "test.whatev_jobs[whatev_jobs_site_id_2_fkey][whatev_jobs_project_id_2_fkey]",
-                  "origin": "test.whatev_sites",
-                  "target": "test.whatev_projects"
+                  "embedding": "whatev_sites with whatev_projects"
                 }
               ],
-              "hint": "By following the 'details' key, disambiguate the request by changing the url to /origin?select=relationship(*) or /origin?select=target!relationship(*)",
-              "message": "More than one relationship was found for whatev_sites and whatev_projects"
+              "hint": "Try changing 'whatev_projects' to one of the following: 'whatev_projects!whatev_jobs', 'whatev_projects!whatev_jobs', 'whatev_projects!whatev_jobs', 'whatev_projects!whatev_jobs'. Find the desired relationship in the 'details' key.",
+              "message": "Could not embed because more than one relationship was found for 'whatev_sites' and 'whatev_projects'"
             }"#
           |]
           { matchStatus  = 300

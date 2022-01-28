@@ -1,8 +1,8 @@
 use serde::{Deserialize, Deserializer};
-use std::collections::HashMap;
-use std::collections::BTreeMap;
-
-use crate::api::{ForeignKey, Qi, ProcParam};
+use std::collections::{HashMap,BTreeSet,BTreeMap};
+use crate::error::*;
+use crate::api::{ForeignKey, Qi, ProcParam, Join, Join::*};
+use snafu::{OptionExt};
 
 #[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct DbSchema {
@@ -14,7 +14,214 @@ pub struct DbSchema {
 pub struct Schema {
     pub name: String,
     #[serde(with = "objects")]
-    pub objects: BTreeMap<String, Object>
+    pub objects: BTreeMap<String, Object>,
+    #[serde(default)]
+    join_tables: BTreeMap<(String,String), BTreeSet<String>>,
+}
+
+impl DbSchema {
+    pub fn get_join(&self, current_schema: &String, origin: &String, target: &String, hint: &Option<String>) -> Result<Join> {
+        // let match_fk = | s: &String, t:&String, n:&String | {
+        //     | fk: &&ForeignKey |{
+        //         &fk.name == n && &fk.referenced_table.0 == s
+        //     }
+        // };
+        let schema = self.schemas.get(current_schema).context(UnacceptableSchema {schemas: vec![current_schema.to_owned()]})?;
+        //println!("--------------looking for {} {}->{}.{:?}", current_schema, origin, target, hint);
+        // println!("--------------got schema");
+        let origin_table = schema.objects.get(origin).context(UnknownRelation {relation: origin.to_owned()})?;
+        // println!("--------------got table");
+
+        match origin_table.foreign_keys.iter().find(|&fk| &fk.name == target && &fk.referenced_table.0 == current_schema) {
+            // the target is a foreign key name
+            // projects?select=projects_client_id_fkey(*)
+            // TODO! when views are involved there may be multiple fks with the same name
+            Some (fk) => {
+                //println!("found FK {:?}", fk);
+                if origin == &fk.table.1 {
+                    Ok(Parent(fk.clone()))
+                }
+                else {
+                    Ok(Child(fk.clone()))
+                }
+            },
+            None => {
+                match schema.objects.get(target) {
+                    // the target is an existing table
+                    Some(target_table) => {
+                        //println!("--------------got target table");
+                        match hint {
+                            Some(h) => {
+                                //println!("--------------got hint {:?}", origin_table.foreign_keys);
+                                // projects?select=clients!projects_client_id_fkey(*)
+                                if let Some(fk) = origin_table.foreign_keys.iter().find(|&fk|
+                                    &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target
+                                ) {
+                                    return Ok(Parent(fk.clone()));
+                                }
+                                if let Some(fk) = target_table.foreign_keys.iter().find(|&fk|
+                                    &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin
+                                ) {
+                                    return Ok(Child(fk.clone()));
+                                }
+            
+                                // users?select=tasks!users_tasks(*)
+                                if let Some(join_table) = schema.objects.get(h) {
+                                    let ofk1 = join_table.foreign_keys.iter().find_map(|fk| {
+                                        if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
+                                            Some(fk)
+                                        }
+                                        else { None }
+                                    });
+                                    let ofk2 = join_table.foreign_keys.iter().find_map(|fk| {
+                                        if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
+                                            Some(fk)
+                                        }
+                                        else { None }
+                                    });
+                                    if let (Some(fk1), Some(fk2)) = (ofk1, ofk2){
+                                        return Ok( Many(Qi(current_schema.clone(),join_table.name.clone()), fk1.clone(), fk2.clone()) )
+                                    }
+                                    else {
+                                        return Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
+                                    }
+                                    
+                                }
+            
+                                
+                                let mut joins = vec![];
+                                // projects?select=clients!client_id(*)
+                                if origin_table != target_table {
+                                joins.extend(origin_table.foreign_keys.iter()
+                                    .filter(|&fk|
+                                        &fk.referenced_table.0 == current_schema 
+                                        && &fk.referenced_table.1 == target
+                                        && fk.columns.len() == 1
+                                        && ( fk.columns.contains(h) || fk.referenced_columns.contains(h) )
+                                    )
+                                    .map(|fk| Parent(fk.clone()))
+                                    .collect::<Vec<_>>()
+                                );
+                            }
+                            
+                                    // projects?select=clients!id(*)
+                                    joins.extend(target_table.foreign_keys.iter()
+                                    .filter(|&fk|
+                                        &fk.referenced_table.0 == current_schema 
+                                        && &fk.referenced_table.1 == origin
+                                        && fk.columns.len() == 1
+                                        && ( fk.columns.contains(h) || fk.referenced_columns.contains(h) )
+                                    )
+                                    .map(|fk| Child(fk.clone()))
+                                    .collect::<Vec<_>>()
+                                    );
+                                
+                                //println!("joins vector: {:#?}", joins);
+                                if joins.len() == 1 {
+                                    Ok(joins[0].clone())
+                                }
+                                else if joins.len() == 0 {
+                                    Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
+                                }
+                                else{
+                                    Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: joins})
+                                }
+                                
+                                //Ok(joins)
+                            }, 
+                            // there is no hint, look for foreign keys between the two tables
+                            None => {
+                                // check child relations
+                                // projects?select=tasks(*)
+                                let child_joins = target_table.foreign_keys.iter()
+                                .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin )
+                                .map(|fk| Child(fk.clone()))
+                                .collect::<Vec<_>>();
+                                //println!("target tbl fks: {:#?}", target_table);
+                                
+                                // check parent relations
+                                // projects?select=clients(*)
+                                let parent_joins = origin_table.foreign_keys.iter()
+                                .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target )
+                                .map(|fk| Parent(fk.clone()))
+                                .collect::<Vec<_>>();
+
+                                // check many to many relations
+                                // users?select=tasks(*)
+                                let many_joins = match schema.join_tables.get(&(origin.clone(), target.clone())) {
+                                    None => vec![],
+                                    Some(jt) => jt.iter()
+                                        .filter_map(|t| schema.objects.get(t))
+                                        .filter_map(|join_table|{
+                                            //println!("entering filter map");
+                                            let fks1 = join_table.foreign_keys.iter().filter_map(|fk| {
+                                                if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
+                                                    Some(fk)
+                                                }
+                                                else { None }
+                                            }).collect::<Vec<_>>();
+                                            let fks2 = join_table.foreign_keys.iter().filter_map(|fk| {
+                                                if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
+                                                    Some(fk)
+                                                }
+                                                else { None }
+                                            }).collect::<Vec<_>>();
+                                            let product = fks1
+                                                .iter()
+                                                .map(|&fk1| 
+                                                    fks2
+                                                    .iter()
+                                                    .map(move |&fk2| Many(Qi(current_schema.clone(),join_table.name.clone()), fk1.clone(), fk2.clone()) )
+                                                )
+                                                .flatten()
+                                                .collect::<Vec<Join>>();
+                                            Some( product )
+                                        }).flatten().collect::<Vec<_>>()
+                                };
+
+                                let mut joins = vec![];
+                                joins.extend(child_joins);
+                                joins.extend(parent_joins);
+                                joins.extend(many_joins);
+                                
+                                //println!("total joins: {:#?}", joins);
+
+                                if joins.len() == 1 {
+                                    // println!("--------------found 1 {:?}", joins[0].clone());
+                                    Ok(joins[0].clone())
+                                }
+                                else if joins.len() == 0 {
+                                    Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
+                                }
+                                else{
+                                    Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: joins})
+                                }
+                            }
+                        }
+                    },
+                    // the target is not a table
+                    None => {
+                        // the target is a foreign key column
+                        // projects?select=client_id(*)
+                        let joins = origin_table.foreign_keys.iter()
+                            .filter(|&fk| &fk.referenced_table.0 == current_schema && fk.columns.len() == 1 && fk.columns.contains(target) )
+                            .map(|fk| Parent(fk.clone()))
+                            .collect::<Vec<_>>();
+                        //Ok(joins)
+                        if joins.len() == 1 {
+                            Ok(joins[0].clone())
+                        }
+                        else if joins.len() == 0 {
+                            Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
+                        }
+                        else{
+                            Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: joins})
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
@@ -133,9 +340,10 @@ pub struct Column {
 // code for deserialization
 
 mod schemas {
-    use super::Schema;
+    use super::{Schema,ObjectType};
 
-    use std::collections::HashMap;
+    use std::{collections::{HashMap, BTreeSet, BTreeMap}, iter::FromIterator};
+    //use std::collections::BTreeMap;
 
     //use serde::ser::Serializer;
     use serde::de::{Deserialize, Deserializer};
@@ -150,7 +358,40 @@ mod schemas {
         where D: Deserializer<'de>
     {
         let mut map = HashMap::new();
-        for schema in Vec::<Schema>::deserialize(deserializer)? {
+        for mut schema in Vec::<Schema>::deserialize(deserializer)? {
+            let join_tables:BTreeMap<(String,String), Vec<String>> = schema.objects.iter().map(|(n,o)| {
+                match o.kind {
+                    ObjectType::Function {..} => vec![],
+                    _ => {
+                        o.foreign_keys
+                        .iter()
+                        .map(|fk1| 
+                            o.foreign_keys
+                            .iter()
+                            .filter(|&fk2| 
+                                fk2 != fk1 && 
+                                fk1.referenced_table.0 == schema.name &&
+                                fk2.referenced_table.0 == schema.name
+                            )
+                            .map(|fk2|
+                                vec![
+                                    ((fk1.referenced_table.1.clone(), fk2.referenced_table.1.clone()), n.clone()),
+                                    ((fk2.referenced_table.1.clone(), fk1.referenced_table.1.clone()), n.clone()),
+                                ]
+                            )
+                            .flatten()
+                            .collect::<Vec<((String,String), String)>>()
+                        )
+                        .flatten()
+                        .collect::<Vec<((String,String), String)>>()
+                    }
+                }
+            })
+            .flatten()
+            .fold(BTreeMap::new(), |mut acc, (k,v)| { acc.entry(k).or_default().push(v); acc });
+            for (k,v) in join_tables {
+                schema.join_tables.insert(k, BTreeSet::from_iter(v.into_iter()));
+            }
             map.insert(schema.name.clone(), schema);
         }
         Ok(map)
@@ -163,7 +404,7 @@ mod objects {
     use super::{Object, ObjectDef, ObjectType, ProcVolatility, ProcReturnType::*, PgType::*};
 
     //use std::collections::HashMap;
-    use std::collections::BTreeMap;
+    use std::collections::{BTreeMap};
 
     //use serde::ser::Serializer;
     use serde::de::{Deserialize, Deserializer};
@@ -179,7 +420,6 @@ mod objects {
     {
         let mut map = BTreeMap::new();
         for o in Vec::<ObjectDef>::deserialize(deserializer)? {
-            
             map.insert(o.name.clone(), match o.kind.as_str() {
                 "function" => {
                     Object {
@@ -200,6 +440,7 @@ mod objects {
                         name: o.name,
                         columns: o.columns,
                         foreign_keys: o.foreign_keys,
+                        //join_for,
                     }
                 }
                 "view" => {
@@ -208,6 +449,7 @@ mod objects {
                         name: o.name,
                         columns: o.columns,
                         foreign_keys: o.foreign_keys,
+                        //join_for,
                     }
                 },
                 _ => {
@@ -216,6 +458,7 @@ mod objects {
                         name: o.name,
                         columns: o.columns,
                         foreign_keys: o.foreign_keys,
+                        //join_for,
                     }
                 },
 
@@ -306,6 +549,7 @@ mod tests {
     use pretty_assertions::{assert_eq};
     use super::*;
     use super::{ObjectType::*, ProcParam};
+    use crate::error::Error as AppError;
     fn s(s:&str) -> String {
         s.to_string()
     }
@@ -334,7 +578,8 @@ mod tests {
                             },
                             name: s("myfunction"),
                             columns: [].iter().cloned().map(t).collect(),
-                            foreign_keys: [].iter().cloned().collect()
+                            foreign_keys: [].iter().cloned().collect(),
+                            //join_for: [].iter().cloned().collect(),
                         }),
                         ("tasks", Object {
                             kind: View,
@@ -359,7 +604,8 @@ mod tests {
                                     referenced_table: Qi(s("api"),s("projects")),
                                     referenced_columns:  vec![s("id")],
                                 }
-                            ].iter().cloned().collect()
+                            ].iter().cloned().collect(),
+                            //join_for: [].iter().cloned().collect(),
                         }),
                         ("projects", Object {
                             kind: Table,
@@ -371,9 +617,11 @@ mod tests {
                                     primary_key: true,
                                 })
                             ].iter().cloned().map(t).collect(),
-                            foreign_keys: [].iter().cloned().collect()
+                            foreign_keys: [].iter().cloned().collect(),
+                            //join_for: [].iter().cloned().collect(),
                         }),
-                    ].iter().cloned().map(t).collect()
+                    ].iter().cloned().map(t).collect(),
+                    join_tables: [].iter().cloned().collect()
                 })
             ].iter().cloned().map(t).collect()
         };
@@ -462,4 +710,273 @@ mod tests {
     //     assert_eq!(HashSet::from([&"Einar", &"Olaf", &"Harald"]), HashSet::from([&"Olaf", &"Einar",  &"Harald"]));
     // }
 
+
+    #[test]
+    fn test_get_join_conditions(){
+        static JSON_SCHEMA:&str = 
+                r#"
+                    {
+                        "schemas":[
+                            {
+                                "name":"api",
+                                "objects":[
+                                    {
+                                        "kind":"function",
+                                        "name":"myfunction",
+                                        "volatile":"v",
+                                        "composite":false,
+                                        "setof":false,
+                                        "return_type":"int4",
+                                        "return_type_schema":"pg_catalog",
+                                        "parameters":[
+                                            {
+                                                "name":"id",
+                                                "type":"integer",
+                                                "required":true,
+                                                "variadic":false
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"addresses",
+                                        "columns":[
+                                            { "name":"id", "data_type":"int", "primary_key":true },
+                                            { "name":"location", "data_type":"text" }
+                                        ],
+                                        "foreign_keys":[]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"users",
+                                        "columns":[
+                                            { "name":"id", "data_type":"int", "primary_key":true },
+                                            { "name":"name", "data_type":"text" },
+                                            { "name":"billing_address_id", "data_type":"int" },
+                                            { "name":"shipping_address_id", "data_type":"int" }
+                                        ],
+                                        "foreign_keys":[
+                                            {
+                                                "name":"billing_address_id_fk",
+                                                "table":["api","users"],
+                                                "columns": ["billing_address_id"],
+                                                "referenced_table":["api","addresses"],
+                                                "referenced_columns": ["id"]
+                                            },
+                                            {
+                                                "name":"shipping_address_id_fk",
+                                                "table":["api","users"],
+                                                "columns": ["shipping_address_id"],
+                                                "referenced_table":["api","addresses"],
+                                                "referenced_columns": ["id"]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"clients",
+                                        "columns":[
+                                            { "name":"id", "data_type":"int", "primary_key":true },
+                                            { "name":"name", "data_type":"text" }
+                                        ],
+                                        "foreign_keys":[]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"projects",
+                                        "columns":[
+                                            { "name":"id", "data_type":"int", "primary_key":true },
+                                            { "name":"client_id", "data_type":"int" },
+                                            { "name":"name", "data_type":"text" }
+                                        ],
+                                        "foreign_keys":[
+                                            {
+                                                "name":"client_id_fk",
+                                                "table":["api","projects"],
+                                                "columns": ["client_id"],
+                                                "referenced_table":["api","clients"],
+                                                "referenced_columns": ["id"]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"tasks",
+                                        "columns":[
+                                            { "name":"id", "data_type":"int", "primary_key":true },
+                                            { "name":"project_id", "data_type":"int" },
+                                            { "name":"name", "data_type":"text" }
+                                        ],
+                                        "foreign_keys":[
+                                            {
+                                                "name":"project_id_fk",
+                                                "table":["api","tasks"],
+                                                "columns": ["project_id"],
+                                                "referenced_table":["api","projects"],
+                                                "referenced_columns": ["id"]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"users_tasks",
+                                        "columns":[
+                                            { "name":"task_id", "data_type":"int", "primary_key":true },
+                                            { "name":"user_id", "data_type":"int", "primary_key":true }
+                                            
+                                        ],
+                                        "foreign_keys":[
+                                            {
+                                                "name":"task_id_fk",
+                                                "table":["api","users_tasks"],
+                                                "columns": ["task_id"],
+                                                "referenced_table":["api","tasks"],
+                                                "referenced_columns": ["id"]
+                                            },
+                                            {
+                                                "name":"user_id_fk",
+                                                "table":["api","users_tasks"],
+                                                "columns": ["user_id"],
+                                                "referenced_table":["api","users"],
+                                                "referenced_columns": ["id"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                "#;
+        let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
+        assert_eq!( db_schema.get_join(&s("api"), &s("projects"), &s("tasks"), &mut None).map_err(|e| format!("{}",e)),
+            Ok(
+                
+                    Child(ForeignKey {
+                        name: s("project_id_fk"),
+                        table: Qi(s("api"),s("tasks")),
+                        columns: vec![s("project_id")],
+                        referenced_table: Qi(s("api"),s("projects")),
+                        referenced_columns: vec![s("id")],
+                    })
+                
+            )
+        );
+        assert_eq!( db_schema.get_join(&s("api"), &s("tasks"), &s("projects"), &mut None).map_err(|e| format!("{}",e)),
+            Ok(
+                
+                    Parent(ForeignKey {
+                        name: s("project_id_fk"),
+                        table: Qi(s("api"),s("tasks")),
+                        columns: vec![s("project_id")],
+                        referenced_table: Qi(s("api"),s("projects")),
+                        referenced_columns: vec![s("id")],
+                    })
+                
+            )
+        );
+        assert_eq!( db_schema.get_join(&s("api"), &s("clients"), &s("projects"), &mut None).map_err(|e| format!("{}",e)),
+            Ok(
+                
+                    Child(ForeignKey {
+                        name: s("client_id_fk"),
+                        table: Qi(s("api"),s("projects")),
+                        columns: vec![s("client_id")],
+                        referenced_table: Qi(s("api"),s("clients")),
+                        referenced_columns: vec![s("id")],
+                    })
+                
+            )
+        );
+        assert_eq!( db_schema.get_join(&s("api"), &s("tasks"), &s("users"), &mut None).map_err(|e| format!("{}",e)),
+            Ok(
+               
+                    Many(
+                        Qi(s("api"), s("users_tasks")),
+                        ForeignKey {
+                            name: s("task_id_fk"),
+                            table: Qi(s("api"),s("users_tasks")),
+                            columns: vec![s("task_id")],
+                            referenced_table: Qi(s("api"),s("tasks")),
+                            referenced_columns: vec![s("id")],
+                        },
+                        ForeignKey {
+                            name: s("user_id_fk"),
+                            table: Qi(s("api"),s("users_tasks")),
+                            columns: vec![s("user_id")],
+                            referenced_table: Qi(s("api"),s("users")),
+                            referenced_columns: vec![s("id")],
+                        },
+                    )
+               
+            )
+        );
+        assert_eq!( db_schema.get_join(&s("api"), &s("tasks"), &s("users"), &mut Some(s("users_tasks"))).map_err(|e| format!("{}",e)),
+            Ok(
+               
+                    Many(
+                        Qi(s("api"), s("users_tasks")),
+                        ForeignKey {
+                            name: s("task_id_fk"),
+                            table: Qi(s("api"),s("users_tasks")),
+                            columns: vec![s("task_id")],
+                            referenced_table: Qi(s("api"),s("tasks")),
+                            referenced_columns: vec![s("id")],
+                        },
+                        ForeignKey {
+                            name: s("user_id_fk"),
+                            table: Qi(s("api"),s("users_tasks")),
+                            columns: vec![s("user_id")],
+                            referenced_table: Qi(s("api"),s("users")),
+                            referenced_columns: vec![s("id")],
+                        },
+                    )
+               
+            )
+        );
+
+        // let result = get_join(&s("api"), &db_schema, &s("users"), &s("addresses"), &mut None);
+        // let expected = AppError::AmbiguousRelBetween {
+        //     origin: s("users"), target: s("addresses"),
+        //     relations: vec![
+        //         Parent(
+        //             ForeignKey {
+        //                 name: s("billing_address_id_fk"),
+        //                 table: Qi(s("api"),s("users")),
+        //                 columns: vec![
+        //                     s("billing_address_id"),
+        //                 ],
+        //                 referenced_table: Qi(s("api"),s("addresses")),
+        //                 referenced_columns: vec![
+        //                     s("id"),
+        //                 ],
+        //             },
+        //         ),
+        //         Parent(
+        //             ForeignKey {
+        //                 name: s("shipping_address_id_fk"),
+        //                 table: Qi(s("api"),s("users")),
+        //                 columns: vec![
+        //                     s("shipping_address_id"),
+        //                 ],
+        //                 referenced_table: Qi(s("api"),s("addresses")),
+        //                 referenced_columns: vec![
+        //                     s("id"),
+        //                 ],
+        //             },
+        //         ),
+        //     ]
+        // };
+        // assert!(result.is_err());
+        // let error = result.unwrap();
+
+        // assert!(matches!(
+        //     get_join(&s("api"), &db_schema, &s("users"), &s("addresses"), &mut None),
+        //     1
+        // );
+        assert!(matches!(
+            db_schema.get_join(&s("api"), &s("users"), &s("addresses"), &mut None),
+            Err(AppError::AmbiguousRelBetween {..})
+        ));
+
+    }
 }
