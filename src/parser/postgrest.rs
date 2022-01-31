@@ -151,9 +151,12 @@ pub fn parse<'r>(
                 let ((tp, n, lo), _) = logic_tree_path()
                     .message("failed to parser logic tree path")
                     .easy_parse(k).map_err(to_app_error(k))?;
+               
                 let ns = if n { "not." } else { "" };
                 let los = if lo == And {  "and" } else { "or" };
                 let s = format!("{}{}{}", ns,los,v);
+
+                //println!("ppp {:#?}", (&tp, &n, &lo, &los, &s));
                 let (c, _) = logic_condition()
                     .message("failed to parse logic tree")
                     .easy_parse(s.as_str()).map_err(to_app_error(&s))?;
@@ -964,7 +967,7 @@ parser! {
 
         let group = optional(attempt(string("not").skip(dot())))
             .and(
-                choice((string("and"),string("or"))).map(|l|
+                lex(choice((string("and"),string("or")))).map(|l|
                     match l {
                         "and" => And,
                         "or" => Or,
@@ -980,7 +983,7 @@ parser! {
                 })
             });
         
-        attempt(group).or(single)
+        attempt(single).or(group)
     }
 }
 
@@ -2130,6 +2133,7 @@ pub mod tests {
                 )
             ,""))
         );
+
     }
 
     #[test]

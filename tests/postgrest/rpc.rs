@@ -1,5 +1,5 @@
 use super::super::start; //super in
-use super::common::{ setup, haskell_test };
+use super::common::{ setup, haskell_test, normalize_url };
 use pretty_assertions::{assert_eq};
 use serde_json::Value;
 use rocket::local::asynchronous::Client;

@@ -50,6 +50,10 @@ pub fn setup() {
     });
 }
 
+pub fn normalize_url(url: &String) -> String {
+    url.replace(" ", "%20").replace("\"","%22")
+}
+
 #[macro_export]
 macro_rules! haskell_test {
     (@status $status_code:ident $status:literal) => {
@@ -167,12 +171,12 @@ macro_rules! haskell_test {
                                           
                                           $(
                                             let url = format!("/rest{}",$get1_url);
-                                            let mut request = client.get(url.replace(" ", "%20"));
+                                            let mut request = client.get(normalize_url(&url));
                                             request.add_header(Accept::from_str("*/*").unwrap());
                                           )?
                                           $(
                                             let url = format!("/rest{}",$get2_url);
-                                            let mut request = client.get(url.replace(" ", "%20"));
+                                            let mut request = client.get(normalize_url(&url));
                                             request.add_header(Accept::from_str("*/*").unwrap());
                                             $(request.add_header(Accept::from_str($get2_accept_header).unwrap());)?
                                             //$($(request.add_header(Header::new($get_2_header_nn,$get_2_header_v));),+)?
@@ -193,14 +197,14 @@ macro_rules! haskell_test {
 
                                           $(
                                             let url = format!("/rest{}",$post_url);
-                                            let mut request = client.post(url.replace(" ", "%20"))
+                                            let mut request = client.post(normalize_url(&url))
                                                 .body($json_body);
                                             request.add_header(Accept::from_str("*/*").unwrap());
                                           )?
 
                                           $(
                                             let url = format!("/rest{}",$post2_url);
-                                            let mut request = client.post(url.replace(" ", "%20"))
+                                            let mut request = client.post(normalize_url(&url))
                                                 .body($($text2_body)? $($json2_body)? $($json22_body)?);
                                             request.add_header(Accept::from_str("*/*").unwrap());
                                             $(request.add_header(Accept::from_str($post2_accept_header).unwrap());)?

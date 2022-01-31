@@ -201,7 +201,7 @@ impl Error {
             Error::InvalidRange => json!({"message": "HTTP Range error"}),
             Error::InvalidBody {message} => json!({"message": message}),
             Error::InternalError {message} => json!({"message": message}),
-            Error::ParseRequestError { message, details }  => json!({"message": message, "details": details}),
+            Error::ParseRequestError { message, details }  => json!({"details": details, "message": message }),
             Error::JwtTokenInvalid {message} => json!({"message": message}),
             // Error::NoRelBetween {origin, target}  => json!({
             //     "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
