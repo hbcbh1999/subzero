@@ -19,6 +19,7 @@ use combine::{
     easy::{ParseError,Error as ParserError, Info},
     stream::StreamErrorFor,
     Parser, Stream, EasyParser,
+    look_ahead,
     parser::{
         char::{char, digit, letter, spaces, string},
         choice::{choice, optional},
@@ -555,13 +556,22 @@ where Input: Stream<Token = char>
         }
     );
     let signed_number = 
-        optional(string("-")).and(many1(digit()))
-        .map(|v:(Option<&str>, String)|{
-            let (s,n) = v;
-            return format!("{}{}", s.unwrap_or(""), n);
+        optional(string("-"))
+        .and(
+            many1(digit())
+            .and(
+                look_ahead(
+                    choice((string("->"), string("::")))
+                    .or(eof().map(|_| ""))
+                )
+            )
+        )
+        .map(|v:(Option<&str>, (String, &str) )|{ 
+            let (s,(n,_)) = v;
+            format!("{}{}", s.unwrap_or(""), n)
         });
     let operand = choice((
-        signed_number.map(|n| JsonOperand::JIdx(n)),
+        attempt(signed_number.map(|n| JsonOperand::JIdx(n))),
         field_name().map(|k| JsonOperand::JKey(k))
     ));
     //many1(arrow.and(operand.and(end)).map(|((arrow,(operand,_)))| arrow(operand)))
@@ -583,6 +593,12 @@ where Input: Stream<Token = char>
     ))
     .and(alias_separator())
     .map(|(a,_) | a)
+}
+
+fn cast<Input>() -> impl Parser<Input, Output = String>
+where Input: Stream<Token = char>
+{
+    string("::").and(many1(letter())).map(|(_,c)|c)
 }
 
 fn dot<Input>() -> impl Parser<Input, Output = char>
@@ -661,7 +677,8 @@ parser! {
         let column = 
             optional(attempt(alias()))
             .and(field())
-            .map(|(alias, field)| SelectItem::Simple {field: field, alias: alias});
+            .and(optional(cast()))
+            .map(|((alias, field), cast)| SelectItem::Simple {field: field, alias: alias, cast});
         let sub_select = (
             optional(attempt(alias())),
             lex(field_name()),
@@ -1448,11 +1465,11 @@ pub mod tests {
        
         let mut query = Select { order: vec![], limit: None, offset: None,
             select: vec![
-                Simple {field: Field {name: s("a"), json_path: None}, alias: None},
+                Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
                 SubSelect{
                     query: Select { order: vec![], limit: None, offset: None,
                         select: vec![
-                            Simple {field: Field {name: s("a"), json_path: None}, alias: None},
+                            Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
                         ],
                         from: (s("child"),None),
                         join_tables: vec![],
@@ -1480,11 +1497,11 @@ pub mod tests {
         assert_eq!(query,
             Select { order: vec![], limit: None, offset: None,
                 select: vec![
-                    Simple {field: Field {name: s("a"), json_path: None}, alias: None},
+                    Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
                     SubSelect{
                         query: Select { order: vec![], limit: None, offset: None,
                             select: vec![
-                                Simple {field: Field {name: s("a"), json_path: None}, alias: None},
+                                Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
                             ],
                             from: (s("child"),None),
                             join_tables: vec![],
@@ -1528,12 +1545,12 @@ pub mod tests {
                 query: 
                     Select { order: vec![], limit: None, offset: None,
                         select: vec![
-                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
-                            Simple {field: Field {name: s("name"), json_path: None}, alias: None},
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
+                            Simple {field: Field {name: s("name"), json_path: None}, alias: None, cast: None},
                             SubSelect{
                                 query: Select { order: vec![], limit: None, offset: None,
                                     select: vec![
-                                        Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                                        Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                                     ],
                                     from: (s("clients"),None),
                                     join_tables: vec![],
@@ -1561,7 +1578,7 @@ pub mod tests {
                             SubSelect{
                                 query: Select { order: vec![], limit: None, offset: None,
                                     select: vec![
-                                        Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                                        Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                                     ],
                                     from: (s("tasks"),None),
                                     join_tables: vec![],
@@ -1667,7 +1684,7 @@ pub mod tests {
                 query: 
                     Insert {
                         select: vec![
-                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                         ],
                         payload: Payload(payload.clone()),
                         into: s("projects"),
@@ -1701,8 +1718,8 @@ pub mod tests {
                 query: 
                     Insert {
                         select: vec![
-                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
-                            Simple {field: Field {name: s("name"), json_path: None}, alias: None},
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
+                            Simple {field: Field {name: s("name"), json_path: None}, alias: None, cast: None},
                         ],
                         payload: Payload(payload),
                         into: s("projects"),
@@ -1790,7 +1807,7 @@ pub mod tests {
                 query: 
                     Insert {
                         select: vec![
-                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                         ],
                         payload: Payload(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)),
                         into: s("projects"),
@@ -1825,12 +1842,12 @@ pub mod tests {
                 query: 
                     Insert {
                         select: vec![
-                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
-                            Simple {field: Field {name: s("name"), json_path: None}, alias: None},
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
+                            Simple {field: Field {name: s("name"), json_path: None}, alias: None, cast: None},
                             SubSelect{
                                 query: Select { order: vec![], limit: None, offset: None,
                                     select: vec![
-                                        Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                                        Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                                     ],
                                     from: (s("tasks"),None),
                                     join_tables: vec![],
@@ -1863,7 +1880,7 @@ pub mod tests {
                             SubSelect{
                                 query: Select { order: vec![], limit: None, offset: None,
                                     select: vec![
-                                        Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                                        Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                                     ],
                                     from: (s("clients"),None),
                                     join_tables: vec![],
@@ -2334,7 +2351,23 @@ pub mod tests {
         assert_eq!(
             select_item().easy_parse("alias:column"), 
             Ok((
-                Simple {field: Field {name:s("column"), json_path: None}, alias:  Some(s("alias"))}
+                Simple {field: Field {name:s("column"), json_path: None}, alias:  Some(s("alias")), cast: None}
+                ,""
+            ))
+        );
+
+        assert_eq!(
+            select_item().easy_parse("column::cast"), 
+            Ok((
+                Simple {field: Field {name:s("column"), json_path: None}, alias:  None, cast: Some(s("cast"))}
+                ,""
+            ))
+        );
+
+        assert_eq!(
+            select_item().easy_parse("alias:column::cast"), 
+            Ok((
+                Simple {field: Field {name:s("column"), json_path: None}, alias:  Some(s("alias")), cast: Some(s("cast"))}
                 ,""
             ))
         );
@@ -2342,7 +2375,7 @@ pub mod tests {
         assert_eq!(
             select_item().easy_parse("column"), 
             Ok((
-                Simple {field: Field {name:s("column"), json_path: None}, alias:  None}
+                Simple {field: Field {name:s("column"), json_path: None}, alias:  None, cast: None}
                 ,""
             ))
         );
@@ -2353,9 +2386,9 @@ pub mod tests {
                 SubSelect{
                     query: Select { order: vec![], limit: None, offset: None,
                         select: vec![
-                            Simple {field: Field {name:s("column0"), json_path: Some(vec![JArrow(JKey(s("key")))])}, alias:  None},
-                            Simple {field: Field {name:s("column1"), json_path: None}, alias:  None},
-                            Simple {field: Field {name:s("column2"), json_path: None}, alias:  Some(s("alias2"))},
+                            Simple {field: Field {name:s("column0"), json_path: Some(vec![JArrow(JKey(s("key")))])}, alias:  None, cast: None},
+                            Simple {field: Field {name:s("column1"), json_path: None}, alias:  None, cast: None},
+                            Simple {field: Field {name:s("column2"), json_path: None}, alias:  Some(s("alias2")), cast: None},
                         ],
                         from: (s("table"),None),
                         join_tables: vec![],
@@ -2376,9 +2409,9 @@ pub mod tests {
                 SubSelect{
                     query: Select { order: vec![], limit: None, offset: None,
                         select: vec![
-                            Simple {field: Field {name:s("column0"), json_path: Some(vec![JArrow(JKey(s("key")))])}, alias:  None},
-                            Simple {field: Field {name:s("column1"), json_path: None}, alias:  None},
-                            Simple {field: Field {name:s("column2"), json_path: None}, alias:  Some(s("alias2"))},
+                            Simple {field: Field {name:s("column0"), json_path: Some(vec![JArrow(JKey(s("key")))])}, alias:  None, cast: None},
+                            Simple {field: Field {name:s("column1"), json_path: None}, alias:  None, cast: None},
+                            Simple {field: Field {name:s("column2"), json_path: None}, alias:  Some(s("alias2")), cast: None},
                         ],
                         from: (s("table"),None),
                         join_tables: vec![],

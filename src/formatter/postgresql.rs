@@ -181,7 +181,7 @@ fn fmt_query<'a>(schema: &String, return_representation: bool, wrapin_cte: Optio
                 }
                 else {
                     returning.iter()
-                    .map(|r| if r.as_str() == "*" {format!("*")} else{fmt_identity(r)})
+                    .map(|r| if r.as_str() == "*" {format!("*")} else{format!("{}.{}", fmt_identity(&fn_name.1),fmt_identity(r))})
                     .collect::<Vec<_>>().join(",")
                 };
 
@@ -387,7 +387,7 @@ fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> Snippet<'a> {
     }
 }
 
-fn fmt_filter(f: &Filter) -> SqlSnippet<(dyn ToSql + Sync + '_)>{
+fn fmt_filter<'a>(f: &'a Filter) -> Snippet<'a>{
 
     match f {
         Op (o, v) => {
@@ -425,7 +425,8 @@ fn fmt_filter(f: &Filter) -> SqlSnippet<(dyn ToSql + Sync + '_)>{
 fn fmt_select_item<'a >(schema: &String, qi: &Qi, i: &'a SelectItem) -> (Snippet<'a>, Vec<Snippet<'a>>) {
     match i {
         Star => (sql(format!("{}.*", fmt_qi(qi))), vec![]),
-        Simple {field, alias} => (sql(format!("{}.{}{}", fmt_qi(qi), fmt_field(field), fmt_alias(alias))), vec![]),
+        Simple {field: field@Field { name, json_path }, alias, cast: None} => (sql(format!("{}.{}{}", fmt_qi(qi), fmt_field(field), fmt_as(name, json_path, alias ))), vec![]),
+        Simple {field: field@Field { name, json_path }, alias, cast: Some(cast)} => (sql(format!("cast({}.{} as {}){}", fmt_qi(qi), fmt_field(field), cast, fmt_as(name, json_path, alias ))), vec![]),
         SubSelect {query,alias,join,..} => match join {
             Some(j) => match j {
                 Parent (fk) => {
@@ -511,12 +512,39 @@ fn fmt_order_term(qi: &Qi, t: &OrderTerm) -> String {
     format!("{}.{} {} {}", fmt_qi(qi), fmt_field(&t.term), direction, nulls)
 }
 
-fn fmt_alias(a: &Option<String>) -> String {
-    match a {
-        Some(aa) => format!(" as \"{}\"", aa),
-        None => format!("")
+// fn fmt_cast(cast: &Option<String>) -> String {
+//     match cast {
+//         Some(c) => format!("::{}", fmt_identity(c)),
+//         None => format!("")
+//     }
+// }
+
+fn fmt_as( name: &String, json_path: &Option<Vec<JsonOperation>>, alias: &Option<String>) -> String {
+    match (name, json_path, alias) {
+        (n, Some(jp), None) =>
+            match jp.last() {
+                Some(JArrow(JKey(k))) | Some(J2Arrow(JKey(k)))  => format!(" as {}", fmt_identity(&k)),
+                Some(JArrow(JIdx(_))) | Some(J2Arrow(JIdx(_)))   => format!(" as {}", fmt_identity(
+                    jp.iter().rev().find_map(|i| 
+                        match i {
+                            J2Arrow(JKey(k)) | JArrow(JKey(k)) => Some(k),
+                            _ => None
+                        }
+                    ).unwrap_or(n)
+                )),
+                _  => format!("")
+            }
+        ,
+        (_,_,Some(aa)) => format!(" as {}", fmt_identity(aa)),
+        _ => format!("")
     }
 }
+// fn fmt_alias(a: &Option<String>) -> String {
+//     match a {
+//         Some(aa) => format!(" as \"{}\"", aa),
+//         None => format!("")
+//     }
+// }
 
 fn fmt_limit<'a>(l: &'a Option<SingleVal>) -> Snippet<'a> {
     match l {
@@ -558,6 +586,7 @@ fn fmt_json_operand(o: &JsonOperand) -> String{
         JIdx (i) => format!("{}", i),
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -640,12 +669,12 @@ mod tests {
         let payload = r#"[{"id":10, "a":"a field"}]"#.to_string();
         let q = Insert {
             select: vec![
-                Simple {field: Field {name: s("a"), json_path: None}, alias: None},
-                Simple {field: Field {name: s("b"), json_path: Some(vec![JArrow(JIdx(s("1"))), J2Arrow(JKey(s("key")))])}, alias: None},
+                Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
+                Simple {field: Field {name: s("b"), json_path: Some(vec![JArrow(JIdx(s("1"))), J2Arrow(JKey(s("key")))])}, alias: None, cast: None},
                 SubSelect{
                     query: Select {order: vec![], limit: None, offset: None, 
                         select: vec![
-                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                         ],
                         from: (s("clients"), None),
                         join_tables: vec![],
@@ -672,7 +701,7 @@ mod tests {
                 SubSelect{
                     query: Select {order: vec![], limit: None, offset: None, 
                         select: vec![
-                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                         ],
                         from: (s("tasks"), None),
                         join_tables: vec![],
@@ -737,7 +766,7 @@ mod tests {
         )
         select
             "subzero_source"."a",
-            "subzero_source"."b"->1->>'key',
+            "subzero_source"."b"->1->>'key' as "key",
             row_to_json("subzero_source_clients".*) as "clients",
             coalesce((select json_agg("tasks".*) from (
                 select
@@ -774,12 +803,12 @@ mod tests {
         
         let q = Select {order: vec![], limit: None, offset: None, 
             select: vec![
-                Simple {field: Field {name: s("a"), json_path: None}, alias: None},
-                Simple {field: Field {name: s("b"), json_path: Some(vec![JArrow(JIdx(s("1"))), J2Arrow(JKey(s("key")))])}, alias: None},
+                Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
+                Simple {field: Field {name: s("b"), json_path: Some(vec![JArrow(JIdx(s("1"))), J2Arrow(JKey(s("key")))])}, alias: None, cast: None},
                 SubSelect{
                     query: Select {order: vec![], limit: None, offset: None, 
                         select: vec![
-                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                         ],
                         from: (s("clients"), None),
                         join_tables: vec![],
@@ -806,7 +835,7 @@ mod tests {
                 SubSelect{
                     query: Select {order: vec![], limit: None, offset: None, 
                         select: vec![
-                            Simple {field: Field {name: s("id"), json_path: None}, alias: None},
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                         ],
                         from: (s("tasks"), None),
                         join_tables: vec![],
@@ -848,7 +877,7 @@ mod tests {
         r#"
         select
             "api"."projects"."a",
-            "api"."projects"."b"->1->>'key',
+            "api"."projects"."b"->1->>'key' as "key",
             row_to_json("projects_clients".*) as "clients",
             coalesce((select json_agg("tasks".*) from (
                 select
@@ -964,7 +993,8 @@ mod tests {
     fn test_fmt_select_item(){
         let select = Simple {
             field: Field {name:s("name"), json_path:Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])},
-            alias: Some(s("alias"))
+            alias: Some(s("alias")),
+            cast: None
         };
         let (select_item,_) = fmt_select_item(
             &s("schema"), 
@@ -992,10 +1022,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_fmt_alias(){
-        assert_eq!(fmt_alias(&Some(s("alias"))), s(" as \"alias\""));
-    }
+    // #[test]
+    // fn test_fmt_alias(){
+    //     assert_eq!(fmt_alias(&Some(s("alias"))), s(" as \"alias\""));
+    // }
 
     #[test]
     fn test_fmt_json_path(){

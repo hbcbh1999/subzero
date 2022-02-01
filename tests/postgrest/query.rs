@@ -266,27 +266,27 @@ feature "query"
         [json|r#" [{"myId":1}] "#|]
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "one simple column with casting (text)" $
-//       get "/complex_items?select=id::text" shouldRespondWith
-//         [json|r#" [{"id":"1"},{"id":"2"},{"id":"3"}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "one simple column with casting (text)" $
+      get "/complex_items?select=id::text" shouldRespondWith
+        [json|r#" [{"id":"1"},{"id":"2"},{"id":"3"}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "rename simple column with casting" $
-//       get "/complex_items?id=eq.1&select=myId:id::text" shouldRespondWith
-//         [json|r#" [{"myId":"1"}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "rename simple column with casting" $
+      get "/complex_items?id=eq.1&select=myId:id::text" shouldRespondWith
+        [json|r#" [{"myId":"1"}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "json column" $
       get "/complex_items?id=eq.1&select=settings" shouldRespondWith
         [json|r#" [{"settings":{"foo":{"int":1,"bar":"baz"}}}] "#|]
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "fails on bad casting (wrong cast type)" $
-//       get "/complex_items?select=id::fakecolumntype"
-//         shouldRespondWith [json|r#" {"hint":null,"details":null,"code":"42704","message":"type \"fakecolumntype\" does not exist"} "#|]
-//         { matchStatus  = 400
-//         , matchHeaders = []
-//         }
+    it "fails on bad casting (wrong cast type)" $
+      get "/complex_items?select=id::fakecolumntype"
+        shouldRespondWith [json|r#" {"hint":null,"details":null,"code":"42704","message":"type \"fakecolumntype\" does not exist"} "#|]
+        { matchStatus  = 400
+        , matchHeaders = []
+        }
 
     it "requesting parents and children" $
       get "/projects?id=eq.1&select=id, name, clients(*), tasks(id, name)" shouldRespondWith
@@ -376,10 +376,10 @@ feature "query"
           [json|r#"[{"id":1,"always_true":true}]"#|]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-    //   it "computed column on rpc" $
-    //     get "/rpc/search?id=1&select=id,always_true" shouldRespondWith
-    //       [json|r#"[{"id":1,"always_true":true}]"#|]
-    //       { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "computed column on rpc" $
+        get "/rpc/search?id=1&select=id,always_true" shouldRespondWith
+          [json|r#"[{"id":1,"always_true":true}]"#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
       it "overloaded computed columns on both tables" $ do
         get "/items?id=eq.1&select=id,computed_overload" shouldRespondWith
@@ -389,10 +389,10 @@ feature "query"
           [json|r#"[{"id":1,"computed_overload":true}]"#|]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//       it "overloaded computed column on rpc" $
-//         get "/rpc/search?id=1&select=id,computed_overload" shouldRespondWith
-//           [json|r#"[{"id":1,"computed_overload":true}]"#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "overloaded computed column on rpc" $
+        get "/rpc/search?id=1&select=id,computed_overload" shouldRespondWith
+          [json|r#"[{"id":1,"computed_overload":true}]"#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
 //     //when (actualPgVersion >= pgVersion110) $ do
       describe "partitioned tables embedding" $ do

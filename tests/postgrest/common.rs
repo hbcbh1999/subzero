@@ -51,7 +51,10 @@ pub fn setup() {
 }
 
 pub fn normalize_url(url: &String) -> String {
-    url.replace(" ", "%20").replace("\"","%22")
+    url
+    .replace(" ", "%20")
+    .replace("\"","%22")
+    .replace(">","%3E")
 }
 
 #[macro_export]

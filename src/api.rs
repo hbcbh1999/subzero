@@ -136,6 +136,7 @@ pub enum SelectItem {
     Simple {
         field: Field,
         alias: Option<String>,
+        cast: Option<String>,
     },
     SubSelect {
         query: Query,
