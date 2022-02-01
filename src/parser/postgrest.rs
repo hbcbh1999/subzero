@@ -526,7 +526,12 @@ where Input: Stream<Token = char>
     between(
         char('"'),
         char('"'),
-        many1(none_of("\"".chars()))
+        many(
+            choice((
+                none_of("\\\"".chars()),
+                char('\\').and(any()).map(|(_,c)|c)
+            ))
+        )
     )
 }
 
@@ -758,7 +763,11 @@ where Input: Stream<Token = char>
 fn list_element<Input>() -> impl Parser<Input, Output = String>
 where Input: Stream<Token = char>
 {
-    attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))).or(many1(none_of(",)".chars())))
+    attempt(
+        quoted_value()
+        .skip(not_followed_by(none_of(",)".chars())))
+    )
+    .or(many1(none_of(",)".chars())))
 }
 
 fn operator<Input>() -> impl Parser<Input, Output = String>
@@ -2206,6 +2215,7 @@ pub mod tests {
         assert_eq!(list_value().easy_parse("(any123value,another)"), Ok((vec![s("any123value"),s("another")],"")));
         assert_eq!(list_value().easy_parse("(\"any123 value\", another)"), Ok((vec![s("any123 value"),s("another")],"")));
         assert_eq!(list_value().easy_parse("(\"any123 value\", 123)"), Ok((vec![s("any123 value"),s("123")],"")));
+        assert_eq!(list_value().easy_parse("(\"Double\\\"Quote\\\"McGraw\\\"\")"), Ok((vec![s("Double\"Quote\"McGraw\"")],"")));
     }
 
     #[test]

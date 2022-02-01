@@ -19,7 +19,16 @@ impl ToSql for ListVal {
         match self {
             ListVal(v) => {
                 if v.len() > 0 {
-                    out.put_slice(format!("{{\"{}\"}}", v.join("\",\"")).as_str().as_bytes());
+                    out.put_slice(
+                        format!(
+                            "{{\"{}\"}}",
+                            v.iter()
+                            .map(|e| e.replace("\\","\\\\").replace("\"", "\\\"") )
+                            .collect::<Vec<_>>()
+                            .join("\",\"")
+                        )
+                        .as_str().as_bytes()
+                    );
                 }
                 else {
                     out.put_slice(format!("{{}}").as_str().as_bytes());

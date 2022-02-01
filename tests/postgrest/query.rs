@@ -928,64 +928,64 @@ feature "query"
 //         , matchHeaders = ["Content-Type" <:> "application/octet-stream"]
 //         }
 
-  // describe "values with quotes in IN and NOT IN" $ do
-  //   it "succeeds when only quoted values are present" $ do
-  //     get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\")" shouldRespondWith
-  //       [json|r#" [{"name":"Hebdon, John"}] "#|]
-  //       { matchHeaders = ["Content-Type" <:> "application/json"] }
-  //     get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")" shouldRespondWith
-  //       [json|r#" [{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}] "#|]
-  //       { matchHeaders = ["Content-Type" <:> "application/json"] }
-  //     get "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")&limit=3" shouldRespondWith
-  //       [json|r#" [ { "name": "David White" }, { "name": "Larry Thompson" }, { "name": "Double O Seven(007)" }] "#|]
-  //       { matchHeaders = ["Content-Type" <:> "application/json"] }
+  describe "values with quotes in IN and NOT IN" $ do
+    it "succeeds when only quoted values are present" $ do
+      get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\")" shouldRespondWith
+        [json|r#" [{"name":"Hebdon, John"}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+      get "/w_or_wo_comma_names?name=in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")" shouldRespondWith
+        [json|r#" [{"name":"Hebdon, John"},{"name":"Williams, Mary"},{"name":"Smith, Joseph"}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+      get "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",\"Williams, Mary\",\"Smith, Joseph\")&limit=3" shouldRespondWith
+        [json|r#" [ { "name": "David White" }, { "name": "Larry Thompson" }, { "name": "Double O Seven(007)" }] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "succeeds w/ and w/o quoted values" $ do
-//       get "/w_or_wo_comma_names?name=in.(David White,\"Hebdon, John\")" shouldRespondWith
-//         [json|r#" [{"name":"Hebdon, John"},{"name":"David White"}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       get "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",Larry Thompson,\"Smith, Joseph\")&limit=3" shouldRespondWith
-//         [json|r#" [ { "name": "Williams, Mary" }, { "name": "David White" }, { "name": "Double O Seven(007)" }] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       get "/w_or_wo_comma_names?name=in.(\"Double O Seven(007)\")" shouldRespondWith
-//         [json|r#" [{"name":"Double O Seven(007)"}] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "succeeds w/ and w/o quoted values" $ do
+      get "/w_or_wo_comma_names?name=in.(David White,\"Hebdon, John\")" shouldRespondWith
+        [json|r#" [{"name":"Hebdon, John"},{"name":"David White"}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+      get "/w_or_wo_comma_names?name=not.in.(\"Hebdon, John\",Larry Thompson,\"Smith, Joseph\")&limit=3" shouldRespondWith
+        [json|r#" [ { "name": "Williams, Mary" }, { "name": "David White" }, { "name": "Double O Seven(007)" }] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+      get "/w_or_wo_comma_names?name=in.(\"Double O Seven(007)\")" shouldRespondWith
+        [json|r#" [{"name":"Double O Seven(007)"}] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     describe "escaped chars" $ do
-//       it "accepts escaped double quotes" $
-//         get "/w_or_wo_comma_names?name=in.(\"Double\\\"Quote\\\"McGraw\\\"\")" shouldRespondWith
-//           [json|r#" [ { "name": "Double\"Quote\"McGraw\"" } ] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
+    describe "escaped chars" $ do
+      it "accepts escaped double quotes" $
+        get "/w_or_wo_comma_names?name=in.(\"Double\\\"Quote\\\"McGraw\\\"\")" shouldRespondWith
+          [json|r#" [ { "name": "Double\"Quote\"McGraw\"" } ] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//       it "accepts escaped backslashes" $ do
-//         get "/w_or_wo_comma_names?name=in.(\"\\\\\")" shouldRespondWith
-//           [json|r#" [{ "name": "\\" }] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
-//         get "/w_or_wo_comma_names?name=in.(\"/\\\\Slash/\\\\Beast/\\\\\")" shouldRespondWith
-//           [json|r#" [ { "name": "/\\Slash/\\Beast/\\" } ] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "accepts escaped backslashes" $ do
+        get "/w_or_wo_comma_names?name=in.(\"\\\\\")" shouldRespondWith
+          [json|r#" [{ "name": "\\" }] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
+        get "/w_or_wo_comma_names?name=in.(\"/\\\\Slash/\\\\Beast/\\\\\")" shouldRespondWith
+          [json|r#" [ { "name": "/\\Slash/\\Beast/\\" } ] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//       it "passes any escaped char as the same char" $
-//         get "/w_or_wo_comma_names?name=in.(\"D\\a\\vid W\\h\\ite\")" shouldRespondWith
-//           [json|r#" [{ "name": "David White" }] "#|]
-//           { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "passes any escaped char as the same char" $
+        get "/w_or_wo_comma_names?name=in.(\"D\\a\\vid W\\h\\ite\")" shouldRespondWith
+          [json|r#" [{ "name": "David White" }] "#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//   describe "IN values without quotes" $ do
-//     it "accepts single double quotes as values" $ do
-//       get "/w_or_wo_comma_names?name=in.(\")" shouldRespondWith
-//         [json|r#" [{ "name": "\"" }] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       get "/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")" shouldRespondWith
-//         [json|r#" [ { "name": "Double\"Quote\"McGraw\"" } ] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+  describe "IN values without quotes" $ do
+    it "accepts single double quotes as values" $ do
+      get "/w_or_wo_comma_names?name=in.(\")" shouldRespondWith
+        [json|r#" [{ "name": "\"" }] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+      get "/w_or_wo_comma_names?name=in.(Double\"Quote\"McGraw\")" shouldRespondWith
+        [json|r#" [ { "name": "Double\"Quote\"McGraw\"" } ] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-//     it "accepts backslashes as values" $ do
-//       get "/w_or_wo_comma_names?name=in.(\\)" shouldRespondWith
-//         [json|r#" [{ "name": "\\" }] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
-//       get "/w_or_wo_comma_names?name=in.(/\\Slash/\\Beast/\\)" shouldRespondWith
-//         [json|r#" [ { "name": "/\\Slash/\\Beast/\\" } ] "#|]
-//         { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "accepts backslashes as values" $ do
+      get "/w_or_wo_comma_names?name=in.(\\)" shouldRespondWith
+        [json|r#" [{ "name": "\\" }] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+      get "/w_or_wo_comma_names?name=in.(/\\Slash/\\Beast/\\)" shouldRespondWith
+        [json|r#" [ { "name": "/\\Slash/\\Beast/\\" } ] "#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
 
   describe "IN and NOT IN empty set" $ do
     describe "returns an empty result for IN when no value is present" $ do
