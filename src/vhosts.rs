@@ -57,7 +57,7 @@ pub async fn create_resources(vhost: &String, config: VhostConfig, store: Arc<Da
     };
     let db_pool = Pool::builder(mgr)
         .runtime(Runtime::Tokio1)
-        .max_size(10)
+        .max_size(config.db_pool)
         .timeouts(timeouts)
         .build().unwrap();
 

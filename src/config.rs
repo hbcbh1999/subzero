@@ -52,6 +52,9 @@ pub struct VhostConfig {
     #[serde(default)]
     pub db_schema_structure: SchemaStructure,
     pub db_anon_role: String,
+    pub db_max_rows: Option<u32>,
+    #[serde(default = "db_pool")]
+    pub db_pool: usize,
     #[serde(default)]
     pub db_tx_rollback: bool,
     #[serde(deserialize_with = "to_tuple", default)]
@@ -63,6 +66,7 @@ pub struct VhostConfig {
 }
 
 fn role_claim_key() -> String {".role".to_string()}
+fn db_pool()->usize { 10 }
 fn to_tuple<'de, D>(deserializer: D) -> Result<Option<(String, String)>, D::Error> where D: Deserializer<'de> {
     let o: Option<String> = Deserialize::deserialize(deserializer)?;
     Ok(match o {
@@ -98,6 +102,8 @@ mod test {
                 jwt_secret: None,
                 jwt_aud: None,
                 role_claim_key: ".role".to_string(),
+                db_pool: 10,
+                db_max_rows: None,
             })])
         };
         let json_config = r#"
