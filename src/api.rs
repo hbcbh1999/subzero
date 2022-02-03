@@ -56,7 +56,13 @@ pub enum CallParams {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Query {
+pub struct Query {
+    pub node: QueryNode,
+    pub sub_selects: Vec<SubSelect>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum QueryNode {
     FunctionCall {
         fn_name: Qi,
         parameters: CallParams,
@@ -93,165 +99,6 @@ pub enum Query {
     
 }
 
-// impl Query {
-//     pub fn node(self) -> String {
-//         match self {
-//             Query::Select {from,..}=>from.0,
-//             Query::FunctionCall {fn_name, ..} => fn_name.1,
-//             Query::Insert {into, ..} => into
-//         }
-//     }
-//     fn values(&self) -> Inspector {
-//         Inspector { 
-//             iter: 
-//                 match self {
-//                     Query::Select {select, ..} => select,
-//                     Query::Insert {select, ..} => select,
-//                     Query::FunctionCall { select, .. } => select
-//                 }
-//                 .iter()
-//                 .filter_map(|i| match i { SelectItem::SubSelect { query, ..} => Some(query), _ => None})
-//         }
-        
-//     }
-// }
-
-
-
-// struct Inspector<'a> {
-//     iter: std::slice::Iter<'a, Query>
-// }
-
-// impl<'a> Iterator for Inspector<'a> {
-//     type Item = &'a Query;
-//     fn next(&mut self) -> Option<Self::Item> {
-//         self.iter.next()
-//     }
-// }
-// impl IntoIterator for Query {
-//     type Item = Query;
-//     type IntoIter = IntoIter<Query>;
-
-//     fn into_iter(mut self) -> IntoIter<Query> { 
-//         vec![self].into_iter()
-//     }
-// }
-// impl<'a> IntoIterator for &'a Query
-// impl<'a> IntoIterator for &'a mut Query
-
-// pub struct Iter<T>(VecDeque<T>);
-// impl<'a> Iterator for Iter<&'a Query> {
-//     type Item = &'a Query;
-//     fn next(&mut self) -> Option<Self::Item> {
-//         let Self(stack) = self;
-//         stack.pop_front().map(|q| {
-//             stack.extend(
-//                 match q {
-//                     Query::Select {select, ..} => select,
-//                     Query::Insert {select, ..} => select,
-//                     Query::FunctionCall { select, .. } => select
-//                 }.iter()
-//                 .filter_map(|i| match i { SelectItem::SubSelect { query, ..} => Some(query), _ => None})
-//                 // .flat_map(|o| Some(&**o.as_ref()?))
-//             );
-//             q
-//         })
-//     }
-// }
-// impl<'a> Iterator for Iter<&'a mut Query> {
-//     type Item = &'a mut Query;
-//     fn next(&mut self) -> Option<Self::Item> {
-//         let Self(stack) = self;
-//         stack.pop_front().map(|q| {
-//             stack.extend(
-//                 match q {
-//                     Query::Select {select, ..} => select,
-//                     Query::Insert {select, ..} => select,
-//                     Query::FunctionCall { select, .. } => select
-//                 }.iter_mut()
-//                 .filter_map(|i| match i { SelectItem::SubSelect { query, ..} => Some(query), _ => None})
-//                 .flat_map(|o| Some(&mut **o.as_mut()?))
-//             );
-//             q
-//         })
-//     }
-// }
-// impl Iterator for Iter<Query> {
-//     type Item = Query;
-//     fn next(&mut self) -> Option<Self::Item> {
-//         let Self(stack) = self;
-//         stack.pop_front().map(|q| {
-//             stack.extend(
-//                 match q {
-//                     Query::Select {select, ..} => select,
-//                     Query::Insert {select, ..} => select,
-//                     Query::FunctionCall { select, .. } => select
-//                 }.into_iter()
-//                 .filter_map(|i| match i { SelectItem::SubSelect { query, ..} => Some(query), _ => None})
-//                 //vec![].into_iter()
-//                 //select(q).into_iter()
-//                 //.filter_map(|i| match i { SelectItem::SubSelect { query, ..} => Some(query), _ => None})
-//             );
-//             q
-//         })
-//     }
-// }
-// impl<'a> IntoIterator for &'a Query {
-//     type Item = <Self::IntoIter as Iterator>::Item;
-//     type IntoIter = Iter<Self>;
-//     fn into_iter(self) -> Self::IntoIter {
-//         Iter(VecDeque::from([self]))
-//     }
-// }
-// impl<'a> IntoIterator for &'a mut Query {
-//     type Item = <Self::IntoIter as Iterator>::Item;
-//     type IntoIter = Iter<Self>;
-//     fn into_iter(self) -> Self::IntoIter {
-//         Iter(VecDeque::from([self]))
-//     }
-// }
-// impl IntoIterator for Query {
-//     type Item = <Self::IntoIter as Iterator>::Item;
-//     type IntoIter = Iter<Self>;
-//     fn into_iter(self) -> Self::IntoIter {
-//         Iter(VecDeque::from([self]))
-//     }
-// }
-// fn subselects(i: &SelectItem) -> Option<&Query> {
-//     match i {
-//         SelectItem::SubSelect { query, ..} => Some(query),
-//         _ => None
-//     }
-// }
-
-// fn select(q: &Query) -> &Vec<SelectItem> {
-//     match q {
-//         Query::Select {select, ..} => select,
-//         Query::Insert {select, ..} => select,
-//         Query::FunctionCall { select, .. } => select
-//     }
-// }
-// impl<'a> IntoIterator for &'a Query {
-//     type Item = <Self::IntoIter as Iterator>::Item;
-//     type IntoIter = Iter<Self>;
-//     fn into_iter(self) -> Self::IntoIter {
-//         Bft::new(&self, |q| {
-//             match q {
-//                 Query::Select {select, ..} => select,
-//                 Query::Insert {select, ..} => select,
-//                 Query::FunctionCall { select, .. } => select
-//             }
-//             .iter()
-//             .filter_map(|s| 
-//                 match s {
-//                     SelectItem::SubSelect { query, ..} => Some(query),
-//                     _ => None
-//                 }
-//             )
-//         })
-//     }
-// }
-
 #[derive(Debug, PartialEq)]
 pub struct OrderTerm {
     pub term:  Field,
@@ -287,6 +134,12 @@ pub enum Join {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum SelectKind {
+    Item(SelectItem),
+    Sub(SubSelect),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum SelectItem {
     //TODO!!! better name
     Star,
@@ -295,12 +148,14 @@ pub enum SelectItem {
         alias: Option<String>,
         cast: Option<String>,
     },
-    SubSelect {
-        query: Query,
-        alias: Option<String>,
-        hint: Option<JoinHint>,
-        join: Option<Join>
-    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SubSelect {
+    pub query: Query,
+    pub alias: Option<String>,
+    pub hint: Option<JoinHint>,
+    pub join: Option<Join>
 }
 
 #[derive(Debug, PartialEq, Clone)]

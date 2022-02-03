@@ -9,7 +9,7 @@ use snafu::{ResultExt};
 use http::Method;
 
 use crate::{
-    api::{ApiRequest, Query::*, ContentType, ContentType::*,},
+    api::{ApiRequest, QueryNode::*, ContentType, ContentType::*,},
     schema::DbSchema,
     error::{*, Result},
     config::{VhostConfig, },
@@ -190,7 +190,7 @@ pub async fn handle_postgrest_request(
     let page_total: i64 = rows[0].get("page_total");
     let total_result_set: Option<i64> = rows[0].get("total_result_set");
     let top_level_offset: i64 = 0;
-    let content_type = match ( &request.accept_content_type, &request.query) {
+    let content_type = match ( &request.accept_content_type, &request.query.node) {
         (SingularJSON, _) |
         (_, FunctionCall { returns_single: true, is_scalar: false, .. })
             => SingularJSON,
@@ -198,7 +198,7 @@ pub async fn handle_postgrest_request(
         _ => ApplicationJSON,
     };
     //let mut headers = vec![Header::new("Content-Range", format!("0-{}/*", page_total - 1))];
-    let content_range = match (method, &request.query, page_total, total_result_set) {
+    let content_range = match (method, &request.query.node, page_total, total_result_set) {
         (&Method::POST, Insert {..}, _pt,t) => content_range_header(1,0,t),
         // (_,_,pt,qt) => content_range_header(1,0,Some(pt)),
         (_,_,pt,t) => content_range_header(top_level_offset, top_level_offset + pt -1, t)
@@ -231,7 +231,7 @@ pub async fn handle_postgrest_request(
         }?
     }
     //let mut status = Status::Ok;
-    let mut status = match (method, &request.query, page_total, total_result_set) {
+    let mut status = match (method, &request.query.node, page_total, total_result_set) {
         (&Method::POST, Insert {..},_,_) => 201,
         (_,_,pt,t) => content_range_status(top_level_offset, top_level_offset + pt -1, t),
     };

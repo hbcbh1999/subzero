@@ -5,8 +5,9 @@ use std::iter::{FromIterator,zip};
 
 use crate::api::{
     *,
-    LogicOperator::*,Join::*, Condition::*, Filter::*, Query::*,
+    LogicOperator::*,Join::*, Condition::*, Filter::*, QueryNode::*,
     ContentType::*,
+    SelectItem::*, SelectKind::*,
 };
 use crate::schema::{*, ObjectType::*, ProcReturnType::*,PgType::*};
 use crate::error::*;
@@ -128,7 +129,7 @@ pub fn parse<'r>(
     }?;
     let mut select_items = match (method, &preferences) {
         (&Method::POST, Some(Preferences { representation: Some(Representation::None), ..})) => vec![],
-        _ => vec![SelectItem::Star],
+        _ => vec![Item(Star)],
     };
 
     // iterate over parameters, parse and collect them in the relevant vectors
@@ -226,6 +227,7 @@ pub fn parse<'r>(
         }
     }
 
+    let (node_select, sub_selects) = split_select(select_items);
     let mut query = match (method, root_obj.kind.clone()) {
         (method, Function {return_type, parameters, ..}) => {
             let parameters_map = parameters.iter().map(|p| (p.name.as_str(), p)).collect::<HashMap<_,_>>();
@@ -319,49 +321,55 @@ pub fn parse<'r>(
                 }
                 _ => Err(Error::UnsupportedVerb)
             }?;
-            let mut q = FunctionCall {
-                fn_name: Qi(schema.clone(), root.clone()),
-                parameters: params,
-                
-                //CallParams::KeyParams(vec![]),
-                payload: Payload(payload),
-                
-                is_scalar: match return_type {
-                    One(Scalar) => true,
-                    SetOf(Scalar) => true,
-                    _ => false,
-                },
-                returns_single: match return_type {
-                    One(_) => true,
-                    SetOf(_) => false,
-                },
-                is_multiple_call: false,
+            let mut q = Query {
+                node: FunctionCall {
+                    fn_name: Qi(schema.clone(), root.clone()),
+                    parameters: params,
+                    
+                    //CallParams::KeyParams(vec![]),
+                    payload: Payload(payload),
+                    
+                    is_scalar: match return_type {
+                        One(Scalar) => true,
+                        SetOf(Scalar) => true,
+                        _ => false,
+                    },
+                    returns_single: match return_type {
+                        One(_) => true,
+                        SetOf(_) => false,
+                    },
+                    is_multiple_call: false,
 
-                returning: vec![],//get_returning(&select_items)?,
-                select: select_items,
-                where_: ConditionTree { operator: And, conditions: vec![] },
-                return_table_type: match return_type {
-                    SetOf(Composite(qi)) => Some(qi),
-                    One(Composite(qi)) => Some(qi),
-                    _ => None,
+                    returning: vec![],//get_returning(&select_items)?,
+                    select: node_select,
+                    where_: ConditionTree { operator: And, conditions: vec![] },
+                    return_table_type: match return_type {
+                        SetOf(Composite(qi)) => Some(qi),
+                        One(Composite(qi)) => Some(qi),
+                        _ => None,
+                    },
+                    limit: None, offset: None, order: vec![],
                 },
-                limit: None, offset: None, order: vec![],
+                sub_selects,
             };
             add_join_info(&mut q, &schema, db_schema, 0)?;
             
             //we populate the returing becasue it relies on the "join" information
-            if let FunctionCall { ref mut returning, ref select, ..} = q {
-                returning.extend(get_returning(select)?);
+            if let Query{ node: FunctionCall { ref mut returning, ref select, ..}, ref sub_selects } = q {
+                returning.extend(get_returning(&select, &sub_selects)?);
             }
             Ok(q)
         },
         (&Method::GET, _) => {
-            let mut q = Select {
-                select: select_items,
-                from: (root.clone(), None),
-                join_tables: vec![],
-                where_: ConditionTree { operator: And, conditions: vec![] },
-                limit: None, offset: None, order: vec![],
+            let mut q = Query{
+                node: Select {
+                    select: node_select,
+                    from: (root.clone(), None),
+                    join_tables: vec![],
+                    where_: ConditionTree { operator: And, conditions: vec![] },
+                    limit: None, offset: None, order: vec![],
+                },
+                sub_selects
             };
             //println!("query {:#?}", q);
             add_join_info(&mut q, &schema, db_schema, 0)?;
@@ -430,19 +438,22 @@ pub fn parse<'r>(
                    Ok((serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserialize)?, header.iter().map(|h| h.to_string()).collect()))
                 }
             }?;
-            let mut q = Insert {
-                into: root.clone(),
-                columns: columns,
-                payload: Payload(payload),
-                where_: ConditionTree { operator: And, conditions: vec![] },
-                returning: vec![], //get_returning(&select_items)?,
-                select: select_items,
-                //, onConflict :: Maybe (PreferResolution, [FieldName])
+            let mut q = Query {
+                node: Insert {
+                    into: root.clone(),
+                    columns: columns,
+                    payload: Payload(payload),
+                    where_: ConditionTree { operator: And, conditions: vec![] },
+                    returning: vec![], //get_returning(&select_items)?,
+                    select: node_select,
+                    //, onConflict :: Maybe (PreferResolution, [FieldName])
+                },
+                sub_selects,
             };
             add_join_info(&mut q, &schema, db_schema, 0)?;
             //we populate the returing becasue it relies on the "join" information
-            if let Insert { ref mut returning, ref select, ..} = q {
-                returning.extend(get_returning(select)?);
+            if let Query{ node: Insert { ref mut returning, ref select, ..}, ref sub_selects } = q {
+                returning.extend(get_returning(&select, &sub_selects)?);
             }
             Ok(q)
         },
@@ -456,7 +467,7 @@ pub fn parse<'r>(
     insert_conditions(&mut query, conditions);
 
     insert_properties(&mut query, limits, |q, p|{
-        let limit = match q {
+        let limit = match &mut q.node {
             Select {limit, ..} => limit,
             Insert {..} => todo!(),
             FunctionCall {limit, ..} => limit,
@@ -467,7 +478,7 @@ pub fn parse<'r>(
     });
 
     insert_properties(&mut query, offsets, |q, p|{
-        let offset = match q {
+        let offset = match  &mut q.node {
             Select {offset, ..} => offset,
             Insert {..} => todo!(),
             FunctionCall {offset, ..} => offset,
@@ -478,7 +489,7 @@ pub fn parse<'r>(
     });
 
     insert_properties(&mut query, orders, |q, p|{
-        let order = match q {
+        let order = match  &mut q.node {
             Select {order, ..} => order,
             Insert {..} => todo!(),
             FunctionCall {order, ..} => order,
@@ -652,7 +663,7 @@ where Input: Stream<Token = char>
     })
 }
 
-fn select<Input>() -> impl Parser<Input, Output = Vec<SelectItem>>
+fn select<Input>() -> impl Parser<Input, Output = Vec<SelectKind>>
 where Input: Stream<Token = char>
 {
     sep_by1(select_item(), lex(char(','))).skip(eof())
@@ -667,7 +678,7 @@ where Input: Stream<Token = char>
 // We need to use `parser!` to break the recursive use of `select_item` to prevent the returned parser
 // from containing itself
 #[inline]
-fn select_item<Input>() -> impl Parser<Input, Output = SelectItem>
+fn select_item<Input>() -> impl Parser<Input, Output = SelectKind>
 where Input: Stream<Token = char>
 {
     select_item_()
@@ -675,36 +686,40 @@ where Input: Stream<Token = char>
 
 parser! {
     #[inline]
-    fn select_item_[Input]()(Input) -> SelectItem
+    fn select_item_[Input]()(Input) -> SelectKind
     where [ Input: Stream<Token = char> ]
     {
-        let star = char('*').map(|_| SelectItem::Star);
+        let star = char('*').map(|_| Item(Star));
         let column = 
             optional(attempt(alias()))
             .and(field())
             .and(optional(cast()))
-            .map(|((alias, field), cast)| SelectItem::Simple {field: field, alias: alias, cast});
+            .map(|((alias, field), cast)| Item(Simple {field: field, alias: alias, cast}));
         let sub_select = (
             optional(attempt(alias())),
             lex(field_name()),
             optional(char('!').or(char('.')).and(field_name()).map(|(_,hint)| hint)),
             between(lex(char('(')), lex(char(')')),  sep_by(select_item(), lex(char(','))))
         )
-        .map(|(alias, from, join_hint, select)| 
-            SelectItem::SubSelect {
-                query: Select {
-                    select: select,
-                    from: (from, None),
-                    join_tables: vec![],
-                    //from_alias: alias,
-                    where_: ConditionTree { operator: And, conditions: vec![]},
-                    limit: None, offset: None, order: vec![],
+        .map(|(alias, from, join_hint, select)| {
+            let (sel, sub_sel) = split_select(select);
+            Sub(SubSelect {
+                query: Query{
+                    node: Select {
+                        select: sel,//select,
+                        from: (from, None),
+                        join_tables: vec![],
+                        //from_alias: alias,
+                        where_: ConditionTree { operator: And, conditions: vec![]},
+                        limit: None, offset: None, order: vec![],
+                    },
+                    sub_selects: sub_sel
                 },
                 alias: alias,
                 hint: join_hint,
                 join: None
-            }
-        );
+            })
+        });
 
         attempt(sub_select).or(column).or(star)
     }
@@ -1014,6 +1029,18 @@ parser! {
 }
 
 // helper functions
+fn split_select(select: Vec<SelectKind>) -> (Vec<SelectItem>, Vec<SubSelect>){
+    let mut sel = vec![];
+    let mut sub_sel = vec![];
+    for i in select {
+        match i {
+            Item(s) => sel.push(s),
+            Sub(s) => sub_sel.push(s),
+        }
+    }
+    (sel, sub_sel)
+}
+
 fn is_self_join( join: &Join ) -> bool {
     match join {
         Parent(fk) => fk.table == fk.referenced_table,
@@ -1024,44 +1051,37 @@ fn is_self_join( join: &Join ) -> bool {
 
 fn add_join_info( query: &mut Query, schema: &String, db_schema: &DbSchema, depth: u16 )->Result<()>{
     let dummy_source = &"subzero_source".to_string();
-    let (select, parent_table) : (&mut Vec<SelectItem>, &String) = match query {
-        Select {select, from: (table, _), ..} => (select.as_mut(), table),
-        Insert {select, into, ..} => (select.as_mut(), into),
-        FunctionCall { select, return_table_type, .. } => {
+    let parent_table : &String = match &query.node {
+        Select {from: (table, _), ..} => table,
+        Insert {into, ..} => into,
+        FunctionCall { return_table_type, .. } => {
             let table = match return_table_type {
                 Some(q) => &q.1,
                 None => dummy_source,
             };
-            (select.as_mut(), table)
+            table
         },
     };
     
-    for s in select.iter_mut() {
-        match s {
-            SelectItem::SubSelect{query: q @ Select {..}, join, hint, alias, ..} => {
-                let (child_table, table_alias) = match q {
-                    Select {from, ..} => from,
-                    _ => panic!("this should be unreachable")
-                };//from.get(0).unwrap();
-                let new_join = db_schema.get_join(schema, parent_table, child_table, hint)?;
-                //println!("new join: {:#?}", new_join);
-                if is_self_join(&new_join){
-                    std::mem::swap(table_alias, &mut Some(format!("{}_{}", child_table, depth)));
-                }
-                match &new_join {
-                    Parent (fk) if &fk.referenced_table.1 != child_table  => {
-                        // println!("entering swap section: fk:{:#?}\nct:{:#?}\nal:{:#?}", fk, child_table, alias);
-                        if alias.is_none(){
-                            std::mem::swap(alias, &mut Some(child_table.clone()));
-                        }
-                        std::mem::swap(child_table, &mut fk.referenced_table.1.clone());
-                    }
-                    _ => {}
-                }
-                std::mem::swap(join, &mut Some(new_join));
-                add_join_info( q, schema, db_schema, depth + 1)?
+    for SubSelect{query: q, join, hint, alias, ..} in query.sub_selects.iter_mut() {
+        if let Select { from: (child_table, table_alias), ..} = &mut q.node {
+            let new_join = db_schema.get_join(schema, parent_table, child_table, hint)?;
+            //println!("new join: {:#?}", new_join);
+            if is_self_join(&new_join){
+                std::mem::swap(table_alias, &mut Some(format!("{}_{}", child_table, depth)));
             }
-            _ => {}
+            match &new_join {
+                Parent (fk) if &fk.referenced_table.1 != child_table  => {
+                    // println!("entering swap section: fk:{:#?}\nct:{:#?}\nal:{:#?}", fk, child_table, alias);
+                    if alias.is_none(){
+                        std::mem::swap(alias, &mut Some(child_table.clone()));
+                    }
+                    std::mem::swap(child_table, &mut fk.referenced_table.1.clone());
+                }
+                _ => {}
+            }
+            std::mem::swap(join, &mut Some(new_join));
+            add_join_info( q, schema, db_schema, depth + 1)?
         }
     }
     Ok(())
@@ -1070,90 +1090,77 @@ fn add_join_info( query: &mut Query, schema: &String, db_schema: &DbSchema, dept
 fn insert_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema ){
     let subzero_source = "subzero_source".to_string();
     let empty = "".to_string();
-    let (select, parent_qi) : (&mut Vec<SelectItem>, Qi) = match query {
-        Select {select, from: (table, table_alias), ..} => (
-            select.as_mut(),
-            match table_alias {
-                Some(a) => Qi(empty,a.clone()),
-                None => Qi (schema.clone(), table.clone())
-            }
-        ),
-        Insert {select, ..} => (select.as_mut(), Qi(empty,subzero_source)),
-        FunctionCall { select, .. } => {
-            (select.as_mut(),Qi(empty,subzero_source))
+    let parent_qi : Qi = match &query.node {
+        Select {from: (table, table_alias), ..} => match table_alias {
+            Some(a) => Qi(empty,a.clone()),
+            None => Qi (schema.clone(), table.clone())
         },
+        Insert {..} => Qi(empty,subzero_source),
+        FunctionCall {  .. } => Qi(empty,subzero_source),
     };
-    
-    for s in select.iter_mut() {
-        match s {
-            SelectItem::SubSelect{query: q, join: Some(join), ..} => {
-                let join_tables = match q {
-                    Select {join_tables, ..} => join_tables,
-                    _ => panic!("there should not be any Insert queries as subselects"),
-                };
-                if let Many (join_table, _,_) = &join {
-                    join_tables.push(join_table.1.clone());
-                }
+    for SubSelect{query: q, join, ..} in query.sub_selects.iter_mut() {
+        if let (Select { join_tables, ..}, Some(join)) = (&mut q.node, join) {
+            if let Many (join_table, _,_) = &join {
+                join_tables.push(join_table.1.clone());
+            }
 
-                let conditions = match join {
-                    Parent (fk) => {
-                        zip(&fk.columns, &fk.referenced_columns)
+            let conditions = match join {
+                Parent (fk) => {
+                    zip(&fk.columns, &fk.referenced_columns)
+                    .map(|(col,ref_col)|
+                        (
+                            vec![],
+                            Single {
+                                field: Field {name: ref_col.clone(), json_path: None},
+                                filter: Col (parent_qi.clone(), Field {name: col.clone(), json_path: None}),
+                                negate: false
+                            }
+                        )
+                    ).collect()
+                },
+                Child (fk) => {
+                    zip(&fk.columns, &fk.referenced_columns)
+                    .map(|(col,ref_col)|
+                        (
+                            vec![],
+                            Single {
+                                field: Field {name: col.clone(), json_path: None},
+                                filter: Col (parent_qi.clone(), Field {name: ref_col.clone(), json_path: None}),
+                                negate: false
+                            }
+                        )
+                    ).collect()
+                },
+                Many (join_table, fk1, fk2) => {
+
+                    //fk1 is for origin table
+                    zip(&fk1.columns, &fk1.referenced_columns)
+                    .map(|(col,ref_col)|
+                        (
+                            vec![],
+                            Foreign {
+                                left: (parent_qi.clone(), Field {name: ref_col.clone(), json_path: None}),
+                                right: (Qi (join_table.0.clone(), join_table.1.clone()), Field {name: col.clone(), json_path: None})
+                            }
+                        )
+                    ).chain(
+                        //fk2 is for target table
+                        zip(&fk2.columns, &fk2.referenced_columns)
                         .map(|(col,ref_col)|
                             (
                                 vec![],
                                 Single {
                                     field: Field {name: ref_col.clone(), json_path: None},
-                                    filter: Col (parent_qi.clone(), Field {name: col.clone(), json_path: None}),
+                                    filter: Col (Qi (join_table.0.clone(), join_table.1.clone()), Field {name: col.clone(), json_path: None}),
                                     negate: false
                                 }
                             )
-                        ).collect()
-                    },
-                    Child (fk) => {
-                        zip(&fk.columns, &fk.referenced_columns)
-                        .map(|(col,ref_col)|
-                            (
-                                vec![],
-                                Single {
-                                    field: Field {name: col.clone(), json_path: None},
-                                    filter: Col (parent_qi.clone(), Field {name: ref_col.clone(), json_path: None}),
-                                    negate: false
-                                }
-                            )
-                        ).collect()
-                    },
-                    Many (join_table, fk1, fk2) => {
-
-                        //fk1 is for origin table
-                        zip(&fk1.columns, &fk1.referenced_columns)
-                        .map(|(col,ref_col)|
-                            (
-                                vec![],
-                                Foreign {
-                                    left: (parent_qi.clone(), Field {name: ref_col.clone(), json_path: None}),
-                                    right: (Qi (join_table.0.clone(), join_table.1.clone()), Field {name: col.clone(), json_path: None})
-                                }
-                            )
-                        ).chain(
-                            //fk2 is for target table
-                            zip(&fk2.columns, &fk2.referenced_columns)
-                            .map(|(col,ref_col)|
-                                (
-                                    vec![],
-                                    Single {
-                                        field: Field {name: ref_col.clone(), json_path: None},
-                                        filter: Col (Qi (join_table.0.clone(), join_table.1.clone()), Field {name: col.clone(), json_path: None}),
-                                        negate: false
-                                    }
-                                )
-                            )
-                        ).collect()
-                    }
-                };
-                insert_conditions(q, conditions);
-                insert_join_conditions( q, schema, db_schema);
-            }
-            _ => {}
+                        )
+                    ).collect()
+                }
+            };
+            insert_conditions(q, conditions);
+            insert_join_conditions( q, schema, db_schema);
         }
     }
 }
@@ -1164,24 +1171,19 @@ fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>,
          f(query, node_properties) 
     };
     
-
-    let select = match query {
-        Select {select,..} => select,
-        Insert {select,..} => select,
-        FunctionCall {select, .. } => select,
-    };
-
-    for s in select.iter_mut() {
-        match s {
-            SelectItem::SubSelect{query: q, alias, ..} => {
-                let from : &String = match q {
-                    Select {from:(table,_), ..} => table,
-                    _ => panic!("there should not be any Insert queries as subselects"),
-                };
+    for SubSelect{query: q, alias, ..} in query.sub_selects.iter_mut(){
+    //for s in select.iter_mut() {
+    //    match s {
+    //        SelectItem::SubSelect{query: q, alias, ..} => {
+            if let Select { from: (table, _), ..} = &mut q.node {
+                // let from : &String = match q {
+                //     Select {from:(table,_), ..} => table,
+                //     _ => panic!("there should not be any Insert queries as subselects"),
+                // };
                 let node_properties = properties.drain_filter(|(path, _)|
                     match path.get(0) {
                         Some(p) => {
-                            if p == from || Some(p) == alias.as_ref()  { path.remove(0); true }
+                            if p == table || Some(p) == alias.as_ref()  { path.remove(0); true }
                             else {false}
                         }
                         None => false
@@ -1189,14 +1191,15 @@ fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>,
                 ).collect::<Vec<_>>();
                 insert_properties(q, node_properties, f);
             }
-            _ => {}
-        }
+    //        }
+    //        _ => {}
+    //    }
     }
 }
 
 fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)>){
     insert_properties(query, conditions, |q, p|{
-        let query_conditions: &mut Vec<Condition> = match q {
+        let query_conditions: &mut Vec<Condition> = match &mut q.node {
             Select {where_, ..} => where_.conditions.as_mut(),
             Insert {where_, ..} => where_.conditions.as_mut(),
             FunctionCall {where_, .. } => where_.conditions.as_mut(),
@@ -1241,30 +1244,36 @@ fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
     }
 }
 
-fn get_returning(select: &Vec<SelectItem>) -> Result<Vec<String>> {
-    Ok(select.iter().map(|s|{
+//fn get_returning(select: &Vec<SelectKind>) -> Result<Vec<String>> {
+fn get_returning(selects: &Vec<SelectItem>, sub_selects: &Vec<SubSelect>) -> Result<Vec<String>> {
+    let returning = selects.iter().map(|s|{
         match s {
-            SelectItem::Simple {field, ..} => Ok(vec![&field.name]),
-            SelectItem::SubSelect {join:Some(j), ..} => {
-                match j {
-                    Child(fk) => Ok(fk.referenced_columns.iter().collect()),
-                    Parent(fk) => Ok(fk.columns.iter().collect()),
-                    Many(_,fk1,fk2) => {
-                        let mut f = vec![];
-                        f.extend(fk1.referenced_columns.iter());
-                        f.extend(fk2.referenced_columns.iter());
-                        Ok(f)
-                    },
-                }
-            },
-            SelectItem::Star => Ok(vec![&*STAR]),
-            //TODO!! error here is wrong
-            x => Err(Error::NoRelBetween {origin: "table".to_string(), target: format!("x {:?}",x)}) 
-            
+            Simple {field, ..} => Ok(vec![&field.name]),
+            Star => Ok(vec![&*STAR]),
         }
     })
+    .chain(
+        sub_selects.iter().map(|s|{
+            match s {
+                SubSelect {join:Some(j), ..} => {
+                    match j {
+                        Child(fk) => Ok(fk.referenced_columns.iter().collect()),
+                        Parent(fk) => Ok(fk.columns.iter().collect()),
+                        Many(_,fk1,fk2) => {
+                            let mut f = vec![];
+                            f.extend(fk1.referenced_columns.iter());
+                            f.extend(fk2.referenced_columns.iter());
+                            Ok(f)
+                        },
+                    }
+                },
+                x => Err(Error::NoRelBetween {origin: "table".to_string(), target: format!("{:?}",x)}) 
+            }
+        })
+    )
     .collect::<Result<Vec<_>, _>>()?
-    .into_iter().flatten().cloned().collect::<BTreeSet<_>>().into_iter().collect())
+    .into_iter().flatten().cloned().collect::<BTreeSet<_>>().into_iter().collect::<Vec<_>>();
+    Ok(returning)
 }
 
 
@@ -1273,7 +1282,7 @@ fn get_returning(select: &Vec<SelectItem>) -> Result<Vec<String>> {
 pub mod tests {
     //use std::matches;
     use pretty_assertions::{assert_eq, assert_ne};
-    use crate::api::{JsonOperand::*, JsonOperation::*, SelectItem::*, Condition::{Group, Single}};
+    use crate::api::{JsonOperand::*, JsonOperation::*, Condition::{Group, Single}};
     use combine::{stream::PointerOffset};
     use combine::easy::{Error, Errors};
     
@@ -1434,25 +1443,28 @@ pub mod tests {
             headers: &emtpy_hashmap,
             accept_content_type: ApplicationJSON,
             cookies: &emtpy_hashmap,
-            query: FunctionCall {
-                fn_name: Qi(s("api"), s("myfunction")),
-                parameters: CallParams::KeyParams(vec![
-                    ProcParam {
-                        name: s("id"),
-                        type_: s("integer"),
-                        required: true,
-                        variadic: false,
-                    }
-                ]),
-                payload: Payload(s(r#"{"id":"10"}"#)),
-                is_scalar: true,
-                returns_single: true,
-                is_multiple_call: false,
-                returning: vec![s("*")],
-                select: vec![Star],
-                where_: ConditionTree { operator: And, conditions: vec![] },
-                return_table_type: None,
-                limit: None, offset: None, order: vec![],
+            query: Query{
+                node: FunctionCall {
+                    fn_name: Qi(s("api"), s("myfunction")),
+                    parameters: CallParams::KeyParams(vec![
+                        ProcParam {
+                            name: s("id"),
+                            type_: s("integer"),
+                            required: true,
+                            variadic: false,
+                        }
+                    ]),
+                    payload: Payload(s(r#"{"id":"10"}"#)),
+                    is_scalar: true,
+                    returns_single: true,
+                    is_multiple_call: false,
+                    returning: vec![s("*")],
+                    select: vec![Star],
+                    where_: ConditionTree { operator: And, conditions: vec![] },
+                    return_table_type: None,
+                    limit: None, offset: None, order: vec![],
+                },
+                sub_selects: vec![]
             }
             
         };
@@ -1472,11 +1484,20 @@ pub mod tests {
     #[test]
     fn test_insert_conditions(){
        
-        let mut query = Select { order: vec![], limit: None, offset: None,
-            select: vec![
-                Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
-                SubSelect{
-                    query: Select { order: vec![], limit: None, offset: None,
+        let mut query = Query{
+            node: Select { order: vec![], limit: None, offset: None,
+                select: vec![
+                    Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
+                    
+                ],
+                from: (s("parent"),None),
+                join_tables: vec![],
+                //from_alias: None,
+                where_: ConditionTree { operator: And, conditions: vec![] }
+            },
+            sub_selects: vec![SubSelect{
+                query: Query{
+                    node: Select { order: vec![], limit: None, offset: None,
                         select: vec![
                             Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
                         ],
@@ -1484,15 +1505,12 @@ pub mod tests {
                         join_tables: vec![],
                         where_: ConditionTree { operator: And, conditions: vec![]}
                     },
-                    alias: None,
-                    hint: None,
-                    join: None
-                }
-            ],
-            from: (s("parent"),None),
-            join_tables: vec![],
-            //from_alias: None,
-            where_: ConditionTree { operator: And, conditions: vec![] }
+                    sub_selects: vec![],
+                },
+                alias: None,
+                hint: None,
+                join: None
+            }]
         };
         let condition = Single {
             field: Field {name: s("a"), json_path: None},
@@ -1504,27 +1522,35 @@ pub mod tests {
             (vec![s("child")],condition.clone()),
         ]);
         assert_eq!(query,
-            Select { order: vec![], limit: None, offset: None,
-                select: vec![
-                    Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
+            Query{
+                node: Select { order: vec![], limit: None, offset: None,
+                    select: vec![
+                        Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
+                        
+                    ],
+                    from: (s("parent"),None),
+                    join_tables: vec![],
+                    where_: ConditionTree { operator: And, conditions: vec![condition.clone()] }
+                },
+                sub_selects: vec![
                     SubSelect{
-                        query: Select { order: vec![], limit: None, offset: None,
-                            select: vec![
-                                Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
-                            ],
-                            from: (s("child"),None),
-                            join_tables: vec![],
-                            //from_alias: None,
-                            where_: ConditionTree { operator: And, conditions: vec![condition.clone()] }
+                        query: Query {
+                            node: Select { order: vec![], limit: None, offset: None,
+                                select: vec![
+                                    Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
+                                ],
+                                from: (s("child"),None),
+                                join_tables: vec![],
+                                //from_alias: None,
+                                where_: ConditionTree { operator: And, conditions: vec![condition.clone()] }
+                            },
+                            sub_selects: vec![]
                         },
                         alias: None,
                         hint: None,
                         join: None
                     }
-                ],
-                from: (s("parent"),None),
-                join_tables: vec![],
-                where_: ConditionTree { operator: And, conditions: vec![condition.clone()] }
+                ]
             }
         );
     }
@@ -1551,82 +1577,12 @@ pub mod tests {
                 accept_content_type: ApplicationJSON,
                 headers: &emtpy_hashmap,
                 cookies: &emtpy_hashmap,
-                query: 
-                    Select { order: vec![], limit: None, offset: None,
+                query: Query {
+                    node: Select { order: vec![], limit: None, offset: None,
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                             Simple {field: Field {name: s("name"), json_path: None}, alias: None, cast: None},
-                            SubSelect{
-                                query: Select { order: vec![], limit: None, offset: None,
-                                    select: vec![
-                                        Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
-                                    ],
-                                    from: (s("clients"),None),
-                                    join_tables: vec![],
-                                    //from_alias: None,
-                                    where_: ConditionTree { operator: And, conditions: vec![
-                                        Single {
-                                            field: Field {name: s("id"),json_path: None},
-                                            filter: Filter::Col(Qi(s("api"),s("projects")),Field {name: s("client_id"),json_path: None}),
-                                            negate: false,
-                                       }
-                                    ]}
-                                },
-                                alias: None,
-                                hint: None,
-                                join: Some(
-                                    Parent(ForeignKey {
-                                            name: s("client_id_fk"),
-                                            table: Qi(s("api"),s("projects")),
-                                            columns: vec![s("client_id")],
-                                            referenced_table: Qi(s("api"),s("clients")),
-                                            referenced_columns: vec![s("id")],
-                                        }),
-                                )
-                            },
-                            SubSelect{
-                                query: Select { order: vec![], limit: None, offset: None,
-                                    select: vec![
-                                        Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
-                                    ],
-                                    from: (s("tasks"),None),
-                                    join_tables: vec![],
-                                    //from_alias: None,
-                                    where_: ConditionTree { operator: And, conditions: vec![
-                                        Single {
-                                            field: Field {name: s("project_id"),json_path: None},
-                                            filter: Filter::Col(Qi(s("api"),s("projects")),Field {name: s("id"),json_path: None}),
-                                            negate: false,
-                                       },
-                                        Single {
-                                            field: Field {name: s("id"), json_path: None},
-                                            filter: Filter::Op(s("<"),SingleVal(s("500"))),
-                                            negate: false,
-                                        },
-                                        Group(
-                                            false,
-                                            ConditionTree {
-                                                operator: Or,
-                                                conditions: vec![
-                                                    Single {filter: Filter::Op(s("="),SingleVal(s("11"))), field: Field {name: s("id"), json_path: None}, negate: false },
-                                                    Single {filter: Filter::Op(s("="),SingleVal(s("12"))), field: Field {name: s("id"), json_path: None}, negate: false }
-                                                ]
-                                            }
-                                        )
-                                    ]}
-                                },
-                                hint: None,
-                                alias: None,
-                                join: Some(
-                                    Child(ForeignKey {
-                                            name: s("project_id_fk"),
-                                            table: Qi(s("api"),s("tasks")),
-                                            columns: vec![s("project_id")],
-                                            referenced_table: Qi(s("api"),s("projects")),
-                                            referenced_columns: vec![s("id")],
-                                        }),
-                                )
-                            }
+                            
                         ],
                         from: (s("projects"),None),
                         join_tables: vec![],
@@ -1648,7 +1604,81 @@ pub mod tests {
                                 }
                             )
                         ] }
-                    }
+                    },
+                    sub_selects: vec![
+                        SubSelect{
+                            query: Query { sub_selects: vec![], node: Select { order: vec![], limit: None, offset: None,
+                                select: vec![
+                                    Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
+                                ],
+                                from: (s("clients"),None),
+                                join_tables: vec![],
+                                //from_alias: None,
+                                where_: ConditionTree { operator: And, conditions: vec![
+                                    Single {
+                                        field: Field {name: s("id"),json_path: None},
+                                        filter: Filter::Col(Qi(s("api"),s("projects")),Field {name: s("client_id"),json_path: None}),
+                                        negate: false,
+                                   }
+                                ]}
+                            }},
+                            alias: None,
+                            hint: None,
+                            join: Some(
+                                Parent(ForeignKey {
+                                        name: s("client_id_fk"),
+                                        table: Qi(s("api"),s("projects")),
+                                        columns: vec![s("client_id")],
+                                        referenced_table: Qi(s("api"),s("clients")),
+                                        referenced_columns: vec![s("id")],
+                                    }),
+                            )
+                        },
+                        SubSelect{
+                            query: Query { sub_selects: vec![], node: Select { order: vec![], limit: None, offset: None,
+                                select: vec![
+                                    Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
+                                ],
+                                from: (s("tasks"),None),
+                                join_tables: vec![],
+                                //from_alias: None,
+                                where_: ConditionTree { operator: And, conditions: vec![
+                                    Single {
+                                        field: Field {name: s("project_id"),json_path: None},
+                                        filter: Filter::Col(Qi(s("api"),s("projects")),Field {name: s("id"),json_path: None}),
+                                        negate: false,
+                                   },
+                                    Single {
+                                        field: Field {name: s("id"), json_path: None},
+                                        filter: Filter::Op(s("<"),SingleVal(s("500"))),
+                                        negate: false,
+                                    },
+                                    Group(
+                                        false,
+                                        ConditionTree {
+                                            operator: Or,
+                                            conditions: vec![
+                                                Single {filter: Filter::Op(s("="),SingleVal(s("11"))), field: Field {name: s("id"), json_path: None}, negate: false },
+                                                Single {filter: Filter::Op(s("="),SingleVal(s("12"))), field: Field {name: s("id"), json_path: None}, negate: false }
+                                            ]
+                                        }
+                                    )
+                                ]}
+                            }},
+                            hint: None,
+                            alias: None,
+                            join: Some(
+                                Child(ForeignKey {
+                                        name: s("project_id_fk"),
+                                        table: Qi(s("api"),s("tasks")),
+                                        columns: vec![s("project_id")],
+                                        referenced_table: Qi(s("api"),s("projects")),
+                                        referenced_columns: vec![s("id")],
+                                    }),
+                            )
+                        }
+                    ]
+                }
                 
             }
         );
@@ -1690,8 +1720,8 @@ pub mod tests {
                 accept_content_type: ApplicationJSON,
                 headers: &emtpy_hashmap,
                 cookies: &emtpy_hashmap,
-                query: 
-                    Insert {
+                query: Query {
+                    node: Insert {
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                         ],
@@ -1706,7 +1736,9 @@ pub mod tests {
                             }
                         ] },
                         returning: vec![s("id")]
-                    }
+                    },
+                    sub_selects: vec![]
+                }
                 
             })
         );
@@ -1724,8 +1756,8 @@ pub mod tests {
                 accept_content_type: ApplicationJSON,
                 headers: &emtpy_hashmap,
                 cookies: &emtpy_hashmap,
-                query: 
-                    Insert {
+                query: Query {
+                    node: Insert {
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                             Simple {field: Field {name: s("name"), json_path: None}, alias: None, cast: None},
@@ -1741,7 +1773,9 @@ pub mod tests {
                             }
                         ] },
                         returning: vec![ s("id"), s("name"), ]
-                    }
+                    },
+                    sub_selects: vec![]
+                }
                 
             })
         );
@@ -1814,7 +1848,7 @@ pub mod tests {
                 headers: &emtpy_hashmap,
                 cookies: &emtpy_hashmap,
                 query: 
-                    Insert {
+                    Query { sub_selects: vec![], node: Insert {
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                         ],
@@ -1829,7 +1863,7 @@ pub mod tests {
                             }
                         ] },
                         returning: vec![s("id")]
-                    }
+                    }}
                 
             })
         );
@@ -1849,12 +1883,10 @@ pub mod tests {
                 headers: &emtpy_hashmap,
                 cookies: &emtpy_hashmap,
                 query: 
-                    Insert {
-                        select: vec![
-                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
-                            Simple {field: Field {name: s("name"), json_path: None}, alias: None, cast: None},
+                    Query { 
+                        sub_selects: vec![
                             SubSelect{
-                                query: Select { order: vec![], limit: None, offset: None,
+                                query: Query { sub_selects:vec![], node: Select { order: vec![], limit: None, offset: None,
                                     select: vec![
                                         Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                                     ],
@@ -1873,7 +1905,7 @@ pub mod tests {
                                             negate: false,
                                         }
                                     ]}
-                                },
+                                }},
                                 hint: None,
                                 alias: None,
                                 join: Some(
@@ -1887,7 +1919,7 @@ pub mod tests {
                                 )
                             },
                             SubSelect{
-                                query: Select { order: vec![], limit: None, offset: None,
+                                query:Query { sub_selects:vec![], node:  Select { order: vec![], limit: None, offset: None,
                                     select: vec![
                                         Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                                     ],
@@ -1901,7 +1933,7 @@ pub mod tests {
                                             negate: false,
                                        }
                                     ]}
-                                },
+                                }},
                                 alias: None,
                                 hint: None,
                                 join: Some(
@@ -1915,6 +1947,12 @@ pub mod tests {
                                 )
                             },
                         ],
+                        node: Insert {
+                        select: vec![
+                            Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
+                            Simple {field: Field {name: s("name"), json_path: None}, alias: None, cast: None},
+                            
+                        ],
                         payload: Payload(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)),
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
@@ -1927,6 +1965,7 @@ pub mod tests {
                         ] },
                         returning: vec![s("client_id"), s("id"), s("name")]
                     }
+                }
                 
             })
         );
@@ -2361,7 +2400,7 @@ pub mod tests {
         assert_eq!(
             select_item().easy_parse("alias:column"), 
             Ok((
-                Simple {field: Field {name:s("column"), json_path: None}, alias:  Some(s("alias")), cast: None}
+                Item(Simple {field: Field {name:s("column"), json_path: None}, alias:  Some(s("alias")), cast: None})
                 ,""
             ))
         );
@@ -2369,7 +2408,7 @@ pub mod tests {
         assert_eq!(
             select_item().easy_parse("column::cast"), 
             Ok((
-                Simple {field: Field {name:s("column"), json_path: None}, alias:  None, cast: Some(s("cast"))}
+                Item(Simple {field: Field {name:s("column"), json_path: None}, alias:  None, cast: Some(s("cast"))})
                 ,""
             ))
         );
@@ -2377,7 +2416,7 @@ pub mod tests {
         assert_eq!(
             select_item().easy_parse("alias:column::cast"), 
             Ok((
-                Simple {field: Field {name:s("column"), json_path: None}, alias:  Some(s("alias")), cast: Some(s("cast"))}
+                Item(Simple {field: Field {name:s("column"), json_path: None}, alias:  Some(s("alias")), cast: Some(s("cast"))})
                 ,""
             ))
         );
@@ -2385,16 +2424,16 @@ pub mod tests {
         assert_eq!(
             select_item().easy_parse("column"), 
             Ok((
-                Simple {field: Field {name:s("column"), json_path: None}, alias:  None, cast: None}
+                Item(Simple {field: Field {name:s("column"), json_path: None}, alias:  None, cast: None})
                 ,""
             ))
         );
 
         assert_eq!(
-            select_item().easy_parse("table!hint ( column0->key, column1 ,  alias2:column2 )"), 
+            select_item().easy_parse("table!hint( column0->key, column1 ,  alias2:column2 )"), 
             Ok((
-                SubSelect{
-                    query: Select { order: vec![], limit: None, offset: None,
+                Sub(SubSelect{
+                    query: Query { sub_selects: vec![], node: Select { order: vec![], limit: None, offset: None,
                         select: vec![
                             Simple {field: Field {name:s("column0"), json_path: Some(vec![JArrow(JKey(s("key")))])}, alias:  None, cast: None},
                             Simple {field: Field {name:s("column1"), json_path: None}, alias:  None, cast: None},
@@ -2404,11 +2443,11 @@ pub mod tests {
                         join_tables: vec![],
                         //from_alias: None,
                         where_: ConditionTree { operator: And, conditions: vec![]}
-                    },
+                    }},
                     alias: None,
                     hint: Some(s("hint")),
                     join: None
-                }
+                })
                 ,""
             ))
         );
@@ -2416,8 +2455,8 @@ pub mod tests {
         assert_eq!(
             select_item().easy_parse("table.hint ( column0->key, column1 ,  alias2:column2 )"), 
             Ok((
-                SubSelect{
-                    query: Select { order: vec![], limit: None, offset: None,
+                Sub(SubSelect{
+                    query: Query{ sub_selects: vec![], node: Select { order: vec![], limit: None, offset: None,
                         select: vec![
                             Simple {field: Field {name:s("column0"), json_path: Some(vec![JArrow(JKey(s("key")))])}, alias:  None, cast: None},
                             Simple {field: Field {name:s("column1"), json_path: None}, alias:  None, cast: None},
@@ -2427,11 +2466,11 @@ pub mod tests {
                         join_tables: vec![],
                         //from_alias: None,
                         where_: ConditionTree { operator: And, conditions: vec![]}
-                    },
+                    }},
                     alias: None,
                     hint: Some(s("hint")),
                     join: None
-                }
+                })
                 ,""
             ))
         );
