@@ -147,9 +147,9 @@ fn s(s:&str) -> String {
 fn criterion_benchmark(c: &mut Criterion) {
     
     let emtpy_hashmap = HashMap::new();
-    let request = parse(&s("api"), &s("projects"), &DB_SCHEMA, &Method::GET, s("/projects"), &PARAMETERS.to_vec(), None, &emtpy_hashmap, &emtpy_hashmap).unwrap();
+    let request = parse(&s("api"), &s("projects"), &DB_SCHEMA, &Method::GET, s("/projects"), &PARAMETERS.to_vec(), None, &emtpy_hashmap, &emtpy_hashmap, None).unwrap();
     c.bench_function("parse request", |b| b.iter(|| 
-        parse(black_box(&s("api")), black_box(&s("projects")), black_box(&DB_SCHEMA), black_box(&Method::GET), black_box(s("/projects")), black_box(&PARAMETERS.to_vec()), black_box(None), &emtpy_hashmap, &emtpy_hashmap)
+        parse(black_box(&s("api")), black_box(&s("projects")), black_box(&DB_SCHEMA), black_box(&Method::GET), black_box(s("/projects")), black_box(&PARAMETERS.to_vec()), black_box(None), &emtpy_hashmap, &emtpy_hashmap, None)
     ));
 
     c.bench_function("generate query & prepare statement", |b| b.iter(|| 

@@ -10,12 +10,14 @@ use async_once::AsyncOnce;
 static INIT: Once = Once::new();
 lazy_static! {
     
-    static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
+    pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
       Client::untracked(start().await.unwrap()).await.expect("valid client")
     });
+
+    pub static ref MAX_ROWS: Option<&'static str> = None;
 }
 
-pub fn setup() {
+pub fn setup(max_rows: Option<&'static str>) {
     //let _ = env_logger::builder().is_test(true).try_init();
     INIT.call_once(|| {
         // initialization code here
@@ -34,6 +36,10 @@ pub fn setup() {
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", &*db_uri);
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"postgrest_test_anonymous");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TX_ROLLBACK", &"true");
+
+        if let Some(max) = max_rows {
+            env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_MAX_ROWS", max);
+        }
 
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[test]");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
@@ -162,7 +168,7 @@ macro_rules! haskell_test {
             async describe $feature {
                 use super::*;
                 before {
-                    setup();
+                    setup(*MAX_ROWS);
                 }
                   $(
                       describe $describe {

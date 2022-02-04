@@ -80,6 +80,7 @@ pub fn parse<'r>(
     body: Option<String>,
     headers: &'r HashMap<&'r str, &'r str>,
     cookies: &'r HashMap<&'r str, &'r str>,
+    max_rows: Option<u32>,
 ) -> Result<ApiRequest<'r>> {
 
     let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {schemas: vec![schema.to_owned()]})?;
@@ -498,6 +499,29 @@ pub fn parse<'r>(
             std::mem::swap(order, &mut o);
         }
     });
+
+    // enforce max rows limit for each node
+    if let Some(max) = max_rows {
+        for (_, node) in &mut query {
+            let none = &mut None;
+            let limit = match node {
+                FunctionCall { limit, ..} => limit,
+                Select { limit, ..} => limit,
+                Insert { ..} => none,
+            };
+            match limit {
+                Some(SingleVal(l)) => {
+                    match l.parse::<u32>() {
+                        Ok(ll) => if ll > max { std::mem::swap(l, &mut format!("{}",max)) },
+                        Err(_) => std::mem::swap(l, &mut format!("{}",max)),
+                    }
+                }
+                None => {
+                    std::mem::swap(limit, &mut Some(SingleVal(format!("{}",max))));
+                }
+            }
+        }
+    }
     
     Ok(ApiRequest {
         preferences,
@@ -1470,14 +1494,14 @@ pub mod tests {
         };
         let a = parse(&s("api"), &s("myfunction"), &db_schema, &Method::GET, s("dummy"), &vec![
             ("id","10"),
-            ], None, &emtpy_hashmap, &emtpy_hashmap);
+            ], None, &emtpy_hashmap, &emtpy_hashmap, None);
 
         assert_eq!(a.unwrap(),api_request);
 
         api_request.method = Method::POST;
 
         let body = s(r#"{"id":"10"}"#);
-        let b = parse(&s("api"), &s("myfunction"), &db_schema, &Method::POST, s("dummy"), &vec![], Some(body), &emtpy_hashmap, &emtpy_hashmap);
+        let b = parse(&s("api"), &s("myfunction"), &db_schema, &Method::POST, s("dummy"), &vec![], Some(body), &emtpy_hashmap, &emtpy_hashmap, None);
         assert_eq!(b.unwrap(),api_request);
     }
 
@@ -1565,7 +1589,7 @@ pub mod tests {
             ("tasks.id","lt.500"),
             ("not.or", "(id.eq.11,id.eq.12)"),
             ("tasks.or", "(id.eq.11,id.eq.12)"),
-            ], None, &emtpy_hashmap, &emtpy_hashmap);
+            ], None, &emtpy_hashmap, &emtpy_hashmap, None);
 
         assert_eq!(
             a.unwrap()
@@ -1686,14 +1710,14 @@ pub mod tests {
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, s("dummy"), &vec![
                 ("select", "id,name,unknown(id)")
-            ], None, &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e)),
+            ], None, &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e)),
             Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")}).map_err(|e| format!("{}",e))
         );
 
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, s("dummy"), &vec![
                 ("select", "id-,na$me")
-            ], None, &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e)),
+            ], None, &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e)),
             Err(AppError::ParseRequestError{
                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
                 details: s("Unexpected `,` Expected `letter`, `digit`, `_` or ` `")
@@ -1711,7 +1735,7 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, s("dummy"), &vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(payload.clone()), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
+            ], Some(payload.clone()), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 preferences: None,
@@ -1747,7 +1771,7 @@ pub mod tests {
                 ("select", "id,name"),
                 ("id","gt.10"),
                 ("columns","id,name"),
-            ], Some(payload.clone()), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
+            ], Some(payload.clone()), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 preferences: None,
@@ -1785,7 +1809,7 @@ pub mod tests {
                 ("select", "id"),
                 ("id","gt.10"),
                 ("columns","id,1$name"),
-            ], Some(s(r#"{"id":10, "name":"john", "phone":"123"}"#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
+            ], Some(s(r#"{"id":10, "name":"john", "phone":"123"}"#)), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Err(AppError::ParseRequestError {
                 message: s("\"failed to parse columns parameter (id,1$name)\" (line 1, column 5)"),
@@ -1797,7 +1821,7 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, s("dummy"), &vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(s(r#"{"id":10, "name""#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
+            ], Some(s(r#"{"id":10, "name""#)), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Err(AppError::InvalidBody {
                 message: s("Failed to parse json body: EOF while parsing an object at line 1 column 16")
@@ -1808,7 +1832,7 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, s("dummy"), &vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
+            ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Err(AppError::InvalidBody {
                 message: s("All object keys must match"),
@@ -1820,14 +1844,14 @@ pub mod tests {
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, s("dummy"), &vec![
                 ("select", "id,name,unknown(id)")
-            ], None, &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e)),
+            ], None, &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e)),
             Err(AppError::NoRelBetween{origin:s("projects"), target:s("unknown")}).map_err(|e| format!("{}",e))
         );
 
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::GET, s("dummy"), &vec![
                 ("select", "id-,na$me")
-            ], None, &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e)),
+            ], None, &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e)),
             Err(AppError::ParseRequestError{
                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
                 details: s("Unexpected `,` Expected `letter`, `digit`, `_` or ` `")
@@ -1838,7 +1862,7 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, s("dummy"), &vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
+            ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 preferences: None,
@@ -1873,7 +1897,7 @@ pub mod tests {
                 ("select", "id,name,tasks(id),clients(id)"),
                 ("id","gt.10"),
                 ("tasks.id","gt.20"),
-            ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap).map_err(|e| format!("{}",e))
+            ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
                 preferences: None,

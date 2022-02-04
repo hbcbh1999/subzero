@@ -1,19 +1,16 @@
-use super::super::start; //super in
-use super::common::{ setup, haskell_test, normalize_url };
+use super::common::{ setup, haskell_test, normalize_url, CLIENT, MAX_ROWS };
 use pretty_assertions::{assert_eq};
 use serde_json::Value;
-use rocket::local::asynchronous::Client;
 use rocket::http::{Accept, Cookie, Header};
 use std::str::FromStr;
 
 use demonstrate::demonstrate;
-use async_once::AsyncOnce;
 
-lazy_static! {
-  static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
-    Client::untracked(start().await.unwrap()).await.expect("valid client")
-  });
-}
+// lazy_static! {
+//   static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
+//     Client::untracked(start().await.unwrap()).await.expect("valid client")
+//   });
+// }
 
 haskell_test! {
 feature "rpc"

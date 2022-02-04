@@ -125,7 +125,7 @@ pub async fn handle_postgrest_request(
     }?;
     
     // parse request and generate the query
-    let request = parse(schema_name, root, db_schema, method, path, parameters, body, headers, cookies)?;
+    let request = parse(schema_name, root, db_schema, method, path, parameters, body, headers, cookies, config.db_max_rows)?;
     //println!("request: \n{:#?}", request);
     let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request));
     println!("main_statement: \n{}\n{:?}", main_statement, main_parameters);

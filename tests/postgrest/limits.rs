@@ -1,19 +1,15 @@
-use super::super::start; //super in
-use super::common::{ setup, haskell_test, normalize_url };
+use super::common::{ setup, haskell_test, normalize_url, CLIENT, };
 use pretty_assertions::{assert_eq};
 use serde_json::Value;
-use rocket::local::asynchronous::Client;
 use rocket::http::{Accept,Header,Cookie};
 use std::str::FromStr;
 
 use demonstrate::demonstrate;
-use async_once::AsyncOnce;
 
 lazy_static! {
-  static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
-    Client::untracked(start().await.unwrap()).await.expect("valid client")
-  });
+  static ref MAX_ROWS: Option<&'static str> = Some("2");
 }
+
 
 haskell_test! {
 feature "limits"
@@ -50,36 +46,36 @@ describe "Requesting many items with server limits(max-rows) enabled" $ do
         [json|r#"[{"id":6,"project":null}, {"id":7,"project":null}]"#|]
         { matchHeaders = ["Content-Range" <:> "0-1/*"] }
 
-  describe "count=estimated" $ do
-    it "uses the query planner guess when query rows > maxRows" $
+  describe "count=exact" $ do
+    it "uses the query planner guess when query rows bigger maxRows" $
       request methodGet "/getallprojects_view"
-          [("Prefer", "count=estimated")]
+          [("Prefer", "count=exact")]
           ""
         shouldRespondWith
-        [str|""|]
+        [json|r#"[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1}]"#|]
           { matchStatus  = 206
           , matchHeaders = [ "Content-Type" <:> "application/json"
-                          , "Content-Range" <:> "0-1/2019" ]
+                          , "Content-Range" <:> "0-1/5" ]
           }
 
-    it "gives exact count when query rows <= maxRows" $
+    it "gives exact count when query rows smaller maxRows" $
       request methodGet "/getallprojects_view?id=lt.3"
-          [("Prefer", "count=estimated")]
+          [("Prefer", "count=exact")]
           ""
         shouldRespondWith
-          [str|""|]
+          [json|r#"[{"id":1,"name":"Windows 7","client_id":1},{"id":2,"name":"Windows 10","client_id":1}]"#|]
           { matchHeaders = [ "Content-Type" <:> "application/json"
                           , "Content-Range" <:> "0-1/2" ]
           }
 
     it "only uses the query planner guess if it is indeed greater than the exact count" $
       request methodGet "/get_projects_above_view"
-          [("Prefer", "count=estimated")]
+          [("Prefer", "count=exact")]
           ""
         shouldRespondWith
-        [str|""|]
+        [json|r#"[{"id":2,"name":"Windows 10","client_id":1},{"id":3,"name":"IOS","client_id":2}]"#|]
           { matchStatus  = 206
           , matchHeaders = [ "Content-Type" <:> "application/json"
-                          , "Content-Range" <:> "0-1/3" ]
+                          , "Content-Range" <:> "0-1/4" ]
           }
   }
