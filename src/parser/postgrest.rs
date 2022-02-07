@@ -474,7 +474,7 @@ pub fn parse<'r>(
             FunctionCall {limit, ..} => limit,
         };
         for v in p {
-            std::mem::swap(limit, &mut Some(v));
+            *limit = Some(v);
         }
     });
 
@@ -485,7 +485,7 @@ pub fn parse<'r>(
             FunctionCall {offset, ..} => offset,
         };
         for v in p {
-            std::mem::swap(offset, &mut Some(v));
+            *offset = Some(v);
         }
     });
 
@@ -495,8 +495,8 @@ pub fn parse<'r>(
             Insert {..} => todo!(),
             FunctionCall {order, ..} => order,
         };
-        for mut o in p {
-            std::mem::swap(order, &mut o);
+        for o in p {
+            *order = o;
         }
     });
 
@@ -512,13 +512,11 @@ pub fn parse<'r>(
             match limit {
                 Some(SingleVal(l)) => {
                     match l.parse::<u32>() {
-                        Ok(ll) => if ll > max { std::mem::swap(l, &mut format!("{}",max)) },
-                        Err(_) => std::mem::swap(l, &mut format!("{}",max)),
+                        Ok(ll) if ll > max =>  *limit =  Some(SingleVal(format!("{}",max))),
+                        _ => *limit = Some(SingleVal(format!("{}",max))),
                     }
-                }
-                None => {
-                    std::mem::swap(limit, &mut Some(SingleVal(format!("{}",max))));
-                }
+                },
+                None => *limit = Some(SingleVal(format!("{}",max))),
             }
         }
     }
@@ -1092,19 +1090,19 @@ fn add_join_info( query: &mut Query, schema: &String, db_schema: &DbSchema, dept
             let new_join = db_schema.get_join(schema, parent_table, child_table, hint)?;
             //println!("new join: {:#?}", new_join);
             if is_self_join(&new_join){
-                std::mem::swap(table_alias, &mut Some(format!("{}_{}", child_table, depth)));
+                *table_alias = Some(format!("{}_{}", child_table, depth));
             }
             match &new_join {
                 Parent (fk) if &fk.referenced_table.1 != child_table  => {
                     // println!("entering swap section: fk:{:#?}\nct:{:#?}\nal:{:#?}", fk, child_table, alias);
                     if alias.is_none(){
-                        std::mem::swap(alias, &mut Some(child_table.clone()));
+                        *alias = Some(child_table.clone());
                     }
-                    std::mem::swap(child_table, &mut fk.referenced_table.1.clone());
+                    *child_table = fk.referenced_table.1.clone();
                 }
                 _ => {}
             }
-            std::mem::swap(join, &mut Some(new_join));
+            *join = Some(new_join);
             add_join_info( q, schema, db_schema, depth + 1)?
         }
     }

@@ -1,13 +1,22 @@
-use super::common::{ setup, haskell_test, normalize_url, CLIENT, };
+use super::common::{ setup_db, setup_client, haskell_test, normalize_url, };
+use super::super::start;
 use pretty_assertions::{assert_eq};
 use serde_json::Value;
 use rocket::http::{Accept,Header,Cookie};
 use std::str::FromStr;
-
 use demonstrate::demonstrate;
+use rocket::local::asynchronous::Client;
+use async_once::AsyncOnce;
+use std::sync::Once;
+use std::env;
+pub static INIT_CLIENT: Once = Once::new();
 
 lazy_static! {
-  static ref MAX_ROWS: Option<&'static str> = Some("2");
+  pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
+    env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_MAX_ROWS", "2");
+    Client::untracked(start().await.unwrap()).await.expect("valid client")
+    
+  });
 }
 
 
@@ -78,4 +87,4 @@ describe "Requesting many items with server limits(max-rows) enabled" $ do
           , matchHeaders = [ "Content-Type" <:> "application/json"
                           , "Content-Range" <:> "0-1/4" ]
           }
-  }
+}

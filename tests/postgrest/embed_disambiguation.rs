@@ -1,16 +1,22 @@
-use super::common::{ setup, haskell_test, normalize_url, CLIENT, MAX_ROWS };
+use super::common::{ setup_db, setup_client, haskell_test, normalize_url,  };
+use super::super::start;
 use pretty_assertions::{assert_eq};
 use serde_json::Value;
 use rocket::http::{Accept};
 use std::str::FromStr;
-
 use demonstrate::demonstrate;
 
-// lazy_static! {
-//   static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
-//     Client::untracked(start().await.unwrap()).await.expect("valid client")
-//   });
-// }
+
+use rocket::local::asynchronous::Client;
+use async_once::AsyncOnce;
+use std::sync::Once;
+pub static INIT_CLIENT: Once = Once::new();
+
+lazy_static! {
+  pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
+    Client::untracked(start().await.unwrap()).await.expect("valid client")
+  });
+}
 
 haskell_test! {
 feature "embed_disambiguation"

@@ -1,25 +1,28 @@
 
-use super::super::start; //super in
-use rocket::local::asynchronous::Client;
+//use super::super::start; //super in
+//use rocket::local::asynchronous::Client;
 use std::sync::Once;
 use std::process::Command;
 use std::path::PathBuf;
 use std::env;
-use async_once::AsyncOnce;
+//use async_once::AsyncOnce;
+use lazy_static::LazyStatic;
 
-static INIT: Once = Once::new();
-lazy_static! {
+static INIT_DB: Once = Once::new();
+//static INIT_CLIENT: Once = Once::new();
+// lazy_static! {
     
-    pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
-      Client::untracked(start().await.unwrap()).await.expect("valid client")
-    });
+//     pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
+//       Client::untracked(start().await.unwrap()).await.expect("valid client")
+//     });
 
-    pub static ref MAX_ROWS: Option<&'static str> = None;
-}
+   
+// }
+//pub static MAX_ROWS: Option<&'static str> = None;
 
-pub fn setup(max_rows: Option<&'static str>) {
+pub fn setup_db() {
     //let _ = env_logger::builder().is_test(true).try_init();
-    INIT.call_once(|| {
+    INIT_DB.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         
@@ -33,28 +36,30 @@ pub fn setup(max_rows: Option<&'static str>) {
         assert!(output.status.success());
 
         let db_uri =  String::from_utf8_lossy(&output.stdout);
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", &*db_uri);
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"postgrest_test_anonymous");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TX_ROLLBACK", &"true");
+        
 
-        if let Some(max) = max_rows {
-            env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_MAX_ROWS", max);
-        }
-
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[test]");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");
-
-        let output = Command::new("psql").arg("-f").arg(init_file.to_str().unwrap()).arg(db_uri.into_owned()).output().expect("failed to execute process");
+        let output = Command::new("psql").arg("-f").arg(init_file.to_str().unwrap()).arg(db_uri.clone().into_owned()).output().expect("failed to execute process");
         // println!("status: {}", output.status);
         // println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
         // println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         assert!(output.status.success());
 
-        
-        lazy_static::initialize(&CLIENT);
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", &*db_uri);
     });
 }
+
+pub fn setup_client<T>(init_client_once: &Once, client:&T,) where T: LazyStatic {
+    init_client_once.call_once(|| {
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"postgrest_test_anonymous");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TX_ROLLBACK", &"true");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[test]");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");
+        env::remove_var("SUBZERO_VHOSTS__DEFAULT__DB_MAX_ROWS");
+        lazy_static::initialize(client);
+    });
+}
+
 
 pub fn normalize_url(url: &String) -> String {
     url
@@ -168,7 +173,8 @@ macro_rules! haskell_test {
             async describe $feature {
                 use super::*;
                 before {
-                    setup(*MAX_ROWS);
+                    setup_db();
+                    setup_client(&INIT_CLIENT, &CLIENT);
                 }
                   $(
                       describe $describe {
