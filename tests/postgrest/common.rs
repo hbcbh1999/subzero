@@ -128,7 +128,7 @@ macro_rules! haskell_test {
                         $([ 
                           ($get_2_header_nn0:literal,$get_2_header_v0:literal)
                           $(,($get_2_header_nn1:literal,$get_2_header_v1:literal))?
-                      ])?
+                        ])?
                         $((acceptHdrs $get2_accept_header:literal))?
                         $($get2_body:literal)?
                     )?

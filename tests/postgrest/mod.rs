@@ -7,3 +7,4 @@ mod embed_disambiguation;
 mod and_or_param;
 mod json_operator;
 mod limits;
+mod multiple_schemas;

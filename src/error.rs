@@ -216,7 +216,7 @@ impl Error {
                 "message":  format!("Could not embed because more than one relationship was found for '{}' and '{}'", origin, target),
             }),
             Error::InvalidFilters => json!({"message":"Filters must include all and only primary key columns with 'eq' operators"}),
-            // Error::UnacceptableSchema {..} => 406,
+            Error::UnacceptableSchema {schemas} => json!({"message":format!("The schema must be one of the following: {}", schemas.join(", "))}),
             // Error::UnknownRelation {..}  => 400,
             Error::NotFound => json!({}),
             Error::UnsupportedVerb => json!({"message":"Unsupported HTTP verb"}),

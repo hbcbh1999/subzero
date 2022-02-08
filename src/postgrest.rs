@@ -75,7 +75,38 @@ pub async fn handle_postgrest_request(
     cookies: &HashMap<&str, &str>,
 //) -> Result<ApiResponse> {
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
-    let schema_name = config.db_schemas.get(0).unwrap();
+
+    let mut response_headers = vec![];
+    let schema_name = &(match (config.db_schemas.len()>1, method, headers.get("Accept-Profile"), headers.get("Content-Profile")) {
+        (false, ..) => Ok(config.db_schemas.get(0).unwrap().clone()),
+        (_, &Method::DELETE, _, Some(&content_profile)) |
+        (_, &Method::POST, _, Some(&content_profile)) |
+        (_, &Method::PATCH, _, Some(&content_profile)) |
+        (_, &Method::PUT, _, Some(&content_profile)) =>
+            if config.db_schemas.contains(&content_profile.to_string()) {Ok(content_profile.to_string())}
+            else {Err(Error::UnacceptableSchema {schemas: config.db_schemas.clone()})},
+        (_, _, Some(&accept_profile), _) =>
+            if config.db_schemas.contains(&accept_profile.to_string()) {Ok(accept_profile.to_string())}
+            else {Err(Error::UnacceptableSchema {schemas: config.db_schemas.clone()})},
+        _ => Ok(config.db_schemas.get(0).unwrap().clone()),
+    }?);
+    // let schema_name= &(match headers.get("Accept-Profile") {
+    //     Some(&accept_profile) => {
+    //         println!("here {}", accept_profile);
+    //         if config.db_schemas.contains(&accept_profile.to_string()) {Ok(accept_profile.to_string())}
+    //         else {Err(Error::UnacceptableSchema {schemas: config.db_schemas.clone()})}
+    //     }
+    //     None => {
+    //         println!("here here!!!");
+    //         Ok(config.db_schemas.get(0).unwrap().clone())
+    //     },
+    // }?);
+
+    if config.db_schemas.len() > 1 {
+        response_headers.push((format!("Content-Profile"), schema_name.clone()));
+    }
+
+    //let schema_name = config.db_schemas.get(0).unwrap();
 
     // check jwt
     let jwt_claims = match &config.jwt_secret {
@@ -203,7 +234,8 @@ pub async fn handle_postgrest_request(
         // (_,_,pt,qt) => content_range_header(1,0,Some(pt)),
         (_,_,pt,t) => content_range_header(top_level_offset, top_level_offset + pt -1, t)
     };
-    let mut headers = vec![(format!("Content-Range"), content_range)];
+    
+    response_headers.push((format!("Content-Range"), content_range));
     if let Some(response_headers_str) = rows[0].get("response_headers") {
         //println!("response_headers_str: {:?}", response_headers_str);
         match serde_json::from_str(response_headers_str) {
@@ -214,7 +246,7 @@ pub async fn handle_postgrest_request(
                             for (k,v) in o.into_iter() {
                                 match v {
                                     JsonValue::String(s) => {
-                                        headers.push((k, s));
+                                        response_headers.push((k, s));
                                         Ok(())
                                     }
                                     _ => Err(Error::GucHeadersError)
@@ -248,7 +280,7 @@ pub async fn handle_postgrest_request(
     //     headers
     // })
 
-    Ok((status, content_type, headers, body))
+    Ok((status, content_type, response_headers, body))
 }
 
 fn content_range_header( lower: i64,  upper: i64,  total: Option<i64>) -> String {
