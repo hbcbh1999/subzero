@@ -9,7 +9,7 @@ use snafu::{ResultExt};
 use http::Method;
 
 use crate::{
-    api::{ApiRequest, QueryNode::*, ContentType, ContentType::*,},
+    api::{ApiRequest, QueryNode::*, ContentType, ContentType::*, Preferences, Representation},
     schema::DbSchema,
     error::{*, Result},
     config::{VhostConfig, },
@@ -76,6 +76,7 @@ pub async fn handle_postgrest_request(
 //) -> Result<ApiResponse> {
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
 
+
     let mut response_headers = vec![];
     let schema_name = &(match (config.db_schemas.len()>1, method, headers.get("Accept-Profile"), headers.get("Content-Profile")) {
         (false, ..) => Ok(config.db_schemas.get(0).unwrap().clone()),
@@ -90,23 +91,10 @@ pub async fn handle_postgrest_request(
             else {Err(Error::UnacceptableSchema {schemas: config.db_schemas.clone()})},
         _ => Ok(config.db_schemas.get(0).unwrap().clone()),
     }?);
-    // let schema_name= &(match headers.get("Accept-Profile") {
-    //     Some(&accept_profile) => {
-    //         println!("here {}", accept_profile);
-    //         if config.db_schemas.contains(&accept_profile.to_string()) {Ok(accept_profile.to_string())}
-    //         else {Err(Error::UnacceptableSchema {schemas: config.db_schemas.clone()})}
-    //     }
-    //     None => {
-    //         println!("here here!!!");
-    //         Ok(config.db_schemas.get(0).unwrap().clone())
-    //     },
-    // }?);
 
     if config.db_schemas.len() > 1 {
         response_headers.push((format!("Content-Profile"), schema_name.clone()));
     }
-
-    //let schema_name = config.db_schemas.get(0).unwrap();
 
     // check jwt
     let jwt_claims = match &config.jwt_secret {
@@ -128,7 +116,6 @@ pub async fn handle_postgrest_request(
                                 },
                                 Err(err) => match *err.kind() {
                                     ErrorKind::InvalidToken => Err(Error::JwtTokenInvalid {message: format!("{}", err)}),
-                                    //ErrorKind::InvalidIssuer => panic!("Issuer is invalid"), // Example on how to handle a specific error
                                     _ => Err(Error::JwtTokenInvalid {message: format!("{}", err)}),
                                 }
                             }
@@ -209,6 +196,7 @@ pub async fn handle_postgrest_request(
     //     transaction.query(&env_stm, env_parameters.as_slice()),
     //     transaction.query(&main_stm, main_parameters.as_slice())
     // ).await.context(DbError)?;
+
     if config.db_tx_rollback {
         transaction.rollback().await.context(DbError {authenticated})?;
     }
@@ -228,9 +216,10 @@ pub async fn handle_postgrest_request(
         (TextCSV, _) => TextCSV,
         _ => ApplicationJSON,
     };
-    //let mut headers = vec![Header::new("Content-Range", format!("0-{}/*", page_total - 1))];
+    
     let content_range = match (method, &request.query.node, page_total, total_result_set) {
         (&Method::POST, Insert {..}, _pt,t) => content_range_header(1,0,t),
+        (&Method::DELETE, Delete {..}, _pt,t) => content_range_header(1,0,t),
         // (_,_,pt,qt) => content_range_header(1,0,Some(pt)),
         (_,_,pt,t) => content_range_header(top_level_offset, top_level_offset + pt -1, t)
     };
@@ -263,9 +252,12 @@ pub async fn handle_postgrest_request(
         }?
     }
     //let mut status = Status::Ok;
-    let mut status = match (method, &request.query.node, page_total, total_result_set) {
-        (&Method::POST, Insert {..},_,_) => 201,
-        (_,_,pt,t) => content_range_status(top_level_offset, top_level_offset + pt -1, t),
+    
+    let mut status = match (method, &request.query.node, page_total, total_result_set, &request.preferences) {
+        (&Method::POST, Insert {..}, ..) => 201,
+        (&Method::DELETE, Delete {..}, .., Some(Preferences { representation: Some(Representation::Full), ..})) => 200,
+        (&Method::DELETE, Delete {..}, ..) => 204,
+        (.., pt, t, _) => content_range_status(top_level_offset, top_level_offset + pt -1, t),
     };
 
     let response_status:Option<&str> = rows[0].get("response_status");

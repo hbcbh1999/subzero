@@ -128,11 +128,9 @@ pub fn parse<'r>(
         },
         None => Ok(None)
     }?;
-    let mut select_items = match (method, &preferences) {
-        (&Method::POST, Some(Preferences { representation: Some(Representation::None), ..})) => vec![],
-        _ => vec![Item(Star)],
-    };
-
+    
+    
+    let mut select_items =  vec![Item(Star)];
     // iterate over parameters, parse and collect them in the relevant vectors
     for &(k,v) in parameters.iter() {
         match k {
@@ -227,6 +225,14 @@ pub fn parse<'r>(
             }
         }
     }
+
+    // in some cases we don't want to selecy anything back, event when select parameter is specified
+    match (method, &preferences) {
+        (&Method::POST, Some(Preferences { representation: Some(Representation::None), ..})) |
+        (&Method::DELETE, Some(Preferences { representation: Some(Representation::None), ..})) |
+        (&Method::DELETE, None) => { select_items = vec![] },
+        _ => {},
+    };
 
     let (node_select, sub_selects) = split_select(select_items);
     let mut query = match (method, root_obj.kind.clone()) {
@@ -458,12 +464,30 @@ pub fn parse<'r>(
             }
             Ok(q)
         },
+        (&Method::DELETE,_) => {
+            let mut q = Query {
+                node: Delete {
+                    from: root.clone(),
+                    where_: ConditionTree { operator: And, conditions: vec![] },
+                    returning: vec![],
+                    select: node_select,
+                },
+                sub_selects,
+            };
+            add_join_info(&mut q, &schema, db_schema, 0)?;
+            //we populate the returing becasue it relies on the "join" information
+            if let Query{ node: Delete { ref mut returning, ref select, ..}, ref sub_selects } = q {
+                returning.extend(get_returning(&select, &sub_selects)?);
+            }
+            Ok(q)
+        },
         // Method::PATCH => Ok(Update),
         // Method::PUT => Ok(Upsert),
         // Method::DELETE => Ok(Delete),
         _ => Err(Error::UnsupportedVerb)
     }?;
 
+    //println!("{:#?}", query);
     insert_join_conditions(&mut query, &schema, db_schema);
     insert_conditions(&mut query, conditions);
 
@@ -471,6 +495,7 @@ pub fn parse<'r>(
         let limit = match &mut q.node {
             Select {limit, ..} => limit,
             Insert {..} => todo!(),
+            Delete {..} => todo!(),
             FunctionCall {limit, ..} => limit,
         };
         for v in p {
@@ -482,6 +507,7 @@ pub fn parse<'r>(
         let offset = match  &mut q.node {
             Select {offset, ..} => offset,
             Insert {..} => todo!(),
+            Delete {..} => todo!(),
             FunctionCall {offset, ..} => offset,
         };
         for v in p {
@@ -493,6 +519,7 @@ pub fn parse<'r>(
         let order = match  &mut q.node {
             Select {order, ..} => order,
             Insert {..} => todo!(),
+            Delete {..} => todo!(),
             FunctionCall {order, ..} => order,
         };
         for o in p {
@@ -508,6 +535,7 @@ pub fn parse<'r>(
                 FunctionCall { limit, ..} => limit,
                 Select { limit, ..} => limit,
                 Insert { ..} => none,
+                Delete {..} => none,
             };
             match limit {
                 Some(SingleVal(l)) => {
@@ -1076,6 +1104,7 @@ fn add_join_info( query: &mut Query, schema: &String, db_schema: &DbSchema, dept
     let parent_table : &String = match &query.node {
         Select {from: (table, _), ..} => table,
         Insert {into, ..} => into,
+        Delete {from, ..} => from,
         FunctionCall { return_table_type, .. } => {
             let table = match return_table_type {
                 Some(q) => &q.1,
@@ -1118,6 +1147,7 @@ fn insert_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSch
             None => Qi (schema.clone(), table.clone())
         },
         Insert {..} => Qi(empty,subzero_source),
+        Delete {..} => Qi(empty,subzero_source),
         FunctionCall {  .. } => Qi(empty,subzero_source),
     };
     for SubSelect{query: q, join, ..} in query.sub_selects.iter_mut() {
@@ -1224,6 +1254,7 @@ fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)
         let query_conditions: &mut Vec<Condition> = match &mut q.node {
             Select {where_, ..} => where_.conditions.as_mut(),
             Insert {where_, ..} => where_.conditions.as_mut(),
+            Delete {where_, ..} => where_.conditions.as_mut(),
             FunctionCall {where_, .. } => where_.conditions.as_mut(),
         };
         p.into_iter().for_each(|c| query_conditions.push(c));

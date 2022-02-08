@@ -202,7 +202,14 @@ pub enum QueryNode {
         returning: Vec<String>,
         select: Vec<SelectItem>,
         //, onConflict :: Maybe (PreferResolution, [FieldName])
+    },
+    Delete {
+        from: String,
+        where_: ConditionTree, //used only for put
+        returning: Vec<String>,
+        select: Vec<SelectItem>,
     }
+
 }
 
 impl QueryNode {
@@ -211,6 +218,7 @@ impl QueryNode {
             Self::FunctionCall {fn_name:Qi(_,n),..} => n,
             Self::Select {from:(t,_),..} => t,
             Self::Insert {into,..} => into,
+            Self::Delete {from,..} => from,
         }
     }
 }

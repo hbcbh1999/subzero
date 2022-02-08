@@ -1,8 +1,8 @@
-use super::common::{ setup_db, setup_client, haskell_test, normalize_url, };
+use super::common::*;
 use super::super::start;
 use pretty_assertions::{assert_eq};
 use serde_json::Value;
-use rocket::http::{Accept,Header,Cookie};
+use rocket::http::{Accept,};
 use std::str::FromStr;
 use demonstrate::demonstrate;
 use rocket::local::asynchronous::Client;

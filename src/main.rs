@@ -90,6 +90,35 @@ async fn post<'a>(
     //Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, Some(body), &headers, &cookies).await?)
 }
 
+#[delete("/<root>?<parameters..>", data = "<body>")]
+async fn delete<'a>(
+        root: String,
+        origin: &Origin<'_>,
+        parameters: QueryString<'a>,
+        body: String,
+        cookies: &CookieJar<'a>,
+        headers: AllHeaders<'a>,
+        vhost: Vhost<'a>,
+        vhosts: &State<Arc<DashMap<String, VhostResources>>>,
+) -> Result<ApiResponse> {
+    let resources = get_resources(&vhost, vhosts)?;
+    let cookies = cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_,_>>();
+    let headers = headers.iter()
+        .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
+        .collect::<HashMap<_,_>>();
+    let headers = headers.iter().map(|(k,v)| (k.as_str(),v.as_str()))
+        .collect::<HashMap<_,_>>();
+
+    let  (status, content_type, headers, body) = handle_postgrest_request(&resources.config, &root, &Method::DELETE, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, Some(body), &headers, &cookies).await?;
+    
+    Ok(ApiResponse {
+        response: (Status::from_code(status).context(GucStatusError)?, (to_rocket_content_type(content_type), body)),
+        headers: headers.into_iter().map(|(n,v)| Header::new(n, v)).collect::<Vec<_>>()
+    })
+    //Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, Some(body), &headers, &cookies).await?)
+}
+
+
 async fn start() -> Result<Rocket<Build>> {
 
     #[cfg(debug_assertions)]
@@ -120,8 +149,8 @@ async fn start() -> Result<Rocket<Build>> {
     Ok(rocket::custom(config)
         .manage(vhost_resources)
         .mount("/", routes![index])
-        .mount("/rest", routes![get,post])
-        .mount("/rest/rpc", routes![get,post]))
+        .mount("/rest", routes![get,post,delete])
+        .mount("/rest/rpc", routes![get,post,delete]))
 }
 
 #[launch]

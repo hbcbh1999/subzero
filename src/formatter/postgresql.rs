@@ -96,7 +96,9 @@ fn return_representation<'a>(request: &'a ApiRequest) -> bool {
     match (&request.method, &request.query.node, &request.preferences) {
         (&Method::POST, Insert {..}, None) |
         (&Method::POST, Insert {..}, Some(Preferences { representation: Some(Representation::None), ..})) |
-        (&Method::POST, Insert {..}, Some(Preferences { representation: Some(Representation::HeadersOnly), ..}))
+        (&Method::POST, Insert {..}, Some(Preferences { representation: Some(Representation::HeadersOnly), ..})) |
+        (&Method::DELETE, Delete {..}, None) |
+        (&Method::DELETE, Delete {..}, Some(Preferences { representation: Some(Representation::None), ..}))
             => false,
         _ => true,
     }
@@ -305,7 +307,44 @@ fn fmt_query<'a>(schema: &String, return_representation: bool, wrapin_cte: Optio
                     sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
                 }
             )
-        }
+        },
+        Delete {from, where_, returning, select} => {
+            let qi = &Qi(schema.clone(),from.clone());
+            let qi_subzero_source = &Qi("".to_string(),"subzero_source".to_string());
+            //let (select, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(schema, qi_subzero_source, s)).unzip();
+            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect();
+            let (sub_selects, joins): (Vec<_>, Vec<_>) = q.sub_selects.iter().map(|s| fmt_sub_select_item(schema, qi_subzero_source, s)).unzip();
+            select.extend(sub_selects.into_iter());
+            //let from = vec![sql(fmt_qi(qi_payload))];
+            //from.extend(joins.into_iter().flatten());
+            let returned_columns = if returning.len() == 0 {
+                "1".to_string()
+            }
+            else {
+                returning.iter()
+                .map(|r| if r.as_str() == "*" {format!("*")} else{fmt_identity(r)})
+                .collect::<Vec<_>>().join(",")
+            };
+
+            (
+                Some(
+                    sql(" subzero_source as ( ") +
+                    " delete from " + fmt_qi(qi) +
+                    " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&qi, where_) } else { sql("") } +
+                    " returning " + returned_columns + 
+                    " )"
+                ),
+                if return_representation {
+                    " select " + select.join(", ")  +
+                    " from " + fmt_identity(&"subzero_source".to_string()) +
+                    " " + joins.into_iter().flatten().collect::<Vec<_>>().join(" ") +
+                    " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
+                }
+                else {
+                    sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
+                }
+            )
+        },
     };
 
     match wrapin_cte {
@@ -342,6 +381,9 @@ fn fmt_count_query<'a>(schema: &String, wrapin_cte: Option<&'static str>, q: &'a
             " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi, where_) } else { sql("") }
         },
         Insert {..} => {
+            sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string())))
+        },
+        Delete {..} => {
             sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string())))
         }
     };
@@ -449,6 +491,7 @@ fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> Snippet<'a> {
         Simple {field: field@Field { name, json_path }, alias, cast: Some(cast)} => sql(format!("cast({}.{} as {}){}", fmt_qi(qi), fmt_field(field), cast, fmt_as(name, json_path, alias ))),
     }
 }
+
 fn fmt_sub_select_item<'a >(schema: &String, qi: &Qi, i: &'a SubSelect) -> (Snippet<'a>, Vec<Snippet<'a>>) {
     match i {
         SubSelect {query,alias,join,..} => match join {

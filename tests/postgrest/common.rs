@@ -1,6 +1,8 @@
 
 //use super::super::start; //super in
 //use rocket::local::asynchronous::Client;
+use rocket::local::asynchronous::LocalRequest;
+use rocket::http::{Cookie, Header};
 use std::sync::Once;
 use std::process::Command;
 use std::path::PathBuf;
@@ -67,6 +69,16 @@ pub fn normalize_url(url: &String) -> String {
     .replace("\"","%22")
     .replace(">","%3E")
 }
+pub fn add_header<'a>(mut request: LocalRequest<'a>, name: &'static str, value: &'static str ) -> LocalRequest <'a> {
+    request.add_header(Header::new(name,value));
+    if name == "Cookie" {
+        let cookies = value.split(';').filter_map(|s|  Cookie::parse_encoded(s.trim()).ok() ).collect::<Vec<_>>();
+        request.cookies(cookies)
+    }
+    else {
+        request
+    }
+}
 
 #[macro_export]
 macro_rules! haskell_test {
@@ -77,6 +89,9 @@ macro_rules! haskell_test {
     (@header $headers:ident $name:literal $value:literal) => {
         println!("matching header: {}: {} against {:?}", $name, $value, $headers );
         assert!($headers.contains(&($name.to_string(), $value.to_string())));
+    };
+    (@add_header $request:ident $name:literal $value:literal) => {
+        $request = add_header($request, $name, $value);
     };
     (@body_json $response:ident $json:literal) => {
         let body = match $response.into_string().await {
@@ -150,6 +165,17 @@ macro_rules! haskell_test {
                         $([text|$text2_body:literal|])?
                         $($json22_body:literal)?
                     )?
+
+                    $(request methodDelete $delete_url:literal
+                        $([ 
+                            ($delete_header_nn0:literal,$delete_header_v0:literal)
+                            $(
+                              ,($delete_header_nn1:literal,$delete_header_v1:literal)
+                              $(,($delete_header_nn2:literal,$delete_header_v2:literal))?
+                            )?
+                        ])?
+                        $($delete_body:literal)?
+                    )?
                     
                     shouldRespondWith
                     $($status_simple:literal)?
@@ -196,16 +222,9 @@ macro_rules! haskell_test {
                                             $(request.add_header(Accept::from_str($get2_accept_header).unwrap());)?
                                             //$($(request.add_header(Header::new($get_2_header_nn,$get_2_header_v));),+)?
                                             $(
-                                              request.add_header(Header::new($get_2_header_nn0,$get_2_header_v0));
-                                              if $get_2_header_nn0 == "Cookie" {
-                                                for cookie_str in $get_2_header_v0.split(';').map(|s| s.trim()) {
-                                                  if let Ok(cookie) = Cookie::parse_encoded(cookie_str) {
-                                                      request = request.cookie(cookie.into_owned());
-                                                  }
-                                                }
-                                              }
+                                              haskell_test!(@add_header request $get_2_header_nn0 $get_2_header_v0);
                                               $(
-                                                  request.add_header(Header::new($get_2_header_nn1,$get_2_header_v1));
+                                                  haskell_test!(@add_header request $get_2_header_nn1 $get_2_header_v1);
                                               )?
                                             )?
                                           )?
@@ -228,18 +247,29 @@ macro_rules! haskell_test {
                                               $(
                                                 request.add_header(Header::new("Authorization", format!("Bearer {}",$post_2_jwt_token)));
                                               )?
-                                              request.add_header(Header::new($post_2_header_nn0,$post_2_header_v0));
-                                              if $post_2_header_nn0 == "Cookie" {
-                                                for cookie_str in $post_2_header_v0.split(';').map(|s| s.trim()) {
-                                                  if let Ok(cookie) = Cookie::parse_encoded(cookie_str) {
-                                                      request = request.cookie(cookie.into_owned());
-                                                  }
-                                                }
-                                              }
+                                              haskell_test!(@add_header request $post_2_header_nn0 $post_2_header_v0);
                                               $(
-                                                  request.add_header(Header::new($post_2_header_nn1,$post_2_header_v1));
+                                                  haskell_test!(@add_header request $post_2_header_nn1 $post_2_header_v1);
                                                   $(
-                                                    request.add_header(Header::new($post_2_header_nn2,$post_2_header_v2));
+                                                    haskell_test!(@add_header request $post_2_header_nn2 $post_2_header_v2);
+                                                  )?
+                                              )?
+                                            )?
+                                          )?
+
+                                          $(
+                                            let url = format!("/rest{}",$delete_url);
+                                            let mut request = client.delete(normalize_url(&url))
+                                                .body($($delete_body)?);
+                                            request.add_header(Accept::from_str("*/*").unwrap());
+                                            //$(request.add_header(Accept::from_str($delete_accept_header).unwrap());)?
+
+                                            $(
+                                              haskell_test!(@add_header request $delete_header_nn0 $delete_header_v0);
+                                              $(
+                                                haskell_test!(@add_header request $delete_header_nn1 $delete_header_v1);
+                                                  $(
+                                                    haskell_test!(@add_header request $delete_header_nn2 $delete_header_v2);
                                                   )?
                                               )?
                                             )?
