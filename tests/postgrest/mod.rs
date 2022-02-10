@@ -1,4 +1,5 @@
 mod common;
+
 mod query;
 mod rpc;
 mod auth;
@@ -10,3 +11,4 @@ mod limits;
 mod multiple_schemas;
 mod delete;
 mod update;
+mod unicode;
