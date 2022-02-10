@@ -142,7 +142,7 @@ impl DbSchema {
                                 // check parent relations
                                 // projects?select=clients(*)
                                 let parent_joins = origin_table.foreign_keys.iter()
-                                .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target )
+                                .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target && fk.table != fk.referenced_table )
                                 .map(|fk| Parent(fk.clone()))
                                 .collect::<Vec<_>>();
 

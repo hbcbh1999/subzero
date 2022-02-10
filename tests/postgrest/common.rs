@@ -10,7 +10,7 @@ use std::env;
 //use async_once::AsyncOnce;
 use lazy_static::LazyStatic;
 
-static INIT_DB: Once = Once::new();
+pub static INIT_DB: Once = Once::new();
 //static INIT_CLIENT: Once = Once::new();
 // lazy_static! {
     
@@ -22,9 +22,9 @@ static INIT_DB: Once = Once::new();
 // }
 //pub static MAX_ROWS: Option<&'static str> = None;
 
-pub fn setup_db() {
+pub fn setup_db(init_db_once: &Once,) {
     //let _ = env_logger::builder().is_test(true).try_init();
-    INIT_DB.call_once(|| {
+    init_db_once.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         
@@ -139,7 +139,6 @@ macro_rules! haskell_test {
                    
                     $(request methodGet $get2_url:literal
                         $([auth])?
-                        //$([$(($get_2_header_nn:literal,$get_2_header_v:literal)),+])?
                         $([ 
                           ($get_2_header_nn0:literal,$get_2_header_v0:literal)
                           $(,($get_2_header_nn1:literal,$get_2_header_v1:literal))?
@@ -160,7 +159,6 @@ macro_rules! haskell_test {
                               $(,($post_2_header_nn2:literal,$post_2_header_v2:literal))?
                             )?
                         ])?
-                        //$([ $( ($post_2_header_nn:literal,$post_2_header_v:literal) ),+])?
                         $([json|$json2_body:literal|])?
                         $([text|$text2_body:literal|])?
                         $($json22_body:literal)?
@@ -175,6 +173,25 @@ macro_rules! haskell_test {
                             )?
                         ])?
                         $($delete_body:literal)?
+                    )?
+
+                    $(request methodPatch $patch_url:literal
+                        $([dummy])?
+                        $([auth])?
+                        $([single])?
+                        $((acceptHdrs $patch_accept_header:literal))?
+                        $([ 
+                            $(authHeaderJWT $patch_jwt_token:literal , )?
+                            ($patch_header_nn0:literal,$patch_header_v0:literal)
+                            $(
+                              ,($patch_header_nn1:literal,$patch_header_v1:literal)
+                              $(,($patch_header_nn2:literal,$patch_header_v2:literal))?
+                            )?
+                        ])?
+                        $([])?
+                        $([json|$patch_json_body:literal|])?
+                        $([text|$patch_text_body:literal|])?
+                        $($patch_body:literal)?
                     )?
                     
                     shouldRespondWith
@@ -199,7 +216,7 @@ macro_rules! haskell_test {
             async describe $feature {
                 use super::*;
                 before {
-                    setup_db();
+                    setup_db(&INIT_DB);
                     setup_client(&INIT_CLIENT, &CLIENT);
                 }
                   $(
@@ -270,6 +287,27 @@ macro_rules! haskell_test {
                                                 haskell_test!(@add_header request $delete_header_nn1 $delete_header_v1);
                                                   $(
                                                     haskell_test!(@add_header request $delete_header_nn2 $delete_header_v2);
+                                                  )?
+                                              )?
+                                            )?
+                                          )?
+
+                                          $(
+                                            let url = format!("/rest{}",$patch_url);
+                                            let mut request = client.patch(normalize_url(&url))
+                                                .body($($patch_text_body)? $($patch_json_body)? $($patch_body)?);
+                                            request.add_header(Accept::from_str("*/*").unwrap());
+                                            $(request.add_header(Accept::from_str($patch_accept_header).unwrap());)?
+
+                                            $(
+                                              $(
+                                                request.add_header(Header::new("Authorization", format!("Bearer {}",$patch_jwt_token)));
+                                              )?
+                                              haskell_test!(@add_header request $patch_header_nn0 $patch_header_v0);
+                                              $(
+                                                  haskell_test!(@add_header request $patch_header_nn1 $patch_header_v1);
+                                                  $(
+                                                    haskell_test!(@add_header request $patch_header_nn2 $patch_header_v2);
                                                   )?
                                               )?
                                             )?

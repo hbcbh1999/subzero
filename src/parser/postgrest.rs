@@ -226,12 +226,21 @@ pub fn parse<'r>(
         }
     }
 
-    // in some cases we don't want to selecy anything back, event when select parameter is specified
-    match (method, &preferences) {
-        (&Method::POST, Some(Preferences { representation: Some(Representation::None), ..})) |
-        (&Method::DELETE, Some(Preferences { representation: Some(Representation::None), ..})) |
-        (&Method::DELETE, None) => { select_items = vec![] },
-        _ => {},
+    // in some cases we don't want to select anything back, event when select parameter is specified,
+    // so in order to not trigger any permissions errors, we select nothing back
+    let is_function_call = match &root_obj.kind {Function {..}=>true,_=>false};
+    if !is_function_call {
+        match (method, &preferences) {
+            (&Method::POST, None) |
+            (&Method::POST, Some(Preferences { representation: Some(Representation::None), ..})) |
+            (&Method::POST, Some(Preferences { representation: Some(Representation::HeadersOnly), ..})) |
+            (&Method::PATCH, None) |
+            (&Method::PATCH, Some(Preferences { representation: Some(Representation::None), ..})) |
+            (&Method::PATCH, Some(Preferences { representation: Some(Representation::HeadersOnly), ..})) |
+            (&Method::DELETE, None) |
+            (&Method::DELETE, Some(Preferences { representation: Some(Representation::None), ..})) => { select_items = vec![] },
+            _ => {},
+        }
     };
 
     let (node_select, sub_selects) = split_select(select_items);
@@ -481,9 +490,89 @@ pub fn parse<'r>(
             }
             Ok(q)
         },
-        // Method::PATCH => Ok(Update),
+        (&Method::PATCH,_) => {
+            let _body = body.context(InvalidBody {message: "body not available".to_string()})?;
+
+            let (payload, columns) = match (content_type, columns_) {
+                (ApplicationJSON, Some(c)) |
+                (SingularJSON, Some(c)) => Ok((_body, c)),
+                (ApplicationJSON, None) |
+                (SingularJSON, None) => {
+                   
+                    let json_payload: Result<JsonValue,serde_json::Error> = serde_json::from_str(&_body);
+                    let columns = match json_payload {
+                        Ok(j) => {
+                            match j {
+                                JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
+                                JsonValue::Array(v) => {
+                                    match v.get(0) {
+                                        Some(JsonValue::Object(m)) => {
+                                            let canonical_set:HashSet<&String> = HashSet::from_iter(m.keys());
+                                            let all_keys_match = v.iter().all(|vv|
+                                                match vv {
+                                                    JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
+                                                    _ => false
+                                                }
+                                            );
+                                            if all_keys_match {
+                                                Ok(m.keys().cloned().collect())
+                                            }
+                                            else {
+                                                Err(Error::InvalidBody {message: format!("All object keys must match")})
+                                            }
+                                            
+                                        },
+                                        _ => Ok(vec![])
+                                    }
+                                },
+                                _ => Ok(vec![])
+                            }
+                        },
+                        Err(e) => {
+                            Err(Error::InvalidBody {message: format!("Failed to parse json body: {}", e)})
+                        }
+                    }?;
+                    Ok((_body, columns))
+                },
+                (TextCSV, cols) => {
+                    let mut rdr = Reader::from_reader(_body.as_bytes());
+                    let mut res: Vec<JsonValue> = vec![];
+                    let header: StringRecord = match cols {
+                        Some(c) => Ok(StringRecord::from(c)),
+                        None => Ok((rdr.headers().context(CsvDeserialize)?).clone())
+                    }?;
+                    for record in rdr.records() {
+                        res.push(
+                            header
+                            .clone()
+                            .into_iter()
+                            .zip(record.context(CsvDeserialize)?.into_iter())
+                            .map(|(k,v)| (k, match v { "NULL" => JsonValue::Null, _ => JsonValue::String(v.to_string()) }))
+                            .collect()
+                        );
+                    }
+                   Ok((serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserialize)?, header.iter().map(|h| h.to_string()).collect()))
+                }
+            }?;
+            let mut q = Query {
+                node: Update {
+                    table: root.clone(),
+                    columns: columns,
+                    payload: Payload(payload),
+                    where_: ConditionTree { operator: And, conditions: vec![] },
+                    returning: vec![],
+                    select: node_select,
+                },
+                sub_selects,
+            };
+            add_join_info(&mut q, &schema, db_schema, 0)?;
+            //we populate the returing becasue it relies on the "join" information
+            if let Query{ node: Update { ref mut returning, ref select, ..}, ref sub_selects } = q {
+                returning.extend(get_returning(&select, &sub_selects)?);
+            }
+            Ok(q)
+        },
         // Method::PUT => Ok(Upsert),
-        // Method::DELETE => Ok(Delete),
         _ => Err(Error::UnsupportedVerb)
     }?;
 
@@ -496,6 +585,7 @@ pub fn parse<'r>(
             Select {limit, ..} => limit,
             Insert {..} => todo!(),
             Delete {..} => todo!(),
+            Update {..} => todo!(),
             FunctionCall {limit, ..} => limit,
         };
         for v in p {
@@ -508,6 +598,7 @@ pub fn parse<'r>(
             Select {offset, ..} => offset,
             Insert {..} => todo!(),
             Delete {..} => todo!(),
+            Update {..} => todo!(),
             FunctionCall {offset, ..} => offset,
         };
         for v in p {
@@ -520,6 +611,7 @@ pub fn parse<'r>(
             Select {order, ..} => order,
             Insert {..} => todo!(),
             Delete {..} => todo!(),
+            Update {..} => todo!(),
             FunctionCall {order, ..} => order,
         };
         for o in p {
@@ -536,6 +628,7 @@ pub fn parse<'r>(
                 Select { limit, ..} => limit,
                 Insert { ..} => none,
                 Delete {..} => none,
+                Update {..} => none,
             };
             match limit {
                 Some(SingleVal(l)) => {
@@ -1105,6 +1198,7 @@ fn add_join_info( query: &mut Query, schema: &String, db_schema: &DbSchema, dept
         Select {from: (table, _), ..} => table,
         Insert {into, ..} => into,
         Delete {from, ..} => from,
+        Update {table, ..} => table,
         FunctionCall { return_table_type, .. } => {
             let table = match return_table_type {
                 Some(q) => &q.1,
@@ -1147,6 +1241,7 @@ fn insert_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSch
             None => Qi (schema.clone(), table.clone())
         },
         Insert {..} => Qi(empty,subzero_source),
+        Update {..} => Qi(empty,subzero_source),
         Delete {..} => Qi(empty,subzero_source),
         FunctionCall {  .. } => Qi(empty,subzero_source),
     };
@@ -1254,6 +1349,7 @@ fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)
         let query_conditions: &mut Vec<Condition> = match &mut q.node {
             Select {where_, ..} => where_.conditions.as_mut(),
             Insert {where_, ..} => where_.conditions.as_mut(),
+            Update {where_, ..} => where_.conditions.as_mut(),
             Delete {where_, ..} => where_.conditions.as_mut(),
             FunctionCall {where_, .. } => where_.conditions.as_mut(),
         };
@@ -1758,20 +1854,20 @@ pub mod tests {
     fn test_parse_post(){
         let emtpy_hashmap = HashMap::new();
         let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-       
+        let headers = [("Prefer","return=representation")].iter().cloned().collect();
         let payload = s(r#"{"id":10, "name":"john"}"#);
         assert_eq!(
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, s("dummy"), &vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(payload.clone()), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
+            ], Some(payload.clone()), &headers, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
-                preferences: None,
+                preferences: Some(Preferences { representation: Some(Representation::Full), resolution: None, count: None}),
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: &emtpy_hashmap,
+                headers: &headers,
                 cookies: &emtpy_hashmap,
                 query: Query {
                     node: Insert {
@@ -1800,14 +1896,14 @@ pub mod tests {
                 ("select", "id,name"),
                 ("id","gt.10"),
                 ("columns","id,name"),
-            ], Some(payload.clone()), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
+            ], Some(payload.clone()), &headers, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
-                preferences: None,
+                preferences: Some(Preferences { representation: Some(Representation::Full), resolution: None, count: None}),
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: &emtpy_hashmap,
+                headers: &headers,
                 cookies: &emtpy_hashmap,
                 query: Query {
                     node: Insert {
@@ -1891,14 +1987,14 @@ pub mod tests {
             parse(&s("api"), &s("projects"), &db_schema, &Method::POST, s("dummy"), &vec![
                 ("select", "id"),
                 ("id","gt.10"),
-            ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
+            ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &headers, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
-                preferences: None,
+                preferences: Some(Preferences { representation: Some(Representation::Full), resolution: None, count: None}),
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: &emtpy_hashmap,
+                headers: &headers,
                 cookies: &emtpy_hashmap,
                 query: 
                     Query { sub_selects: vec![], node: Insert {
@@ -1926,14 +2022,14 @@ pub mod tests {
                 ("select", "id,name,tasks(id),clients(id)"),
                 ("id","gt.10"),
                 ("tasks.id","gt.20"),
-            ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &emtpy_hashmap, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
+            ], Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)), &headers, &emtpy_hashmap, None).map_err(|e| format!("{}",e))
             ,
             Ok(ApiRequest {
-                preferences: None,
+                preferences: Some(Preferences { representation: Some(Representation::Full), resolution: None, count: None}),
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: &emtpy_hashmap,
+                headers: &headers,
                 cookies: &emtpy_hashmap,
                 query: 
                     Query { 

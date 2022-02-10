@@ -9,3 +9,4 @@ mod json_operator;
 mod limits;
 mod multiple_schemas;
 mod delete;
+mod update;

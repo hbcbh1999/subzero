@@ -73,7 +73,6 @@ pub async fn handle_postgrest_request(
     body: Option<String>,
     headers: &HashMap<&str, &str>,
     cookies: &HashMap<&str, &str>,
-//) -> Result<ApiResponse> {
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
 
 
@@ -220,7 +219,6 @@ pub async fn handle_postgrest_request(
     let content_range = match (method, &request.query.node, page_total, total_result_set) {
         (&Method::POST, Insert {..}, _pt,t) => content_range_header(1,0,t),
         (&Method::DELETE, Delete {..}, _pt,t) => content_range_header(1,0,t),
-        // (_,_,pt,qt) => content_range_header(1,0,Some(pt)),
         (_,_,pt,t) => content_range_header(top_level_offset, top_level_offset + pt -1, t)
     };
     
@@ -251,27 +249,23 @@ pub async fn handle_postgrest_request(
             _ => Err(Error::GucHeadersError),
         }?
     }
-    //let mut status = Status::Ok;
-    
+
     let mut status = match (method, &request.query.node, page_total, total_result_set, &request.preferences) {
         (&Method::POST, Insert {..}, ..) => 201,
         (&Method::DELETE, Delete {..}, .., Some(Preferences { representation: Some(Representation::Full), ..})) => 200,
         (&Method::DELETE, Delete {..}, ..) => 204,
+        (&Method::PATCH, Update {columns,..}, 0, _,_) if columns.len() > 0 => 404,
+        (&Method::PATCH, Update {..}, .., Some(Preferences { representation: Some(Representation::Full), ..})) => 200,
+        (&Method::PATCH, Update {..}, ..) => 204,
         (.., pt, t, _) => content_range_status(top_level_offset, top_level_offset + pt -1, t),
     };
 
     let response_status:Option<&str> = rows[0].get("response_status");
     if let Some(response_status_str) = response_status {
-        //status = Status::from_code(response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError)?).context(GucStatusError)?;
         status = response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError)?;
     }
 
     let body: String = rows[0].get("body");
-    // Ok(ApiResponse {
-    //     response: (status, (content_type, body)),
-    //     headers
-    // })
-
     Ok((status, content_type, response_headers, body))
 }
 
@@ -292,12 +286,3 @@ fn content_range_status( lower: i64,  upper: i64,  total: Option<i64>) -> u16 {
         _ => 200,
     }
 }
-
-// total_result_set -> tableTotal
-// page_total -> queryTotal
-//fn range_status_header :: NonnegRange -> Int64 -> Maybe Int64 -> (Status, Header)
-// fn range_status_header(top_level_offset: i64, query_total: i64, table_total: Option<i64>) -> (u16, String){
-//     let lower = top_level_offset;
-//     let upper = lower + query_total - 1;
-//     (content_range_status(lower, upper, table_total), content_range_header(lower, upper, table_total))
-// }

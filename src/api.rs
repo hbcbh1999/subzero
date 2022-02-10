@@ -208,6 +208,15 @@ pub enum QueryNode {
         where_: ConditionTree, //used only for put
         returning: Vec<String>,
         select: Vec<SelectItem>,
+    },
+
+    Update {
+        table: String,
+        columns: Vec<String>,
+        payload: Payload,
+        where_: ConditionTree,
+        returning: Vec<String>,
+        select: Vec<SelectItem>,
     }
 
 }
@@ -219,6 +228,7 @@ impl QueryNode {
             Self::Select {from:(t,_),..} => t,
             Self::Insert {into,..} => into,
             Self::Delete {from,..} => from,
+            Self::Update {table,..} => table,
         }
     }
 }
