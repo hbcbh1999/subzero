@@ -12,3 +12,4 @@ mod multiple_schemas;
 mod delete;
 mod update;
 mod unicode;
+mod singular;

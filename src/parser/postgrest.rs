@@ -1066,9 +1066,9 @@ where Input: Stream<Token = char>
 {
     choice((
     string("*/*").map(|_| ApplicationJSON),
-    string("application/json").map(|_| ApplicationJSON),
-    string("application/vnd.pgrst.object").map(|_| SingularJSON),
-    string("application/vnd.pgrst.object+json").map(|_| SingularJSON),
+    attempt(string("application/json")).map(|_| ApplicationJSON),
+    attempt(string("application/vnd.pgrst.object")).map(|_| SingularJSON),
+    attempt(string("application/vnd.pgrst.object+json")).map(|_| SingularJSON),
     string("text/csv").map(|_| TextCSV),
     ))
 }

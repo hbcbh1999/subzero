@@ -109,6 +109,9 @@ pub enum Error {
     #[snafu(display("ContentTypeError {}", message))]
     ContentTypeError { message: String },
 
+    #[snafu(display("SingularityError {}", count))]
+    SingularityError { count: i64, content_type: String }
+
 }
 
 impl Error {
@@ -146,6 +149,7 @@ impl Error {
             Error::JsonDeserialize  { .. }  => 400,
             Error::CsvDeserialize  { .. }  => 400,
             Error::JsonSerialize  { .. }  => 500,
+            Error::SingularityError { .. } => 406,
             Error::DbPoolError { source }  => match source {
                 PoolError::Timeout(_) => 503,
                 PoolError::Backend(_) => 503,
@@ -239,6 +243,10 @@ impl Error {
             Error::CsvDeserialize {..} => json!({"message": format!("{}", self)}),
             Error::JsonSerialize {..} => json!({"message": format!("{}", self)}),
             Error::DbPoolError { source }  => json!({"message": format!("Db pool error {}", source)}),
+            Error::SingularityError { count, content_type } => json!({
+                "message": "JSON object requested, multiple (or no) rows returned",
+                "details": format!("Results contain {} rows, {} requires 1 row", count, content_type)
+            }),
             Error::DbError { source, .. }  => match source.as_db_error() {
                 Some(db_err) => match db_err.code().code().chars().collect::<Vec<char>>()[..] {
                     ['P','T',..] => json!({

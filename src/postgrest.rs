@@ -196,12 +196,7 @@ pub async fn handle_postgrest_request(
     //     transaction.query(&main_stm, main_parameters.as_slice())
     // ).await.context(DbError)?;
 
-    if config.db_tx_rollback {
-        transaction.rollback().await.context(DbError {authenticated})?;
-    }
-    else {
-        transaction.commit().await.context(DbError {authenticated})?;
-    }
+    
 
 
     // create and return the response to the client
@@ -215,6 +210,18 @@ pub async fn handle_postgrest_request(
         (TextCSV, _) => TextCSV,
         _ => ApplicationJSON,
     };
+
+    if request.accept_content_type == SingularJSON && page_total != 1 {
+        transaction.rollback().await.context(DbError {authenticated})?;
+        return Err(Error::SingularityError { count: page_total, content_type: headers.get("Accept").unwrap_or(&"").to_string() })
+    }
+
+    if config.db_tx_rollback {
+        transaction.rollback().await.context(DbError {authenticated})?;
+    }
+    else {
+        transaction.commit().await.context(DbError {authenticated})?;
+    }
     
     let content_range = match (method, &request.query.node, page_total, total_result_set) {
         (&Method::POST, Insert {..}, _pt,t) => content_range_header(1,0,t),
