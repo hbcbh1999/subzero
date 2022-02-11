@@ -720,7 +720,7 @@ where Input: Stream<Token = char>
             many1(digit())
             .and(
                 look_ahead(
-                    choice((string("->"), string("::")))
+                    choice((string("->"), string("::"), string("."), string(",")))
                     .or(eof().map(|_| ""))
                 )
             )

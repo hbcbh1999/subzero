@@ -328,6 +328,7 @@ pub enum Filter {
 pub struct Field {
     pub name: String,
     pub json_path: Option<Vec<JsonOperation>>
+    //TODO!! should contain some info about the data type so that fmt_field function could make better decisions
 }
 
 #[derive(Debug, PartialEq, Clone)]

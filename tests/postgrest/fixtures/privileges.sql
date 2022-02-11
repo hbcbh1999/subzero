@@ -19,6 +19,7 @@ GRANT ALL ON TABLE
     , items3
     , "articleStars"
     , articles
+    , arrays
     , auto_incrementing_pk
     , clients
     , comments
@@ -26,6 +27,7 @@ GRANT ALL ON TABLE
     , compound_pk
     , compound_pk_view
     , empty_table
+    , fav_numbers
     , has_count_column
     , has_fk
     , insertable_view_with_join

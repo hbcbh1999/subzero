@@ -716,3 +716,8 @@ INSERT INTO test.contact (id,name, clientid) values (1,'Wally Walton',1),(2,'Wil
 
 TRUNCATE TABLE test.clientinfo CASCADE;
 INSERT INTO test.clientinfo (id,clientid, other) values (1,1,'123 Main St'),(2,2,'456 South 3rd St'),(3,3,'789 Palm Tree Ln');
+
+TRUNCATE TABLE test.fav_numbers CASCADE;
+INSERT INTO test.fav_numbers VALUES (ROW(0.5, 0.5), 'A'),  (ROW(0.6, 0.6), 'B');
+TRUNCATE TABLE test.arrays CASCADE;
+INSERT INTO test.arrays VALUES (0, '{1,2,3}', '{{1,2,3},{4,5,6},{7,8,9}}'), (1, '{11,12,13}', '{{11,12,13},{14,15,16},{17,18,19}}');

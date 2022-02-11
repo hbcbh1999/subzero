@@ -471,7 +471,7 @@ fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> Snippet<'a> {
 fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> Snippet<'a> {
     match c {
         Single {field, filter, negate} => {
-            let fld = sql(format!("{}.{} ", fmt_qi(qi), fmt_field(field)));
+            let fld = sql(format!("{} ", fmt_field(qi, field)));
 
             if *negate {
                 "not(" + fld + fmt_filter(filter) + ")"
@@ -481,7 +481,7 @@ fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> Snippet<'a> {
             }
         },
         Foreign {left: (l_qi, l_fld), right: (r_qi, r_fld)} => {
-            sql( format!("{}.{} = {}.{}", fmt_qi(l_qi), fmt_field(l_fld), fmt_qi(r_qi), fmt_field(r_fld)) )
+            sql( format!("{} = {}", fmt_field(l_qi, l_fld), fmt_field(r_qi, r_fld)) )
         },
 
         Group (negate, tree) => {
@@ -527,15 +527,15 @@ fn fmt_filter<'a>(f: &'a Filter) -> Snippet<'a>{
                 None => fmt_operator(o) + ("(" + param(vv) + ")")
             }
         },
-        Col (qi, fld) => sql( format!("= {}.{}", fmt_qi(qi), fmt_field(fld)) )
+        Col (qi, fld) => sql( format!("= {}", fmt_field(qi, fld)) )
     }
 }
 
 fn fmt_select_item<'a >(qi: &Qi, i: &'a SelectItem) -> Snippet<'a> {
     match i {
         Star => sql(format!("{}.*", fmt_qi(qi))),
-        Simple {field: field@Field { name, json_path }, alias, cast: None} => sql(format!("{}.{}{}", fmt_qi(qi), fmt_field(field), fmt_as(name, json_path, alias ))),
-        Simple {field: field@Field { name, json_path }, alias, cast: Some(cast)} => sql(format!("cast({}.{} as {}){}", fmt_qi(qi), fmt_field(field), cast, fmt_as(name, json_path, alias ))),
+        Simple {field: field@Field { name, json_path }, alias, cast: None} => sql(format!("{}{}", fmt_field(qi, field), fmt_as(name, json_path, alias ))),
+        Simple {field: field@Field { name, json_path }, alias, cast: Some(cast)} => sql(format!("cast({} as {}){}", fmt_field(qi, field), cast, fmt_as(name, json_path, alias ))),
     }
 }
 
@@ -601,8 +601,12 @@ fn fmt_qi(qi: &Qi) -> String{
     }
 }
 
-fn fmt_field(f: &Field) -> String {
-    format!("{}{}", fmt_identity(&f.name), fmt_json_path(&f.json_path))
+fn fmt_field(qi: &Qi, f: &Field) -> String {
+    match f {
+        Field { name, json_path: json_path@Some(_) } => format!("to_jsonb({}.{}){}", fmt_qi(qi), fmt_identity(&name), fmt_json_path(&json_path)),
+        Field { name, json_path: None } => format!("{}.{}", fmt_qi(qi), fmt_identity(&name)),
+    }
+    //format!("{}{}", fmt_identity(&f.name), fmt_json_path(&f.json_path))
 }
 
 fn fmt_order(qi: &Qi, o: &Vec<OrderTerm>) -> String {
@@ -623,7 +627,7 @@ fn fmt_order_term(qi: &Qi, t: &OrderTerm) -> String {
         None => "",
         Some(n) => match n { OrderNulls::NullsFirst => "nulls first", OrderNulls::NullsLast => "nulls last" }
     };
-    format!("{}.{} {} {}", fmt_qi(qi), fmt_field(&t.term), direction, nulls)
+    format!("{} {} {}", fmt_field(qi, &t.term), direction, nulls)
 }
 
 // fn fmt_cast(cast: &Option<String>) -> String {
@@ -886,7 +890,7 @@ mod tests {
         )
         select
             "subzero_source"."a",
-            "subzero_source"."b"->1->>'key' as "key",
+            to_jsonb("subzero_source"."b")->1->>'key' as "key",
             row_to_json("subzero_source_clients".*) as "clients",
             coalesce((select json_agg("tasks".*) from (
                 select
@@ -999,7 +1003,7 @@ mod tests {
         r#"
         select
             "api"."projects"."a",
-            "api"."projects"."b"->1->>'key' as "key",
+            to_jsonb("api"."projects"."b")->1->>'key' as "key",
             row_to_json("projects_clients".*) as "clients",
             coalesce((select json_agg("tasks".*) from (
                 select
@@ -1060,7 +1064,7 @@ mod tests {
                     ]
                 }
             ))),
-            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21 > $1 and (\"schema\".\"table\".\"name\" > $2 and \"schema\".\"table\".\"name\" < $3)"), vec![SingleVal(s("2")), SingleVal(s("2")), SingleVal(s("5"))], 4))
+            format!("{:?}",(s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1 and (\"schema\".\"table\".\"name\" > $2 and \"schema\".\"table\".\"name\" < $3)"), vec![SingleVal(s("2")), SingleVal(s("2")), SingleVal(s("5"))], 4))
         );
     }
     
@@ -1075,7 +1079,7 @@ mod tests {
                     negate: false
                 }
             ))),
-            format!("{:?}",(s("\"schema\".\"table\".\"name\"->'key'->>21 > $1"), vec![&SingleVal(s("2"))], 2))
+            format!("{:?}",(s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1"), vec![&SingleVal(s("2"))], 2))
         );
 
         assert_eq!(
@@ -1123,7 +1127,7 @@ mod tests {
             &select
         );
         let (query_str,_,_) = generate(select_item);
-        assert_eq!(query_str,s("\"schema\".\"table\".\"name\"->'key'->>21 as \"alias\""));
+        assert_eq!(query_str,s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 as \"alias\""));
     }
     
     #[test]
@@ -1134,12 +1138,12 @@ mod tests {
     #[test]
     fn test_fmt_field(){
         assert_eq!(
-            fmt_field(&Field {name:s("name"), json_path:None}),
-            s("\"name\"")
+            fmt_field(&Qi(s("a"),s("b")), &Field {name:s("name"), json_path:None}),
+            s(r#""a"."b"."name""#)
         );
         assert_eq!(
-            fmt_field(&Field {name:s("name"), json_path:Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])}),
-            s("\"name\"->'key'->>21")
+            fmt_field(&Qi(s("a"),s("b")), &Field {name:s("name"), json_path:Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])}),
+            s(r#"to_jsonb("a"."b"."name")->'key'->>21"#)
         );
     }
 

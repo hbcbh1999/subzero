@@ -16,6 +16,8 @@ lazy_static! {
     Client::untracked(start().await.unwrap()).await.expect("valid client")
   });
 }
+//TODO!!! there are soem new capabilities/new tests
+// https://github.com/PostgREST/postgrest/commit/9f1b5c0a81a97646fb76a4e01322290ce5370c5e
 haskell_test! {
 feature "json operators"
   describe "Shaping response with select parameter" $ do
@@ -109,7 +111,7 @@ feature "json operators"
 
       it "can get array of objects" $ do
         get "/json_arr?select=data->0->>a&id=in.(5,6)" shouldRespondWith
-          [json| r#"[{"a":"A"}, {"a":"[1,2,3]"}]"# |]
+          [json| r#"[{"a":"A"}, {"a":"[1, 2, 3]"}]"# |]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
         get "/json_arr?select=data->0->a->>2&id=in.(5,6)" shouldRespondWith
           [json| r#"[{"a":null}, {"a":"3"}]"# |]
@@ -224,7 +226,7 @@ feature "json operators"
         [json| r#"[{"data":8}, {"data":7}]"# |]
         { matchHeaders = ["Content-Type" <:> "application/json"] }
       get "/json_arr?select=data->-2->>a&id=in.(5,6)" shouldRespondWith
-        [json| r#"[{"a":"A"}, {"a":"[1,2,3]"}]"# |]
+        [json| r#"[{"a":"A"}, {"a":"[1, 2, 3]"}]"# |]
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "can filter with negative indexes" $ do
@@ -246,7 +248,7 @@ feature "json operators"
         // [json|
         //   r#"{"details": "unexpected 'x' expecting digit, \"->\", \"::\" or end of input",
         //   "message": "\"failed to parse select parameter (data->>-78xy)\" (line 1, column 11)"}"# |]
-        [json|r#"{"details":"Unexpected `x` Unexpected `-` Expected `digit`, `->`, `::`, `end of input`, `-`, `\"`, `letter`, `_` or ` `","message":"\"failed to parse select parameter (data->>-78xy)\" (line 1, column 11)"}"#|]
+        [json|r#"{"details":"Unexpected `x` Unexpected `-` Expected `digit`, `->`, `::`, `.`, `,`, `end of input`, `-`, `\"`, `letter`, `_` or ` `","message":"\"failed to parse select parameter (data->>-78xy)\" (line 1, column 11)"}"#|]
         { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
       get "/json_arr?select=data->>--34" shouldRespondWith
         [json|r#"{"details":"Unexpected `-` Expected `digit`, `-`, `\"`, `letter`, `_` or ` `","message":"\"failed to parse select parameter (data->>--34)\" (line 1, column 9)"}"# |]
@@ -257,4 +259,60 @@ feature "json operators"
         //   "message":"\"failed to parse select parameter (data->>-xy-4)\" (line 1, column 9)"}"# |]
         [json|r#"{"details":"Unexpected `x` Unexpected `-` Expected `digit`, `-`, `\"`, `letter`, `_` or ` `","message":"\"failed to parse select parameter (data->>-xy-4)\" (line 1, column 9)"}"#|]
         { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
-  }
+
+    it "obtains a composite type field" $ do
+      get "/fav_numbers?select=num->i"
+        shouldRespondWith
+          [json| r#"[{"i":0.5},{"i":0.6}]"# |]
+      get "/fav_numbers?select=num->>i"
+        shouldRespondWith
+          [json| r#"[{"i":"0.5"},{"i":"0.6"}]"# |]
+
+    it "obtains an array item" $ do
+      get "/arrays?select=a:numbers->0,b:numbers->1,c:numbers_mult->0->0,d:numbers_mult->1->2"
+        shouldRespondWith
+          [json| r#"[{"a":1,"b":2,"c":1,"d":6},{"a":11,"b":12,"c":11,"d":16}]"# |]
+      get "/arrays?select=a:numbers->>0,b:numbers->>1,c:numbers_mult->0->>0,d:numbers_mult->1->>2"
+        shouldRespondWith
+          [json| r#"[{"a":"1","b":"2","c":"1","d":"6"},{"a":"11","b":"12","c":"11","d":"16"}]"# |]
+    
+    it "can filter composite type field" $
+          get "/fav_numbers?num->>i=gt.0.5"
+            shouldRespondWith
+              [json| r#"[{"num":{"r":0.6,"i":0.6},"person":"B"}]"# |]
+    
+    it "can filter array item" $ do
+      get "/arrays?select=id&numbers->0=eq.1"
+        shouldRespondWith
+          [json| r#"[{"id":0}]"# |]
+      get "/arrays?select=id&numbers->>0=eq.11"
+        shouldRespondWith
+          [json| r#"[{"id":1}]"# |]
+      get "/arrays?select=id&numbers_mult->1->1=eq.5"
+        shouldRespondWith
+          [json| r#"[{"id":0}]"# |]
+      get "/arrays?select=id&numbers_mult->2->>2=eq.19"
+        shouldRespondWith
+          [json| r#"[{"id":1}]"# |]
+          it "orders by composite type field" $ do
+          get "/fav_numbers?order=num->i.asc"
+            shouldRespondWith
+              [json| r#"[{"num":{"r":0.5,"i":0.5},"person":"A"}, {"num":{"r":0.6,"i":0.6},"person":"B"}]"# |]
+          get "/fav_numbers?order=num->>i.desc"
+            shouldRespondWith
+              [json| r#"[{"num":{"r":0.6,"i":0.6},"person":"B"}, {"num":{"r":0.5,"i":0.5},"person":"A"}]"# |]
+        
+    it "orders by array item" $ do
+      get "/arrays?select=id&order=numbers->0.desc"
+        shouldRespondWith
+          [json| r#"[{"id":1},{"id":0}]"# |]
+      get "/arrays?select=id&order=numbers->1.asc"
+        shouldRespondWith
+          [json| r#"[{"id":0},{"id":1}]"# |]
+      get "/arrays?select=id&order=numbers_mult->0->0.desc"
+        shouldRespondWith
+          [json| r#"[{"id":1},{"id":0}]"# |]
+      get "/arrays?select=id&order=numbers_mult->2->2.asc"
+        shouldRespondWith
+          [json| r#"[{"id":0},{"id":1}]"# |]
+}
