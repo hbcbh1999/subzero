@@ -84,9 +84,8 @@ pub fn parse<'r>(
 ) -> Result<ApiRequest<'r>> {
 
     let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {schemas: vec![schema.to_owned()]})?;
-    // println!("--------------looking for {} {}->{}.{:?}", current_schema, origin, target, hint);
-    // println!("--------------got schema");
-    let root_obj = schema_obj.objects.get(root).context(NotFound)?;
+    //println!("got schema");
+    let root_obj = schema_obj.objects.get(root).context(NotFound {target: root.clone()})?;
 
     //println!("root_obj {:#?}", root_obj);
     //let mut select_items = vec![SelectItem::Star];
@@ -95,6 +94,8 @@ pub fn parse<'r>(
     let mut orders = vec![];
     let mut conditions = vec![];
     let mut columns_ = None;
+    let mut on_conflict_ = None;
+    //let mut
     let mut fn_arguments = vec![];
     let accept_content_type = match headers.get("Accept") {
         //TODO!!! accept header can have multiple content types
@@ -146,6 +147,13 @@ pub fn parse<'r>(
                     .message("failed to parse columns parameter")
                     .easy_parse(v).map_err(to_app_error(v))?;
                 columns_ = Some(parsed_value);
+            }
+
+            "on_conflict" => {
+                let (parsed_value, _) = on_conflict()
+                    .message("failed to parse on_conflict parameter")
+                    .easy_parse(v).map_err(to_app_error(v))?;
+                on_conflict_ = Some(parsed_value);
             }
 
             kk if is_logical(kk) => {
@@ -237,6 +245,9 @@ pub fn parse<'r>(
             (&Method::PATCH, None) |
             (&Method::PATCH, Some(Preferences { representation: Some(Representation::None), ..})) |
             (&Method::PATCH, Some(Preferences { representation: Some(Representation::HeadersOnly), ..})) |
+            (&Method::PUT, None) |
+            (&Method::PUT, Some(Preferences { representation: Some(Representation::None), ..})) |
+            (&Method::PUT, Some(Preferences { representation: Some(Representation::HeadersOnly), ..})) |
             (&Method::DELETE, None) |
             (&Method::DELETE, Some(Preferences { representation: Some(Representation::None), ..})) => { select_items = vec![] },
             _ => {},
@@ -454,6 +465,18 @@ pub fn parse<'r>(
                    Ok((serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserialize)?, header.iter().map(|h| h.to_string()).collect()))
                 }
             }?;
+
+            let on_conflict = match &preferences {
+                Some(Preferences { resolution: Some(r), .. }) => {
+                    let on_conflict_cols = match on_conflict_ {
+                        Some(cols) => cols,
+                        None => root_obj.columns.iter().filter_map(|(n,c)| if c.primary_key {Some(n)} else {None}).cloned().collect::<Vec<_>>()
+                    };
+                    Some((r.clone(), on_conflict_cols))
+                },
+                _ => None,
+            };
+
             let mut q = Query {
                 node: Insert {
                     into: root.clone(),
@@ -462,7 +485,7 @@ pub fn parse<'r>(
                     where_: ConditionTree { operator: And, conditions: vec![] },
                     returning: vec![], //get_returning(&select_items)?,
                     select: node_select,
-                    //, onConflict :: Maybe (PreferResolution, [FieldName])
+                    on_conflict,
                 },
                 sub_selects,
             };
@@ -484,7 +507,7 @@ pub fn parse<'r>(
                 sub_selects,
             };
             add_join_info(&mut q, &schema, db_schema, 0)?;
-            //we populate the returing becasue it relies on the "join" information
+            //we populate the returing because it relies on the "join" information
             if let Query{ node: Delete { ref mut returning, ref select, ..}, ref sub_selects } = q {
                 returning.extend(get_returning(&select, &sub_selects)?);
             }
@@ -572,39 +595,144 @@ pub fn parse<'r>(
             }
             Ok(q)
         },
-        // Method::PUT => Ok(Upsert),
+        (&Method::PUT,_) => {
+            let _body = body.context(InvalidBody {message: "body not available".to_string()})?;
+
+            let (payload, columns) = match (content_type, columns_) {
+                (ApplicationJSON, Some(c)) |
+                (SingularJSON, Some(c)) => Ok((_body, c)),
+                (ApplicationJSON, None) |
+                (SingularJSON, None) => {
+                    let json_payload: Result<JsonValue,serde_json::Error> = serde_json::from_str(&_body);
+                    let columns = match json_payload {
+                        Ok(j) => {
+                            match j {
+                                JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
+                                JsonValue::Array(v) => {
+                                    match v.get(0) {
+                                        Some(JsonValue::Object(m)) => {
+                                            let canonical_set:HashSet<&String> = HashSet::from_iter(m.keys());
+                                            let all_keys_match = v.iter().all(|vv|
+                                                match vv {
+                                                    JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
+                                                    _ => false
+                                                }
+                                            );
+                                            if all_keys_match {
+                                                Ok(m.keys().cloned().collect())
+                                            }
+                                            else {
+                                                Err(Error::InvalidBody {message: format!("All object keys must match")})
+                                            }
+                                            
+                                        },
+                                        _ => Ok(vec![])
+                                    }
+                                },
+                                _ => Ok(vec![])
+                            }
+                        },
+                        Err(e) => {
+                            Err(Error::InvalidBody {message: format!("Failed to parse json body: {}", e)})
+                        }
+                    }?;
+                    Ok((_body, columns))
+                },
+                (TextCSV, cols) => {
+                    let mut rdr = Reader::from_reader(_body.as_bytes());
+                    let mut res: Vec<JsonValue> = vec![];
+                    let header: StringRecord = match cols {
+                        Some(c) => Ok(StringRecord::from(c)),
+                        None => Ok((rdr.headers().context(CsvDeserialize)?).clone())
+                    }?;
+                    for record in rdr.records() {
+                        res.push(
+                            header
+                            .clone()
+                            .into_iter()
+                            .zip(record.context(CsvDeserialize)?.into_iter())
+                            .map(|(k,v)| (k, match v { "NULL" => JsonValue::Null, _ => JsonValue::String(v.to_string()) }))
+                            .collect()
+                        );
+                    }
+                   Ok((serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserialize)?, header.iter().map(|h| h.to_string()).collect()))
+                }
+            }?;
+
+            // check all the required filters are there for the PUT request to be valid
+            let eq = &"=".to_string();
+            let root_conditions = conditions.iter().filter_map(|(p,c)| if p.len() == 0 {Some(c)}else{None}).collect::<Vec<_>>();
+            let pk_cols = root_obj.columns.iter().filter_map(|(n,c)| if c.primary_key {Some(n)} else {None}).cloned().collect::<BTreeSet<_>>();
+            let conditions_on_fields = root_conditions.iter().filter_map(|&c|{
+                match c {
+                    Single {field, filter: Op (o,_), negate: false} if o == eq => Some(field.name.clone()),
+                    _ => None,
+                }
+            }).collect::<BTreeSet<_>>();
+
+            println!("before check {:?} {:?}", pk_cols, conditions_on_fields);
+            if !(
+                pk_cols.len() > 0 &&
+                conditions_on_fields == pk_cols &&
+                root_conditions.len() == conditions_on_fields.len()
+            ) {
+                return Err(Error::InvalidFilters);
+            }
+            
+
+            let mut q = Query {
+                node: Insert {
+                    into: root.clone(),
+                    columns: columns,
+                    payload: Payload(payload),
+                    where_: ConditionTree { operator: And, conditions: vec![] },
+                    returning: vec![], //get_returning(&select_items)?,
+                    select: node_select,
+                    on_conflict: Some( (Resolution::MergeDuplicates, pk_cols.into_iter().collect()) ),
+                },
+                sub_selects,
+            };
+            add_join_info(&mut q, &schema, db_schema, 0)?;
+            //we populate the returing becasue it relies on the "join" information
+            if let Query{ node: Insert { ref mut returning, ref select, ..}, ref sub_selects } = q {
+                returning.extend(get_returning(&select, &sub_selects)?);
+            }
+            Ok(q)
+        },
         _ => Err(Error::UnsupportedVerb)
     }?;
 
     //println!("{:#?}", query);
-    insert_join_conditions(&mut query, &schema, db_schema);
-    insert_conditions(&mut query, conditions);
+    insert_join_conditions(&mut query, &schema, db_schema)?;
+    insert_conditions(&mut query, conditions)?;
 
     insert_properties(&mut query, limits, |q, p|{
         let limit = match &mut q.node {
-            Select {limit, ..} => limit,
-            Insert {..} => todo!(),
-            Delete {..} => todo!(),
-            Update {..} => todo!(),
-            FunctionCall {limit, ..} => limit,
-        };
+            Select {limit, ..} => Ok(limit),
+            Insert {..} => Err(Error::LimitOffsetNotAllowedError),
+            Delete {..} => Err(Error::LimitOffsetNotAllowedError),
+            Update {..} => Err(Error::LimitOffsetNotAllowedError),
+            FunctionCall {limit, ..} => Ok(limit),
+        }?;
         for v in p {
             *limit = Some(v);
         }
-    });
+        Ok(())
+    })?;
 
     insert_properties(&mut query, offsets, |q, p|{
         let offset = match  &mut q.node {
-            Select {offset, ..} => offset,
-            Insert {..} => todo!(),
-            Delete {..} => todo!(),
-            Update {..} => todo!(),
-            FunctionCall {offset, ..} => offset,
-        };
+            Select {offset, ..} => Ok(offset),
+            Insert {..} => Err(Error::LimitOffsetNotAllowedError),
+            Delete {..} => Err(Error::LimitOffsetNotAllowedError),
+            Update {..} => Err(Error::LimitOffsetNotAllowedError),
+            FunctionCall {offset, ..} => Ok(offset),
+        }?;
         for v in p {
             *offset = Some(v);
         }
-    });
+        Ok(())
+    })?;
 
     insert_properties(&mut query, orders, |q, p|{
         let order = match  &mut q.node {
@@ -617,7 +745,8 @@ pub fn parse<'r>(
         for o in p {
             *order = o;
         }
-    });
+        Ok(())
+    })?;
 
     // enforce max rows limit for each node
     if let Some(max) = max_rows {
@@ -813,6 +942,12 @@ where Input: Stream<Token = char>
 }
 
 fn columns<Input>() -> impl Parser<Input, Output = Vec<String>>
+where Input: Stream<Token = char>
+{
+    sep_by1(field_name(), lex(char(','))).skip(eof())
+}
+
+fn on_conflict<Input>() -> impl Parser<Input, Output = Vec<String>>
 where Input: Stream<Token = char>
 {
     sep_by1(field_name(), lex(char(','))).skip(eof())
@@ -1232,7 +1367,7 @@ fn add_join_info( query: &mut Query, schema: &String, db_schema: &DbSchema, dept
     Ok(())
 }
 
-fn insert_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema ){
+fn insert_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSchema )->Result<()>{
     let subzero_source = "subzero_source".to_string();
     let empty = "".to_string();
     let parent_qi : Qi = match &query.node {
@@ -1306,16 +1441,17 @@ fn insert_join_conditions( query: &mut Query, schema: &String, db_schema: &DbSch
                     ).collect()
                 }
             };
-            insert_conditions(q, conditions);
-            insert_join_conditions( q, schema, db_schema);
+            insert_conditions(q, conditions)?;
+            insert_join_conditions( q, schema, db_schema)?;
         }
     }
+    Ok(())
 }
 
-fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>, f: fn(&mut Query, Vec<T>),  ) {
+fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>, f: fn(&mut Query, Vec<T>)->Result<()>) -> Result<()> {
     let node_properties = properties.drain_filter(|(path, _)| path.len() == 0).map(|(_,c)| c).collect::<Vec<_>>();
     if node_properties.len() > 0 {
-         f(query, node_properties) 
+         f(query, node_properties)?
     };
     
     for SubSelect{query: q, alias, ..} in query.sub_selects.iter_mut(){
@@ -1336,15 +1472,16 @@ fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>,T)>,
                         None => false
                     }
                 ).collect::<Vec<_>>();
-                insert_properties(q, node_properties, f);
+                insert_properties(q, node_properties, f)?;
             }
     //        }
     //        _ => {}
     //    }
     }
+    Ok(())
 }
 
-fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)>){
+fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)>)->Result<()>{
     insert_properties(query, conditions, |q, p|{
         let query_conditions: &mut Vec<Condition> = match &mut q.node {
             Select {where_, ..} => where_.conditions.as_mut(),
@@ -1354,7 +1491,8 @@ fn insert_conditions( query: &mut Query, conditions: Vec<(Vec<String>,Condition)
             FunctionCall {where_, .. } => where_.conditions.as_mut(),
         };
         p.into_iter().for_each(|c| query_conditions.push(c));
-    });
+        Ok(())
+    })
 }
 
 fn is_logical(s: &str)->bool{ s == "and" || s == "or" || s.ends_with(".or") || s.ends_with(".and") }
@@ -1666,7 +1804,7 @@ pub mod tests {
             filter: Filter::Op(s(">="),SingleVal(s("5"))),
             negate: false,
         };
-        insert_conditions( &mut query, vec![
+        let _ = insert_conditions( &mut query, vec![
             (vec![],condition.clone()),
             (vec![s("child")],condition.clone()),
         ]);
@@ -1871,6 +2009,7 @@ pub mod tests {
                 cookies: &emtpy_hashmap,
                 query: Query {
                     node: Insert {
+                        on_conflict: None,
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                         ],
@@ -1907,6 +2046,7 @@ pub mod tests {
                 cookies: &emtpy_hashmap,
                 query: Query {
                     node: Insert {
+                        on_conflict: None,
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                             Simple {field: Field {name: s("name"), json_path: None}, alias: None, cast: None},
@@ -1998,6 +2138,7 @@ pub mod tests {
                 cookies: &emtpy_hashmap,
                 query: 
                     Query { sub_selects: vec![], node: Insert {
+                        on_conflict: None,
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                         ],
@@ -2097,6 +2238,7 @@ pub mod tests {
                             },
                         ],
                         node: Insert {
+                        on_conflict: None,
                         select: vec![
                             Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
                             Simple {field: Field {name: s("name"), json_path: None}, alias: None, cast: None},

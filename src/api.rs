@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 pub use http::Method;
 use std::collections::{HashMap,VecDeque};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Resolution {MergeDuplicates, IgnoreDuplicates}
 #[derive(Debug, PartialEq)]
 pub enum Representation {Full, None, HeadersOnly}
@@ -201,11 +201,11 @@ pub enum QueryNode {
         where_: ConditionTree, //used only for put
         returning: Vec<String>,
         select: Vec<SelectItem>,
-        //, onConflict :: Maybe (PreferResolution, [FieldName])
+        on_conflict: Option<(Resolution, Vec<String>)>
     },
     Delete {
         from: String,
-        where_: ConditionTree, //used only for put
+        where_: ConditionTree,
         returning: Vec<String>,
         select: Vec<SelectItem>,
     },

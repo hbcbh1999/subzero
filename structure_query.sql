@@ -38,8 +38,8 @@ with view_source_columns as (
             replace(
             replace(
             replace(
-            replace(
             regexp_replace(
+            replace(
             replace(
             replace(
             replace(
@@ -60,9 +60,15 @@ with view_source_columns as (
             -- -----------------------------------------------
             -- pattern           | replacement         | flags
             -- -----------------------------------------------
+            -- `<>` in pg_node_tree is the same as `null` in JSON, but due to very poor performance of json_typeof
+            -- we need to make this an empty array here to prevent json_array_elements from throwing an error
+            -- when the targetList is null.
+            -- We'll need to put it first, to make the node protection below work for node lists that start with
+            -- null: `(<> ...`, too. This is the case for coldefexprs, when the first column does not have a default value.
+               '<>'              , '()'
             -- `,` is not part of the pg_node_tree format, but used in the regex.
             -- This removes all `,` that might be part of column names.
-               ','               , ''
+            ), ','               , ''
             -- The same applies for `{` and `}`, although those are used a lot in pg_node_tree.
             -- We remove the escaped ones, which might be part of column names again.
             ), E'\\{'            , ''
@@ -97,10 +103,6 @@ with view_source_columns as (
             ), ')'               , ']'
             -- pg_node_tree has ` ` between list items, but JSON uses `,`
             ), ' '             , ','
-            -- `<>` in pg_node_tree is the same as `null` in JSON, but due to very poor performance of json_typeof
-            -- we need to make this an empty array here to prevent json_array_elements from throwing an error
-            -- when the targetList is null.
-            ), '<>'              , '[]'
           )::json as view_definition
         from views
       ),
@@ -248,7 +250,7 @@ tables as (
       d.description as table_description,
       c.relkind as relkind,
       (
-        c.relkind in ('r', 'v', 'f')
+        c.relkind in ('r', 'v', 'f', 'p')
 
         and pg_relation_is_updatable(c.oid, true) & 8 = 8
 
@@ -280,6 +282,7 @@ tables as (
     where
       c.relkind in ('v','r','m','f', 'p')
       and n.nspname not in ('pg_catalog'::name, 'information_schema'::name)
+      and not c.relispartition -- remove this for pg < 10
 ),
 
 table_primary_keys as (
@@ -295,7 +298,7 @@ table_primary_keys as (
       , unnest(c.conkey) as con(key)
     where
       c.contype = 'p'
-      and r.relkind = 'r'
+      and r.relkind IN ('r', 'p')
       --and nr.nspname not in ('pg_catalog', 'information_schema')
       and nr.nspname = any($1::name[])
       and not pg_is_other_temp_schema(nr.oid)
@@ -350,7 +353,7 @@ columns as (
       information_schema._pg_char_max_length(truetypid, truetypmod) as col_max_len,
       information_schema._pg_numeric_precision(truetypid, truetypmod) as col_precision,
       (
-        c.relkind in ('r', 'v', 'f')
+        c.relkind in ('r', 'v', 'f', 'p')
         and pg_column_is_updatable(c.oid::regclass, a.attnum, false)
       ) col_updatable,
       coalesce(enum_info.vals, array[]::text[]) as col_enum,
@@ -383,7 +386,7 @@ columns as (
       a.attnum <> 0
       and a.attname not in ('tableoid','cmax','xmax','cmin','xmin','ctid')
       and not a.attisdropped
-      and c.relkind in ('r', 'v', 'f', 'm')
+      and c.relkind in ('r', 'v', 'f', 'm', 'p')
       --and (nc.nspname = any ($1::name[]) or pks is not null)
       and nc.nspname = any ($1::name[])
       and not pg_is_other_temp_schema(c.relnamespace)
@@ -556,14 +559,6 @@ json_schema as (
                         'composite', f.composite,
                         'volatile', f.volatile,
                         'variadic', f.variadic,
-                        -- 'columns', coalesce((select json_agg(columns.*) from (
-                        --     select
-                        --         c.col_name as name,
-                        --         c.col_is_primary_key as primary_key,
-                        --         c.col_type as data_type
-                        --     from columns c
-                        --     where c.col_table_oid= t.table_oid
-                        -- ) as columns), '[]'),
                         'foreign_keys', coalesce((select json_agg(foreign_keys.*) from (
                             select
                                 r.constraint_name as name,
@@ -580,7 +575,6 @@ json_schema as (
                     ) as v
                     from functions f
                     where f.function_schema_oid = s.schema_oid
-                    --and f.return_type_schema != 'pg_catalog'
                 ) as objects), '[]') as objects
             from schemas s
         ) schemas_res

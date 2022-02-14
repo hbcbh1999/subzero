@@ -38,7 +38,7 @@ pub fn get_resources<'a>(vhost: &Option<&str>, store: &'a Arc<DashMap<String, Vh
         Ok(gg.unwrap().value())
     }
     else {
-        Err(Error::NotFound)
+        Err(Error::NotFound {target: "vhost".to_string()})
     }
 
 }

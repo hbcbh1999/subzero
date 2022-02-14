@@ -365,6 +365,15 @@ END;
 $$;
 
 
+CREATE FUNCTION assert() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+      ASSERT false, 'bad thing';
+END;
+$$;
+
+
 --
 -- Name: problem(); Type: FUNCTION; Schema: test; Owner: -
 --
@@ -1323,6 +1332,22 @@ create or replace function test.overloaded(a text, b text, c text) returns text 
   select a || b || c
 $$ language sql;
 
+create or replace function test.overloaded_default(opt_param text default 'Code w7') returns setof test.tasks as $$
+select * from test.tasks where name like opt_param;
+$$ language sql;
+
+create or replace function test.overloaded_default(must_param int) returns jsonb as $$
+select row_to_json(r)::jsonb from (select must_param as val) as r;
+$$ language sql;
+
+create or replace function test.overloaded_default(a int, opt_param text default 'Design IOS') returns setof test.tasks as $$
+select * from test.tasks where name like opt_param and id > a;
+$$ language sql;
+
+create or replace function test.overloaded_default(a int, must_param int) returns jsonb as $$
+select row_to_json(r)::jsonb from (select a, must_param as val) as r;
+$$ language sql;
+
 create or replace function test.overloaded_html_form() returns setof int as $$
 values (1), (2), (3);
 $$ language sql;
@@ -2095,59 +2120,6 @@ returns setof v2.parents as $$
   select * from v2.parents where id < $1;
 $$ language sql;
 
--- Used to test if prepared statements are used
-create function uses_prepared_statements() returns bool as $$
-  select count(name) > 0 from pg_catalog.pg_prepared_statements
-$$ language sql;
-
-create or replace function change_max_rows_config(val int, notify bool default false) returns void as $_$
-begin
-  execute format($$
-    alter role postgrest_test_authenticator set pgrst.db_max_rows = %L;
-  $$, val);
-  if notify then
-    perform pg_notify('pgrst', 'reload config');
-  end if;
-end $_$ volatile security definer language plpgsql ;
-
-create or replace function reset_max_rows_config() returns void as $_$
-begin
-  alter role postgrest_test_authenticator set pgrst.db_max_rows = '1000';
-end $_$ volatile security definer language plpgsql ;
-
-create or replace function change_db_schema_and_full_reload(schemas text) returns void as $_$
-begin
-  execute format($$
-    alter role postgrest_test_authenticator set pgrst.db_schemas = %L;
-  $$, schemas);
-  perform pg_notify('pgrst', 'reload config');
-  perform pg_notify('pgrst', 'reload schema');
-end $_$ volatile security definer language plpgsql ;
-
-create or replace function v1.reset_db_schema_config() returns void as $_$
-begin
-  alter role postgrest_test_authenticator set pgrst.db_schemas = 'test';
-  perform pg_notify('pgrst', 'reload config');
-  perform pg_notify('pgrst', 'reload schema');
-end $_$ volatile security definer language plpgsql ;
-
-create or replace function test.invalid_role_claim_key_reload() returns void as $_$
-begin
-  alter role postgrest_test_authenticator set pgrst.jwt_role_claim_key = 'test';
-  perform pg_notify('pgrst', 'reload config');
-end $_$ volatile security definer language plpgsql ;
-
-create or replace function test.reset_invalid_role_claim_key() returns void as $_$
-begin
-  alter role postgrest_test_authenticator set pgrst.jwt_role_claim_key = '."a"."role"';
-  perform pg_notify('pgrst', 'reload config');
-end $_$ volatile security definer language plpgsql ;
-
-create or replace function test.reload_pgrst_config() returns void as $_$
-begin
-  perform pg_notify('pgrst', 'reload config');
-end $_$ language plpgsql ;
-
 create table private.screens (
   id serial primary key,
   name text not null default 'new screen'
@@ -2245,56 +2217,83 @@ create table private.rollen (
 do $do$begin
     -- partitioned tables using the PARTITION syntax are supported from pg v10
     if (select current_setting('server_version_num')::int >= 100000) then
-      create table test.partitioned_a(
-        id int not null,
-        name varchar(64) not null
-      ) partition by list (name);
+      create table test.car_models(
+        name varchar(64) not null,
+        year int not null
+      ) partition by list (year);
 
-      comment on table test.partitioned_a is
+      comment on table test.car_models is
       $$A partitioned table
 
 A test for partitioned tables$$;
 
-      create table test.first_partition_a partition of test.partitioned_a
-        for values in ('first');
-
-      create table test.second_partition_a partition of test.partitioned_a
-        for values in ('second');
+      create table test.car_models_2021 partition of test.car_models
+        for values in (2021);
+      create table test.car_models_default partition of test.car_models
+        for values in (1981,1997,2001,2013);
     end if;
 
     -- primary keys for partitioned tables are supported from pg v11
     if (select current_setting('server_version_num')::int >= 110000) then
-      create table test.reference_from_partitioned (
-        id int primary key
+      create table test.car_brands (
+        name varchar(64) primary key
       );
 
-      alter table test.partitioned_a add primary key (id, name);
-      alter table test.partitioned_a add column id_ref int references test.reference_from_partitioned(id);
+      alter table test.car_models add primary key (name, year);
+      alter table test.car_models add column car_brand_name varchar(64) references test.car_brands(name);
     end if;
 
     -- foreign keys referencing partitioned tables are supported from pg v12
     if (select current_setting('server_version_num')::int >= 120000) then
-      create table test.partitioned_b(
-        id int not null,
-        name varchar(64) not null,
-        id_a int,
-        name_a varchar(64),
-        primary key (id, name),
-        foreign key (id_a, name_a) references test.partitioned_a (id, name)
-      ) partition by list (name);
+      create table test.car_model_sales(
+        date varchar(64) not null,
+        quantity int not null,
+        car_model_name varchar(64),
+        car_model_year int,
+        primary key (date, car_model_name, car_model_year),
+        foreign key (car_model_name, car_model_year) references test.car_models (name, year)
+      ) partition by range (date);
 
-      create table test.first_partition_b partition of test.partitioned_b
-        for values in ('first_b');
+      create table test.car_model_sales_202101 partition of test.car_model_sales
+        for values from ('2021-01-01') to ('2021-01-31');
 
-      create table test.second_partition_b partition of test.partitioned_b
-        for values in ('second_b');
+      create table test.car_model_sales_default partition of test.car_model_sales
+        default;
 
-      create table test.reference_to_partitioned (
-        id int not null primary key,
-        id_a int,
-        name_a varchar(64),
-        foreign key (id_a, name_a) references test.partitioned_a (id, name)
+      create table test.car_racers (
+        name varchar(64) not null primary key,
+        car_model_name varchar(64),
+        car_model_year int,
+        foreign key (car_model_name, car_model_year) references test.car_models (name, year)
       );
+
+      create table test.car_dealers (
+        name varchar(64) not null,
+        city varchar(64) not null,
+        primary key (name, city)
+      ) partition by list (city);
+
+      create table test.car_dealers_springfield partition of test.car_dealers
+        for values in ('Springfield');
+
+      create table test.car_dealers_default partition of test.car_dealers
+        default;
+
+      create table test.car_models_car_dealers (
+        car_model_name varchar(64) not null,
+        car_model_year int not null,
+        car_dealer_name varchar(64) not null,
+        car_dealer_city varchar(64) not null,
+        quantity int not null,
+        foreign key (car_model_name, car_model_year) references test.car_models (name, year),
+        foreign key (car_dealer_name, car_dealer_city) references test.car_dealers (name, city)
+      ) partition by range (quantity);
+
+      create table test.car_models_car_dealers_10to20 partition of test.car_models_car_dealers
+        for values from (10) to (20);
+
+      create table test.car_models_car_dealers_default partition of test.car_models_car_dealers
+        default;
     end if;
 end$do$;
 
@@ -2391,6 +2390,45 @@ CREATE TABLE clientinfo (
 , other text
 );
 
+CREATE TABLE chores (
+  id int primary key
+, name text
+, done bool
+);
+
+CREATE TABLE deferrable_unique_constraint (
+  col INT UNIQUE DEFERRABLE INITIALLY IMMEDIATE
+);
+
+CREATE FUNCTION raise_constraint(deferred BOOL DEFAULT FALSE) RETURNS void
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF deferred THEN
+    SET CONSTRAINTS ALL DEFERRED;
+  END IF;
+
+  INSERT INTO deferrable_unique_constraint VALUES (1), (1);
+END$$;
+
+-- This view is not used in any requests but just parsed by the pfkSourceColumns query.
+-- XMLTABLE is only supported from PG 10 on
+DO $do$
+BEGIN
+  IF current_setting('server_version_num')::INT >= 100000 THEN
+    CREATE VIEW test.xml AS
+    SELECT *
+      FROM (SELECT ''::xml AS data) _,
+           XMLTABLE(
+             ''
+             PASSING data
+             COLUMNS id int PATH '@id',
+                     premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified'
+           );
+  END IF;
+END
+$do$;
+
+-- https://github.com/PostgREST/postgrest/issues/1543
 CREATE TYPE complex AS (
  r double precision,
  i double precision
@@ -2406,4 +2444,22 @@ create table test.arrays (
   id int primary key,
   numbers int[],
   numbers_mult int[][]
+);
+
+-- This procedure is to confirm that procedures don't show up in the OpenAPI output right now.
+-- Procedures are not supported, yet.
+do $do$begin
+  if (select current_setting('server_version_num')::int >= 110000) then
+    CREATE PROCEDURE test.unsupported_proc ()
+    LANGUAGE SQL AS '';
+  end if;
+end $do$;
+
+CREATE FUNCTION public.dummy(int) RETURNS int
+LANGUAGE SQL AS $$ SELECT 1 $$;
+
+-- This aggregate is to confirm that aggregates don't show up in the OpenAPI output.
+CREATE AGGREGATE test.unsupported_agg (*) (
+  SFUNC = public.dummy,
+  STYPE = int
 );

@@ -100,6 +100,9 @@ fn return_representation<'a>(request: &'a ApiRequest) -> bool {
         (&Method::PATCH, Update {..}, None) |
         (&Method::PATCH, Update {..}, Some(Preferences { representation: Some(Representation::None), ..})) |
         (&Method::PATCH, Update {..}, Some(Preferences { representation: Some(Representation::HeadersOnly), ..})) |
+        (&Method::PUT, Insert {..}, None) |
+        (&Method::PUT, Insert {..}, Some(Preferences { representation: Some(Representation::None), ..})) |
+        (&Method::PUT, Insert {..}, Some(Preferences { representation: Some(Representation::HeadersOnly), ..})) |
         (&Method::DELETE, Delete {..}, None) |
         (&Method::DELETE, Delete {..}, Some(Preferences { representation: Some(Representation::None), ..}))
             => false,
@@ -263,7 +266,7 @@ fn fmt_query<'a>(schema: &String, return_representation: bool, wrapin_cte: Optio
                 " " + fmt_offset(offset)
             )
         },
-        Insert {into, columns, payload, where_, returning, select} => {
+        Insert {into, columns, payload, where_, returning, select, on_conflict} => {
             let qi = &Qi(schema.clone(),into.clone());
             let qi_subzero_source = &Qi("".to_string(),"subzero_source".to_string());
             let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect();
@@ -284,13 +287,28 @@ fn fmt_query<'a>(schema: &String, return_representation: bool, wrapin_cte: Optio
                 Some(
                     fmt_body(payload)+
                     ", subzero_source as ( " + 
-                        format!( " insert into {} {} select {} from json_populate_recordset(null::{}, (select val from subzero_body)) _ returning {}",
-                            fmt_qi(qi), 
-                            into_columns,
-                            select_columns,
-                            fmt_qi(qi),
-                            returned_columns
-                        ) +
+                    " insert into " + fmt_qi(qi) + " " +into_columns +
+                    " select " + select_columns +
+                    " from json_populate_recordset(null::" + fmt_qi(qi) + ", (select val from subzero_body)) _ " +
+                    " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_) } else { sql("") } + // this line is only relevant for upsert
+                    match on_conflict {
+                        Some((r,cols)) if cols.len()>0 => {
+                            let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
+                            let on_do = match (r, columns.len()) {
+                                (Resolution::IgnoreDuplicates, _) |
+                                (_, 0) => format!("do nothing"),
+                                _ => format!(
+                                    "do update set {}",
+                                    columns.iter().map(|c| 
+                                        format!("{} = excluded.{}", fmt_identity(c), fmt_identity(c))
+                                    ).collect::<Vec<_>>().join(", ")
+                                )
+                            };
+                            format!("{} {}", on_c, on_do)
+                        },
+                        _ => format!("")
+                    } +
+                    " returning " + returned_columns +
                     " )"
                 ),
                 if return_representation {
@@ -788,6 +806,7 @@ mod tests {
     fn test_fmt_insert_query(){
         let payload = r#"[{"id":10, "a":"a field"}]"#.to_string();
         let q = Query{ node: Insert {
+            on_conflict: None,
             select: vec![
                 Simple {field: Field {name: s("a"), json_path: None}, alias: None, cast: None},
                 Simple {field: Field {name: s("b"), json_path: Some(vec![JArrow(JIdx(s("1"))), J2Arrow(JKey(s("key")))])}, alias: None, cast: None},

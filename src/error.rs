@@ -66,8 +66,8 @@ pub enum Error {
     #[snafu(display("UnknownRelation {}", relation))]
     UnknownRelation {relation: String},
 
-    #[snafu(display("NotFound"))]
-    NotFound,
+    #[snafu(display("NotFound {}", target))]
+    NotFound {target: String},
 
     //schema proc_name argument_keys has_prefer_single_object content_type is_inv_post
     #[snafu(display("NoRpc {}.{}", schema, proc_name))]
@@ -110,7 +110,13 @@ pub enum Error {
     ContentTypeError { message: String },
 
     #[snafu(display("SingularityError {}", count))]
-    SingularityError { count: i64, content_type: String }
+    SingularityError { count: i64, content_type: String },
+
+    #[snafu(display("LimitOffsetNotAllowedError"))]
+    LimitOffsetNotAllowedError,
+
+    #[snafu(display("PutMatchingPkError"))]
+    PutMatchingPkError
 
 }
 
@@ -142,12 +148,14 @@ impl Error {
             Error::InvalidFilters => 405,
             Error::UnacceptableSchema {..} => 406,
             Error::UnknownRelation {..}  => 400,
-            Error::NotFound => 404,
+            Error::NotFound { .. } => 404,
             Error::NoRpc {..} => 404,
             Error::UnsupportedVerb {..} => 405,
             Error::ReadFile  { .. }  => 500,
             Error::JsonDeserialize  { .. }  => 400,
+            Error::LimitOffsetNotAllowedError => 400,
             Error::CsvDeserialize  { .. }  => 400,
+            Error::PutMatchingPkError => 400,
             Error::JsonSerialize  { .. }  => 500,
             Error::SingularityError { .. } => 406,
             Error::DbPoolError { source }  => match source {
@@ -207,8 +215,10 @@ impl Error {
             Error::InternalError {message} => json!({"message": message}),
             Error::ParseRequestError { message, details }  => json!({"details": details, "message": message }),
             Error::JwtTokenInvalid {message} => json!({"message": message}),
+            Error::LimitOffsetNotAllowedError => json!({"message": "Range header and limit/offset querystring parameters are not allowed for PUT"}),
             // Error::NoRelBetween {origin, target}  => json!({
             //     "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
+            //     "hint"    .= ("Verify that '" <> parent <> "' and '" <> child <> "' exist in the schema '" <> schema <> "' and that there is a foreign key relationship between them. If a new relationship was created, try reloading the schema cache." :: Text),
             //     "message": format!("Could not find a relationship between {} and {} in the schema cache", origin, target)
             // }),
             Error::NoRelBetween {origin, target}  => json!({
@@ -220,9 +230,10 @@ impl Error {
                 "message":  format!("Could not embed because more than one relationship was found for '{}' and '{}'", origin, target),
             }),
             Error::InvalidFilters => json!({"message":"Filters must include all and only primary key columns with 'eq' operators"}),
+            Error::PutMatchingPkError => json!({"message":"Payload values do not match URL in primary key column(s)"}),
             Error::UnacceptableSchema {schemas} => json!({"message":format!("The schema must be one of the following: {}", schemas.join(", "))}),
             // Error::UnknownRelation {..}  => 400,
-            Error::NotFound => json!({}),
+            Error::NotFound {target} => json!({"message": format!("Entiry '{}' not found", target)}),
             Error::UnsupportedVerb => json!({"message":"Unsupported HTTP verb"}),
             Error::NoRpc {schema, proc_name, argument_keys, has_prefer_single_object, content_type, is_inv_post} => {
                 let prms = format!("({})", argument_keys.join(", "));

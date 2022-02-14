@@ -9,7 +9,7 @@ use snafu::{ResultExt};
 use http::Method;
 
 use crate::{
-    api::{ApiRequest, QueryNode::*, ContentType, ContentType::*, Preferences, Representation},
+    api::{ApiRequest, QueryNode::*, ContentType, ContentType::*, Preferences, Representation, Resolution::*},
     schema::DbSchema,
     error::{*, Result},
     config::{VhostConfig, },
@@ -216,6 +216,16 @@ pub async fn handle_postgrest_request(
         return Err(Error::SingularityError { count: page_total, content_type: headers.get("Accept").unwrap_or(&"").to_string() })
     }
 
+    //println!("before check {:?} {:?}", method, page_total);
+    if method == Method::PUT && page_total != 1 {
+        // Makes sure the querystring pk matches the payload pk
+        // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
+        // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
+        // If this condition is not satisfied then nothing is inserted,
+        transaction.rollback().await.context(DbError {authenticated})?;
+        return Err(Error::PutMatchingPkError)
+    }
+
     if config.db_tx_rollback {
         transaction.rollback().await.context(DbError {authenticated})?;
     }
@@ -264,8 +274,14 @@ pub async fn handle_postgrest_request(
         (&Method::PATCH, Update {columns,..}, 0, _,_) if columns.len() > 0 => 404,
         (&Method::PATCH, Update {..}, .., Some(Preferences { representation: Some(Representation::Full), ..})) => 200,
         (&Method::PATCH, Update {..}, ..) => 204,
+        (&Method::PUT, Insert {..}, .., Some(Preferences { representation: Some(Representation::Full), ..})) => 200,
+        (&Method::PUT, Insert {..}, ..) => 204,
         (.., pt, t, _) => content_range_status(top_level_offset, top_level_offset + pt -1, t),
     };
+
+    if let Some(Preferences { resolution: Some(r), ..}) = request.preferences {
+        response_headers.push(("Preference-Applied".to_string(), match r { MergeDuplicates => "resolution=merge-duplicates".to_string(), IgnoreDuplicates=>"resolution=ignore-duplicates".to_string() }));
+    }
 
     let response_status:Option<&str> = rows[0].get("response_status");
     if let Some(response_status_str) = response_status {

@@ -193,6 +193,25 @@ macro_rules! haskell_test {
                         $([text|$patch_text_body:literal|])?
                         $($patch_body:literal)?
                     )?
+
+                    $(request methodPut $put_url:literal
+                        $([dummy])?
+                        $([auth])?
+                        $([single])?
+                        $((acceptHdrs $put_accept_header:literal))?
+                        $([ 
+                            $(authHeaderJWT $put_jwt_token:literal , )?
+                            ($put_header_nn0:literal,$put_header_v0:literal)
+                            $(
+                              ,($put_header_nn1:literal,$put_header_v1:literal)
+                              $(,($put_header_nn2:literal,$put_header_v2:literal))?
+                            )?
+                        ])?
+                        $([])?
+                        $([json|$put_json_body:literal|])?
+                        $([text|$put_text_body:literal|])?
+                        $($put_body:literal)?
+                    )?
                     
                     shouldRespondWith
                     $($status_simple:literal)?
@@ -308,6 +327,27 @@ macro_rules! haskell_test {
                                                   haskell_test!(@add_header request $patch_header_nn1 $patch_header_v1);
                                                   $(
                                                     haskell_test!(@add_header request $patch_header_nn2 $patch_header_v2);
+                                                  )?
+                                              )?
+                                            )?
+                                          )?
+
+                                          $(
+                                            let url = format!("/rest{}",$put_url);
+                                            let mut request = client.put(normalize_url(&url))
+                                                .body($($put_text_body)? $($put_json_body)? $($put_body)?);
+                                            request.add_header(Accept::from_str("*/*").unwrap());
+                                            $(request.add_header(Accept::from_str($put_accept_header).unwrap());)?
+
+                                            $(
+                                              $(
+                                                request.add_header(Header::new("Authorization", format!("Bearer {}",$put_jwt_token)));
+                                              )?
+                                              haskell_test!(@add_header request $put_header_nn0 $put_header_v0);
+                                              $(
+                                                  haskell_test!(@add_header request $put_header_nn1 $put_header_v1);
+                                                  $(
+                                                    haskell_test!(@add_header request $put_header_nn2 $put_header_v2);
                                                   )?
                                               )?
                                             )?

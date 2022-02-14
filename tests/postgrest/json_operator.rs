@@ -16,8 +16,6 @@ lazy_static! {
     Client::untracked(start().await.unwrap()).await.expect("valid client")
   });
 }
-//TODO!!! there are soem new capabilities/new tests
-// https://github.com/PostgREST/postgrest/commit/9f1b5c0a81a97646fb76a4e01322290ce5370c5e
 haskell_test! {
 feature "json operators"
   describe "Shaping response with select parameter" $ do
