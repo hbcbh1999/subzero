@@ -1,26 +1,24 @@
 //helper related to rocket framework
 
 use rocket::{
-    http::{HeaderMap,},
-    form::{FromForm, ValueField, DataField, Options, Result as FormResult},
+    form::{DataField, FromForm, Options, Result as FormResult, ValueField},
+    http::HeaderMap,
+    http::{ContentType as HTTPContentType, Header, Status},
     request::{FromRequest, Outcome, Request},
-    response::{Responder, Result, Response},
-    http::{Header, ContentType as HTTPContentType, Status,},
+    response::{Responder, Response, Result},
 };
 
-use crate::{
-    api::{ContentType::{self, *},},
-};
+use crate::api::ContentType::{self, *};
 
 use std::ops::Deref;
 
-
-lazy_static!{
-    static ref SINGLE_CONTENT_TYPE: HTTPContentType = HTTPContentType::parse_flexible("application/vnd.pgrst.object+json").unwrap();
+lazy_static! {
+    static ref SINGLE_CONTENT_TYPE: HTTPContentType =
+        HTTPContentType::parse_flexible("application/vnd.pgrst.object+json").unwrap();
 }
 
 #[derive(Debug)]
-pub struct QueryString<'r> (Vec<(&'r str, &'r str)>);
+pub struct QueryString<'r>(Vec<(&'r str, &'r str)>);
 
 #[rocket::async_trait]
 impl<'v> FromForm<'v> for QueryString<'v> {
@@ -34,8 +32,7 @@ impl<'v> FromForm<'v> for QueryString<'v> {
         ctxt.push((field.name.source(), field.value));
     }
 
-    async fn push_data(_ctxt: &mut Self::Context, _field: DataField<'v, '_>) {
-    }
+    async fn push_data(_ctxt: &mut Self::Context, _field: DataField<'v, '_>) {}
 
     fn finalize(this: Self::Context) -> FormResult<'v, Self> {
         Ok(QueryString(this))
@@ -43,8 +40,10 @@ impl<'v> FromForm<'v> for QueryString<'v> {
 }
 
 impl<'r> Deref for QueryString<'r> {
-	type Target = Vec<(&'r str, &'r str)>;
-	fn deref(&self) -> &Self::Target {&self.0}
+    type Target = Vec<(&'r str, &'r str)>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[derive(Debug)]
@@ -52,15 +51,17 @@ pub struct AllHeaders<'r>(&'r HeaderMap<'r>);
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AllHeaders<'r> {
-	type Error = std::convert::Infallible;
-	async fn from_request( req: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
-		Outcome::Success(AllHeaders(req.headers()))
-	}
+    type Error = std::convert::Infallible;
+    async fn from_request(req: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
+        Outcome::Success(AllHeaders(req.headers()))
+    }
 }
 
 impl<'r> Deref for AllHeaders<'r> {
-	type Target = HeaderMap<'r>;
-	fn deref(&self) -> &Self::Target {&self.0}
+    type Target = HeaderMap<'r>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 #[derive(Debug)]
@@ -80,7 +81,6 @@ impl<'r> Responder<'r, 'static> for ApiResponse {
     }
 }
 
-
 pub struct Vhost<'a>(pub Option<&'a str>);
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for Vhost<'r> {
@@ -91,10 +91,11 @@ impl<'r> FromRequest<'r> for Vhost<'r> {
     }
 }
 impl<'r> Deref for Vhost<'r> {
-	type Target = Option<&'r str>;
-	fn deref(&self) -> &Self::Target {&self.0}
+    type Target = Option<&'r str>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
-
 
 pub fn to_rocket_content_type(ct: ContentType) -> HTTPContentType {
     match ct {

@@ -1,12 +1,12 @@
-use super::common::*;
 use super::super::start;
-use pretty_assertions::{assert_eq};
-use serde_json::Value;
-use rocket::http::{Accept};
-use std::str::FromStr;
-use demonstrate::demonstrate;
-use rocket::local::asynchronous::Client;
+use super::common::*;
 use async_once::AsyncOnce;
+use demonstrate::demonstrate;
+use pretty_assertions::assert_eq;
+use rocket::http::Accept;
+use rocket::local::asynchronous::Client;
+use serde_json::Value;
+use std::str::FromStr;
 use std::sync::Once;
 pub static INIT_CLIENT: Once = Once::new();
 
@@ -16,7 +16,6 @@ lazy_static! {
     Client::untracked(start().await.unwrap()).await.expect("valid client")
   });
 }
-
 
 haskell_test! {
 feature "singular"
@@ -80,7 +79,7 @@ describe "when updating rows" $ do
         [json|r#"{"details":"Results contain 4 rows, application/vnd.pgrst.object+json requires 1 row","message":"JSON object requested, multiple (or no) rows returned"}"#|]
         { matchStatus  = 406
         , matchHeaders = [ "Content-Type" <:> "application/json" //"application/vnd.pgrst.object+json"
-                         //, "Preference-Applied" <:> "tx=commit" 
+                         //, "Preference-Applied" <:> "tx=commit"
                          ]
         }
 
@@ -97,7 +96,7 @@ describe "when updating rows" $ do
         [json|r#"{"details":"Results contain 4 rows, application/vnd.pgrst.object+json requires 1 row","message":"JSON object requested, multiple (or no) rows returned"}"#|]
         { matchStatus  = 406
         , matchHeaders = [ "Content-Type" <:> "application/json" //"application/vnd.pgrst.object+json"
-                         //, "Preference-Applied" <:> "tx=commit" 
+                         //, "Preference-Applied" <:> "tx=commit"
                          ]
         }
 
@@ -144,7 +143,7 @@ describe "when creating rows" $ do
       shouldRespondWith
       [text|""|]
         { matchStatus  = 201
-        , matchHeaders = [ 
+        , matchHeaders = [
                           // matchHeaderAbsent hContentType,
                          "Content-Range" <:> "*/*" ]
         }
@@ -157,7 +156,7 @@ describe "when creating rows" $ do
         [json|r#"{"details":"Results contain 2 rows, application/vnd.pgrst.object+json requires 1 row","message":"JSON object requested, multiple (or no) rows returned"}"#|]
         { matchStatus  = 406
         , matchHeaders = [ "Content-Type" <:> "application/json" //"application/vnd.pgrst.object+json"
-                         //, "Preference-Applied" <:> "tx=commit" 
+                         //, "Preference-Applied" <:> "tx=commit"
                          ]
         }
 
@@ -174,7 +173,7 @@ describe "when creating rows" $ do
         [json|r#"{"details":"Results contain 2 rows, application/vnd.pgrst.object+json requires 1 row","message":"JSON object requested, multiple (or no) rows returned"}"#|]
         { matchStatus  = 406
         , matchHeaders = [ "Content-Type" <:> "application/json" //"application/vnd.pgrst.object+json"
-                         //, "Preference-Applied" <:> "tx=commit" 
+                         //, "Preference-Applied" <:> "tx=commit"
                          ]
         }
 
@@ -191,7 +190,7 @@ describe "when creating rows" $ do
         [json|r#"{"details":"Results contain 2 rows, application/vnd.pgrst.object+json requires 1 row","message":"JSON object requested, multiple (or no) rows returned"}"#|]
         { matchStatus  = 406
         , matchHeaders = [ "Content-Type" <:> "application/json" //"application/vnd.pgrst.object+json"
-                         //, "Preference-Applied" <:> "tx=commit" 
+                         //, "Preference-Applied" <:> "tx=commit"
                          ]
         }
 
@@ -243,7 +242,7 @@ describe "when deleting rows" $ do
         [json|r#"{"details":"Results contain 5 rows, application/vnd.pgrst.object+json requires 1 row","message":"JSON object requested, multiple (or no) rows returned"}"#|]
         { matchStatus  = 406
         , matchHeaders = [ "Content-Type" <:> "application/json" //"application/vnd.pgrst.object+json"
-                         //, "Preference-Applied" <:> "tx=commit" 
+                         //, "Preference-Applied" <:> "tx=commit"
                          ]
         }
 
@@ -262,7 +261,7 @@ describe "when deleting rows" $ do
         [json|r#"{"details":"Results contain 5 rows, application/vnd.pgrst.object+json requires 1 row","message":"JSON object requested, multiple (or no) rows returned"}"#|]
         { matchStatus  = 406
         , matchHeaders = [ "Content-Type" <:> "application/json" //"application/vnd.pgrst.object+json"
-                         //, "Preference-Applied" <:> "tx=commit" 
+                         //, "Preference-Applied" <:> "tx=commit"
                          ]
         }
 
@@ -340,7 +339,7 @@ describe "when calling a stored proc" $ do
         [json|r#"{"details":"Results contain 2 rows, application/vnd.pgrst.object+json requires 1 row","message":"JSON object requested, multiple (or no) rows returned"}"#|]
         { matchStatus  = 406
         , matchHeaders = [ "Content-Type" <:> "application/json" //"application/vnd.pgrst.object+json"
-                         //, "Preference-Applied" <:> "tx=commit" 
+                         //, "Preference-Applied" <:> "tx=commit"
                          ]
         }
 

@@ -1,22 +1,23 @@
-
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 #[serde(rename_all(serialize = "snake_case", deserialize = "snake_case"))]
 pub enum SchemaStructure {
-    SqlFile (String),
-    JsonFile (String),
-    JsonString (String)
+    SqlFile(String),
+    JsonFile(String),
+    JsonString(String),
 }
 impl Default for SchemaStructure {
-    fn default() -> Self { SchemaStructure::SqlFile ("structure_query.sql".to_string()) }
+    fn default() -> Self {
+        SchemaStructure::SqlFile("structure_query.sql".to_string())
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
-pub struct  Config {
-    #[serde(with="vhosts")]
+pub struct Config {
+    #[serde(with = "vhosts")]
     pub vhosts: HashMap<String, VhostConfig>,
 }
 
@@ -25,20 +26,29 @@ mod vhosts {
 
     use std::collections::HashMap;
 
-    use serde::ser::Serializer;
     use serde::de::{Deserialize, Deserializer};
-    
-    pub fn serialize<S>(map: &HashMap<String, VhostConfig>, serializer: S) -> Result<S::Ok, S::Error>
-    where S: Serializer
+    use serde::ser::Serializer;
+
+    pub fn serialize<S>(
+        map: &HashMap<String, VhostConfig>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
     {
-        serializer.collect_map(map.iter().map(|(k,v)| (k.replace(".", "_"), v) ).collect::<HashMap<String, &VhostConfig>>())
+        serializer.collect_map(
+            map.iter()
+                .map(|(k, v)| (k.replace(".", "_"), v))
+                .collect::<HashMap<String, &VhostConfig>>(),
+        )
     }
 
     pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, VhostConfig>, D::Error>
-    where D: Deserializer<'de>
+    where
+        D: Deserializer<'de>,
     {
         let mut map = HashMap::new();
-        for (k,v) in HashMap::<String, VhostConfig>::deserialize(deserializer)? {
+        for (k, v) in HashMap::<String, VhostConfig>::deserialize(deserializer)? {
             map.insert(k.replace("_", "."), v);
         }
         Ok(map)
@@ -65,19 +75,26 @@ pub struct VhostConfig {
     pub role_claim_key: String,
 }
 
-fn role_claim_key() -> String {".role".to_string()}
-fn db_pool()->usize { 10 }
-fn to_tuple<'de, D>(deserializer: D) -> Result<Option<(String, String)>, D::Error> where D: Deserializer<'de> {
+fn role_claim_key() -> String {
+    ".role".to_string()
+}
+fn db_pool() -> usize {
+    10
+}
+fn to_tuple<'de, D>(deserializer: D) -> Result<Option<(String, String)>, D::Error>
+where
+    D: Deserializer<'de>,
+{
     let o: Option<String> = Deserialize::deserialize(deserializer)?;
     Ok(match o {
         Some(s) => {
-            let v:Vec<&str> = s.split('.').collect();
+            let v: Vec<&str> = s.split('.').collect();
             match v[..] {
-                [a, b] => Some((a.to_string(),b.to_string())),
-                _ => Some(("".to_string(), s))
+                [a, b] => Some((a.to_string(), b.to_string())),
+                _ => Some(("".to_string(), s)),
             }
         }
-        None => None
+        None => None,
     })
 }
 
@@ -85,37 +102,41 @@ fn to_tuple<'de, D>(deserializer: D) -> Result<Option<(String, String)>, D::Erro
 mod test {
     use std::collections::HashMap;
 
-    use pretty_assertions::{assert_eq};
     use super::*;
+    use pretty_assertions::assert_eq;
 
     #[test]
-    fn deserialize_config(){
-        let config = Config{
-            vhosts : HashMap::from([("domain.com".to_string(),
-            VhostConfig {
-                db_uri: "db_uri".to_string(),
-                db_schemas: vec!["db_schema".to_string()],
-                db_schema_structure: SchemaStructure::SqlFile("sql_file".to_string()),
-                db_anon_role: "anonymous".to_string(),
-                db_tx_rollback: false,
-                db_pre_request: Some(("api".to_string(), "test".to_string())),
-                jwt_secret: None,
-                jwt_aud: None,
-                role_claim_key: ".role".to_string(),
-                db_pool: 10,
-                db_max_rows: None,
-            })])
+    fn deserialize_config() {
+        let config = Config {
+            vhosts: HashMap::from([(
+                "domain.com".to_string(),
+                VhostConfig {
+                    db_uri: "db_uri".to_string(),
+                    db_schemas: vec!["db_schema".to_string()],
+                    db_schema_structure: SchemaStructure::SqlFile("sql_file".to_string()),
+                    db_anon_role: "anonymous".to_string(),
+                    db_tx_rollback: false,
+                    db_pre_request: Some(("api".to_string(), "test".to_string())),
+                    jwt_secret: None,
+                    jwt_aud: None,
+                    role_claim_key: ".role".to_string(),
+                    db_pool: 10,
+                    db_max_rows: None,
+                },
+            )]),
         };
         let json_config = r#"
         {"vhosts":{"domain_com":{"db_uri":"db_uri","db_schemas":["db_schema"],"db_schema_structure":{"sql_file":"sql_file"}, "db_anon_role": "anonymous", "db_pre_request": "api.test"}}}
         "#;
 
+        let deserialized_result = serde_json::from_str::<Config>(json_config);
 
-        let deserialized_result  = serde_json::from_str::<Config>(json_config);
-        
         println!("deserialized_result = {:?}", deserialized_result);
 
-        assert_eq!(deserialized_result.map_err(|e| format!("{}",e)), Ok(config));
+        assert_eq!(
+            deserialized_result.map_err(|e| format!("{}", e)),
+            Ok(config)
+        );
         // let serialized_result = serde_json::to_string(&config);
         // println!("serialized_result = {:?}", serialized_result);
         //let serialized = serialized_result.unwrap_or("failed to serialize".to_string());

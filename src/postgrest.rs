@@ -1,65 +1,100 @@
-
-
-use serde_json::{from_value, Value as JsonValue};
-use deadpool_postgres::{Pool};
-use tokio_postgres::{IsolationLevel, types::ToSql};
-use jsonwebtoken::{decode, DecodingKey, Validation, errors::ErrorKind};
-use jsonpath_lib::select;
-use snafu::{ResultExt};
+use deadpool_postgres::Pool;
 use http::Method;
+use jsonpath_lib::select;
+use jsonwebtoken::{decode, errors::ErrorKind, DecodingKey, Validation};
+use serde_json::{from_value, Value as JsonValue};
+use snafu::ResultExt;
+use tokio_postgres::{types::ToSql, IsolationLevel};
 
 use crate::{
-    api::{ApiRequest, QueryNode::*, ContentType, ContentType::*, Preferences, Representation, Resolution::*},
-    schema::DbSchema,
-    error::{*, Result},
-    config::{VhostConfig, },
-    dynamic_statement::{SqlSnippet, JoinIterator, generate, param, },
-    parser::postgrest::parse,
+    api::{
+        ApiRequest, ContentType, ContentType::*, Preferences, QueryNode::*, Representation,
+        Resolution::*,
+    },
+    config::VhostConfig,
+    dynamic_statement::{generate, param, JoinIterator, SqlSnippet},
+    error::{Result, *},
     formatter::postgresql::main_query,
+    parser::postgrest::parse,
+    schema::DbSchema,
 };
-
 
 use std::{
-    collections::{HashMap},
-    time::{SystemTime, UNIX_EPOCH}
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-
-fn get_postgrest_env(role: &String, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>) -> HashMap<String, String>{
+fn get_postgrest_env(
+    role: &String,
+    search_path: &Vec<String>,
+    request: &ApiRequest,
+    jwt_claims: &Option<JsonValue>,
+) -> HashMap<String, String> {
     let mut env = HashMap::new();
     env.insert("role".to_string(), role.clone());
     env.insert("request.method".to_string(), format!("{}", request.method));
     env.insert("request.path".to_string(), format!("{}", request.path));
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
     env.insert("request.jwt.claim.role".to_string(), role.clone());
-    env.insert("search_path".to_string(), search_path.join(", ").to_string());
-    env.extend(request.headers.iter().map(|(k,v)| (format!("request.header.{}",k.to_lowercase()),v.to_string())));
-    env.extend(request.cookies.iter().map(|(k,v)| (format!("request.cookie.{}",k),v.to_string())));
+    env.insert(
+        "search_path".to_string(),
+        search_path.join(", ").to_string(),
+    );
+    env.extend(request.headers.iter().map(|(k, v)| {
+        (
+            format!("request.header.{}", k.to_lowercase()),
+            v.to_string(),
+        )
+    }));
+    env.extend(
+        request
+            .cookies
+            .iter()
+            .map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())),
+    );
     match jwt_claims {
-        Some(v) => {
-            match v.as_object() {
-                Some(claims) => {
-                    env.extend(claims.iter().map(|(k,v)| (
-                        format!("request.jwt.claim.{}",k), 
-                        match v {JsonValue::String(s) => s.clone(), _=> format!("{}",v)}
-                    )));
-                }
-                None => {}
+        Some(v) => match v.as_object() {
+            Some(claims) => {
+                env.extend(claims.iter().map(|(k, v)| {
+                    (
+                        format!("request.jwt.claim.{}", k),
+                        match v {
+                            JsonValue::String(s) => s.clone(),
+                            _ => format!("{}", v),
+                        },
+                    )
+                }));
             }
-        }
+            None => {}
+        },
         None => {}
     }
     env
 }
 
-fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
-    "select " + env.iter().map(|(k,v)| "set_config("+param(k as &(dyn ToSql + Sync + 'a))+", "+ param(v as &(dyn ToSql + Sync + 'a))+", true)"  ).join(",")
+fn get_postgrest_env_query<'a>(
+    env: &'a HashMap<String, String>,
+) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+    "select "
+        + env
+            .iter()
+            .map(|(k, v)| {
+                "set_config("
+                    + param(k as &(dyn ToSql + Sync + 'a))
+                    + ", "
+                    + param(v as &(dyn ToSql + Sync + 'a))
+                    + ", true)"
+            })
+            .join(",")
 }
 
 fn get_current_timestamp() -> u64 {
     //TODO!!! optimize this to run once per second
     let start = SystemTime::now();
-    start.duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs()
+    start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs()
 }
 
 pub async fn handle_postgrest_request(
@@ -74,20 +109,35 @@ pub async fn handle_postgrest_request(
     headers: &HashMap<&str, &str>,
     cookies: &HashMap<&str, &str>,
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
-
-
     let mut response_headers = vec![];
-    let schema_name = &(match (config.db_schemas.len()>1, method, headers.get("Accept-Profile"), headers.get("Content-Profile")) {
+    let schema_name = &(match (
+        config.db_schemas.len() > 1,
+        method,
+        headers.get("Accept-Profile"),
+        headers.get("Content-Profile"),
+    ) {
         (false, ..) => Ok(config.db_schemas.get(0).unwrap().clone()),
-        (_, &Method::DELETE, _, Some(&content_profile)) |
-        (_, &Method::POST, _, Some(&content_profile)) |
-        (_, &Method::PATCH, _, Some(&content_profile)) |
-        (_, &Method::PUT, _, Some(&content_profile)) =>
-            if config.db_schemas.contains(&content_profile.to_string()) {Ok(content_profile.to_string())}
-            else {Err(Error::UnacceptableSchema {schemas: config.db_schemas.clone()})},
-        (_, _, Some(&accept_profile), _) =>
-            if config.db_schemas.contains(&accept_profile.to_string()) {Ok(accept_profile.to_string())}
-            else {Err(Error::UnacceptableSchema {schemas: config.db_schemas.clone()})},
+        (_, &Method::DELETE, _, Some(&content_profile))
+        | (_, &Method::POST, _, Some(&content_profile))
+        | (_, &Method::PATCH, _, Some(&content_profile))
+        | (_, &Method::PUT, _, Some(&content_profile)) => {
+            if config.db_schemas.contains(&content_profile.to_string()) {
+                Ok(content_profile.to_string())
+            } else {
+                Err(Error::UnacceptableSchema {
+                    schemas: config.db_schemas.clone(),
+                })
+            }
+        }
+        (_, _, Some(&accept_profile), _) => {
+            if config.db_schemas.contains(&accept_profile.to_string()) {
+                Ok(accept_profile.to_string())
+            } else {
+                Err(Error::UnacceptableSchema {
+                    schemas: config.db_schemas.clone(),
+                })
+            }
+        }
         _ => Ok(config.db_schemas.get(0).unwrap().clone()),
     }?);
 
@@ -97,65 +147,91 @@ pub async fn handle_postgrest_request(
 
     // check jwt
     let jwt_claims = match &config.jwt_secret {
-        Some(key) => {
-            match headers.get("Authorization"){
-                Some(&a) => {
-                    let token_str:Vec<&str> = a.split(' ').collect();
-                    match token_str[..] {
-                        ["Bearer", t] | ["bearer", t] => {
-                            let validation = Validation {validate_exp: false, ..Default::default()};
-                            match decode::<JsonValue>(t, &DecodingKey::from_secret(key.as_bytes()), &validation){
-                                Ok(c) => {
-                                    if let Some(exp) = c.claims.get("exp") {
-                                        if from_value::<u64>(exp.clone()).context(JsonSerialize)? < get_current_timestamp() - 1 {
-                                            return Err(Error::JwtTokenInvalid {message: format!("JWT expired")});
-                                        }
+        Some(key) => match headers.get("Authorization") {
+            Some(&a) => {
+                let token_str: Vec<&str> = a.split(' ').collect();
+                match token_str[..] {
+                    ["Bearer", t] | ["bearer", t] => {
+                        let validation = Validation {
+                            validate_exp: false,
+                            ..Default::default()
+                        };
+                        match decode::<JsonValue>(
+                            t,
+                            &DecodingKey::from_secret(key.as_bytes()),
+                            &validation,
+                        ) {
+                            Ok(c) => {
+                                if let Some(exp) = c.claims.get("exp") {
+                                    if from_value::<u64>(exp.clone()).context(JsonSerialize)?
+                                        < get_current_timestamp() - 1
+                                    {
+                                        return Err(Error::JwtTokenInvalid {
+                                            message: format!("JWT expired"),
+                                        });
                                     }
-                                    Ok(Some(c.claims))
-                                },
-                                Err(err) => match *err.kind() {
-                                    ErrorKind::InvalidToken => Err(Error::JwtTokenInvalid {message: format!("{}", err)}),
-                                    _ => Err(Error::JwtTokenInvalid {message: format!("{}", err)}),
                                 }
+                                Ok(Some(c.claims))
                             }
-                        },
-                        _ => Ok(None)
+                            Err(err) => match *err.kind() {
+                                ErrorKind::InvalidToken => Err(Error::JwtTokenInvalid {
+                                    message: format!("{}", err),
+                                }),
+                                _ => Err(Error::JwtTokenInvalid {
+                                    message: format!("{}", err),
+                                }),
+                            },
+                        }
                     }
+                    _ => Ok(None),
                 }
-                None => Ok(None)
             }
-        }
-        None => Ok(None)
+            None => Ok(None),
+        },
+        None => Ok(None),
     }?;
 
     let (role, authenticated) = match &jwt_claims {
-        Some(claims) => {
-            match select(&claims, format!("${}", config.role_claim_key).as_str()) {
-                Ok(v) => match &v[..] {
-                    [JsonValue::String(s)] => Ok((s,true)),
-                    _ => Ok((&config.db_anon_role, false))
-                }
-                Err(e) => Err(Error::JwtTokenInvalid { message: format!("{}", e)})
-            }
-        }
-        None => Ok((&config.db_anon_role, false))
+        Some(claims) => match select(&claims, format!("${}", config.role_claim_key).as_str()) {
+            Ok(v) => match &v[..] {
+                [JsonValue::String(s)] => Ok((s, true)),
+                _ => Ok((&config.db_anon_role, false)),
+            },
+            Err(e) => Err(Error::JwtTokenInvalid {
+                message: format!("{}", e),
+            }),
+        },
+        None => Ok((&config.db_anon_role, false)),
     }?;
-    
+
     // parse request and generate the query
-    let request = parse(schema_name, root, db_schema, method, path, parameters, body, headers, cookies, config.db_max_rows)?;
+    let request = parse(
+        schema_name,
+        root,
+        db_schema,
+        method,
+        path,
+        parameters,
+        body,
+        headers,
+        cookies,
+        config.db_max_rows,
+    )?;
     //println!("request: \n{:#?}", request);
     let (main_statement, main_parameters, _) = generate(main_query(&schema_name, &request));
-    println!("main_statement: \n{}\n{:?}", main_statement, main_parameters);
+    println!(
+        "main_statement: \n{}\n{:?}",
+        main_statement, main_parameters
+    );
     let env = get_postgrest_env(role, &vec![schema_name.clone()], &request, &jwt_claims);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
     // println!("env_parameters: \n{:#?}", env_parameters);
     // println!("headers: \n{:#?}", headers);
     // println!("cookies: \n{:#?}", cookies);
-    
-    
+
     // fetch response from the database
     let mut client = pool.get().await.context(DbPoolError)?;
-    let readonly = match (method, &request){
+    let readonly = match (method, &request) {
         (&Method::GET, _) => true,
         //TODO!!! optimize not volatile function call can be read only
         //(&Method::POST, ApiRequest { query: FunctionCall {..}, .. }) => true,
@@ -166,54 +242,82 @@ pub async fn handle_postgrest_request(
         .isolation_level(IsolationLevel::ReadCommitted)
         .read_only(readonly)
         .start()
-        .await.context(DbError {authenticated})?;
+        .await
+        .context(DbError { authenticated })?;
 
     //TODO!!! optimize this so we run both queries in paralel
-    let env_stm = transaction.prepare_cached(env_statement.as_str()).await.context(DbError {authenticated})?;
-    let _ = transaction.query(&env_stm, env_parameters.as_slice()).await.context(DbError {authenticated})?;
+    let env_stm = transaction
+        .prepare_cached(env_statement.as_str())
+        .await
+        .context(DbError { authenticated })?;
+    let _ = transaction
+        .query(&env_stm, env_parameters.as_slice())
+        .await
+        .context(DbError { authenticated })?;
 
-    if let Some((s,f)) = &config.db_pre_request {
+    if let Some((s, f)) = &config.db_pre_request {
         let fn_schema = match s.as_str() {
             "" => schema_name,
-            _ => &s
+            _ => &s,
         };
 
         let pre_request_statement = format!(r#"select "{}"."{}"()"#, fn_schema, f);
-        let pre_request_stm = transaction.prepare_cached(pre_request_statement.as_str()).await.context(DbError {authenticated})?;
-        transaction.query(&pre_request_stm, &[]).await.context(DbError {authenticated})?;
+        let pre_request_stm = transaction
+            .prepare_cached(pre_request_statement.as_str())
+            .await
+            .context(DbError { authenticated })?;
+        transaction
+            .query(&pre_request_stm, &[])
+            .await
+            .context(DbError { authenticated })?;
     }
 
-    let main_stm = transaction.prepare_cached(main_statement.as_str()).await.context(DbError {authenticated})?;
-    let rows = transaction.query(&main_stm, main_parameters.as_slice()).await.context(DbError {authenticated})?;
+    let main_stm = transaction
+        .prepare_cached(main_statement.as_str())
+        .await
+        .context(DbError { authenticated })?;
+    let rows = transaction
+        .query(&main_stm, main_parameters.as_slice())
+        .await
+        .context(DbError { authenticated })?;
 
     // let (env_stm, main_stm) = future::try_join(
     //         transaction.prepare_cached(env_statement.as_str()),
     //         transaction.prepare_cached(main_statement.as_str())
     //     ).await.context(DbError)?;
-    
+
     // let (_, rows) = future::try_join(
     //     transaction.query(&env_stm, env_parameters.as_slice()),
     //     transaction.query(&main_stm, main_parameters.as_slice())
     // ).await.context(DbError)?;
 
-    
-
-
     // create and return the response to the client
     let page_total: i64 = rows[0].get("page_total");
     let total_result_set: Option<i64> = rows[0].get("total_result_set");
     let top_level_offset: i64 = 0;
-    let content_type = match ( &request.accept_content_type, &request.query.node) {
-        (SingularJSON, _) |
-        (_, FunctionCall { returns_single: true, is_scalar: false, .. })
-            => SingularJSON,
+    let content_type = match (&request.accept_content_type, &request.query.node) {
+        (SingularJSON, _)
+        | (
+            _,
+            FunctionCall {
+                returns_single: true,
+                is_scalar: false,
+                ..
+            },
+        ) => SingularJSON,
         (TextCSV, _) => TextCSV,
         _ => ApplicationJSON,
     };
 
     if request.accept_content_type == SingularJSON && page_total != 1 {
-        transaction.rollback().await.context(DbError {authenticated})?;
-        return Err(Error::SingularityError { count: page_total, content_type: headers.get("Accept").unwrap_or(&"").to_string() })
+        transaction
+            .rollback()
+            .await
+            .context(DbError { authenticated })?;
+        return Err(Error::SingularityError {
+            count: page_total,
+            content_type: headers.get("Accept").unwrap_or(&"").to_string(),
+        });
     }
 
     //println!("before check {:?} {:?}", method, page_total);
@@ -222,87 +326,141 @@ pub async fn handle_postgrest_request(
         // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
-        transaction.rollback().await.context(DbError {authenticated})?;
-        return Err(Error::PutMatchingPkError)
+        transaction
+            .rollback()
+            .await
+            .context(DbError { authenticated })?;
+        return Err(Error::PutMatchingPkError);
     }
 
     if config.db_tx_rollback {
-        transaction.rollback().await.context(DbError {authenticated})?;
+        transaction
+            .rollback()
+            .await
+            .context(DbError { authenticated })?;
+    } else {
+        transaction
+            .commit()
+            .await
+            .context(DbError { authenticated })?;
     }
-    else {
-        transaction.commit().await.context(DbError {authenticated})?;
-    }
-    
+
     let content_range = match (method, &request.query.node, page_total, total_result_set) {
-        (&Method::POST, Insert {..}, _pt,t) => content_range_header(1,0,t),
-        (&Method::DELETE, Delete {..}, _pt,t) => content_range_header(1,0,t),
-        (_,_,pt,t) => content_range_header(top_level_offset, top_level_offset + pt -1, t)
+        (&Method::POST, Insert { .. }, _pt, t) => content_range_header(1, 0, t),
+        (&Method::DELETE, Delete { .. }, _pt, t) => content_range_header(1, 0, t),
+        (_, _, pt, t) => content_range_header(top_level_offset, top_level_offset + pt - 1, t),
     };
-    
+
     response_headers.push((format!("Content-Range"), content_range));
     if let Some(response_headers_str) = rows[0].get("response_headers") {
         //println!("response_headers_str: {:?}", response_headers_str);
         match serde_json::from_str(response_headers_str) {
-            Ok(JsonValue::Array(headers_json)) =>  {
+            Ok(JsonValue::Array(headers_json)) => {
                 for h in headers_json {
                     match h {
                         JsonValue::Object(o) => {
-                            for (k,v) in o.into_iter() {
+                            for (k, v) in o.into_iter() {
                                 match v {
                                     JsonValue::String(s) => {
                                         response_headers.push((k, s));
                                         Ok(())
                                     }
-                                    _ => Err(Error::GucHeadersError)
+                                    _ => Err(Error::GucHeadersError),
                                 }?
                             }
                             Ok(())
                         }
-                        _ => Err(Error::GucHeadersError)
+                        _ => Err(Error::GucHeadersError),
                     }?
                 }
                 Ok(())
-            },
+            }
             _ => Err(Error::GucHeadersError),
         }?
     }
 
-    let mut status = match (method, &request.query.node, page_total, total_result_set, &request.preferences) {
-        (&Method::POST, Insert {..}, ..) => 201,
-        (&Method::DELETE, Delete {..}, .., Some(Preferences { representation: Some(Representation::Full), ..})) => 200,
-        (&Method::DELETE, Delete {..}, ..) => 204,
-        (&Method::PATCH, Update {columns,..}, 0, _,_) if columns.len() > 0 => 404,
-        (&Method::PATCH, Update {..}, .., Some(Preferences { representation: Some(Representation::Full), ..})) => 200,
-        (&Method::PATCH, Update {..}, ..) => 204,
-        (&Method::PUT, Insert {..}, .., Some(Preferences { representation: Some(Representation::Full), ..})) => 200,
-        (&Method::PUT, Insert {..}, ..) => 204,
-        (.., pt, t, _) => content_range_status(top_level_offset, top_level_offset + pt -1, t),
+    let mut status = match (
+        method,
+        &request.query.node,
+        page_total,
+        total_result_set,
+        &request.preferences,
+    ) {
+        (&Method::POST, Insert { .. }, ..) => 201,
+        (
+            &Method::DELETE,
+            Delete { .. },
+            ..,
+            Some(Preferences {
+                representation: Some(Representation::Full),
+                ..
+            }),
+        ) => 200,
+        (&Method::DELETE, Delete { .. }, ..) => 204,
+        (&Method::PATCH, Update { columns, .. }, 0, _, _) if columns.len() > 0 => 404,
+        (
+            &Method::PATCH,
+            Update { .. },
+            ..,
+            Some(Preferences {
+                representation: Some(Representation::Full),
+                ..
+            }),
+        ) => 200,
+        (&Method::PATCH, Update { .. }, ..) => 204,
+        (
+            &Method::PUT,
+            Insert { .. },
+            ..,
+            Some(Preferences {
+                representation: Some(Representation::Full),
+                ..
+            }),
+        ) => 200,
+        (&Method::PUT, Insert { .. }, ..) => 204,
+        (.., pt, t, _) => content_range_status(top_level_offset, top_level_offset + pt - 1, t),
     };
 
-    if let Some(Preferences { resolution: Some(r), ..}) = request.preferences {
-        response_headers.push(("Preference-Applied".to_string(), match r { MergeDuplicates => "resolution=merge-duplicates".to_string(), IgnoreDuplicates=>"resolution=ignore-duplicates".to_string() }));
+    if let Some(Preferences {
+        resolution: Some(r),
+        ..
+    }) = request.preferences
+    {
+        response_headers.push((
+            "Preference-Applied".to_string(),
+            match r {
+                MergeDuplicates => "resolution=merge-duplicates".to_string(),
+                IgnoreDuplicates => "resolution=ignore-duplicates".to_string(),
+            },
+        ));
     }
 
-    let response_status:Option<&str> = rows[0].get("response_status");
+    let response_status: Option<&str> = rows[0].get("response_status");
     if let Some(response_status_str) = response_status {
-        status = response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError)?;
+        status = response_status_str
+            .parse::<u16>()
+            .map_err(|_| Error::GucStatusError)?;
     }
 
     let body: String = rows[0].get("body");
     Ok((status, content_type, response_headers, body))
 }
 
-fn content_range_header( lower: i64,  upper: i64,  total: Option<i64>) -> String {
-    let range_string = if total != Some(0) && lower <= upper { format!("{}-{}", lower, upper) } else {format!("*")};
+fn content_range_header(lower: i64, upper: i64, total: Option<i64>) -> String {
+    let range_string = if total != Some(0) && lower <= upper {
+        format!("{}-{}", lower, upper)
+    } else {
+        format!("*")
+    };
     let total_string = match total {
         Some(t) => format!("{}", t),
-        None => format!("*")
+        None => format!("*"),
     };
-    format!("{}/{}",range_string,total_string)
+    format!("{}/{}", range_string, total_string)
 }
 
-fn content_range_status( lower: i64,  upper: i64,  total: Option<i64>) -> u16 {
-    match (lower, upper, total){
+fn content_range_status(lower: i64, upper: i64, total: Option<i64>) -> u16 {
+    match (lower, upper, total) {
         //(_, _, None) => 200,
         (l, _, Some(t)) if l > t => 406,
         (l, u, Some(t)) if (1 + u - l) < t => 206,

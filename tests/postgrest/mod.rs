@@ -5,7 +5,7 @@
 // x RawOutputTypesSpec.hs
 // x ErrorSpec.hs
 
-// UpsertSpec.hs 
+// UpsertSpec.hs
 // SingularSpec.hs
 // UnicodeSpec.hs
 // UpdateSpec.hs
@@ -19,20 +19,19 @@
 // QuerySpec.hs
 // RpcSpec.hs
 
-
 mod common;
 
-mod query;
-mod rpc;
-mod auth;
-mod insert;
-mod embed_disambiguation;
 mod and_or_param;
+mod auth;
+mod delete;
+mod embed_disambiguation;
+mod insert;
 mod json_operator;
 mod limits;
 mod multiple_schemas;
-mod delete;
-mod update;
-mod unicode;
+mod query;
+mod rpc;
 mod singular;
+mod unicode;
+mod update;
 mod upsert;

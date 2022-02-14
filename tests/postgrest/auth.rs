@@ -1,21 +1,22 @@
-use super::common::*;
 use super::super::start;
-use pretty_assertions::{assert_eq};
-use serde_json::Value;
-use rocket::http::{Accept, Header};
-use std::str::FromStr;
-use demonstrate::demonstrate;
-use rocket::local::asynchronous::Client;
+use super::common::*;
 use async_once::AsyncOnce;
+use demonstrate::demonstrate;
+use pretty_assertions::assert_eq;
+use rocket::http::{Accept, Header};
+use rocket::local::asynchronous::Client;
+use serde_json::Value;
+use std::str::FromStr;
 use std::sync::Once;
 pub static INIT_CLIENT: Once = Once::new();
 
 lazy_static! {
-  pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
-    Client::untracked(start().await.unwrap()).await.expect("valid client")
-  });
+    pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async {
+        Client::untracked(start().await.unwrap())
+            .await
+            .expect("valid client")
+    });
 }
-
 
 haskell_test! {
 feature "auth"

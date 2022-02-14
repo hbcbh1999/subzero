@@ -1,14 +1,14 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-#[macro_use] extern crate lazy_static;
-use subzero::parser::postgrest::parse;
-use subzero::formatter::postgresql::main_query;
-use subzero::dynamic_statement::{generate};
-use subzero::api::*;
-use subzero::schema::*;
+#[macro_use]
+extern crate lazy_static;
 use std::collections::HashMap;
+use subzero::api::*;
+use subzero::dynamic_statement::generate;
+use subzero::formatter::postgresql::main_query;
+use subzero::parser::postgrest::parse;
+use subzero::schema::*;
 
-pub static JSON_SCHEMA:&str = 
-                r#"
+pub static JSON_SCHEMA: &str = r#"
                     {
                         "schemas":[
                             {
@@ -125,36 +125,57 @@ pub static JSON_SCHEMA:&str =
                     }
                 "#;
 
-    lazy_static!{
-        
-        static ref PARAMETERS: Vec<(&'static str, &'static str)> = { vec![
+lazy_static! {
+    static ref PARAMETERS: Vec<(&'static str, &'static str)> = {
+        vec![
             ("select", "id,name,clients(id),tasks(id)"),
-            ("id","not.gt.10"),
-            ("tasks.id","lt.500"),
+            ("id", "not.gt.10"),
+            ("tasks.id", "lt.500"),
             ("not.or", "(id.eq.11,id.eq.12)"),
             ("tasks.or", "(id.eq.11,id.eq.12)"),
-    
-        ]};
-
-        static ref DB_SCHEMA:DbSchema = {
-            serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap()
-        };
-    }
-fn s(s:&str) -> String {
+        ]
+    };
+    static ref DB_SCHEMA: DbSchema = { serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap() };
+}
+fn s(s: &str) -> String {
     s.to_string()
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    
     let emtpy_hashmap = HashMap::new();
-    let request = parse(&s("api"), &s("projects"), &DB_SCHEMA, &Method::GET, s("/projects"), &PARAMETERS.to_vec(), None, &emtpy_hashmap, &emtpy_hashmap, None).unwrap();
-    c.bench_function("parse request", |b| b.iter(|| 
-        parse(black_box(&s("api")), black_box(&s("projects")), black_box(&DB_SCHEMA), black_box(&Method::GET), black_box(s("/projects")), black_box(&PARAMETERS.to_vec()), black_box(None), &emtpy_hashmap, &emtpy_hashmap, None)
-    ));
+    let request = parse(
+        &s("api"),
+        &s("projects"),
+        &DB_SCHEMA,
+        &Method::GET,
+        s("/projects"),
+        &PARAMETERS.to_vec(),
+        None,
+        &emtpy_hashmap,
+        &emtpy_hashmap,
+        None,
+    )
+    .unwrap();
+    c.bench_function("parse request", |b| {
+        b.iter(|| {
+            parse(
+                black_box(&s("api")),
+                black_box(&s("projects")),
+                black_box(&DB_SCHEMA),
+                black_box(&Method::GET),
+                black_box(s("/projects")),
+                black_box(&PARAMETERS.to_vec()),
+                black_box(None),
+                &emtpy_hashmap,
+                &emtpy_hashmap,
+                None,
+            )
+        })
+    });
 
-    c.bench_function("generate query & prepare statement", |b| b.iter(|| 
-        generate(main_query(black_box(&s("api")), black_box(&request)))
-    ));
+    c.bench_function("generate query & prepare statement", |b| {
+        b.iter(|| generate(main_query(black_box(&s("api")), black_box(&request))))
+    });
 }
 
 criterion_group!(benches, criterion_benchmark);

@@ -1,8 +1,8 @@
-use serde::{Deserialize, Deserializer};
-use std::collections::{HashMap,BTreeSet,BTreeMap};
+use crate::api::{ForeignKey, Join, Join::*, ProcParam, Qi};
 use crate::error::*;
-use crate::api::{ForeignKey, Qi, ProcParam, Join, Join::*};
-use snafu::{OptionExt};
+use serde::{Deserialize, Deserializer};
+use snafu::OptionExt;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 #[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct DbSchema {
@@ -16,35 +16,51 @@ pub struct Schema {
     #[serde(with = "objects")]
     pub objects: BTreeMap<String, Object>,
     #[serde(default)]
-    join_tables: BTreeMap<(String,String), BTreeSet<String>>,
+    join_tables: BTreeMap<(String, String), BTreeSet<String>>,
 }
 
 impl DbSchema {
-    pub fn get_join(&self, current_schema: &String, origin: &String, target: &String, hint: &Option<String>) -> Result<Join> {
+    pub fn get_join(
+        &self,
+        current_schema: &String,
+        origin: &String,
+        target: &String,
+        hint: &Option<String>,
+    ) -> Result<Join> {
         // let match_fk = | s: &String, t:&String, n:&String | {
         //     | fk: &&ForeignKey |{
         //         &fk.name == n && &fk.referenced_table.0 == s
         //     }
         // };
-        let schema = self.schemas.get(current_schema).context(UnacceptableSchema {schemas: vec![current_schema.to_owned()]})?;
+        let schema = self
+            .schemas
+            .get(current_schema)
+            .context(UnacceptableSchema {
+                schemas: vec![current_schema.to_owned()],
+            })?;
         //println!("--------------looking for {} {}->{}.{:?}", current_schema, origin, target, hint);
         // println!("--------------got schema");
-        let origin_table = schema.objects.get(origin).context(UnknownRelation {relation: origin.to_owned()})?;
+        let origin_table = schema.objects.get(origin).context(UnknownRelation {
+            relation: origin.to_owned(),
+        })?;
         // println!("--------------got table");
 
-        match origin_table.foreign_keys.iter().find(|&fk| &fk.name == target && &fk.referenced_table.0 == current_schema) {
+        match origin_table
+            .foreign_keys
+            .iter()
+            .find(|&fk| &fk.name == target && &fk.referenced_table.0 == current_schema)
+        {
             // the target is a foreign key name
             // projects?select=projects_client_id_fkey(*)
             // TODO! when views are involved there may be multiple fks with the same name
-            Some (fk) => {
+            Some(fk) => {
                 //println!("found FK {:?}", fk);
                 if origin == &fk.table.1 {
                     Ok(Parent(fk.clone()))
-                }
-                else {
+                } else {
                     Ok(Child(fk.clone()))
                 }
-            },
+            }
             None => {
                 match schema.objects.get(target) {
                     // the target is an existing table
@@ -54,168 +70,248 @@ impl DbSchema {
                             Some(h) => {
                                 //println!("--------------got hint {:?}", origin_table.foreign_keys);
                                 // projects?select=clients!projects_client_id_fkey(*)
-                                if let Some(fk) = origin_table.foreign_keys.iter().find(|&fk|
-                                    &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target
-                                ) {
+                                if let Some(fk) = origin_table.foreign_keys.iter().find(|&fk| {
+                                    &fk.name == h
+                                        && &fk.referenced_table.0 == current_schema
+                                        && &fk.referenced_table.1 == target
+                                }) {
                                     return Ok(Parent(fk.clone()));
                                 }
-                                if let Some(fk) = target_table.foreign_keys.iter().find(|&fk|
-                                    &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin
-                                ) {
+                                if let Some(fk) = target_table.foreign_keys.iter().find(|&fk| {
+                                    &fk.name == h
+                                        && &fk.referenced_table.0 == current_schema
+                                        && &fk.referenced_table.1 == origin
+                                }) {
                                     return Ok(Child(fk.clone()));
                                 }
-            
+
                                 // users?select=tasks!users_tasks(*)
                                 if let Some(join_table) = schema.objects.get(h) {
                                     let ofk1 = join_table.foreign_keys.iter().find_map(|fk| {
-                                        if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
+                                        if &fk.referenced_table.0 == current_schema
+                                            && &fk.referenced_table.1 == origin
+                                        {
                                             Some(fk)
+                                        } else {
+                                            None
                                         }
-                                        else { None }
                                     });
                                     let ofk2 = join_table.foreign_keys.iter().find_map(|fk| {
-                                        if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
+                                        if &fk.referenced_table.0 == current_schema
+                                            && &fk.referenced_table.1 == target
+                                        {
                                             Some(fk)
+                                        } else {
+                                            None
                                         }
-                                        else { None }
                                     });
-                                    if let (Some(fk1), Some(fk2)) = (ofk1, ofk2){
-                                        return Ok( Many(Qi(current_schema.clone(),join_table.name.clone()), fk1.clone(), fk2.clone()) )
+                                    if let (Some(fk1), Some(fk2)) = (ofk1, ofk2) {
+                                        return Ok(Many(
+                                            Qi(current_schema.clone(), join_table.name.clone()),
+                                            fk1.clone(),
+                                            fk2.clone(),
+                                        ));
+                                    } else {
+                                        return Err(Error::NoRelBetween {
+                                            origin: origin.to_owned(),
+                                            target: target.to_owned(),
+                                        });
                                     }
-                                    else {
-                                        return Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
-                                    }
-                                    
                                 }
-            
-                                
+
                                 let mut joins = vec![];
                                 // projects?select=clients!client_id(*)
                                 if origin_table != target_table {
-                                joins.extend(origin_table.foreign_keys.iter()
-                                    .filter(|&fk|
-                                        &fk.referenced_table.0 == current_schema 
-                                        && &fk.referenced_table.1 == target
-                                        && fk.columns.len() == 1
-                                        && ( fk.columns.contains(h) || fk.referenced_columns.contains(h) )
-                                    )
-                                    .map(|fk| Parent(fk.clone()))
-                                    .collect::<Vec<_>>()
-                                );
-                            }
-                            
-                                    // projects?select=clients!id(*)
-                                    joins.extend(target_table.foreign_keys.iter()
-                                    .filter(|&fk|
-                                        &fk.referenced_table.0 == current_schema 
-                                        && &fk.referenced_table.1 == origin
-                                        && fk.columns.len() == 1
-                                        && ( fk.columns.contains(h) || fk.referenced_columns.contains(h) )
-                                    )
-                                    .map(|fk| Child(fk.clone()))
-                                    .collect::<Vec<_>>()
+                                    joins.extend(
+                                        origin_table
+                                            .foreign_keys
+                                            .iter()
+                                            .filter(|&fk| {
+                                                &fk.referenced_table.0 == current_schema
+                                                    && &fk.referenced_table.1 == target
+                                                    && fk.columns.len() == 1
+                                                    && (fk.columns.contains(h)
+                                                        || fk.referenced_columns.contains(h))
+                                            })
+                                            .map(|fk| Parent(fk.clone()))
+                                            .collect::<Vec<_>>(),
                                     );
-                                
+                                }
+
+                                // projects?select=clients!id(*)
+                                joins.extend(
+                                    target_table
+                                        .foreign_keys
+                                        .iter()
+                                        .filter(|&fk| {
+                                            &fk.referenced_table.0 == current_schema
+                                                && &fk.referenced_table.1 == origin
+                                                && fk.columns.len() == 1
+                                                && (fk.columns.contains(h)
+                                                    || fk.referenced_columns.contains(h))
+                                        })
+                                        .map(|fk| Child(fk.clone()))
+                                        .collect::<Vec<_>>(),
+                                );
+
                                 //println!("joins vector: {:#?}", joins);
                                 if joins.len() == 1 {
                                     Ok(joins[0].clone())
+                                } else if joins.len() == 0 {
+                                    Err(Error::NoRelBetween {
+                                        origin: origin.to_owned(),
+                                        target: target.to_owned(),
+                                    })
+                                } else {
+                                    Err(Error::AmbiguousRelBetween {
+                                        origin: origin.to_owned(),
+                                        target: target.to_owned(),
+                                        relations: joins,
+                                    })
                                 }
-                                else if joins.len() == 0 {
-                                    Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
-                                }
-                                else{
-                                    Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: joins})
-                                }
-                                
+
                                 //Ok(joins)
-                            }, 
+                            }
                             // there is no hint, look for foreign keys between the two tables
                             None => {
                                 // check child relations
                                 // projects?select=tasks(*)
-                                let child_joins = target_table.foreign_keys.iter()
-                                .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin )
-                                .map(|fk| Child(fk.clone()))
-                                .collect::<Vec<_>>();
+                                let child_joins = target_table
+                                    .foreign_keys
+                                    .iter()
+                                    .filter(|&fk| {
+                                        &fk.referenced_table.0 == current_schema
+                                            && &fk.referenced_table.1 == origin
+                                    })
+                                    .map(|fk| Child(fk.clone()))
+                                    .collect::<Vec<_>>();
                                 //println!("target tbl fks: {:#?}", target_table);
-                                
+
                                 // check parent relations
                                 // projects?select=clients(*)
-                                let parent_joins = origin_table.foreign_keys.iter()
-                                .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target && fk.table != fk.referenced_table )
-                                .map(|fk| Parent(fk.clone()))
-                                .collect::<Vec<_>>();
+                                let parent_joins = origin_table
+                                    .foreign_keys
+                                    .iter()
+                                    .filter(|&fk| {
+                                        &fk.referenced_table.0 == current_schema
+                                            && &fk.referenced_table.1 == target
+                                            && fk.table != fk.referenced_table
+                                    })
+                                    .map(|fk| Parent(fk.clone()))
+                                    .collect::<Vec<_>>();
 
                                 // check many to many relations
                                 // users?select=tasks(*)
-                                let many_joins = match schema.join_tables.get(&(origin.clone(), target.clone())) {
-                                    None => vec![],
-                                    Some(jt) => jt.iter()
-                                        .filter_map(|t| schema.objects.get(t))
-                                        .filter_map(|join_table|{
-                                            //println!("entering filter map");
-                                            let fks1 = join_table.foreign_keys.iter().filter_map(|fk| {
-                                                if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
-                                                    Some(fk)
-                                                }
-                                                else { None }
-                                            }).collect::<Vec<_>>();
-                                            let fks2 = join_table.foreign_keys.iter().filter_map(|fk| {
-                                                if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
-                                                    Some(fk)
-                                                }
-                                                else { None }
-                                            }).collect::<Vec<_>>();
-                                            let product = fks1
-                                                .iter()
-                                                .map(|&fk1| 
-                                                    fks2
+                                let many_joins =
+                                    match schema.join_tables.get(&(origin.clone(), target.clone()))
+                                    {
+                                        None => vec![],
+                                        Some(jt) => jt
+                                            .iter()
+                                            .filter_map(|t| schema.objects.get(t))
+                                            .filter_map(|join_table| {
+                                                //println!("entering filter map");
+                                                let fks1 = join_table
+                                                    .foreign_keys
                                                     .iter()
-                                                    .map(move |&fk2| Many(Qi(current_schema.clone(),join_table.name.clone()), fk1.clone(), fk2.clone()) )
-                                                )
-                                                .flatten()
-                                                .collect::<Vec<Join>>();
-                                            Some( product )
-                                        }).flatten().collect::<Vec<_>>()
-                                };
+                                                    .filter_map(|fk| {
+                                                        if &fk.referenced_table.0 == current_schema
+                                                            && &fk.referenced_table.1 == origin
+                                                        {
+                                                            Some(fk)
+                                                        } else {
+                                                            None
+                                                        }
+                                                    })
+                                                    .collect::<Vec<_>>();
+                                                let fks2 = join_table
+                                                    .foreign_keys
+                                                    .iter()
+                                                    .filter_map(|fk| {
+                                                        if &fk.referenced_table.0 == current_schema
+                                                            && &fk.referenced_table.1 == target
+                                                        {
+                                                            Some(fk)
+                                                        } else {
+                                                            None
+                                                        }
+                                                    })
+                                                    .collect::<Vec<_>>();
+                                                let product = fks1
+                                                    .iter()
+                                                    .map(|&fk1| {
+                                                        fks2.iter().map(move |&fk2| {
+                                                            Many(
+                                                                Qi(
+                                                                    current_schema.clone(),
+                                                                    join_table.name.clone(),
+                                                                ),
+                                                                fk1.clone(),
+                                                                fk2.clone(),
+                                                            )
+                                                        })
+                                                    })
+                                                    .flatten()
+                                                    .collect::<Vec<Join>>();
+                                                Some(product)
+                                            })
+                                            .flatten()
+                                            .collect::<Vec<_>>(),
+                                    };
 
                                 let mut joins = vec![];
                                 joins.extend(child_joins);
                                 joins.extend(parent_joins);
                                 joins.extend(many_joins);
-                                
+
                                 //println!("total joins: {:#?}", joins);
 
                                 if joins.len() == 1 {
                                     // println!("--------------found 1 {:?}", joins[0].clone());
                                     Ok(joins[0].clone())
-                                }
-                                else if joins.len() == 0 {
-                                    Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
-                                }
-                                else{
-                                    Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: joins})
+                                } else if joins.len() == 0 {
+                                    Err(Error::NoRelBetween {
+                                        origin: origin.to_owned(),
+                                        target: target.to_owned(),
+                                    })
+                                } else {
+                                    Err(Error::AmbiguousRelBetween {
+                                        origin: origin.to_owned(),
+                                        target: target.to_owned(),
+                                        relations: joins,
+                                    })
                                 }
                             }
                         }
-                    },
+                    }
                     // the target is not a table
                     None => {
                         // the target is a foreign key column
                         // projects?select=client_id(*)
-                        let joins = origin_table.foreign_keys.iter()
-                            .filter(|&fk| &fk.referenced_table.0 == current_schema && fk.columns.len() == 1 && fk.columns.contains(target) )
+                        let joins = origin_table
+                            .foreign_keys
+                            .iter()
+                            .filter(|&fk| {
+                                &fk.referenced_table.0 == current_schema
+                                    && fk.columns.len() == 1
+                                    && fk.columns.contains(target)
+                            })
                             .map(|fk| Parent(fk.clone()))
                             .collect::<Vec<_>>();
                         //Ok(joins)
                         if joins.len() == 1 {
                             Ok(joins[0].clone())
-                        }
-                        else if joins.len() == 0 {
-                            Err(Error::NoRelBetween {origin: origin.to_owned(), target: target.to_owned()})
-                        }
-                        else{
-                            Err(Error::AmbiguousRelBetween {origin: origin.to_owned(), target: target.to_owned(), relations: joins})
+                        } else if joins.len() == 0 {
+                            Err(Error::NoRelBetween {
+                                origin: origin.to_owned(),
+                                target: target.to_owned(),
+                            })
+                        } else {
+                            Err(Error::AmbiguousRelBetween {
+                                origin: origin.to_owned(),
+                                target: target.to_owned(),
+                                relations: joins,
+                            })
                         }
                     }
                 }
@@ -259,7 +355,6 @@ struct ObjectDef {
     parameters: Vec<ProcParam>,
 }
 
-
 #[derive(Deserialize)]
 #[serde(remote = "ProcParam")]
 struct ProcParamDef {
@@ -271,24 +366,26 @@ struct ProcParamDef {
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
-pub enum ProcVolatility {Imutable, Stable, Volatile}
+pub enum ProcVolatility {
+    Imutable,
+    Stable,
+    Volatile,
+}
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 pub enum ProcReturnType {
-    One (PgType),
-    SetOf (PgType),
+    One(PgType),
+    SetOf(PgType),
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 pub enum PgType {
     Scalar,
-    Composite (Qi)
+    Composite(Qi),
 }
 
-
-
 #[derive(Debug, PartialEq, Clone, Deserialize)]
-pub enum ObjectType { 
+pub enum ObjectType {
     #[serde(rename = "view")]
     View,
 
@@ -321,10 +418,8 @@ struct ForeignKeyDef {
     table: Qi,
     columns: Vec<String>,
     referenced_table: Qi,
-    referenced_columns: Vec<String>
+    referenced_columns: Vec<String>,
 }
-
-
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 pub struct Column {
@@ -336,13 +431,15 @@ pub struct Column {
     pub primary_key: bool,
 }
 
-
 // code for deserialization
 
 mod schemas {
-    use super::{Schema,ObjectType};
+    use super::{ObjectType, Schema};
 
-    use std::{collections::{HashMap, BTreeSet, BTreeMap}, iter::FromIterator};
+    use std::{
+        collections::{BTreeMap, BTreeSet, HashMap},
+        iter::FromIterator,
+    };
     //use std::collections::BTreeMap;
 
     //use serde::ser::Serializer;
@@ -353,44 +450,61 @@ mod schemas {
     //     serializer.collect_seq(map.values())
     // }
 
-
     pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Schema>, D::Error>
-        where D: Deserializer<'de>
+    where
+        D: Deserializer<'de>,
     {
         let mut map = HashMap::new();
         for mut schema in Vec::<Schema>::deserialize(deserializer)? {
-            let join_tables:BTreeMap<(String,String), Vec<String>> = schema.objects.iter().map(|(n,o)| {
-                match o.kind {
-                    ObjectType::Function {..} => vec![],
-                    _ => {
-                        o.foreign_keys
+            let join_tables: BTreeMap<(String, String), Vec<String>> = schema
+                .objects
+                .iter()
+                .map(|(n, o)| match o.kind {
+                    ObjectType::Function { .. } => vec![],
+                    _ => o
+                        .foreign_keys
                         .iter()
-                        .map(|fk1| 
+                        .map(|fk1| {
                             o.foreign_keys
-                            .iter()
-                            .filter(|&fk2| 
-                                fk2 != fk1 && 
-                                fk1.referenced_table.0 == schema.name &&
-                                fk2.referenced_table.0 == schema.name
-                            )
-                            .map(|fk2|
-                                vec![
-                                    ((fk1.referenced_table.1.clone(), fk2.referenced_table.1.clone()), n.clone()),
-                                    ((fk2.referenced_table.1.clone(), fk1.referenced_table.1.clone()), n.clone()),
-                                ]
-                            )
-                            .flatten()
-                            .collect::<Vec<((String,String), String)>>()
-                        )
+                                .iter()
+                                .filter(|&fk2| {
+                                    fk2 != fk1
+                                        && fk1.referenced_table.0 == schema.name
+                                        && fk2.referenced_table.0 == schema.name
+                                })
+                                .map(|fk2| {
+                                    vec![
+                                        (
+                                            (
+                                                fk1.referenced_table.1.clone(),
+                                                fk2.referenced_table.1.clone(),
+                                            ),
+                                            n.clone(),
+                                        ),
+                                        (
+                                            (
+                                                fk2.referenced_table.1.clone(),
+                                                fk1.referenced_table.1.clone(),
+                                            ),
+                                            n.clone(),
+                                        ),
+                                    ]
+                                })
+                                .flatten()
+                                .collect::<Vec<((String, String), String)>>()
+                        })
                         .flatten()
-                        .collect::<Vec<((String,String), String)>>()
-                    }
-                }
-            })
-            .flatten()
-            .fold(BTreeMap::new(), |mut acc, (k,v)| { acc.entry(k).or_default().push(v); acc });
-            for (k,v) in join_tables {
-                schema.join_tables.insert(k, BTreeSet::from_iter(v.into_iter()));
+                        .collect::<Vec<((String, String), String)>>(),
+                })
+                .flatten()
+                .fold(BTreeMap::new(), |mut acc, (k, v)| {
+                    acc.entry(k).or_default().push(v);
+                    acc
+                });
+            for (k, v) in join_tables {
+                schema
+                    .join_tables
+                    .insert(k, BTreeSet::from_iter(v.into_iter()));
             }
             map.insert(schema.name.clone(), schema);
         }
@@ -401,10 +515,10 @@ mod schemas {
 mod objects {
     use crate::api::Qi;
 
-    use super::{Object, ObjectDef, ObjectType, ProcVolatility, ProcReturnType::*, PgType::*};
+    use super::{Object, ObjectDef, ObjectType, PgType::*, ProcReturnType::*, ProcVolatility};
 
     //use std::collections::HashMap;
-    use std::collections::{BTreeMap};
+    use std::collections::BTreeMap;
 
     //use serde::ser::Serializer;
     use serde::de::{Deserialize, Deserializer};
@@ -414,62 +528,68 @@ mod objects {
     //     serializer.collect_seq(map.values())
     // }
 
-
     pub fn deserialize<'de, D>(deserializer: D) -> Result<BTreeMap<String, Object>, D::Error>
-        where D: Deserializer<'de>
+    where
+        D: Deserializer<'de>,
     {
         let mut map = BTreeMap::new();
         for o in Vec::<ObjectDef>::deserialize(deserializer)? {
-            map.insert(o.name.clone(), match o.kind.as_str() {
-                "function" => {
-                    Object {
-                        kind: ObjectType::Function {
-                            volatile: match o.volatile{
-                                'i' => ProcVolatility::Imutable,
-                                's' => ProcVolatility::Stable,
-                                _ => ProcVolatility::Volatile
+            map.insert(
+                o.name.clone(),
+                match o.kind.as_str() {
+                    "function" => {
+                        Object {
+                            kind: ObjectType::Function {
+                                volatile: match o.volatile {
+                                    'i' => ProcVolatility::Imutable,
+                                    's' => ProcVolatility::Stable,
+                                    _ => ProcVolatility::Volatile,
+                                },
+                                return_type: match (o.setof, o.composite) {
+                                    (true, true) => {
+                                        SetOf(Composite(Qi(o.return_type_schema, o.return_type)))
+                                    }
+                                    (true, false) => SetOf(Scalar),
+                                    (false, true) => {
+                                        One(Composite(Qi(o.return_type_schema, o.return_type)))
+                                    }
+                                    (false, false) => One(Scalar),
+                                },
+                                parameters: o.parameters,
                             },
-                            return_type: match (o.setof, o.composite) {
-                                (true,true) => SetOf(Composite(Qi(o.return_type_schema, o.return_type))),
-                                (true,false) =>SetOf(Scalar),
-                                (false,true) =>One(Composite(Qi(o.return_type_schema, o.return_type))),
-                                (false,false) =>One(Scalar),
-                            },
-                            parameters: o.parameters,
-                        },
-                        name: o.name,
-                        columns: o.columns,
-                        foreign_keys: o.foreign_keys,
-                        //join_for,
+                            name: o.name,
+                            columns: o.columns,
+                            foreign_keys: o.foreign_keys,
+                            //join_for,
+                        }
                     }
-                }
-                "view" => {
-                    Object {
-                        kind: ObjectType::View,
-                        name: o.name,
-                        columns: o.columns,
-                        foreign_keys: o.foreign_keys,
-                        //join_for,
+                    "view" => {
+                        Object {
+                            kind: ObjectType::View,
+                            name: o.name,
+                            columns: o.columns,
+                            foreign_keys: o.foreign_keys,
+                            //join_for,
+                        }
+                    }
+                    _ => {
+                        Object {
+                            kind: ObjectType::Table,
+                            name: o.name,
+                            columns: o.columns,
+                            foreign_keys: o.foreign_keys,
+                            //join_for,
+                        }
                     }
                 },
-                _ => {
-                    Object {
-                        kind: ObjectType::Table,
-                        name: o.name,
-                        columns: o.columns,
-                        foreign_keys: o.foreign_keys,
-                        //join_for,
-                    }
-                },
-
-            });
+            );
         }
         Ok(map)
     }
 }
 
 mod foreign_keys {
-    use super::{ForeignKeyDef, ForeignKey};
+    use super::{ForeignKey, ForeignKeyDef};
 
     //use std::collections::HashMap;
 
@@ -478,7 +598,7 @@ mod foreign_keys {
     // pub fn serialize<S>(v: &Vec<ForeignKey>, serializer: S) -> Result<S::Ok, S::Error>
     //     where S: Serializer
     // {
-    //     serializer.collect_seq(v.iter().map(|f| 
+    //     serializer.collect_seq(v.iter().map(|f|
     //         ForeignKeyDef {
     //             name: f.name.clone(),
     //             table: f.table.clone(),
@@ -489,9 +609,9 @@ mod foreign_keys {
     //     ))
     // }
 
-
     pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<ForeignKey>, D::Error>
-        where D: Deserializer<'de>
+    where
+        D: Deserializer<'de>,
     {
         let mut v = vec![];
         for foreign_key in Vec::<ForeignKeyDef>::deserialize(deserializer)? {
@@ -520,8 +640,9 @@ mod columns {
     //     serializer.collect_seq(map.values())
     // }
 
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Column>, D::Error> where D: Deserializer<'de>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Column>, D::Error>
+    where
+        D: Deserializer<'de>,
     {
         let mut map = HashMap::new();
         for column in Vec::<Column>::deserialize(deserializer)? {
@@ -539,91 +660,119 @@ fn pg_catalog() -> String {
     "pg_catalog".to_string()
 }
 
-
-
-
-
 #[cfg(test)]
 mod tests {
     //use std::collections::HashSet;
-    use pretty_assertions::{assert_eq};
     use super::*;
     use super::{ObjectType::*, ProcParam};
     use crate::error::Error as AppError;
-    fn s(s:&str) -> String {
+    use pretty_assertions::assert_eq;
+    fn s(s: &str) -> String {
         s.to_string()
     }
-    fn t<T>((k,v):(&str, T)) -> (String, T) {
+    fn t<T>((k, v): (&str, T)) -> (String, T) {
         (k.to_string(), v)
     }
     #[test]
-    fn deserialize_db_schema(){
+    fn deserialize_db_schema() {
         let db_schema = DbSchema {
-            schemas: [
-                ("api", Schema {
+            schemas: [(
+                "api",
+                Schema {
                     name: s("api"),
                     objects: [
-                        ("myfunction", Object {
-                            kind: Function {
-                                volatile: ProcVolatility::Volatile,
-                                return_type: ProcReturnType::SetOf(PgType::Scalar),
-                                parameters: vec![
-                                    ProcParam {
+                        (
+                            "myfunction",
+                            Object {
+                                kind: Function {
+                                    volatile: ProcVolatility::Volatile,
+                                    return_type: ProcReturnType::SetOf(PgType::Scalar),
+                                    parameters: vec![ProcParam {
                                         name: s("a"),
                                         type_: s("integer"),
                                         required: true,
                                         variadic: false,
-                                    }
-                                ],
+                                    }],
+                                },
+                                name: s("myfunction"),
+                                columns: [].iter().cloned().map(t).collect(),
+                                foreign_keys: [].iter().cloned().collect(),
+                                //join_for: [].iter().cloned().collect(),
                             },
-                            name: s("myfunction"),
-                            columns: [].iter().cloned().map(t).collect(),
-                            foreign_keys: [].iter().cloned().collect(),
-                            //join_for: [].iter().cloned().collect(),
-                        }),
-                        ("tasks", Object {
-                            kind: View,
-                            name: s("tasks"),
-                            columns: [
-                                ("id", Column {
-                                    name: s("id"),
-                                    data_type: s("int"),
-                                    primary_key: true,
-                                }),
-                                ("name", Column {
-                                    name: s("name"),
-                                    data_type: s("text"),
-                                    primary_key: false,
-                                })
-                            ].iter().cloned().map(t).collect(),
-                            foreign_keys: [
-                                ForeignKey {
+                        ),
+                        (
+                            "tasks",
+                            Object {
+                                kind: View,
+                                name: s("tasks"),
+                                columns: [
+                                    (
+                                        "id",
+                                        Column {
+                                            name: s("id"),
+                                            data_type: s("int"),
+                                            primary_key: true,
+                                        },
+                                    ),
+                                    (
+                                        "name",
+                                        Column {
+                                            name: s("name"),
+                                            data_type: s("text"),
+                                            primary_key: false,
+                                        },
+                                    ),
+                                ]
+                                .iter()
+                                .cloned()
+                                .map(t)
+                                .collect(),
+                                foreign_keys: [ForeignKey {
                                     name: s("project_id_fk"),
-                                    table: Qi(s("api"),s("tasks")),
+                                    table: Qi(s("api"), s("tasks")),
                                     columns: vec![s("project_id")],
-                                    referenced_table: Qi(s("api"),s("projects")),
-                                    referenced_columns:  vec![s("id")],
-                                }
-                            ].iter().cloned().collect(),
-                            //join_for: [].iter().cloned().collect(),
-                        }),
-                        ("projects", Object {
-                            kind: Table,
-                            name: s("projects"),
-                            columns: [
-                                ("id", Column {
-                                    name: s("id"),
-                                    data_type: s("int"),
-                                    primary_key: true,
-                                })
-                            ].iter().cloned().map(t).collect(),
-                            foreign_keys: [].iter().cloned().collect(),
-                            //join_for: [].iter().cloned().collect(),
-                        }),
-                    ].iter().cloned().map(t).collect(),
-                    join_tables: [].iter().cloned().collect()
-                })
-            ].iter().cloned().map(t).collect()
+                                    referenced_table: Qi(s("api"), s("projects")),
+                                    referenced_columns: vec![s("id")],
+                                }]
+                                .iter()
+                                .cloned()
+                                .collect(),
+                                //join_for: [].iter().cloned().collect(),
+                            },
+                        ),
+                        (
+                            "projects",
+                            Object {
+                                kind: Table,
+                                name: s("projects"),
+                                columns: [(
+                                    "id",
+                                    Column {
+                                        name: s("id"),
+                                        data_type: s("int"),
+                                        primary_key: true,
+                                    },
+                                )]
+                                .iter()
+                                .cloned()
+                                .map(t)
+                                .collect(),
+                                foreign_keys: [].iter().cloned().collect(),
+                                //join_for: [].iter().cloned().collect(),
+                            },
+                        ),
+                    ]
+                    .iter()
+                    .cloned()
+                    .map(t)
+                    .collect(),
+                    join_tables: [].iter().cloned().collect(),
+                },
+            )]
+            .iter()
+            .cloned()
+            .map(t)
+            .collect(),
         };
 
         let json_schema = r#"
@@ -690,15 +839,16 @@ mod tests {
             }
         "#;
 
-       
-        let deserialized_result  = serde_json::from_str::<DbSchema>(json_schema);
+        let deserialized_result = serde_json::from_str::<DbSchema>(json_schema);
 
         println!("deserialized_result = {:?}", deserialized_result);
 
-        let deserialized  = deserialized_result.unwrap_or(DbSchema {schemas: HashMap::new()});
+        let deserialized = deserialized_result.unwrap_or(DbSchema {
+            schemas: HashMap::new(),
+        });
 
         assert_eq!(deserialized, db_schema);
-        
+
         // let serialized_result = serde_json::to_string(&db_schema);
         // println!("serialized_result = {:?}", serialized_result);
         // let serialized = serialized_result.unwrap_or(s("failed to serialize"));
@@ -710,11 +860,9 @@ mod tests {
     //     assert_eq!(HashSet::from([&"Einar", &"Olaf", &"Harald"]), HashSet::from([&"Olaf", &"Einar",  &"Harald"]));
     // }
 
-
     #[test]
-    fn test_get_join_conditions(){
-        static JSON_SCHEMA:&str = 
-                r#"
+    fn test_get_join_conditions() {
+        static JSON_SCHEMA: &str = r#"
                     {
                         "schemas":[
                             {
@@ -847,91 +995,91 @@ mod tests {
                         ]
                     }
                 "#;
-        let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-        assert_eq!( db_schema.get_join(&s("api"), &s("projects"), &s("tasks"), &mut None).map_err(|e| format!("{}",e)),
-            Ok(
-                
-                    Child(ForeignKey {
-                        name: s("project_id_fk"),
-                        table: Qi(s("api"),s("tasks")),
-                        columns: vec![s("project_id")],
-                        referenced_table: Qi(s("api"),s("projects")),
-                        referenced_columns: vec![s("id")],
-                    })
-                
-            )
+        let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
+        assert_eq!(
+            db_schema
+                .get_join(&s("api"), &s("projects"), &s("tasks"), &mut None)
+                .map_err(|e| format!("{}", e)),
+            Ok(Child(ForeignKey {
+                name: s("project_id_fk"),
+                table: Qi(s("api"), s("tasks")),
+                columns: vec![s("project_id")],
+                referenced_table: Qi(s("api"), s("projects")),
+                referenced_columns: vec![s("id")],
+            }))
         );
-        assert_eq!( db_schema.get_join(&s("api"), &s("tasks"), &s("projects"), &mut None).map_err(|e| format!("{}",e)),
-            Ok(
-                
-                    Parent(ForeignKey {
-                        name: s("project_id_fk"),
-                        table: Qi(s("api"),s("tasks")),
-                        columns: vec![s("project_id")],
-                        referenced_table: Qi(s("api"),s("projects")),
-                        referenced_columns: vec![s("id")],
-                    })
-                
-            )
+        assert_eq!(
+            db_schema
+                .get_join(&s("api"), &s("tasks"), &s("projects"), &mut None)
+                .map_err(|e| format!("{}", e)),
+            Ok(Parent(ForeignKey {
+                name: s("project_id_fk"),
+                table: Qi(s("api"), s("tasks")),
+                columns: vec![s("project_id")],
+                referenced_table: Qi(s("api"), s("projects")),
+                referenced_columns: vec![s("id")],
+            }))
         );
-        assert_eq!( db_schema.get_join(&s("api"), &s("clients"), &s("projects"), &mut None).map_err(|e| format!("{}",e)),
-            Ok(
-                
-                    Child(ForeignKey {
-                        name: s("client_id_fk"),
-                        table: Qi(s("api"),s("projects")),
-                        columns: vec![s("client_id")],
-                        referenced_table: Qi(s("api"),s("clients")),
-                        referenced_columns: vec![s("id")],
-                    })
-                
-            )
+        assert_eq!(
+            db_schema
+                .get_join(&s("api"), &s("clients"), &s("projects"), &mut None)
+                .map_err(|e| format!("{}", e)),
+            Ok(Child(ForeignKey {
+                name: s("client_id_fk"),
+                table: Qi(s("api"), s("projects")),
+                columns: vec![s("client_id")],
+                referenced_table: Qi(s("api"), s("clients")),
+                referenced_columns: vec![s("id")],
+            }))
         );
-        assert_eq!( db_schema.get_join(&s("api"), &s("tasks"), &s("users"), &mut None).map_err(|e| format!("{}",e)),
-            Ok(
-               
-                    Many(
-                        Qi(s("api"), s("users_tasks")),
-                        ForeignKey {
-                            name: s("task_id_fk"),
-                            table: Qi(s("api"),s("users_tasks")),
-                            columns: vec![s("task_id")],
-                            referenced_table: Qi(s("api"),s("tasks")),
-                            referenced_columns: vec![s("id")],
-                        },
-                        ForeignKey {
-                            name: s("user_id_fk"),
-                            table: Qi(s("api"),s("users_tasks")),
-                            columns: vec![s("user_id")],
-                            referenced_table: Qi(s("api"),s("users")),
-                            referenced_columns: vec![s("id")],
-                        },
-                    )
-               
-            )
+        assert_eq!(
+            db_schema
+                .get_join(&s("api"), &s("tasks"), &s("users"), &mut None)
+                .map_err(|e| format!("{}", e)),
+            Ok(Many(
+                Qi(s("api"), s("users_tasks")),
+                ForeignKey {
+                    name: s("task_id_fk"),
+                    table: Qi(s("api"), s("users_tasks")),
+                    columns: vec![s("task_id")],
+                    referenced_table: Qi(s("api"), s("tasks")),
+                    referenced_columns: vec![s("id")],
+                },
+                ForeignKey {
+                    name: s("user_id_fk"),
+                    table: Qi(s("api"), s("users_tasks")),
+                    columns: vec![s("user_id")],
+                    referenced_table: Qi(s("api"), s("users")),
+                    referenced_columns: vec![s("id")],
+                },
+            ))
         );
-        assert_eq!( db_schema.get_join(&s("api"), &s("tasks"), &s("users"), &mut Some(s("users_tasks"))).map_err(|e| format!("{}",e)),
-            Ok(
-               
-                    Many(
-                        Qi(s("api"), s("users_tasks")),
-                        ForeignKey {
-                            name: s("task_id_fk"),
-                            table: Qi(s("api"),s("users_tasks")),
-                            columns: vec![s("task_id")],
-                            referenced_table: Qi(s("api"),s("tasks")),
-                            referenced_columns: vec![s("id")],
-                        },
-                        ForeignKey {
-                            name: s("user_id_fk"),
-                            table: Qi(s("api"),s("users_tasks")),
-                            columns: vec![s("user_id")],
-                            referenced_table: Qi(s("api"),s("users")),
-                            referenced_columns: vec![s("id")],
-                        },
-                    )
-               
-            )
+        assert_eq!(
+            db_schema
+                .get_join(
+                    &s("api"),
+                    &s("tasks"),
+                    &s("users"),
+                    &mut Some(s("users_tasks"))
+                )
+                .map_err(|e| format!("{}", e)),
+            Ok(Many(
+                Qi(s("api"), s("users_tasks")),
+                ForeignKey {
+                    name: s("task_id_fk"),
+                    table: Qi(s("api"), s("users_tasks")),
+                    columns: vec![s("task_id")],
+                    referenced_table: Qi(s("api"), s("tasks")),
+                    referenced_columns: vec![s("id")],
+                },
+                ForeignKey {
+                    name: s("user_id_fk"),
+                    table: Qi(s("api"), s("users_tasks")),
+                    columns: vec![s("user_id")],
+                    referenced_table: Qi(s("api"), s("users")),
+                    referenced_columns: vec![s("id")],
+                },
+            ))
         );
 
         // let result = get_join(&s("api"), &db_schema, &s("users"), &s("addresses"), &mut None);
@@ -975,8 +1123,7 @@ mod tests {
         // );
         assert!(matches!(
             db_schema.get_join(&s("api"), &s("users"), &s("addresses"), &mut None),
-            Err(AppError::AmbiguousRelBetween {..})
+            Err(AppError::AmbiguousRelBetween { .. })
         ));
-
     }
 }

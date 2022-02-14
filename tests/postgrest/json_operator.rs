@@ -1,20 +1,22 @@
-use super::common::*;
 use super::super::start;
-use pretty_assertions::{assert_eq};
-use serde_json::Value;
-use rocket::http::{Accept,};
-use std::str::FromStr;
+use super::common::*;
 use demonstrate::demonstrate;
+use pretty_assertions::assert_eq;
+use rocket::http::Accept;
+use serde_json::Value;
+use std::str::FromStr;
 
-use rocket::local::asynchronous::Client;
 use async_once::AsyncOnce;
+use rocket::local::asynchronous::Client;
 use std::sync::Once;
 pub static INIT_CLIENT: Once = Once::new();
 
 lazy_static! {
-  pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
-    Client::untracked(start().await.unwrap()).await.expect("valid client")
-  });
+    pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async {
+        Client::untracked(start().await.unwrap())
+            .await
+            .expect("valid client")
+    });
 }
 haskell_test! {
 feature "json operators"
@@ -273,12 +275,12 @@ feature "json operators"
       get "/arrays?select=a:numbers->>0,b:numbers->>1,c:numbers_mult->0->>0,d:numbers_mult->1->>2"
         shouldRespondWith
           [json| r#"[{"a":"1","b":"2","c":"1","d":"6"},{"a":"11","b":"12","c":"11","d":"16"}]"# |]
-    
+
     it "can filter composite type field" $
           get "/fav_numbers?num->>i=gt.0.5"
             shouldRespondWith
               [json| r#"[{"num":{"r":0.6,"i":0.6},"person":"B"}]"# |]
-    
+
     it "can filter array item" $ do
       get "/arrays?select=id&numbers->0=eq.1"
         shouldRespondWith
@@ -299,7 +301,7 @@ feature "json operators"
           get "/fav_numbers?order=num->>i.desc"
             shouldRespondWith
               [json| r#"[{"num":{"r":0.6,"i":0.6},"person":"B"}, {"num":{"r":0.5,"i":0.5},"person":"A"}]"# |]
-        
+
     it "orders by array item" $ do
       get "/arrays?select=id&order=numbers->0.desc"
         shouldRespondWith

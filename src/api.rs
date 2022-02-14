@@ -1,16 +1,26 @@
-
-use serde::{Deserialize, Serialize};
 pub use http::Method;
-use std::collections::{HashMap,VecDeque};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Resolution {MergeDuplicates, IgnoreDuplicates}
+pub enum Resolution {
+    MergeDuplicates,
+    IgnoreDuplicates,
+}
 #[derive(Debug, PartialEq)]
-pub enum Representation {Full, None, HeadersOnly}
+pub enum Representation {
+    Full,
+    None,
+    HeadersOnly,
+}
 // #[derive(Debug, PartialEq)]
 // pub enum Parameters {SingleObject, MultipleObjects}
 #[derive(Debug, PartialEq)]
-pub enum Count {ExactCount, PlannedCount, EstimatedCount}
+pub enum Count {
+    ExactCount,
+    PlannedCount,
+    EstimatedCount,
+}
 // #[derive(Debug, PartialEq)]
 // pub enum Transaction {Commit, Rollback}
 
@@ -60,11 +70,15 @@ pub struct Query {
     pub node: QueryNode,
     pub sub_selects: Vec<SubSelect>,
 }
-pub struct Iter<T>(VecDeque<Vec<String>>,VecDeque<T>);
-pub struct Visitor<'a, F>(VecDeque<Vec<String>>,VecDeque<&'a mut Query>, F);
+pub struct Iter<T>(VecDeque<Vec<String>>, VecDeque<T>);
+pub struct Visitor<'a, F>(VecDeque<Vec<String>>, VecDeque<&'a mut Query>, F);
 impl Query {
     pub fn visit<R, F: FnMut(Vec<String>, &mut Self) -> R>(&mut self, f: F) -> Visitor<F> {
-        Visitor(VecDeque::from([vec![self.node.name().clone()]]),VecDeque::from([self]), f)
+        Visitor(
+            VecDeque::from([vec![self.node.name().clone()]]),
+            VecDeque::from([self]),
+            f,
+        )
     }
 }
 impl<'a> Iterator for Iter<&'a Query> {
@@ -72,16 +86,26 @@ impl<'a> Iterator for Iter<&'a Query> {
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
-            (Some(current_path), Some(Query { node, sub_selects, .. })) => {
-                stack.extend(sub_selects.iter().map(|SubSelect {query,..}| query));
-                path.extend(sub_selects.iter().map(|SubSelect { query: Query { node, .. }, .. }| {
-                    let mut p = current_path.clone();
-                    p.push(node.name().clone());
-                    p
-                }));
+            (
+                Some(current_path),
+                Some(Query {
+                    node, sub_selects, ..
+                }),
+            ) => {
+                stack.extend(sub_selects.iter().map(|SubSelect { query, .. }| query));
+                path.extend(sub_selects.iter().map(
+                    |SubSelect {
+                         query: Query { node, .. },
+                         ..
+                     }| {
+                        let mut p = current_path.clone();
+                        p.push(node.name().clone());
+                        p
+                    },
+                ));
                 Some((current_path, &node))
             }
-            _ => None
+            _ => None,
         }
     }
 }
@@ -91,16 +115,26 @@ impl<'a> Iterator for Iter<&'a mut Query> {
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
-            (Some(current_path), Some(Query { node, sub_selects, .. })) => {
-                path.extend(sub_selects.iter().map(|SubSelect { query: Query { node, .. }, .. }| {
-                    let mut p = current_path.clone();
-                    p.push(node.name().clone());
-                    p
-                }));
-                stack.extend(sub_selects.iter_mut().map(|SubSelect {query,..}| query));
+            (
+                Some(current_path),
+                Some(Query {
+                    node, sub_selects, ..
+                }),
+            ) => {
+                path.extend(sub_selects.iter().map(
+                    |SubSelect {
+                         query: Query { node, .. },
+                         ..
+                     }| {
+                        let mut p = current_path.clone();
+                        p.push(node.name().clone());
+                        p
+                    },
+                ));
+                stack.extend(sub_selects.iter_mut().map(|SubSelect { query, .. }| query));
                 Some((current_path, &mut *node))
             }
-            _ => None
+            _ => None,
         }
     }
 }
@@ -110,16 +144,26 @@ impl Iterator for Iter<Query> {
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
-            (Some(current_path), Some(Query { node, sub_selects, .. })) => {
-                path.extend(sub_selects.iter().map(|SubSelect { query: Query { node, .. }, .. }| {
-                    let mut p = current_path.clone();
-                    p.push(node.name().clone());
-                    p
-                }));
-                stack.extend(sub_selects.into_iter().map(|SubSelect {query,..}| query));
-                Some((current_path,node))
+            (
+                Some(current_path),
+                Some(Query {
+                    node, sub_selects, ..
+                }),
+            ) => {
+                path.extend(sub_selects.iter().map(
+                    |SubSelect {
+                         query: Query { node, .. },
+                         ..
+                     }| {
+                        let mut p = current_path.clone();
+                        p.push(node.name().clone());
+                        p
+                    },
+                ));
+                stack.extend(sub_selects.into_iter().map(|SubSelect { query, .. }| query));
+                Some((current_path, node))
             }
-            _ => None
+            _ => None,
         }
     }
 }
@@ -128,7 +172,10 @@ impl<'a> IntoIterator for &'a Query {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
     fn into_iter(self) -> Self::IntoIter {
-        Iter(VecDeque::from([vec![self.node.name().clone()]]),VecDeque::from([self]))
+        Iter(
+            VecDeque::from([vec![self.node.name().clone()]]),
+            VecDeque::from([self]),
+        )
     }
 }
 
@@ -136,7 +183,10 @@ impl<'a> IntoIterator for &'a mut Query {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
     fn into_iter(self) -> Self::IntoIter {
-        Iter(VecDeque::from([vec![self.node.name().clone()]]),VecDeque::from([self]))
+        Iter(
+            VecDeque::from([vec![self.node.name().clone()]]),
+            VecDeque::from([self]),
+        )
     }
 }
 
@@ -144,26 +194,42 @@ impl IntoIterator for Query {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
     fn into_iter(self) -> Self::IntoIter {
-        Iter(VecDeque::from([vec![self.node.name().clone()]]),VecDeque::from([self]))
+        Iter(
+            VecDeque::from([vec![self.node.name().clone()]]),
+            VecDeque::from([self]),
+        )
     }
 }
 
-impl<R, F> Iterator for Visitor<'_, F> where F: FnMut(Vec<String>, &mut Query) -> R {
+impl<R, F> Iterator for Visitor<'_, F>
+where
+    F: FnMut(Vec<String>, &mut Query) -> R,
+{
     type Item = R;
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack, f) = self;
         match (path.pop_front(), stack.pop_front()) {
             (Some(current_path), Some(query)) => {
                 let r = (f)(current_path.clone(), query);
-                path.extend(query.sub_selects.iter().map(|SubSelect { query: Query { node, .. }, .. }| {
-                    let mut p = current_path.clone();
-                    p.push(node.name().clone());
-                    p
-                }));
-                stack.extend(query.sub_selects.iter_mut().map(|SubSelect {query,..}| query));
+                path.extend(query.sub_selects.iter().map(
+                    |SubSelect {
+                         query: Query { node, .. },
+                         ..
+                     }| {
+                        let mut p = current_path.clone();
+                        p.push(node.name().clone());
+                        p
+                    },
+                ));
+                stack.extend(
+                    query
+                        .sub_selects
+                        .iter_mut()
+                        .map(|SubSelect { query, .. }| query),
+                );
                 Some(r)
             }
-            _ => None
+            _ => None,
         }
     }
 }
@@ -183,7 +249,7 @@ pub enum QueryNode {
         where_: ConditionTree,
         limit: Option<SingleVal>,
         offset: Option<SingleVal>,
-        order: Vec<OrderTerm>
+        order: Vec<OrderTerm>,
     },
     Select {
         select: Vec<SelectItem>,
@@ -192,7 +258,7 @@ pub enum QueryNode {
         where_: ConditionTree,
         limit: Option<SingleVal>,
         offset: Option<SingleVal>,
-        order: Vec<OrderTerm>
+        order: Vec<OrderTerm>,
     },
     Insert {
         into: String,
@@ -201,7 +267,7 @@ pub enum QueryNode {
         where_: ConditionTree, //used only for put
         returning: Vec<String>,
         select: Vec<SelectItem>,
-        on_conflict: Option<(Resolution, Vec<String>)>
+        on_conflict: Option<(Resolution, Vec<String>)>,
     },
     Delete {
         from: String,
@@ -217,39 +283,46 @@ pub enum QueryNode {
         where_: ConditionTree,
         returning: Vec<String>,
         select: Vec<SelectItem>,
-    }
-
+    },
 }
 
 impl QueryNode {
     pub fn name(&self) -> &String {
         match self {
-            Self::FunctionCall {fn_name:Qi(_,n),..} => n,
-            Self::Select {from:(t,_),..} => t,
-            Self::Insert {into,..} => into,
-            Self::Delete {from,..} => from,
-            Self::Update {table,..} => table,
+            Self::FunctionCall {
+                fn_name: Qi(_, n), ..
+            } => n,
+            Self::Select { from: (t, _), .. } => t,
+            Self::Insert { into, .. } => into,
+            Self::Delete { from, .. } => from,
+            Self::Update { table, .. } => table,
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct OrderTerm {
-    pub term:  Field,
+    pub term: Field,
     pub direction: Option<OrderDirection>,
-    pub null_order:  Option<OrderNulls>,
+    pub null_order: Option<OrderNulls>,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum OrderDirection { Asc, Desc}
+pub enum OrderDirection {
+    Asc,
+    Desc,
+}
 
 #[derive(Debug, PartialEq)]
-pub enum OrderNulls { NullsFirst, NullsLast }
+pub enum OrderNulls {
+    NullsFirst,
+    NullsLast,
+}
 
 pub type JoinHint = String;
 
 #[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
-pub struct Qi (pub String, pub String);
+pub struct Qi(pub String, pub String);
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ForeignKey {
@@ -257,14 +330,14 @@ pub struct ForeignKey {
     pub table: Qi,
     pub columns: Vec<String>,
     pub referenced_table: Qi,
-    pub referenced_columns: Vec<String>
+    pub referenced_columns: Vec<String>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Join {
-    Child (ForeignKey),
-    Parent (ForeignKey),
-    Many (Qi, ForeignKey, ForeignKey),
+    Child(ForeignKey),
+    Parent(ForeignKey),
+    Many(Qi, ForeignKey, ForeignKey),
 }
 
 #[derive(Debug, PartialEq)]
@@ -289,7 +362,7 @@ pub struct SubSelect {
     pub query: Query,
     pub alias: Option<String>,
     pub hint: Option<JoinHint>,
-    pub join: Option<Join>
+    pub join: Option<Join>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -300,7 +373,7 @@ pub struct ConditionTree {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Condition {
-    Group (Negate, ConditionTree), 
+    Group(Negate, ConditionTree),
     Single {
         field: Field,
         filter: Filter,
@@ -308,33 +381,37 @@ pub enum Condition {
     },
     Foreign {
         left: (Qi, Field),
-        right: (Qi, Field)
-    }
+        right: (Qi, Field),
+    },
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum TrileanVal {TriTrue, TriFalse, TriNull, TriUnknown}
+pub enum TrileanVal {
+    TriTrue,
+    TriFalse,
+    TriNull,
+    TriUnknown,
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Filter {
-    Op (Operator, SingleVal),
-    In (ListVal),
-    Is (TrileanVal),
-    Fts (Operator, Option<Language>, SingleVal),
-    Col (Qi, Field)
+    Op(Operator, SingleVal),
+    In(ListVal),
+    Is(TrileanVal),
+    Fts(Operator, Option<Language>, SingleVal),
+    Col(Qi, Field),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Field {
     pub name: String,
-    pub json_path: Option<Vec<JsonOperation>>
-    //TODO!! should contain some info about the data type so that fmt_field function could make better decisions
+    pub json_path: Option<Vec<JsonOperation>>, //TODO!! should contain some info about the data type so that fmt_field function could make better decisions
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum JsonOperation {
-    JArrow (JsonOperand),
-    J2Arrow (JsonOperand)
+    JArrow(JsonOperand),
+    J2Arrow(JsonOperand),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -343,8 +420,6 @@ pub enum JsonOperand {
     JIdx(String),
 }
 
-
-
 pub type Operator = String;
 pub type Negate = bool;
 pub type Language = SingleVal;
@@ -352,21 +427,23 @@ pub type Language = SingleVal;
 #[derive(Debug, PartialEq)]
 pub struct Payload(pub String);
 
-#[derive(Debug,PartialEq,Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SingleVal(pub String);
 
-#[derive(Debug,PartialEq,Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ListVal(pub Vec<String>);
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum LogicOperator { And, Or }
-
+pub enum LogicOperator {
+    And,
+    Or,
+}
 
 // #[cfg(test)]
 // mod tests {
 //     use super::{*,Query::*, LogicOperator::*, SelectItem::*,};
 //     fn s(s:&str) -> String {s.to_string()}
-    
+
 //     #[test]
 //     fn query_iter() {
 //         let q_c = Select { order: vec![], limit: None, offset: None,
@@ -420,10 +497,9 @@ pub enum LogicOperator { And, Or }
 //             //from_alias: None,
 //             where_: ConditionTree { operator: And, conditions: vec![] }
 //         };
-        
 
 //         let iter = q_root.into_iter();
-        
+
 //         assert_eq!(iter.next().node().as_str(), Some("A"));
 //         assert_eq!(iter.next().node().as_str(), Some("B"));
 //         assert_eq!(iter.next().node().as_str(), Some("C"));

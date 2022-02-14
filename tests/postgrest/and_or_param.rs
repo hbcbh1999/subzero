@@ -1,22 +1,23 @@
-use super::common::*;
 use super::super::start;
-use pretty_assertions::{assert_eq};
+use super::common::*;
+use pretty_assertions::assert_eq;
+use rocket::http::Accept;
 use serde_json::Value;
-use rocket::http::{Accept};
 use std::str::FromStr;
 
 use demonstrate::demonstrate;
 
-
-use rocket::local::asynchronous::Client;
 use async_once::AsyncOnce;
+use rocket::local::asynchronous::Client;
 use std::sync::Once;
 pub static INIT_CLIENT: Once = Once::new();
 
 lazy_static! {
-  pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
-    Client::untracked(start().await.unwrap()).await.expect("valid client")
-  });
+    pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async {
+        Client::untracked(start().await.unwrap())
+            .await
+            .expect("valid client")
+    });
 }
 
 haskell_test! {
@@ -211,7 +212,7 @@ feature "and or param"
           // }"#|]
           [json|r#"{"details":"Unexpected `)` Expected `\"`, `letter`, `digit`, `_`, ` `, `not`, `.`, `and`, `or` or `whitespace`","message":"\"failed to parse logic tree (or())\" (line 1, column 4)"}"#|]
           { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
-          
+
       it "can have a single condition" $ do
         get "/entities?or=(id.eq.1)&select=id" shouldRespondWith
           [json|r#"[{"id":1}]"#|] { matchHeaders = ["Content-Type" <:> "application/json"] }

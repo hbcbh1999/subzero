@@ -1,46 +1,53 @@
-
 //use super::super::start; //super in
 //use rocket::local::asynchronous::Client;
-use rocket::local::asynchronous::LocalRequest;
 use rocket::http::{Cookie, Header};
-use std::sync::Once;
-use std::process::Command;
-use std::path::PathBuf;
+use rocket::local::asynchronous::LocalRequest;
 use std::env;
+use std::path::PathBuf;
+use std::process::Command;
+use std::sync::Once;
 //use async_once::AsyncOnce;
 use lazy_static::LazyStatic;
 
 pub static INIT_DB: Once = Once::new();
 //static INIT_CLIENT: Once = Once::new();
 // lazy_static! {
-    
+
 //     pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
 //       Client::untracked(start().await.unwrap()).await.expect("valid client")
 //     });
 
-   
 // }
 //pub static MAX_ROWS: Option<&'static str> = None;
 
-pub fn setup_db(init_db_once: &Once,) {
+pub fn setup_db(init_db_once: &Once) {
     //let _ = env_logger::builder().is_test(true).try_init();
     init_db_once.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        
+
         let tmp_pg_cmd = project_dir.join("tests/bin/pg_tmp.sh");
         let init_file = project_dir.join("tests/postgrest/fixtures/load.sql");
 
-        let output = Command::new(tmp_pg_cmd).arg("-t").arg("-u").arg("postgrest_test_authenticator").output().expect("failed to start temporary pg process");
+        let output = Command::new(tmp_pg_cmd)
+            .arg("-t")
+            .arg("-u")
+            .arg("postgrest_test_authenticator")
+            .output()
+            .expect("failed to start temporary pg process");
         // println!("status: {}", output.status);
         // println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
         // println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         assert!(output.status.success());
 
-        let db_uri =  String::from_utf8_lossy(&output.stdout);
-        
+        let db_uri = String::from_utf8_lossy(&output.stdout);
 
-        let output = Command::new("psql").arg("-f").arg(init_file.to_str().unwrap()).arg(db_uri.clone().into_owned()).output().expect("failed to execute process");
+        let output = Command::new("psql")
+            .arg("-f")
+            .arg(init_file.to_str().unwrap())
+            .arg(db_uri.clone().into_owned())
+            .output()
+            .expect("failed to execute process");
         // println!("status: {}", output.status);
         // println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
         // println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
@@ -50,32 +57,48 @@ pub fn setup_db(init_db_once: &Once,) {
     });
 }
 
-pub fn setup_client<T>(init_client_once: &Once, client:&T,) where T: LazyStatic {
+pub fn setup_client<T>(init_client_once: &Once, client: &T)
+where
+    T: LazyStatic,
+{
     init_client_once.call_once(|| {
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"postgrest_test_anonymous");
+        env::set_var(
+            "SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE",
+            &"postgrest_test_anonymous",
+        );
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TX_ROLLBACK", &"true");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[test]");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");
+        env::set_var(
+            "SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST",
+            "test.switch_role",
+        );
+        env::set_var(
+            "SUBZERO_VHOSTS__DEFAULT__JWT_SECRET",
+            "reallyreallyreallyreallyverysafe",
+        );
         env::remove_var("SUBZERO_VHOSTS__DEFAULT__DB_MAX_ROWS");
         lazy_static::initialize(client);
     });
 }
 
-
 pub fn normalize_url(url: &String) -> String {
-    url
-    .replace(" ", "%20")
-    .replace("\"","%22")
-    .replace(">","%3E")
+    url.replace(" ", "%20")
+        .replace("\"", "%22")
+        .replace(">", "%3E")
 }
-pub fn add_header<'a>(mut request: LocalRequest<'a>, name: &'static str, value: &'static str ) -> LocalRequest <'a> {
-    request.add_header(Header::new(name,value));
+pub fn add_header<'a>(
+    mut request: LocalRequest<'a>,
+    name: &'static str,
+    value: &'static str,
+) -> LocalRequest<'a> {
+    request.add_header(Header::new(name, value));
     if name == "Cookie" {
-        let cookies = value.split(';').filter_map(|s|  Cookie::parse_encoded(s.trim()).ok() ).collect::<Vec<_>>();
+        let cookies = value
+            .split(';')
+            .filter_map(|s| Cookie::parse_encoded(s.trim()).ok())
+            .collect::<Vec<_>>();
         request.cookies(cookies)
-    }
-    else {
+    } else {
         request
     }
 }
@@ -128,18 +151,18 @@ macro_rules! haskell_test {
         $(feature $feature:literal
         $(
             describe $describe:literal $dollar1:tt $(do)?
-            $( 
+            $(
                 it $it:literal $dollar2:tt $(do)?
                 $(
                     //request methodGet "/images?name=eq.A.png" (acceptHdrs "application/octet-stream") ""
                     $(let $token_var:ident = $(authHeaderJWT)? $jwt_token:literal $(in)?)?
-                    
+
                     $(get $get1_url:literal)?
                     $(post $post_url:literal [json|$json_body:literal|])?
-                   
+
                     $(request methodGet $get2_url:literal
                         $([auth])?
-                        $([ 
+                        $([
                           ($get_2_header_nn0:literal,$get_2_header_v0:literal)
                           $(,($get_2_header_nn1:literal,$get_2_header_v1:literal))?
                         ])?
@@ -151,7 +174,7 @@ macro_rules! haskell_test {
                         $([auth])?
                         $([single])?
                         $((acceptHdrs $post2_accept_header:literal))?
-                        $([ 
+                        $([
                             $(authHeaderJWT $post_2_jwt_token:literal , )?
                             ($post_2_header_nn0:literal,$post_2_header_v0:literal)
                             $(
@@ -165,7 +188,7 @@ macro_rules! haskell_test {
                     )?
 
                     $(request methodDelete $delete_url:literal
-                        $([ 
+                        $([
                             ($delete_header_nn0:literal,$delete_header_v0:literal)
                             $(
                               ,($delete_header_nn1:literal,$delete_header_v1:literal)
@@ -180,7 +203,7 @@ macro_rules! haskell_test {
                         $([auth])?
                         $([single])?
                         $((acceptHdrs $patch_accept_header:literal))?
-                        $([ 
+                        $([
                             $(authHeaderJWT $patch_jwt_token:literal , )?
                             ($patch_header_nn0:literal,$patch_header_v0:literal)
                             $(
@@ -199,7 +222,7 @@ macro_rules! haskell_test {
                         $([auth])?
                         $([single])?
                         $((acceptHdrs $put_accept_header:literal))?
-                        $([ 
+                        $([
                             $(authHeaderJWT $put_jwt_token:literal , )?
                             ($put_header_nn0:literal,$put_header_v0:literal)
                             $(
@@ -212,7 +235,7 @@ macro_rules! haskell_test {
                         $([text|$put_text_body:literal|])?
                         $($put_body:literal)?
                     )?
-                    
+
                     shouldRespondWith
                     $($status_simple:literal)?
                     $([json|$json:literal|])?
@@ -245,7 +268,7 @@ macro_rules! haskell_test {
                                   $(
                                       {
                                           let client = CLIENT.get().await;
-                                          
+
                                           $(
                                             let url = format!("/rest{}",$get1_url);
                                             let mut request = client.get(normalize_url(&url));
@@ -356,8 +379,8 @@ macro_rules! haskell_test {
 
                                           println!("url ===\n{:?}\n", url);
                                           //request.add_header(Accept::from_str("*/*").unwrap());
-                                          
-                                          
+
+
 
                                           $(
                                             request.add_header(Header::new("Authorization", format!("Bearer {}",$jwt_token)));
@@ -384,8 +407,8 @@ macro_rules! haskell_test {
                   )*
             }
             )*
-            
+
         }
-    } 
+    }
 }
 pub(crate) use haskell_test;
