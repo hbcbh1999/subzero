@@ -44,6 +44,16 @@ pub struct ApiRequest<'r> {
     pub cookies: &'r HashMap<&'r str, &'r str>,
 }
 
+#[derive(Debug)]
+pub struct ApiResponse{
+    pub page_total: i64,
+    pub total_result_set: Option<i64>,
+    pub top_level_offset: i64,
+    pub response_headers: Option<String>,
+    pub response_status: Option<String>,
+    pub body: String,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum ContentType {
     ApplicationJSON,
@@ -438,71 +448,3 @@ pub enum LogicOperator {
     And,
     Or,
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use super::{*,Query::*, LogicOperator::*, SelectItem::*,};
-//     fn s(s:&str) -> String {s.to_string()}
-
-//     #[test]
-//     fn query_iter() {
-//         let q_c = Select { order: vec![], limit: None, offset: None,
-//             select: vec![
-//                 Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
-//             ],
-//             from: (s("users"),None),
-//             join_tables: vec![],
-//             where_: ConditionTree { operator: And, conditions: vec![]}
-//         };
-//         let q_a = Select { order: vec![], limit: None, offset: None,
-//             select: vec![
-//                 Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
-//             ],
-//             from: (s("clients"),None),
-//             join_tables: vec![],
-//             where_: ConditionTree { operator: And, conditions: vec![]}
-//         };
-//         let q_b = Select { order: vec![], limit: None, offset: None,
-//             select: vec![
-//                 Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
-//                 SubSelect{
-//                     query: q_c,
-//                     alias: None,
-//                     hint: None,
-//                     join: None,
-//                 },
-//             ],
-//             from: (s("tasks"),None),
-//             join_tables: vec![],
-//             where_: ConditionTree { operator: And, conditions: vec![]}
-//         };
-//         let q_root = Select { order: vec![], limit: None, offset: None,
-//             select: vec![
-//                 Simple {field: Field {name: s("id"), json_path: None}, alias: None, cast: None},
-//                 SubSelect{
-//                     query: q_a,
-//                     alias: None,
-//                     hint: None,
-//                     join: None,
-//                 },
-//                 SubSelect{
-//                     query: q_b,
-//                     hint: None,
-//                     alias: None,
-//                     join: None
-//                 }
-//             ],
-//             from: (s("projects"),None),
-//             join_tables: vec![],
-//             //from_alias: None,
-//             where_: ConditionTree { operator: And, conditions: vec![] }
-//         };
-
-//         let iter = q_root.into_iter();
-
-//         assert_eq!(iter.next().node().as_str(), Some("A"));
-//         assert_eq!(iter.next().node().as_str(), Some("B"));
-//         assert_eq!(iter.next().node().as_str(), Some("C"));
-//         assert_eq!(iter.next().node().as_str(), Some("D"));
-//     }
-// }

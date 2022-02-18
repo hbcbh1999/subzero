@@ -1,4 +1,8 @@
 #![feature(drain_filter)]
+
+#[macro_use]
+extern crate lazy_static;
+
 #[macro_use]
 extern crate rocket;
 
@@ -13,11 +17,18 @@ use snafu::OptionExt;
 
 use subzero::{
     config::Config,
-    error::{GucStatusError, Result},
-    postgrest::handle_postgrest_request,
-    rocket_util::{to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost},
-    vhosts::{create_resources, get_resources, VhostResources},
+    error::{GucStatusError, Result}
 };
+
+mod rocket_util;
+use rocket_util::{to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost, cookies_as_hashmap};
+
+mod postgrest;
+use postgrest::handle_postgrest_request;
+
+mod vhosts;
+use vhosts::{create_resources, get_resources, VhostResources};
+
 
 use figment::{
     providers::{Env, Format, Toml},
@@ -42,10 +53,7 @@ async fn get<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    let cookies = cookies
-        .iter()
-        .map(|c| (c.name(), c.value()))
-        .collect::<HashMap<_, _>>();
+    
     let headers = headers
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -64,7 +72,7 @@ async fn get<'a>(
         &resources.db_pool,
         None,
         &headers,
-        &cookies,
+        &cookies_as_hashmap(cookies),
     )
     .await?;
 
@@ -78,7 +86,6 @@ async fn get<'a>(
             .map(|(n, v)| Header::new(n, v))
             .collect::<Vec<_>>(),
     })
-    //Ok(handle_postgrest_request(&resources.config, &root, &Method::GET, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, None, &headers, &cookies).await?)
 }
 
 #[post("/<root>?<parameters..>", data = "<body>")]
@@ -93,10 +100,6 @@ async fn post<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    let cookies = cookies
-        .iter()
-        .map(|c| (c.name(), c.value()))
-        .collect::<HashMap<_, _>>();
     let headers = headers
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -116,7 +119,7 @@ async fn post<'a>(
         &resources.db_pool,
         Some(body),
         &headers,
-        &cookies,
+        &cookies_as_hashmap(cookies),
     )
     .await?;
 
@@ -130,7 +133,6 @@ async fn post<'a>(
             .map(|(n, v)| Header::new(n, v))
             .collect::<Vec<_>>(),
     })
-    //Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, Some(body), &headers, &cookies).await?)
 }
 
 #[delete("/<root>?<parameters..>", data = "<body>")]
@@ -145,10 +147,6 @@ async fn delete<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    let cookies = cookies
-        .iter()
-        .map(|c| (c.name(), c.value()))
-        .collect::<HashMap<_, _>>();
     let headers = headers
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -168,7 +166,7 @@ async fn delete<'a>(
         &resources.db_pool,
         Some(body),
         &headers,
-        &cookies,
+        &cookies_as_hashmap(cookies),
     )
     .await?;
 
@@ -182,7 +180,6 @@ async fn delete<'a>(
             .map(|(n, v)| Header::new(n, v))
             .collect::<Vec<_>>(),
     })
-    //Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, Some(body), &headers, &cookies).await?)
 }
 
 #[patch("/<root>?<parameters..>", data = "<body>")]
@@ -197,10 +194,6 @@ async fn patch<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    let cookies = cookies
-        .iter()
-        .map(|c| (c.name(), c.value()))
-        .collect::<HashMap<_, _>>();
     let headers = headers
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -220,7 +213,7 @@ async fn patch<'a>(
         &resources.db_pool,
         Some(body),
         &headers,
-        &cookies,
+        &cookies_as_hashmap(cookies),
     )
     .await?;
 
@@ -234,7 +227,6 @@ async fn patch<'a>(
             .map(|(n, v)| Header::new(n, v))
             .collect::<Vec<_>>(),
     })
-    //Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, Some(body), &headers, &cookies).await?)
 }
 
 #[put("/<root>?<parameters..>", data = "<body>")]
@@ -249,10 +241,6 @@ async fn put<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    let cookies = cookies
-        .iter()
-        .map(|c| (c.name(), c.value()))
-        .collect::<HashMap<_, _>>();
     let headers = headers
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -272,7 +260,7 @@ async fn put<'a>(
         &resources.db_pool,
         Some(body),
         &headers,
-        &cookies,
+        &cookies_as_hashmap(cookies),
     )
     .await?;
 
@@ -286,7 +274,6 @@ async fn put<'a>(
             .map(|(n, v)| Header::new(n, v))
             .collect::<Vec<_>>(),
     })
-    //Ok(handle_postgrest_request(&resources.config, &root, &Method::POST, origin.path().to_string(), &parameters, &resources.db_schema, &resources.db_pool, Some(body), &headers, &cookies).await?)
 }
 
 async fn start() -> Result<Rocket<Build>> {
@@ -335,14 +322,22 @@ async fn rocket() -> Rocket<Build> {
     }
 }
 
-#[cfg(test)]
-#[macro_use]
-extern crate lazy_static;
+// #[cfg(test)]
+// #[macro_use]
+// extern crate lazy_static;
 
+#[cfg(feature = "postgresql")]
 #[cfg(test)]
 #[path = "../tests/basic/mod.rs"]
 mod basic;
 
+#[cfg(feature = "postgresql")]
 #[cfg(test)]
 #[path = "../tests/postgrest/mod.rs"]
 mod postgrest_core;
+
+
+#[cfg(feature = "sqlite")]
+#[cfg(test)]
+#[path = "../tests/sqlite/mod.rs"]
+mod sqlite;

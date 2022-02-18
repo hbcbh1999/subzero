@@ -169,6 +169,7 @@ pub fn generate<'a, T: ?Sized>(s: SqlSnippet<'a, T>) -> (String, Vec<&T>, u32) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "postgresql")]
     use postgres_types::ToSql;
     use pretty_assertions::assert_eq;
 
@@ -207,6 +208,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "postgresql")]
     #[test]
     fn dyn_parameters() {
         let p1: &(dyn ToSql + Sync) = &20;

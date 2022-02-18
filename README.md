@@ -7,4 +7,4 @@ SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS="[test]" \
 SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE="postgrest_test_anonymous" \
 cargo run
 
-cargo test -- --test-threads=1
+cargo test --features postgresql -- --test-threads=1

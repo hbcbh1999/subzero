@@ -6,12 +6,20 @@ use snafu::Snafu;
 use serde_json::{json, Value as JsonValue};
 use std::io::Cursor;
 
+#[cfg(feature = "postgresql")]
 use deadpool_postgres::PoolError;
 use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{self, Responder, Response};
 use std::{io, path::PathBuf};
+#[cfg(feature = "postgresql")]
 use tokio_postgres::Error as PgError;
+
+#[cfg(feature = "sqlite")]
+use rusqlite::Error as SqliteError;
+
+#[cfg(feature = "sqlite")]
+use tokio::task::JoinError;
 //use combine::stream::easy::ParseError;
 // use serde_json;
 
@@ -100,12 +108,21 @@ pub enum Error {
     #[snafu(display("Failed to serialize json: {}", source))]
     JsonSerialize { source: serde_json::Error },
 
+    #[cfg(feature = "postgresql")]
     #[snafu(display("DbPoolError {}", source))]
     DbPoolError { source: PoolError },
 
+    #[cfg(feature = "postgresql")]
     #[snafu(display("DbError {}", source))]
     DbError {
         source: PgError,
+        authenticated: bool,
+    },
+
+    #[cfg(feature = "sqlite")]
+    #[snafu(display("DbError {}", source))]
+    DbError {
+        source: SqliteError,
         authenticated: bool,
     },
 
@@ -129,11 +146,16 @@ pub enum Error {
 
     #[snafu(display("PutMatchingPkError"))]
     PutMatchingPkError,
+
+    #[cfg(feature = "sqlite")]
+    #[snafu(display("ThreadError: {}", source))]
+    ThreadError { source: JoinError },
 }
 
 impl Error {
     fn headers(&self) -> Vec<(String, String)> {
         match self {
+            #[cfg(feature = "postgresql")]
             Error::DbError { .. } => match self.status_code() {
                 401 => vec![
                     ("Content-Type".into(), "application/json".into()),
@@ -157,6 +179,8 @@ impl Error {
 
     fn status_code(&self) -> u16 {
         match self {
+            #[cfg(feature = "sqlite")]
+            Error::ThreadError { .. } => 500,
             Error::ContentTypeError { .. } => 415,
             Error::GucHeadersError => 500,
             Error::GucStatusError => 500,
@@ -181,6 +205,7 @@ impl Error {
             Error::PutMatchingPkError => 400,
             Error::JsonSerialize { .. } => 500,
             Error::SingularityError { .. } => 406,
+            #[cfg(feature = "postgresql")]
             Error::DbPoolError { source } => match source {
                 PoolError::Timeout(_) => 503,
                 PoolError::Backend(_) => 503,
@@ -190,6 +215,13 @@ impl Error {
                 PoolError::PreRecycleHook(_) => 503,
                 PoolError::PostRecycleHook(_) => 503,
             },
+            #[cfg(feature = "sqlite")]
+            Error::DbError { 
+                ..
+                // source,
+                // authenticated,
+            } => 500,
+            #[cfg(feature = "postgresql")]
             Error::DbError {
                 source,
                 authenticated,
@@ -243,24 +275,18 @@ impl Error {
 
     fn json_body(&self) -> JsonValue {
         match self {
+            #[cfg(feature = "sqlite")]
+            Error::ThreadError { .. } => json!({"message":"internal thread error"}),
             Error::ContentTypeError { message } => json!({ "message": message }),
-            Error::GucHeadersError => {
-                json!({"message": "response.headers guc must be a JSON array composed of objects with a single key and a string value"})
-            }
-            Error::GucStatusError => {
-                json!({"message":"response.status guc must be a valid status code"})
-            }
+            Error::GucHeadersError => json!({"message": "response.headers guc must be a JSON array composed of objects with a single key and a string value"}),
+            Error::GucStatusError => json!({"message":"response.status guc must be a valid status code"}),
             Error::ActionInappropriate => json!({"message": "Bad Request"}),
             Error::InvalidRange => json!({"message": "HTTP Range error"}),
             Error::InvalidBody { message } => json!({ "message": message }),
             Error::InternalError { message } => json!({ "message": message }),
-            Error::ParseRequestError { message, details } => {
-                json!({"details": details, "message": message })
-            }
+            Error::ParseRequestError { message, details } => json!({"details": details, "message": message }),
             Error::JwtTokenInvalid { message } => json!({ "message": message }),
-            Error::LimitOffsetNotAllowedError => {
-                json!({"message": "Range header and limit/offset querystring parameters are not allowed for PUT"})
-            }
+            Error::LimitOffsetNotAllowedError => json!({"message": "Range header and limit/offset querystring parameters are not allowed for PUT"}),
             // Error::NoRelBetween {origin, target}  => json!({
             //     "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
             //     "hint"    .= ("Verify that '" <> parent <> "' and '" <> child <> "' exist in the schema '" <> schema <> "' and that there is a foreign key relationship between them. If a new relationship was created, try reloading the schema cache." :: Text),
@@ -291,7 +317,7 @@ impl Error {
                         schemas.join(", ")
                     )
             }),
-            // Error::UnknownRelation {..}  => 400,
+            Error::UnknownRelation {relation}  => json!({ "message": format!("Unknown relation '{}'", relation) }),
             Error::NotFound { target } => {
                 json!({ "message": format!("Entiry '{}' not found", target) })
             }
@@ -317,10 +343,11 @@ impl Error {
                     "message": format!("Could not find the {}.{}{} in the schema cache", schema, proc_name, msg_part)
                 })
             }
-            // Error::ReadFile  { .. }  => 500,
+            Error::ReadFile  {source, path}  => json!({ "message": format!("Failed to read file {} ({})", path.to_str().unwrap(), source) }),
             Error::JsonDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::CsvDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::JsonSerialize { .. } => json!({ "message": format!("{}", self) }),
+            #[cfg(feature = "postgresql")]
             Error::DbPoolError { source } => {
                 json!({ "message": format!("Db pool error {}", source) })
             }
@@ -331,6 +358,7 @@ impl Error {
                 "message": "JSON object requested, multiple (or no) rows returned",
                 "details": format!("Results contain {} rows, {} requires 1 row", count, content_type)
             }),
+            #[cfg(feature = "postgresql")]
             Error::DbError { source, .. } => match source.as_db_error() {
                 Some(db_err) => match db_err.code().code().chars().collect::<Vec<char>>()[..] {
                     ['P', 'T', ..] => json!({
@@ -346,7 +374,9 @@ impl Error {
                 },
                 None => json!({ "message": format!("Unhandled db error {}", source) }),
             },
-            e => json!({ "message": format!("Unhandled error {}", e) }),
+
+            #[cfg(feature = "sqlite")]
+            Error::DbError { source, .. } =>  json!({ "message": format!("Unhandled db error: {}", source)}),
         }
     }
 }

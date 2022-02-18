@@ -2,15 +2,15 @@
 
 use rocket::{
     form::{DataField, FromForm, Options, Result as FormResult, ValueField},
-    http::HeaderMap,
-    http::{ContentType as HTTPContentType, Header, Status},
+    http::{HeaderMap,ContentType as HTTPContentType, Header, Status, CookieJar},
     request::{FromRequest, Outcome, Request},
     response::{Responder, Response, Result},
 };
+//use rocket::http::uncased::UncasedStr;
 
-use crate::api::ContentType::{self, *};
+use subzero::api::ContentType::{self, *};
 
-use std::ops::Deref;
+use std::{ops::Deref, collections::HashMap};
 
 lazy_static! {
     static ref SINGLE_CONTENT_TYPE: HTTPContentType =
@@ -104,3 +104,22 @@ pub fn to_rocket_content_type(ct: ContentType) -> HTTPContentType {
         ApplicationJSON => HTTPContentType::JSON,
     }
 }
+
+pub fn cookies_as_hashmap<'a>(cookies: &'a CookieJar<'a>) -> HashMap<&'a str, &'a str> {
+    cookies
+        .iter()
+        .map(|c| (c.name(), c.value()))
+        .collect::<HashMap<_, _>>()
+}
+// pub fn headers_as_hashmap<'a>(headers: AllHeaders<'a>) -> HashMap<&'a str, &'a str> {
+//     match headers {
+//         AllHeaders(hh) => hh
+//             .into_iter_raw()
+//             .flat_map(|(n,v)|
+//              v.into_iter().map(move |val| {
+//                 (n.as_str(), val.as_ref())
+//              })
+//             )
+//             .collect::<HashMap<_, _>>()
+//     }
+// }
