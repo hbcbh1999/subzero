@@ -84,11 +84,7 @@ pub struct Iter<T>(VecDeque<Vec<String>>, VecDeque<T>);
 pub struct Visitor<'a, F>(VecDeque<Vec<String>>, VecDeque<&'a mut Query>, F);
 impl Query {
     pub fn visit<R, F: FnMut(Vec<String>, &mut Self) -> R>(&mut self, f: F) -> Visitor<F> {
-        Visitor(
-            VecDeque::from([vec![self.node.name().clone()]]),
-            VecDeque::from([self]),
-            f,
-        )
+        Visitor(VecDeque::from([vec![self.node.name().clone()]]), VecDeque::from([self]), f)
     }
 }
 impl<'a> Iterator for Iter<&'a Query> {
@@ -96,17 +92,11 @@ impl<'a> Iterator for Iter<&'a Query> {
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
-            (
-                Some(current_path),
-                Some(Query {
-                    node, sub_selects, ..
-                }),
-            ) => {
+            (Some(current_path), Some(Query { node, sub_selects, .. })) => {
                 stack.extend(sub_selects.iter().map(|SubSelect { query, .. }| query));
                 path.extend(sub_selects.iter().map(
                     |SubSelect {
-                         query: Query { node, .. },
-                         ..
+                         query: Query { node, .. }, ..
                      }| {
                         let mut p = current_path.clone();
                         p.push(node.name().clone());
@@ -125,16 +115,10 @@ impl<'a> Iterator for Iter<&'a mut Query> {
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
-            (
-                Some(current_path),
-                Some(Query {
-                    node, sub_selects, ..
-                }),
-            ) => {
+            (Some(current_path), Some(Query { node, sub_selects, .. })) => {
                 path.extend(sub_selects.iter().map(
                     |SubSelect {
-                         query: Query { node, .. },
-                         ..
+                         query: Query { node, .. }, ..
                      }| {
                         let mut p = current_path.clone();
                         p.push(node.name().clone());
@@ -154,16 +138,10 @@ impl Iterator for Iter<Query> {
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
-            (
-                Some(current_path),
-                Some(Query {
-                    node, sub_selects, ..
-                }),
-            ) => {
+            (Some(current_path), Some(Query { node, sub_selects, .. })) => {
                 path.extend(sub_selects.iter().map(
                     |SubSelect {
-                         query: Query { node, .. },
-                         ..
+                         query: Query { node, .. }, ..
                      }| {
                         let mut p = current_path.clone();
                         p.push(node.name().clone());
@@ -181,34 +159,19 @@ impl Iterator for Iter<Query> {
 impl<'a> IntoIterator for &'a Query {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
-    fn into_iter(self) -> Self::IntoIter {
-        Iter(
-            VecDeque::from([vec![self.node.name().clone()]]),
-            VecDeque::from([self]),
-        )
-    }
+    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().clone()]]), VecDeque::from([self])) }
 }
 
 impl<'a> IntoIterator for &'a mut Query {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
-    fn into_iter(self) -> Self::IntoIter {
-        Iter(
-            VecDeque::from([vec![self.node.name().clone()]]),
-            VecDeque::from([self]),
-        )
-    }
+    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().clone()]]), VecDeque::from([self])) }
 }
 
 impl IntoIterator for Query {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
-    fn into_iter(self) -> Self::IntoIter {
-        Iter(
-            VecDeque::from([vec![self.node.name().clone()]]),
-            VecDeque::from([self]),
-        )
-    }
+    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().clone()]]), VecDeque::from([self])) }
 }
 
 impl<R, F> Iterator for Visitor<'_, F>
@@ -223,20 +186,14 @@ where
                 let r = (f)(current_path.clone(), query);
                 path.extend(query.sub_selects.iter().map(
                     |SubSelect {
-                         query: Query { node, .. },
-                         ..
+                         query: Query { node, .. }, ..
                      }| {
                         let mut p = current_path.clone();
                         p.push(node.name().clone());
                         p
                     },
                 ));
-                stack.extend(
-                    query
-                        .sub_selects
-                        .iter_mut()
-                        .map(|SubSelect { query, .. }| query),
-                );
+                stack.extend(query.sub_selects.iter_mut().map(|SubSelect { query, .. }| query));
                 Some(r)
             }
             _ => None,
@@ -299,9 +256,7 @@ pub enum QueryNode {
 impl QueryNode {
     pub fn name(&self) -> &String {
         match self {
-            Self::FunctionCall {
-                fn_name: Qi(_, n), ..
-            } => n,
+            Self::FunctionCall { fn_name: Qi(_, n), .. } => n,
             Self::Select { from: (t, _), .. } => t,
             Self::Insert { into, .. } => into,
             Self::Delete { from, .. } => from,
@@ -384,15 +339,8 @@ pub struct ConditionTree {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Condition {
     Group(Negate, ConditionTree),
-    Single {
-        field: Field,
-        filter: Filter,
-        negate: Negate,
-    },
-    Foreign {
-        left: (Qi, Field),
-        right: (Qi, Field),
-    },
+    Single { field: Field, filter: Filter, negate: Negate },
+    Foreign { left: (Qi, Field), right: (Qi, Field) },
 }
 
 #[derive(Debug, PartialEq, Clone)]

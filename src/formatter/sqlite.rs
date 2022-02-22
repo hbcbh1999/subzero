@@ -27,10 +27,7 @@ use super::base::{
 
     star_select_item_format,
 };
-use crate::api::{
-    Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*,
-    LogicOperator::*, QueryNode::*, SelectItem::*, *,
-};
+use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet};
 use crate::error::Result;
 use rusqlite::{
@@ -53,9 +50,7 @@ macro_rules! cast_select_item_format {
 impl ToSql for ListVal {
     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
         match self {
-            ListVal(v) => Ok(ToSqlOutput::Array(Rc::new(
-                v.into_iter().map(|v| Value::from(v.clone())).collect(),
-            ))),
+            ListVal(v) => Ok(ToSqlOutput::Array(Rc::new(v.into_iter().map(|v| Value::from(v.clone())).collect()))),
         }
     }
 }
@@ -91,19 +86,9 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
     };
 
     let return_representation = return_representation(request);
-    let body_snippet = match (
-        return_representation,
-        &request.accept_content_type,
-        &request.query.node,
-    ) {
+    let body_snippet = match (return_representation, &request.accept_content_type, &request.query.node) {
         (false, _, _) => "''",
-        (
-            true,
-            SingularJSON,
-            FunctionCall {
-                is_scalar: true, ..
-            },
-        )
+        (true, SingularJSON, FunctionCall { is_scalar: true, .. })
         | (
             true,
             ApplicationJSON,
@@ -124,13 +109,7 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
                 ..
             },
         ) => "coalesce((json_agg(_subzero_t.subzero_scalar))::text, '[]')",
-        (
-            true,
-            SingularJSON,
-            FunctionCall {
-                is_scalar: false, ..
-            },
-        )
+        (true, SingularJSON, FunctionCall { is_scalar: false, .. })
         | (
             true,
             ApplicationJSON,
@@ -160,13 +139,8 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
         }
     };
 
-    Ok(fmt_query(
-        schema,
-        return_representation,
-        Some("_subzero_query"),
-        &request.query,
-        &None,
-    )? + " , "
+    Ok(fmt_query(schema, return_representation, Some("_subzero_query"), &request.query, &None)?
+        + " , "
         + if count {
             fmt_count_query(schema, Some("_subzero_count_query"), &request.query)?
         } else {
@@ -174,11 +148,7 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
         }
         + " select"
         + " count(_subzero_t.row) AS page_total, "
-        + if count {
-            "(SELECT count(*) FROM _subzero_count_query)"
-        } else {
-            "null"
-        }
+        + if count { "(SELECT count(*) FROM _subzero_count_query)" } else { "null" }
         + " as total_result_set, "
         + body_snippet
         + " as body, "
@@ -188,11 +158,7 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
 }
 //fmt_query!();
 fn fmt_query<'a>(
-    schema: &String,
-    return_representation: bool,
-    wrapin_cte: Option<&'static str>,
-    q: &'a Query,
-    _join: &Option<Join>,
+    schema: &String, return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
     let (cte_snippet, query_snippet) = match &q.node {
         FunctionCall {
@@ -232,10 +198,7 @@ fn fmt_query<'a>(
                             if *is_multiple_call {
                                 format!("{} {} := subzero_args.{}", variadic, ident, ident)
                             } else {
-                                format!(
-                                    "{} {}  := (select {} from subzero_args limit 1)",
-                                    variadic, ident, ident
-                                )
+                                format!("{} {}  := (select {} from subzero_args limit 1)", variadic, ident, ident)
                             }
                         })
                         .collect::<Vec<_>>()
@@ -263,10 +226,8 @@ fn fmt_query<'a>(
                 if *is_scalar {
                     "select " + call_it + "subzero_scalar from subzero_args"
                 } else {
-                    format!(
-                        "select subzero_lat_args.* from subzero_args, lateral ( select {} from ",
-                        returned_columns
-                    ) + call_it
+                    format!("select subzero_lat_args.* from subzero_args, lateral ( select {} from ", returned_columns)
+                        + call_it
                         + " ) subzero_lat_args"
                 }
             } else {
@@ -278,10 +239,7 @@ fn fmt_query<'a>(
             };
 
             let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
-            let mut select: Vec<_> = select
-                .iter()
-                .map(|s| fmt_select_item(qi_subzero_source, s))
-                .collect::<Result<Vec<_>>>()?;
+            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
@@ -324,21 +282,11 @@ fn fmt_query<'a>(
             let (qi, from_snippet) = match table_alias {
                 Some(a) => (
                     Qi("".to_string(), a.clone()),
-                    format!(
-                        "{} as {}",
-                        fmt_qi(&Qi(schema.clone(), table.clone())),
-                        fmt_identity(&a)
-                    ),
+                    format!("{} as {}", fmt_qi(&Qi(schema.clone(), table.clone())), fmt_identity(&a)),
                 ),
-                None => (
-                    Qi(schema.clone(), table.clone()),
-                    fmt_qi(&Qi(schema.clone(), table.clone())),
-                ),
+                None => (Qi(schema.clone(), table.clone()), fmt_qi(&Qi(schema.clone(), table.clone()))),
             };
-            let mut select: Vec<_> = select
-                .iter()
-                .map(|s| fmt_select_item(&qi, s))
-                .collect::<Result<Vec<_>>>()?;
+            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(&qi, s)).collect::<Result<Vec<_>>>()?;
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
@@ -396,10 +344,7 @@ fn fmt_query<'a>(
         } => {
             let qi = &Qi(schema.clone(), into.clone());
             let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
-            let mut select: Vec<_> = select
-                .iter()
-                .map(|s| fmt_select_item(qi_subzero_source, s))
-                .collect::<Result<Vec<_>>>()?;
+            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
@@ -413,34 +358,17 @@ fn fmt_query<'a>(
             } else {
                 returning
                     .iter()
-                    .map(|r| {
-                        if r.as_str() == "*" {
-                            format!("*")
-                        } else {
-                            fmt_identity(r)
-                        }
-                    })
+                    .map(|r| if r.as_str() == "*" { format!("*") } else { fmt_identity(r) })
                     .collect::<Vec<_>>()
                     .join(",")
             };
 
             let into_columns = if columns.len() > 0 {
-                format!(
-                    "({})",
-                    columns
-                        .iter()
-                        .map(fmt_identity)
-                        .collect::<Vec<_>>()
-                        .join(",")
-                )
+                format!("({})", columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","))
             } else {
                 format!("")
             };
-            let select_columns = columns
-                .iter()
-                .map(fmt_identity)
-                .collect::<Vec<_>>()
-                .join(",");
+            let select_columns = columns.iter().map(fmt_identity).collect::<Vec<_>>().join(",");
             (
                 Some(
                     fmt_body(payload)+
@@ -483,10 +411,7 @@ fn fmt_query<'a>(
                             sql("")
                         }
                 } else {
-                    sql(format!(
-                        " select * from {}",
-                        fmt_identity(&"subzero_source".to_string())
-                    ))
+                    sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
                 },
             )
         }
@@ -498,10 +423,7 @@ fn fmt_query<'a>(
         } => {
             let qi = &Qi(schema.clone(), from.clone());
             let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
-            let mut select: Vec<_> = select
-                .iter()
-                .map(|s| fmt_select_item(qi_subzero_source, s))
-                .collect::<Result<Vec<_>>>()?;
+            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
@@ -515,13 +437,7 @@ fn fmt_query<'a>(
             } else {
                 returning
                     .iter()
-                    .map(|r| {
-                        if r.as_str() == "*" {
-                            format!("*")
-                        } else {
-                            fmt_identity(r)
-                        }
-                    })
+                    .map(|r| if r.as_str() == "*" { format!("*") } else { fmt_identity(r) })
                     .collect::<Vec<_>>()
                     .join(",")
             };
@@ -555,10 +471,7 @@ fn fmt_query<'a>(
                             sql("")
                         }
                 } else {
-                    sql(format!(
-                        " select * from {}",
-                        fmt_identity(&"subzero_source".to_string())
-                    ))
+                    sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
                 },
             )
         }
@@ -572,10 +485,7 @@ fn fmt_query<'a>(
         } => {
             let qi = &Qi(schema.clone(), table.clone());
             let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
-            let mut select: Vec<_> = select
-                .iter()
-                .map(|s| fmt_select_item(qi_subzero_source, s))
-                .collect::<Result<Vec<_>>>()?;
+            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
@@ -622,11 +532,7 @@ fn fmt_query<'a>(
                             .collect::<Vec<_>>()
                             .join(",")
                     };
-                    Some(sql(format!(
-                        " subzero_source as (select {} from {} where false )",
-                        sel,
-                        fmt_qi(qi)
-                    )))
+                    Some(sql(format!(" subzero_source as (select {} from {} where false )", sel, fmt_qi(qi))))
                 } else {
                     Some(
                         fmt_body(payload)
@@ -658,10 +564,7 @@ fn fmt_query<'a>(
                         + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
                     //" " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
                 } else {
-                    sql(format!(
-                        " select * from {}",
-                        fmt_identity(&"subzero_source".to_string())
-                    ))
+                    sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
                 },
             )
         }
@@ -669,9 +572,7 @@ fn fmt_query<'a>(
 
     Ok(match wrapin_cte {
         Some(cte_name) => match cte_snippet {
-            Some(cte) => {
-                " with " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )"
-            }
+            Some(cte) => " with " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )",
             None => format!(" with {} as ( ", cte_name) + query_snippet + " )",
         },
         None => match cte_snippet {
@@ -693,19 +594,12 @@ fmt_filter!();
 fmt_select_name!();
 fmt_select_item!();
 //fmt_sub_select_item!();
-fn fmt_sub_select_item<'a>(
-    schema: &String,
-    _qi: &Qi,
-    i: &'a SubSelect,
-) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
+fn fmt_sub_select_item<'a>(schema: &String, _qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
     match i {
-        SubSelect {
-            query, alias, join, ..
-        } => match join {
+        SubSelect { query, alias, join, .. } => match join {
             Some(j) => match j {
                 Parent(fk) => {
-                    let alias_or_name =
-                        format!("'{}'", alias.as_ref().unwrap_or(&fk.referenced_table.1));
+                    let alias_or_name = format!("'{}'", alias.as_ref().unwrap_or(&fk.referenced_table.1));
                     //let local_table_name = format!("{}_{}", qi.1, alias_or_name);
                     let subquery = fmt_query(schema, true, None, query, join)?;
 
@@ -731,8 +625,7 @@ fn fmt_sub_select_item<'a>(
                     ))
                 }
                 Many(_table, _fk1, fk2) => {
-                    let alias_or_name =
-                        fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
+                    let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
                     let local_table_name = fmt_identity(&fk2.referenced_table.1);
                     let subquery = fmt_query(schema, true, None, query, join)?;
                     Ok((

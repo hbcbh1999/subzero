@@ -21,9 +21,7 @@ use subzero::{
 };
 
 mod rocket_util;
-use rocket_util::{
-    cookies_as_hashmap, to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost,
-};
+use rocket_util::{cookies_as_hashmap, to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost};
 
 mod postgrest;
 use postgrest::handle_postgrest_request;
@@ -39,18 +37,11 @@ use figment::{
 use std::{collections::HashMap, sync::Arc};
 
 #[get("/")]
-fn index() -> &'static str {
-    "Hello, world!"
-}
+fn index() -> &'static str { "Hello, world!" }
 
 #[get("/<root>?<parameters..>")]
 async fn get<'a>(
-    root: String,
-    origin: &Origin<'_>,
-    parameters: QueryString<'a>,
-    cookies: &CookieJar<'a>,
-    headers: AllHeaders<'a>,
-    vhost: Vhost<'a>,
+    root: String, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhost: Vhost<'a>,
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
@@ -59,10 +50,7 @@ async fn get<'a>(
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_, _>>();
-    let headers = headers
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect::<HashMap<_, _>>();
+    let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
     let (status, content_type, headers, body) = handle_postgrest_request(
         &resources.config,
         &root,
@@ -78,26 +66,14 @@ async fn get<'a>(
     .await?;
 
     Ok(ApiResponse {
-        response: (
-            Status::from_code(status).context(GucStatusError)?,
-            (to_rocket_content_type(content_type), body),
-        ),
-        headers: headers
-            .into_iter()
-            .map(|(n, v)| Header::new(n, v))
-            .collect::<Vec<_>>(),
+        response: (Status::from_code(status).context(GucStatusError)?, (to_rocket_content_type(content_type), body)),
+        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
     })
 }
 
 #[post("/<root>?<parameters..>", data = "<body>")]
 async fn post<'a>(
-    root: String,
-    origin: &Origin<'_>,
-    parameters: QueryString<'a>,
-    body: String,
-    cookies: &CookieJar<'a>,
-    headers: AllHeaders<'a>,
-    vhost: Vhost<'a>,
+    root: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhost: Vhost<'a>,
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
@@ -105,10 +81,7 @@ async fn post<'a>(
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_, _>>();
-    let headers = headers
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect::<HashMap<_, _>>();
+    let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
 
     let (status, content_type, headers, body) = handle_postgrest_request(
         &resources.config,
@@ -125,26 +98,14 @@ async fn post<'a>(
     .await?;
 
     Ok(ApiResponse {
-        response: (
-            Status::from_code(status).context(GucStatusError)?,
-            (to_rocket_content_type(content_type), body),
-        ),
-        headers: headers
-            .into_iter()
-            .map(|(n, v)| Header::new(n, v))
-            .collect::<Vec<_>>(),
+        response: (Status::from_code(status).context(GucStatusError)?, (to_rocket_content_type(content_type), body)),
+        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
     })
 }
 
 #[delete("/<root>?<parameters..>", data = "<body>")]
 async fn delete<'a>(
-    root: String,
-    origin: &Origin<'_>,
-    parameters: QueryString<'a>,
-    body: String,
-    cookies: &CookieJar<'a>,
-    headers: AllHeaders<'a>,
-    vhost: Vhost<'a>,
+    root: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhost: Vhost<'a>,
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
@@ -152,10 +113,7 @@ async fn delete<'a>(
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_, _>>();
-    let headers = headers
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect::<HashMap<_, _>>();
+    let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
 
     let (status, content_type, headers, body) = handle_postgrest_request(
         &resources.config,
@@ -172,26 +130,14 @@ async fn delete<'a>(
     .await?;
 
     Ok(ApiResponse {
-        response: (
-            Status::from_code(status).context(GucStatusError)?,
-            (to_rocket_content_type(content_type), body),
-        ),
-        headers: headers
-            .into_iter()
-            .map(|(n, v)| Header::new(n, v))
-            .collect::<Vec<_>>(),
+        response: (Status::from_code(status).context(GucStatusError)?, (to_rocket_content_type(content_type), body)),
+        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
     })
 }
 
 #[patch("/<root>?<parameters..>", data = "<body>")]
 async fn patch<'a>(
-    root: String,
-    origin: &Origin<'_>,
-    parameters: QueryString<'a>,
-    body: String,
-    cookies: &CookieJar<'a>,
-    headers: AllHeaders<'a>,
-    vhost: Vhost<'a>,
+    root: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhost: Vhost<'a>,
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
@@ -199,10 +145,7 @@ async fn patch<'a>(
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_, _>>();
-    let headers = headers
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect::<HashMap<_, _>>();
+    let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
 
     let (status, content_type, headers, body) = handle_postgrest_request(
         &resources.config,
@@ -219,26 +162,14 @@ async fn patch<'a>(
     .await?;
 
     Ok(ApiResponse {
-        response: (
-            Status::from_code(status).context(GucStatusError)?,
-            (to_rocket_content_type(content_type), body),
-        ),
-        headers: headers
-            .into_iter()
-            .map(|(n, v)| Header::new(n, v))
-            .collect::<Vec<_>>(),
+        response: (Status::from_code(status).context(GucStatusError)?, (to_rocket_content_type(content_type), body)),
+        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
     })
 }
 
 #[put("/<root>?<parameters..>", data = "<body>")]
 async fn put<'a>(
-    root: String,
-    origin: &Origin<'_>,
-    parameters: QueryString<'a>,
-    body: String,
-    cookies: &CookieJar<'a>,
-    headers: AllHeaders<'a>,
-    vhost: Vhost<'a>,
+    root: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhost: Vhost<'a>,
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
@@ -246,10 +177,7 @@ async fn put<'a>(
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
         .collect::<HashMap<_, _>>();
-    let headers = headers
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect::<HashMap<_, _>>();
+    let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
 
     let (status, content_type, headers, body) = handle_postgrest_request(
         &resources.config,
@@ -266,14 +194,8 @@ async fn put<'a>(
     .await?;
 
     Ok(ApiResponse {
-        response: (
-            Status::from_code(status).context(GucStatusError)?,
-            (to_rocket_content_type(content_type), body),
-        ),
-        headers: headers
-            .into_iter()
-            .map(|(n, v)| Header::new(n, v))
-            .collect::<Vec<_>>(),
+        response: (Status::from_code(status).context(GucStatusError)?, (to_rocket_content_type(content_type), body)),
+        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
     })
 }
 
@@ -286,12 +208,7 @@ async fn start() -> Result<Rocket<Build>> {
 
     let config = Figment::from(RocketConfig::default())
         .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
-        .merge(
-            Env::prefixed("SUBZERO_")
-                .split("__")
-                .ignore(&["PROFILE"])
-                .global(),
-        )
+        .merge(Env::prefixed("SUBZERO_").split("__").ignore(&["PROFILE"]).global())
         .select(Profile::from_env_or("SUBZERO_PROFILE", profile));
 
     let app_config: Config = config.extract().expect("config");

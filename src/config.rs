@@ -10,9 +10,7 @@ pub enum SchemaStructure {
     JsonString(String),
 }
 impl Default for SchemaStructure {
-    fn default() -> Self {
-        SchemaStructure::SqlFile("structure_query.sql".to_string())
-    }
+    fn default() -> Self { SchemaStructure::SqlFile("structure_query.sql".to_string()) }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
@@ -29,10 +27,7 @@ mod vhosts {
     use serde::de::{Deserialize, Deserializer};
     use serde::ser::Serializer;
 
-    pub fn serialize<S>(
-        map: &HashMap<String, VhostConfig>,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(map: &HashMap<String, VhostConfig>, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -75,12 +70,8 @@ pub struct VhostConfig {
     pub role_claim_key: String,
 }
 
-fn role_claim_key() -> String {
-    ".role".to_string()
-}
-fn db_pool() -> usize {
-    10
-}
+fn role_claim_key() -> String { ".role".to_string() }
+fn db_pool() -> usize { 10 }
 fn to_tuple<'de, D>(deserializer: D) -> Result<Option<(String, String)>, D::Error>
 where
     D: Deserializer<'de>,
@@ -133,10 +124,7 @@ mod test {
 
         println!("deserialized_result = {:?}", deserialized_result);
 
-        assert_eq!(
-            deserialized_result.map_err(|e| format!("{}", e)),
-            Ok(config)
-        );
+        assert_eq!(deserialized_result.map_err(|e| format!("{}", e)), Ok(config));
         // let serialized_result = serde_json::to_string(&config);
         // println!("serialized_result = {:?}", serialized_result);
         //let serialized = serialized_result.unwrap_or("failed to serialize".to_string());

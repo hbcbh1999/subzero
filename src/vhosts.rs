@@ -34,16 +34,13 @@ pub struct VhostResources {
     pub db_pool: Pool,
     #[cfg(feature = "sqlite")]
     pub db_pool: Pool<SqliteConnectionManager>,
-    #[cfg(not(feature = "sqlite","postgresql"))]
+    #[cfg(not(feature = "sqlite", "postgresql"))]
     pub db_pool: Option<String>,
     pub db_schema: DbSchema,
     pub config: VhostConfig,
 }
 
-pub fn get_resources<'a>(
-    vhost: &Option<&str>,
-    store: &'a Arc<DashMap<String, VhostResources>>,
-) -> Result<&'a VhostResources> {
+pub fn get_resources<'a>(vhost: &Option<&str>, store: &'a Arc<DashMap<String, VhostResources>>) -> Result<&'a VhostResources> {
     let gg = match vhost {
         None => store.get("default"),
         Some(v) => match store.get(*v) {
@@ -55,17 +52,11 @@ pub fn get_resources<'a>(
     if gg.is_some() {
         Ok(gg.unwrap().value())
     } else {
-        Err(Error::NotFound {
-            target: "vhost".to_string(),
-        })
+        Err(Error::NotFound { target: "vhost".to_string() })
     }
 }
 
-pub async fn create_resources(
-    vhost: &String,
-    config: VhostConfig,
-    store: Arc<DashMap<String, VhostResources>>,
-) -> Result<()> {
+pub async fn create_resources(vhost: &String, config: VhostConfig, store: Arc<DashMap<String, VhostResources>>) -> Result<()> {
     //setup db connection
     #[cfg(feature = "postgresql")]
     let pg_uri = config.db_uri.clone();
@@ -91,7 +82,7 @@ pub async fn create_resources(
         .build()
         .unwrap();
 
-    #[cfg(not(feature = "sqlite","postgresql"))]
+    #[cfg(not(feature = "sqlite", "postgresql"))]
     let db_pool = None;
 
     #[cfg(feature = "sqlite")]
@@ -100,21 +91,14 @@ pub async fn create_resources(
     #[cfg(feature = "sqlite")]
     let manager = SqliteConnectionManager::file(db_file).with_init(|c| array::load_module(&c));
     #[cfg(feature = "sqlite")]
-    let db_pool = Pool::builder()
-        .max_size(config.db_pool as u32)
-        .build(manager)
-        .unwrap();
+    let db_pool = Pool::builder().max_size(config.db_pool as u32).build(manager).unwrap();
     //read db schema
     let db_schema = match &config.db_schema_structure {
         SqlFile(f) => match fs::read_to_string(f) {
-            #[cfg(not(feature = "sqlite","postgresql"))]
-            Ok(_s) => Ok(DbSchema {
-                schemas: HashMap::new(),
-            }),
+            #[cfg(not(feature = "sqlite", "postgresql"))]
+            Ok(_s) => Ok(DbSchema { schemas: HashMap::new() }),
             #[cfg(feature = "sqlite")]
-            Ok(_s) => Ok(DbSchema {
-                schemas: HashMap::new(),
-            }),
+            Ok(_s) => Ok(DbSchema { schemas: HashMap::new() }),
             #[cfg(feature = "postgresql")]
             Ok(s) => match db_pool.get().await {
                 Ok(mut client) => {
@@ -124,25 +108,16 @@ pub async fn create_resources(
                         .read_only(true)
                         .start()
                         .await
-                        .context(DbError {
-                            authenticated: false,
-                        })?;
+                        .context(DbError { authenticated: false })?;
                     let _ = transaction.query("set local schema ''", &[]).await;
                     match transaction.query(&s, &[&config.db_schemas]).await {
                         Ok(rows) => {
-                            transaction.commit().await.context(DbError {
-                                authenticated: false,
-                            })?;
-                            serde_json::from_str::<DbSchema>(rows[0].get(0))
-                                .context(JsonDeserialize)
+                            transaction.commit().await.context(DbError { authenticated: false })?;
+                            serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize)
                         }
                         Err(e) => {
-                            transaction.rollback().await.context(DbError {
-                                authenticated: false,
-                            })?;
-                            Err(e).context(DbError {
-                                authenticated: false,
-                            })
+                            transaction.rollback().await.context(DbError { authenticated: false })?;
+                            Err(e).context(DbError { authenticated: false })
                         }
                     }
                 }
@@ -164,13 +139,6 @@ pub async fn create_resources(
         _r.db_pool.close();
     }
 
-    store.insert(
-        key,
-        VhostResources {
-            db_pool,
-            db_schema,
-            config,
-        },
-    );
+    store.insert(key, VhostResources { db_pool, db_schema, config });
     Ok(())
 }

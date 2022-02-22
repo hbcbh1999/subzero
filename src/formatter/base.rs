@@ -630,16 +630,9 @@ fn fmt_query<'a>(
 #[allow(unused_macros)]
 macro_rules! fmt_count_query {
     () => {
-        fn fmt_count_query<'a>(
-            schema: &String,
-            wrapin_cte: Option<&'static str>,
-            q: &'a Query,
-        ) -> Result<Snippet<'a>> {
+        fn fmt_count_query<'a>(schema: &String, wrapin_cte: Option<&'static str>, q: &'a Query) -> Result<Snippet<'a>> {
             let query_snippet = match &q.node {
-                FunctionCall { .. } => sql(format!(
-                    " select 1 from {}",
-                    fmt_identity(&"subzero_source".to_string())
-                )),
+                FunctionCall { .. } => sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string()))),
                 Select {
                     from: (table, _),
                     join_tables,
@@ -673,18 +666,9 @@ macro_rules! fmt_count_query {
                             sql("")
                         }
                 }
-                Insert { .. } => sql(format!(
-                    " select 1 from {}",
-                    fmt_identity(&"subzero_source".to_string())
-                )),
-                Update { .. } => sql(format!(
-                    " select 1 from {}",
-                    fmt_identity(&"subzero_source".to_string())
-                )),
-                Delete { .. } => sql(format!(
-                    " select 1 from {}",
-                    fmt_identity(&"subzero_source".to_string())
-                )),
+                Insert { .. } => sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string()))),
+                Update { .. } => sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string()))),
+                Delete { .. } => sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string()))),
             };
 
             Ok(match wrapin_cte {
@@ -718,10 +702,7 @@ macro_rules! fmt_condition_tree {
     () => {
         fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> Result<Snippet<'a>> {
             match t {
-                ConditionTree {
-                    operator,
-                    conditions,
-                } => {
+                ConditionTree { operator, conditions } => {
                     let sep = format!(" {} ", fmt_logic_operator(operator));
                     Ok(conditions
                         .iter()
@@ -738,11 +719,7 @@ macro_rules! fmt_condition {
     () => {
         fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> Result<Snippet<'a>> {
             Ok(match c {
-                Single {
-                    field,
-                    filter,
-                    negate,
-                } => {
+                Single { field, filter, negate } => {
                     let fld = sql(format!("{} ", fmt_field(qi, field)?));
 
                     if *negate {
@@ -754,11 +731,7 @@ macro_rules! fmt_condition {
                 Foreign {
                     left: (l_qi, l_fld),
                     right: (r_qi, r_fld),
-                } => sql(format!(
-                    "{} = {}",
-                    fmt_field(l_qi, l_fld)?,
-                    fmt_field(r_qi, r_fld)?
-                )),
+                } => sql(format!("{} = {}", fmt_field(l_qi, l_fld)?, fmt_field(r_qi, r_fld)?)),
 
                 Group(negate, tree) => {
                     if *negate {
@@ -847,15 +820,9 @@ fn fmt_select_item<'a>(qi: &Qi, i: &'a SelectItem) -> Result<Snippet<'a>> {
 #[allow(unused_macros)]
 macro_rules! fmt_sub_select_item {
     () => {
-        fn fmt_sub_select_item<'a>(
-            schema: &String,
-            qi: &Qi,
-            i: &'a SubSelect,
-        ) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
+        fn fmt_sub_select_item<'a>(schema: &String, qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
             match i {
-                SubSelect {
-                    query, alias, join, ..
-                } => match join {
+                SubSelect { query, alias, join, .. } => match join {
                     Some(j) => match j {
                         Parent(fk) => {
                             let alias_or_name = alias.as_ref().unwrap_or(&fk.referenced_table.1);
@@ -863,18 +830,8 @@ macro_rules! fmt_sub_select_item {
                             let subquery = fmt_query(schema, true, None, query, join)?;
 
                             Ok((
-                                sql(format!(
-                                    "row_to_json({}.*) as {}",
-                                    fmt_identity(&local_table_name),
-                                    fmt_identity(alias_or_name)
-                                )),
-                                vec![
-                                    "left join lateral ("
-                                        + subquery
-                                        + ") as "
-                                        + sql(fmt_identity(&local_table_name))
-                                        + " on true",
-                                ],
+                                sql(format!("row_to_json({}.*) as {}", fmt_identity(&local_table_name), fmt_identity(alias_or_name))),
+                                vec!["left join lateral (" + subquery + ") as " + sql(fmt_identity(&local_table_name)) + " on true"],
                             ))
                         }
                         Child(fk) => {
@@ -894,8 +851,7 @@ macro_rules! fmt_sub_select_item {
                             ))
                         }
                         Many(_table, _fk1, fk2) => {
-                            let alias_or_name =
-                                fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
+                            let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
                             let local_table_name = fmt_identity(&fk2.referenced_table.1);
                             let subquery = fmt_query(schema, true, None, query, join)?;
                             Ok((
@@ -920,9 +876,7 @@ macro_rules! fmt_sub_select_item {
 #[allow(unused_macros)]
 macro_rules! fmt_operator {
     () => {
-        fn fmt_operator(o: &Operator) -> Result<String> {
-            Ok(format!("{} ", o))
-        }
+        fn fmt_operator(o: &Operator) -> Result<String> { Ok(format!("{} ", o)) }
     };
 }
 #[allow(unused_macros)]
@@ -939,9 +893,7 @@ macro_rules! fmt_logic_operator {
 #[allow(unused_macros)]
 macro_rules! fmt_identity {
     () => {
-        fn fmt_identity(i: &String) -> String {
-            format!("\"{}\"", i)
-        }
+        fn fmt_identity(i: &String) -> String { format!("\"{}\"", i) }
     };
 }
 #[allow(unused_macros)]
@@ -965,16 +917,8 @@ macro_rules! fmt_field {
                 Field {
                     name,
                     json_path: json_path @ Some(_),
-                } => format!(
-                    fmt_field_format!(),
-                    fmt_qi(qi),
-                    fmt_identity(&name),
-                    fmt_json_path(&json_path)
-                ),
-                Field {
-                    name,
-                    json_path: None,
-                } => format!("{}.{}", fmt_qi(qi), fmt_identity(&name)),
+                } => format!(fmt_field_format!(), fmt_qi(qi), fmt_identity(&name), fmt_json_path(&json_path)),
+                Field { name, json_path: None } => format!("{}.{}", fmt_qi(qi), fmt_identity(&name)),
             })
             //format!("{}{}", fmt_identity(&f.name), fmt_json_path(&f.json_path))
         }
@@ -985,13 +929,7 @@ macro_rules! fmt_order {
     () => {
         fn fmt_order(qi: &Qi, o: &Vec<OrderTerm>) -> Result<String> {
             Ok(if o.len() > 0 {
-                format!(
-                    "order by {}",
-                    o.iter()
-                        .map(|t| fmt_order_term(qi, t))
-                        .collect::<Result<Vec<_>>>()?
-                        .join(", ")
-                )
+                format!("order by {}", o.iter().map(|t| fmt_order_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", "))
             } else {
                 format!("")
             })
@@ -1016,23 +954,14 @@ macro_rules! fmt_order_term {
                     OrderNulls::NullsLast => "nulls last",
                 },
             };
-            Ok(format!(
-                "{} {} {}",
-                fmt_field(qi, &t.term)?,
-                direction,
-                nulls
-            ))
+            Ok(format!("{} {} {}", fmt_field(qi, &t.term)?, direction, nulls))
         }
     };
 }
 #[allow(unused_macros)]
 macro_rules! fmt_select_name {
     () => {
-        fn fmt_select_name(
-            name: &String,
-            json_path: &Option<Vec<JsonOperation>>,
-            alias: &Option<String>,
-        ) -> Option<String> {
+        fn fmt_select_name(name: &String, json_path: &Option<Vec<JsonOperation>>, alias: &Option<String>) -> Option<String> {
             match (name, json_path, alias) {
                 (n, Some(jp), None) => match jp.last() {
                     Some(JArrow(JKey(k))) | Some(J2Arrow(JKey(k))) => Some(format!("{}", &k)),
@@ -1057,11 +986,7 @@ macro_rules! fmt_select_name {
 #[allow(unused_macros)]
 macro_rules! fmt_as {
     () => {
-        fn fmt_as(
-            name: &String,
-            json_path: &Option<Vec<JsonOperation>>,
-            alias: &Option<String>,
-        ) -> String {
+        fn fmt_as(name: &String, json_path: &Option<Vec<JsonOperation>>, alias: &Option<String>) -> String {
             match (name, json_path, alias) {
                 (_, Some(_), None) => match fmt_select_name(name, json_path, alias) {
                     Some(nn) => format!(" as {}", fmt_identity(&nn)),
@@ -1106,13 +1031,7 @@ macro_rules! fmt_json_path {
     () => {
         fn fmt_json_path(p: &Option<Vec<JsonOperation>>) -> String {
             match p {
-                Some(j) => format!(
-                    "{}",
-                    j.iter()
-                        .map(fmt_json_operation)
-                        .collect::<Vec<_>>()
-                        .join("")
-                ),
+                Some(j) => format!("{}", j.iter().map(fmt_json_operation).collect::<Vec<_>>().join("")),
                 None => format!(""),
             }
         }

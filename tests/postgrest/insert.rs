@@ -11,11 +11,7 @@ use std::sync::Once;
 pub static INIT_CLIENT: Once = Once::new();
 
 lazy_static! {
-    pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async {
-        Client::untracked(start().await.unwrap())
-            .await
-            .expect("valid client")
-    });
+    pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
 }
 
 haskell_test! {

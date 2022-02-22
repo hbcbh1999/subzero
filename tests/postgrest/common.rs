@@ -62,41 +62,21 @@ where
     T: LazyStatic,
 {
     init_client_once.call_once(|| {
-        env::set_var(
-            "SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE",
-            &"postgrest_test_anonymous",
-        );
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"postgrest_test_anonymous");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TX_ROLLBACK", &"true");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[test]");
-        env::set_var(
-            "SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST",
-            "test.switch_role",
-        );
-        env::set_var(
-            "SUBZERO_VHOSTS__DEFAULT__JWT_SECRET",
-            "reallyreallyreallyreallyverysafe",
-        );
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");
         env::remove_var("SUBZERO_VHOSTS__DEFAULT__DB_MAX_ROWS");
         lazy_static::initialize(client);
     });
 }
 
-pub fn normalize_url(url: &String) -> String {
-    url.replace(" ", "%20")
-        .replace("\"", "%22")
-        .replace(">", "%3E")
-}
-pub fn add_header<'a>(
-    mut request: LocalRequest<'a>,
-    name: &'static str,
-    value: &'static str,
-) -> LocalRequest<'a> {
+pub fn normalize_url(url: &String) -> String { url.replace(" ", "%20").replace("\"", "%22").replace(">", "%3E") }
+pub fn add_header<'a>(mut request: LocalRequest<'a>, name: &'static str, value: &'static str) -> LocalRequest<'a> {
     request.add_header(Header::new(name, value));
     if name == "Cookie" {
-        let cookies = value
-            .split(';')
-            .filter_map(|s| Cookie::parse_encoded(s.trim()).ok())
-            .collect::<Vec<_>>();
+        let cookies = value.split(';').filter_map(|s| Cookie::parse_encoded(s.trim()).ok()).collect::<Vec<_>>();
         request.cookies(cookies)
     } else {
         request

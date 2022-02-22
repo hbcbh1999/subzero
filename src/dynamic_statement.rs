@@ -26,13 +26,11 @@ where
     I: IntoIterator<Item = SqlSnippet<'a, T>>,
 {
     fn join(self, sep: &str) -> SqlSnippet<'a, T> {
-        match self
-            .into_iter()
-            .fold(SqlSnippet(vec![]), |SqlSnippet(mut acc), SqlSnippet(v)| {
-                acc.push(SqlSnippetChunk::Sql(sep.to_string()));
-                acc.extend(v.into_iter());
-                SqlSnippet(acc)
-            }) {
+        match self.into_iter().fold(SqlSnippet(vec![]), |SqlSnippet(mut acc), SqlSnippet(v)| {
+            acc.push(SqlSnippetChunk::Sql(sep.to_string()));
+            acc.extend(v.into_iter());
+            SqlSnippet(acc)
+        }) {
             SqlSnippet(mut v) => {
                 if v.len() > 0 {
                     v.remove(0);
@@ -53,20 +51,14 @@ where
 {
     s.into()
 }
-pub fn param<'a, T: ?Sized>(p: &'a T) -> SqlSnippet<'a, T> {
-    SqlSnippet(vec![SqlSnippetChunk::Param(p)])
-}
+pub fn param<'a, T: ?Sized>(p: &'a T) -> SqlSnippet<'a, T> { SqlSnippet(vec![SqlSnippetChunk::Param(p)]) }
 
 impl<'a, T: ?Sized> IntoSnippet<'a, T> for &'a str {
-    fn into(self) -> SqlSnippet<'a, T> {
-        SqlSnippet(vec![SqlSnippetChunk::Sql(self.to_string())])
-    }
+    fn into(self) -> SqlSnippet<'a, T> { SqlSnippet(vec![SqlSnippetChunk::Sql(self.to_string())]) }
 }
 
 impl<'a, T: ?Sized> IntoSnippet<'a, T> for String {
-    fn into(self) -> SqlSnippet<'a, T> {
-        SqlSnippet(vec![SqlSnippetChunk::Sql(self)])
-    }
+    fn into(self) -> SqlSnippet<'a, T> { SqlSnippet(vec![SqlSnippetChunk::Sql(self)]) }
 }
 
 impl<'a, T: ?Sized> Add for SqlSnippet<'a, T> {
@@ -175,9 +167,7 @@ mod tests {
 
     use super::SqlSnippetChunk::*;
     use super::*;
-    fn s(s: &str) -> String {
-        s.to_string()
-    }
+    fn s(s: &str) -> String { s.to_string() }
     #[test]
     fn basic() {
         assert_eq!(
@@ -188,23 +178,13 @@ mod tests {
             "select * from tbl where id = " + param(&20),
             SqlSnippet(vec![Sql(s("select * from tbl where id = ")), Param(&20)])
         );
-        assert_eq!(
-            param(&20) + "=10",
-            SqlSnippet(vec![Param(&20), Sql(s("=10"))])
-        );
+        assert_eq!(param(&20) + "=10", SqlSnippet(vec![Param(&20), Sql(s("=10"))]));
         let query = "select * from tbl where id = ".to_string();
-        assert_eq!(
-            query + param(&20),
-            SqlSnippet(vec![Sql(s("select * from tbl where id = ")), Param(&20)])
-        );
+        assert_eq!(query + param(&20), SqlSnippet(vec![Sql(s("select * from tbl where id = ")), Param(&20)]));
         //assert_eq!( query.as_str() + param(&20), SqlSnippet(vec![Sql(s("select * from tbl where id = ")), Param(&20)]) );
         assert_eq!(
             generate("select * from tbl where id > " + param(&20) + " and id < " + param(&30)),
-            (
-                "select * from tbl where id > $1 and id < $2".to_string(),
-                vec![&20, &30],
-                3
-            )
+            ("select * from tbl where id > $1 and id < $2".to_string(), vec![&20, &30], 3)
         );
     }
 
@@ -215,10 +195,7 @@ mod tests {
         let p2: &(dyn ToSql + Sync) = &"name";
         let snippet = "select * from tbl where id > " + param(p1) + " and name = " + param(p2);
         let (q, p, i) = generate(snippet);
-        assert_eq!(
-            q,
-            "select * from tbl where id > $1 and name = $2".to_string()
-        );
+        assert_eq!(q, "select * from tbl where id > $1 and name = $2".to_string());
         assert_eq!(format!("{:?}", p), format!("{:?}", vec![p1, p2]));
         assert_eq!(i, 3);
     }

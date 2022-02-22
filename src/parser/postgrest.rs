@@ -1,10 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter::{zip, FromIterator};
 
-use crate::api::{
-    Condition::*, ContentType::*, Filter::*, Join::*, LogicOperator::*, QueryNode::*,
-    SelectItem::*, SelectKind::*, *,
-};
+use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, LogicOperator::*, QueryNode::*, SelectItem::*, SelectKind::*, *};
 use crate::error::*;
 use crate::schema::{ObjectType::*, PgType::*, ProcReturnType::*, *};
 
@@ -66,24 +63,14 @@ lazy_static! {
 }
 
 pub fn parse<'r>(
-    schema: &String,
-    root: &String,
-    db_schema: &DbSchema,
-    method: &Method,
-    path: String,
-    parameters: &Vec<(&str, &str)>,
-    body: Option<String>,
-    headers: &'r HashMap<&'r str, &'r str>,
-    cookies: &'r HashMap<&'r str, &'r str>,
-    max_rows: Option<u32>,
+    schema: &String, root: &String, db_schema: &DbSchema, method: &Method, path: String, parameters: &Vec<(&str, &str)>, body: Option<String>,
+    headers: &'r HashMap<&'r str, &'r str>, cookies: &'r HashMap<&'r str, &'r str>, max_rows: Option<u32>,
 ) -> Result<ApiRequest<'r>> {
     let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {
         schemas: vec![schema.to_owned()],
     })?;
     //println!("got schema");
-    let root_obj = schema_obj.objects.get(root).context(NotFound {
-        target: root.clone(),
-    })?;
+    let root_obj = schema_obj.objects.get(root).context(NotFound { target: root.clone() })?;
 
     //println!("root_obj {:#?}", root_obj);
     //let mut select_items = vec![SelectItem::Star];
@@ -102,10 +89,7 @@ pub fn parse<'r>(
                 .message("failed to parse accept header")
                 .easy_parse(*accept_header)
                 .map_err(|_| Error::ContentTypeError {
-                    message: format!(
-                        "None of these Content-Types are available: {}",
-                        accept_header
-                    ),
+                    message: format!("None of these Content-Types are available: {}", accept_header),
                 })?;
             // .map_err(to_app_error(t))?;
             Ok(act)
@@ -211,10 +195,7 @@ pub fn parse<'r>(
                     .message("failed to parser order tree path")
                     .easy_parse(k)
                     .map_err(to_app_error(k))?;
-                let (parsed_value, _) = order()
-                    .message("failed to parse order")
-                    .easy_parse(v)
-                    .map_err(to_app_error(v))?;
+                let (parsed_value, _) = order().message("failed to parse order").easy_parse(v).map_err(to_app_error(v))?;
                 orders.push((tp, parsed_value));
             }
 
@@ -233,14 +214,7 @@ pub fn parse<'r>(
                                 .message("failed to parse filter")
                                 .easy_parse(v)
                                 .map_err(to_app_error(v))?;
-                            conditions.push((
-                                tp,
-                                Condition::Single {
-                                    field,
-                                    filter,
-                                    negate,
-                                },
-                            ));
+                            conditions.push((tp, Condition::Single { field, filter, negate }));
                         } else {
                             //this is a function parameter
                             fn_arguments.push((k, v));
@@ -251,14 +225,7 @@ pub fn parse<'r>(
                             .message("failed to parse filter")
                             .easy_parse(v)
                             .map_err(to_app_error(v))?;
-                        conditions.push((
-                            tp,
-                            Condition::Single {
-                                field,
-                                filter,
-                                negate,
-                            },
-                        ));
+                        conditions.push((tp, Condition::Single { field, filter, negate }));
                     }
                 };
             }
@@ -332,26 +299,10 @@ pub fn parse<'r>(
 
     let (node_select, sub_selects) = split_select(select_items);
     let mut query = match (method, root_obj.kind.clone()) {
-        (
-            method,
-            Function {
-                return_type,
-                parameters,
-                ..
-            },
-        ) => {
-            let parameters_map = parameters
-                .iter()
-                .map(|p| (p.name.as_str(), p))
-                .collect::<HashMap<_, _>>();
-            let required_params: HashSet<String> = HashSet::from_iter(
-                parameters
-                    .iter()
-                    .filter(|p| p.required)
-                    .map(|p| p.name.clone()),
-            );
-            let all_params: HashSet<String> =
-                HashSet::from_iter(parameters.iter().map(|p| p.name.clone()));
+        (method, Function { return_type, parameters, .. }) => {
+            let parameters_map = parameters.iter().map(|p| (p.name.as_str(), p)).collect::<HashMap<_, _>>();
+            let required_params: HashSet<String> = HashSet::from_iter(parameters.iter().filter(|p| p.required).map(|p| p.name.clone()));
+            let all_params: HashSet<String> = HashSet::from_iter(parameters.iter().map(|p| p.name.clone()));
             let (payload, params) = match *method {
                 Method::GET => {
                     let mut args: HashMap<&str, JsonValue> = HashMap::new();
@@ -378,18 +329,12 @@ pub fn parse<'r>(
                         (1, Some(p)) if p.name == "" => CallParams::OnePosParam(p.clone()),
                         _ => {
                             //let specified_parameters = args.keys().collect::<Vec<_>>();
-                            let specified_parameters: HashSet<String> =
-                                HashSet::from_iter(args.keys().map(|k| k.to_string()));
-                            if !specified_parameters.is_superset(&required_params)
-                                || !specified_parameters.is_subset(&all_params)
-                            {
+                            let specified_parameters: HashSet<String> = HashSet::from_iter(args.keys().map(|k| k.to_string()));
+                            if !specified_parameters.is_superset(&required_params) || !specified_parameters.is_subset(&all_params) {
                                 return Err(Error::NoRpc {
                                     schema: schema.clone(),
                                     proc_name: root.clone(),
-                                    argument_keys: fn_arguments
-                                        .iter()
-                                        .map(|(k, _)| k.to_string())
-                                        .collect(),
+                                    argument_keys: fn_arguments.iter().map(|(k, _)| k.to_string()).collect(),
                                     has_prefer_single_object: false,
                                     content_type: accept_content_type,
                                     is_inv_post: false,
@@ -412,33 +357,20 @@ pub fn parse<'r>(
                     })?;
                     //println!("============ {:?} {:?}", required_params, parameters);
                     let params = match (parameters.len(), parameters.get(0)) {
-                        (1, Some(p))
-                            if p.name == "" && (p.type_ == "json" || p.type_ == "jsonb") =>
-                        {
-                            CallParams::OnePosParam(p.clone())
-                        }
+                        (1, Some(p)) if p.name == "" && (p.type_ == "json" || p.type_ == "jsonb") => CallParams::OnePosParam(p.clone()),
                         _ => {
                             let json_payload = match (payload.len(), content_type) {
                                 (0, _) => serde_json::from_str("{}").context(JsonDeserialize),
                                 (_, _) => serde_json::from_str(&payload).context(JsonDeserialize),
                             }?;
                             let argument_keys = match (json_payload, columns_) {
-                                (JsonValue::Object(o), None) => {
-                                    o.keys().map(|k| k.clone()).collect()
-                                }
-                                (JsonValue::Object(o), Some(c)) => o
-                                    .keys()
-                                    .filter(|k| c.contains(k))
-                                    .map(|k| k.clone())
-                                    .collect(),
+                                (JsonValue::Object(o), None) => o.keys().map(|k| k.clone()).collect(),
+                                (JsonValue::Object(o), Some(c)) => o.keys().filter(|k| c.contains(k)).map(|k| k.clone()).collect(),
                                 _ => vec![],
                             };
-                            let specified_parameters: HashSet<String> =
-                                HashSet::from_iter(argument_keys.clone());
+                            let specified_parameters: HashSet<String> = HashSet::from_iter(argument_keys.clone());
 
-                            if !specified_parameters.is_superset(&required_params)
-                                || !specified_parameters.is_subset(&all_params)
-                            {
+                            if !specified_parameters.is_superset(&required_params) || !specified_parameters.is_subset(&all_params) {
                                 return Err(Error::NoRpc {
                                     schema: schema.clone(),
                                     proc_name: root.clone(),
@@ -502,12 +434,11 @@ pub fn parse<'r>(
 
             //we populate the returing becasue it relies on the "join" information
             if let Query {
-                node:
-                    FunctionCall {
-                        ref mut returning,
-                        ref select,
-                        ..
-                    },
+                node: FunctionCall {
+                    ref mut returning,
+                    ref select,
+                    ..
+                },
                 ref sub_selects,
             } = q
             {
@@ -543,19 +474,15 @@ pub fn parse<'r>(
             let (payload, columns) = match (content_type, columns_) {
                 (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((_body, c)),
                 (ApplicationJSON, None) | (SingularJSON, None) => {
-                    let json_payload: Result<JsonValue, serde_json::Error> =
-                        serde_json::from_str(&_body);
+                    let json_payload: Result<JsonValue, serde_json::Error> = serde_json::from_str(&_body);
                     let columns = match json_payload {
                         Ok(j) => match j {
                             JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
                             JsonValue::Array(v) => match v.get(0) {
                                 Some(JsonValue::Object(m)) => {
-                                    let canonical_set: HashSet<&String> =
-                                        HashSet::from_iter(m.keys());
+                                    let canonical_set: HashSet<&String> = HashSet::from_iter(m.keys());
                                     let all_keys_match = v.iter().all(|vv| match vv {
-                                        JsonValue::Object(mm) => {
-                                            canonical_set == HashSet::from_iter(mm.keys())
-                                        }
+                                        JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
                                         _ => false,
                                     });
                                     if all_keys_match {
@@ -609,10 +536,7 @@ pub fn parse<'r>(
             }?;
 
             let on_conflict = match &preferences {
-                Some(Preferences {
-                    resolution: Some(r),
-                    ..
-                }) => {
+                Some(Preferences { resolution: Some(r), .. }) => {
                     let on_conflict_cols = match on_conflict_ {
                         Some(cols) => cols,
                         None => root_obj
@@ -645,12 +569,11 @@ pub fn parse<'r>(
             add_join_info(&mut q, &schema, db_schema, 0)?;
             //we populate the returing becasue it relies on the "join" information
             if let Query {
-                node:
-                    Insert {
-                        ref mut returning,
-                        ref select,
-                        ..
-                    },
+                node: Insert {
+                    ref mut returning,
+                    ref select,
+                    ..
+                },
                 ref sub_selects,
             } = q
             {
@@ -674,12 +597,11 @@ pub fn parse<'r>(
             add_join_info(&mut q, &schema, db_schema, 0)?;
             //we populate the returing because it relies on the "join" information
             if let Query {
-                node:
-                    Delete {
-                        ref mut returning,
-                        ref select,
-                        ..
-                    },
+                node: Delete {
+                    ref mut returning,
+                    ref select,
+                    ..
+                },
                 ref sub_selects,
             } = q
             {
@@ -695,19 +617,15 @@ pub fn parse<'r>(
             let (payload, columns) = match (content_type, columns_) {
                 (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((_body, c)),
                 (ApplicationJSON, None) | (SingularJSON, None) => {
-                    let json_payload: Result<JsonValue, serde_json::Error> =
-                        serde_json::from_str(&_body);
+                    let json_payload: Result<JsonValue, serde_json::Error> = serde_json::from_str(&_body);
                     let columns = match json_payload {
                         Ok(j) => match j {
                             JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
                             JsonValue::Array(v) => match v.get(0) {
                                 Some(JsonValue::Object(m)) => {
-                                    let canonical_set: HashSet<&String> =
-                                        HashSet::from_iter(m.keys());
+                                    let canonical_set: HashSet<&String> = HashSet::from_iter(m.keys());
                                     let all_keys_match = v.iter().all(|vv| match vv {
-                                        JsonValue::Object(mm) => {
-                                            canonical_set == HashSet::from_iter(mm.keys())
-                                        }
+                                        JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
                                         _ => false,
                                     });
                                     if all_keys_match {
@@ -776,12 +694,11 @@ pub fn parse<'r>(
             add_join_info(&mut q, &schema, db_schema, 0)?;
             //we populate the returing becasue it relies on the "join" information
             if let Query {
-                node:
-                    Update {
-                        ref mut returning,
-                        ref select,
-                        ..
-                    },
+                node: Update {
+                    ref mut returning,
+                    ref select,
+                    ..
+                },
                 ref sub_selects,
             } = q
             {
@@ -797,19 +714,15 @@ pub fn parse<'r>(
             let (payload, columns) = match (content_type, columns_) {
                 (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((_body, c)),
                 (ApplicationJSON, None) | (SingularJSON, None) => {
-                    let json_payload: Result<JsonValue, serde_json::Error> =
-                        serde_json::from_str(&_body);
+                    let json_payload: Result<JsonValue, serde_json::Error> = serde_json::from_str(&_body);
                     let columns = match json_payload {
                         Ok(j) => match j {
                             JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
                             JsonValue::Array(v) => match v.get(0) {
                                 Some(JsonValue::Object(m)) => {
-                                    let canonical_set: HashSet<&String> =
-                                        HashSet::from_iter(m.keys());
+                                    let canonical_set: HashSet<&String> = HashSet::from_iter(m.keys());
                                     let all_keys_match = v.iter().all(|vv| match vv {
-                                        JsonValue::Object(mm) => {
-                                            canonical_set == HashSet::from_iter(mm.keys())
-                                        }
+                                        JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
                                         _ => false,
                                     });
                                     if all_keys_match {
@@ -887,10 +800,7 @@ pub fn parse<'r>(
                 .collect::<BTreeSet<_>>();
 
             println!("before check {:?} {:?}", pk_cols, conditions_on_fields);
-            if !(pk_cols.len() > 0
-                && conditions_on_fields == pk_cols
-                && root_conditions.len() == conditions_on_fields.len())
-            {
+            if !(pk_cols.len() > 0 && conditions_on_fields == pk_cols && root_conditions.len() == conditions_on_fields.len()) {
                 return Err(Error::InvalidFilters);
             }
 
@@ -912,12 +822,11 @@ pub fn parse<'r>(
             add_join_info(&mut q, &schema, db_schema, 0)?;
             //we populate the returing becasue it relies on the "join" information
             if let Query {
-                node:
-                    Insert {
-                        ref mut returning,
-                        ref select,
-                        ..
-                    },
+                node: Insert {
+                    ref mut returning,
+                    ref select,
+                    ..
+                },
                 ref sub_selects,
             } = q
             {
@@ -1023,8 +932,7 @@ where
     lex(choice((
         quoted_value(),
         sep_by1(
-            many1::<String, _, _>(choice((letter(), digit(), one_of("_ ".chars()))))
-                .map(|s| s.trim().to_owned()),
+            many1::<String, _, _>(choice((letter(), digit(), one_of("_ ".chars())))).map(|s| s.trim().to_owned()),
             dash,
         )
         .map(|words: Vec<String>| words.join("-")),
@@ -1035,26 +943,17 @@ fn quoted_value<Input>() -> impl Parser<Input, Output = String>
 where
     Input: Stream<Token = char>,
 {
-    between(
-        char('"'),
-        char('"'),
-        many(choice((
-            none_of("\\\"".chars()),
-            char('\\').and(any()).map(|(_, c)| c),
-        ))),
-    )
+    between(char('"'), char('"'), many(choice((none_of("\\\"".chars()), char('\\').and(any()).map(|(_, c)| c)))))
 }
 
 fn field<Input>() -> impl Parser<Input, Output = Field>
 where
     Input: Stream<Token = char>,
 {
-    field_name()
-        .and(optional(json_path()))
-        .map(|(name, json_path)| Field {
-            name: name,
-            json_path: json_path,
-        })
+    field_name().and(optional(json_path())).map(|(name, json_path)| Field {
+        name: name,
+        json_path: json_path,
+    })
 }
 
 fn json_path<Input>() -> impl Parser<Input, Output = Vec<JsonOperation>>
@@ -1068,17 +967,12 @@ where
         &_ => panic!("error parsing json path"),
     });
     let signed_number = optional(string("-"))
-        .and(many1(digit()).and(look_ahead(
-            choice((string("->"), string("::"), string("."), string(","))).or(eof().map(|_| "")),
-        )))
+        .and(many1(digit()).and(look_ahead(choice((string("->"), string("::"), string("."), string(","))).or(eof().map(|_| "")))))
         .map(|v: (Option<&str>, (String, &str))| {
             let (s, (n, _)) = v;
             format!("{}{}", s.unwrap_or(""), n)
         });
-    let operand = choice((
-        attempt(signed_number.map(|n| JsonOperand::JIdx(n))),
-        field_name().map(|k| JsonOperand::JKey(k)),
-    ));
+    let operand = choice((attempt(signed_number.map(|n| JsonOperand::JIdx(n))), field_name().map(|k| JsonOperand::JKey(k))));
     //many1(arrow.and(operand.and(end)).map(|((arrow,(operand,_)))| arrow(operand)))
     many1(arrow.and(operand).map(|(arrow, operand)| arrow(operand)))
 }
@@ -1094,12 +988,9 @@ fn alias<Input>() -> impl Parser<Input, Output = String>
 where
     Input: Stream<Token = char>,
 {
-    choice((
-        many1(choice((letter(), digit(), one_of("@._".chars())))),
-        quoted_value(),
-    ))
-    .and(alias_separator())
-    .map(|(a, _)| a)
+    choice((many1(choice((letter(), digit(), one_of("@._".chars())))), quoted_value()))
+        .and(alias_separator())
+        .map(|(a, _)| a)
 }
 
 fn cast<Input>() -> impl Parser<Input, Output = String>
@@ -1120,8 +1011,9 @@ fn tree_path<Input>() -> impl Parser<Input, Output = (Vec<String>, Field)>
 where
     Input: Stream<Token = char>,
 {
-    sep_by1(field_name(), dot()).and(optional(json_path())).map(
-        |a: (Vec<String>, Option<Vec<JsonOperation>>)| {
+    sep_by1(field_name(), dot())
+        .and(optional(json_path()))
+        .map(|a: (Vec<String>, Option<Vec<JsonOperation>>)| {
             let (names, json_path) = a;
             match names.split_last() {
                 Some((name, path)) => (
@@ -1133,8 +1025,7 @@ where
                 ),
                 None => panic!("failed to parse tree path"),
             }
-        },
-    )
+        })
 }
 
 fn logic_tree_path<Input>() -> impl Parser<Input, Output = (Vec<String>, bool, LogicOperator)>
@@ -1269,8 +1160,7 @@ where
 {
     choice((
         attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))),
-        between(char('{'), char('}'), many(none_of("{}".chars())))
-            .map(|v: String| format!("{{{}}}", v)),
+        between(char('{'), char('}'), many(none_of("{}".chars()))).map(|v: String| format!("{{{}}}", v)),
         many(none_of(",)".chars())),
     ))
 }
@@ -1279,19 +1169,14 @@ fn list_value<Input>() -> impl Parser<Input, Output = Vec<String>>
 where
     Input: Stream<Token = char>,
 {
-    lex(between(
-        lex(char('(')),
-        lex(char(')')),
-        sep_by(list_element(), lex(char(','))),
-    ))
+    lex(between(lex(char('(')), lex(char(')')), sep_by(list_element(), lex(char(',')))))
 }
 
 fn list_element<Input>() -> impl Parser<Input, Output = String>
 where
     Input: Stream<Token = char>,
 {
-    attempt(quoted_value().skip(not_followed_by(none_of(",)".chars()))))
-        .or(many1(none_of(",)".chars())))
+    attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))).or(many1(none_of(",)".chars())))
 }
 
 fn operator<Input>() -> impl Parser<Input, Output = String>
@@ -1303,9 +1188,7 @@ where
             Some(oo) => Ok(oo.to_string()),
             None => {
                 //println!("unknown operator {}", o);
-                Err(StreamErrorFor::<Input>::message_static_message(
-                    "unknown operator",
-                ))
+                Err(StreamErrorFor::<Input>::message_static_message("unknown operator"))
             }
         }
     })
@@ -1317,18 +1200,14 @@ where
 {
     many1(letter()).and_then(|o: String| match FTS_OPERATORS.get(o.as_str()) {
         Some(oo) => Ok(oo.to_string()),
-        None => Err(StreamErrorFor::<Input>::message_static_message(
-            "unknown fts operator",
-        )),
+        None => Err(StreamErrorFor::<Input>::message_static_message("unknown fts operator")),
     })
 }
 fn negatable_filter<Input>() -> impl Parser<Input, Output = (bool, Filter)>
 where
     Input: Stream<Token = char>,
 {
-    optional(attempt(string("not").skip(dot())))
-        .and(filter())
-        .map(|(n, f)| (n.is_some(), f))
+    optional(attempt(string("not").skip(dot()))).and(filter()).map(|(n, f)| (n.is_some(), f))
 }
 //TODO! filter and logic_filter parsers should be combined, they differ only in single_value parser type
 fn filter<Input>() -> impl Parser<Input, Output = Filter>
@@ -1338,38 +1217,23 @@ where
     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
 
     choice((
-        attempt(
-            operator()
-                .skip(dot())
-                .and(single_value())
-                .map(|(o, v)| match &*o {
-                    "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace("*", "%")))),
-                    "is" => match &*v {
-                        "null" => Ok(Filter::Is(TrileanVal::TriNull)),
-                        "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
-                        "true" => Ok(Filter::Is(TrileanVal::TriTrue)),
-                        "false" => Ok(Filter::Is(TrileanVal::TriFalse)),
-                        _ => Err(StreamErrorFor::<Input>::message_static_message(
-                            "unknown value for is operator, use null, unknown, true, false",
-                        )),
-                    },
-                    _ => Ok(Filter::Op(o, SingleVal(v))),
-                }),
-        ),
-        attempt(
-            string("in")
-                .skip(dot())
-                .and(list_value())
-                .map(|(_, v)| Ok(Filter::In(ListVal(v)))),
-        ),
+        attempt(operator().skip(dot()).and(single_value()).map(|(o, v)| match &*o {
+            "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace("*", "%")))),
+            "is" => match &*v {
+                "null" => Ok(Filter::Is(TrileanVal::TriNull)),
+                "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
+                "true" => Ok(Filter::Is(TrileanVal::TriTrue)),
+                "false" => Ok(Filter::Is(TrileanVal::TriFalse)),
+                _ => Err(StreamErrorFor::<Input>::message_static_message(
+                    "unknown value for is operator, use null, unknown, true, false",
+                )),
+            },
+            _ => Ok(Filter::Op(o, SingleVal(v))),
+        })),
+        attempt(string("in").skip(dot()).and(list_value()).map(|(_, v)| Ok(Filter::In(ListVal(v))))),
         fts_operator()
             .and(optional(
-                between(
-                    char('('),
-                    char(')'),
-                    many1(choice((letter(), digit(), char('_')))),
-                )
-                .map(|v| SingleVal(v)),
+                between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(|v| SingleVal(v)),
             ))
             .skip(dot())
             .and(single_value())
@@ -1385,38 +1249,23 @@ where
     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
 
     choice((
-        attempt(
-            operator()
-                .skip(dot())
-                .and(logic_single_value())
-                .map(|(o, v)| match &*o {
-                    "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace("*", "%")))),
-                    "is" => match &*v {
-                        "null" => Ok(Filter::Is(TrileanVal::TriNull)),
-                        "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
-                        "true" => Ok(Filter::Is(TrileanVal::TriTrue)),
-                        "false" => Ok(Filter::Is(TrileanVal::TriFalse)),
-                        _ => Err(StreamErrorFor::<Input>::message_static_message(
-                            "unknown value for is operator, use null, unknown, true, false",
-                        )),
-                    },
-                    _ => Ok(Filter::Op(o, SingleVal(v))),
-                }),
-        ),
-        attempt(
-            string("in")
-                .skip(dot())
-                .and(list_value())
-                .map(|(_, v)| Ok(Filter::In(ListVal(v)))),
-        ),
+        attempt(operator().skip(dot()).and(logic_single_value()).map(|(o, v)| match &*o {
+            "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace("*", "%")))),
+            "is" => match &*v {
+                "null" => Ok(Filter::Is(TrileanVal::TriNull)),
+                "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
+                "true" => Ok(Filter::Is(TrileanVal::TriTrue)),
+                "false" => Ok(Filter::Is(TrileanVal::TriFalse)),
+                _ => Err(StreamErrorFor::<Input>::message_static_message(
+                    "unknown value for is operator, use null, unknown, true, false",
+                )),
+            },
+            _ => Ok(Filter::Op(o, SingleVal(v))),
+        })),
+        attempt(string("in").skip(dot()).and(list_value()).map(|(_, v)| Ok(Filter::In(ListVal(v))))),
         fts_operator()
             .and(optional(
-                between(
-                    char('('),
-                    char(')'),
-                    many1(choice((letter(), digit(), char('_')))),
-                )
-                .map(|v| SingleVal(v)),
+                between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(|v| SingleVal(v)),
             ))
             .skip(dot())
             .and(logic_single_value())
@@ -1446,18 +1295,11 @@ where
             .map(|(_, v)| v),
     );
     let nulls = dot()
-        .and(
-            attempt(string("nullsfirst").map(|_| OrderNulls::NullsFirst))
-                .or(string("nullslast").map(|_| OrderNulls::NullsLast)),
-        )
+        .and(attempt(string("nullsfirst").map(|_| OrderNulls::NullsFirst)).or(string("nullslast").map(|_| OrderNulls::NullsLast)))
         .map(|(_, v)| v);
     field()
         .and(optional(direction).and(optional(nulls)))
-        .map(|(term, (direction, null_order))| OrderTerm {
-            term,
-            direction,
-            null_order,
-        })
+        .map(|(term, (direction, null_order))| OrderTerm { term, direction, null_order })
 }
 
 fn content_type<Input>() -> impl Parser<Input, Output = ContentType>
@@ -1479,20 +1321,9 @@ where
 {
     sep_by1(
         choice((
-            attempt(string("return=").and(choice((
-                string("representation"),
-                string("minimal"),
-                string("headers-only"),
-            )))),
-            attempt(string("count=").and(choice((
-                string("exact"),
-                string("planned"),
-                string("estimated"),
-            )))),
-            attempt(string("resolution=").and(choice((
-                string("merge-duplicates"),
-                string("ignore-duplicates"),
-            )))),
+            attempt(string("return=").and(choice((string("representation"), string("minimal"), string("headers-only"))))),
+            attempt(string("count=").and(choice((string("exact"), string("planned"), string("estimated"))))),
+            attempt(string("resolution=").and(choice((string("merge-duplicates"), string("ignore-duplicates"))))),
         )),
         lex(char(',')),
     )
@@ -1595,23 +1426,14 @@ fn is_self_join(join: &Join) -> bool {
     }
 }
 
-fn add_join_info(
-    query: &mut Query,
-    schema: &String,
-    db_schema: &DbSchema,
-    depth: u16,
-) -> Result<()> {
+fn add_join_info(query: &mut Query, schema: &String, db_schema: &DbSchema, depth: u16) -> Result<()> {
     let dummy_source = &"subzero_source".to_string();
     let parent_table: &String = match &query.node {
-        Select {
-            from: (table, _), ..
-        } => table,
+        Select { from: (table, _), .. } => table,
         Insert { into, .. } => into,
         Delete { from, .. } => from,
         Update { table, .. } => table,
-        FunctionCall {
-            return_table_type, ..
-        } => {
+        FunctionCall { return_table_type, .. } => {
             let table = match return_table_type {
                 Some(q) => &q.1,
                 None => dummy_source,
@@ -1621,11 +1443,7 @@ fn add_join_info(
     };
 
     for SubSelect {
-        query: q,
-        join,
-        hint,
-        alias,
-        ..
+        query: q, join, hint, alias, ..
     } in query.sub_selects.iter_mut()
     {
         if let Select {
@@ -1660,8 +1478,7 @@ fn insert_join_conditions(query: &mut Query, schema: &String, db_schema: &DbSche
     let empty = "".to_string();
     let parent_qi: Qi = match &query.node {
         Select {
-            from: (table, table_alias),
-            ..
+            from: (table, table_alias), ..
         } => match table_alias {
             Some(a) => Qi(empty, a.clone()),
             None => Qi(schema.clone(), table.clone()),
@@ -1776,30 +1593,17 @@ fn insert_join_conditions(query: &mut Query, schema: &String, db_schema: &DbSche
     Ok(())
 }
 
-fn insert_properties<T>(
-    query: &mut Query,
-    mut properties: Vec<(Vec<String>, T)>,
-    f: fn(&mut Query, Vec<T>) -> Result<()>,
-) -> Result<()> {
-    let node_properties = properties
-        .drain_filter(|(path, _)| path.len() == 0)
-        .map(|(_, c)| c)
-        .collect::<Vec<_>>();
+fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>, T)>, f: fn(&mut Query, Vec<T>) -> Result<()>) -> Result<()> {
+    let node_properties = properties.drain_filter(|(path, _)| path.len() == 0).map(|(_, c)| c).collect::<Vec<_>>();
     if node_properties.len() > 0 {
         f(query, node_properties)?
     };
 
-    for SubSelect {
-        query: q, alias, ..
-    } in query.sub_selects.iter_mut()
-    {
+    for SubSelect { query: q, alias, .. } in query.sub_selects.iter_mut() {
         //for s in select.iter_mut() {
         //    match s {
         //        SelectItem::SubSelect{query: q, alias, ..} => {
-        if let Select {
-            from: (table, _), ..
-        } = &mut q.node
-        {
+        if let Select { from: (table, _), .. } = &mut q.node {
             // let from : &String = match q {
             //     Select {from:(table,_), ..} => table,
             //     _ => panic!("there should not be any Insert queries as subselects"),
@@ -1840,28 +1644,15 @@ fn insert_conditions(query: &mut Query, conditions: Vec<(Vec<String>, Condition)
     })
 }
 
-fn is_logical(s: &str) -> bool {
-    s == "and" || s == "or" || s.ends_with(".or") || s.ends_with(".and")
-}
+fn is_logical(s: &str) -> bool { s == "and" || s == "or" || s.ends_with(".or") || s.ends_with(".and") }
 
-fn is_limit(s: &str) -> bool {
-    s == "limit" || s.ends_with(".limit")
-}
+fn is_limit(s: &str) -> bool { s == "limit" || s.ends_with(".limit") }
 
-fn is_offset(s: &str) -> bool {
-    s == "offset" || s.ends_with(".offset")
-}
+fn is_offset(s: &str) -> bool { s == "offset" || s.ends_with(".offset") }
 
-fn is_order(s: &str) -> bool {
-    s == "order" || s.ends_with(".order")
-}
+fn is_order(s: &str) -> bool { s == "order" || s.ends_with(".order") }
 
-fn has_operator(s: &str) -> bool {
-    OPERATORS_START
-        .iter()
-        .map(|op| s.starts_with(op))
-        .any(|b| b)
-}
+fn has_operator(s: &str) -> bool { OPERATORS_START.iter().map(|op| s.starts_with(op)).any(|b| b) }
 
 fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
     move |mut e| {
@@ -2074,9 +1865,7 @@ pub mod tests {
                     }
                 "#;
 
-    fn s(s: &str) -> String {
-        s.to_string()
-    }
+    fn s(s: &str) -> String { s.to_string() }
 
     #[test]
     fn test_parse_get_function() {
@@ -2208,13 +1997,7 @@ pub mod tests {
             filter: Filter::Op(s(">="), SingleVal(s("5"))),
             negate: false,
         };
-        let _ = insert_conditions(
-            &mut query,
-            vec![
-                (vec![], condition.clone()),
-                (vec![s("child")], condition.clone()),
-            ],
-        );
+        let _ = insert_conditions(&mut query, vec![(vec![], condition.clone()), (vec![s("child")], condition.clone())]);
         assert_eq!(
             query,
             Query {
@@ -2462,10 +2245,7 @@ pub mod tests {
                                                     operator: Or,
                                                     conditions: vec![
                                                         Single {
-                                                            filter: Filter::Op(
-                                                                s("="),
-                                                                SingleVal(s("11"))
-                                                            ),
+                                                            filter: Filter::Op(s("="), SingleVal(s("11"))),
                                                             field: Field {
                                                                 name: s("id"),
                                                                 json_path: None
@@ -2473,10 +2253,7 @@ pub mod tests {
                                                             negate: false
                                                         },
                                                         Single {
-                                                            filter: Filter::Op(
-                                                                s("="),
-                                                                SingleVal(s("12"))
-                                                            ),
+                                                            filter: Filter::Op(s("="), SingleVal(s("12"))),
                                                             field: Field {
                                                                 name: s("id"),
                                                                 json_path: None
@@ -2552,10 +2329,7 @@ pub mod tests {
     fn test_parse_post() {
         let emtpy_hashmap = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-        let headers = [("Prefer", "return=representation")]
-            .iter()
-            .cloned()
-            .collect();
+        let headers = [("Prefer", "return=representation")].iter().cloned().collect();
         let payload = s(r#"{"id":10, "name":"john"}"#);
         assert_eq!(
             parse(
@@ -2620,11 +2394,7 @@ pub mod tests {
                 &db_schema,
                 &Method::POST,
                 s("dummy"),
-                &vec![
-                    ("select", "id,name"),
-                    ("id", "gt.10"),
-                    ("columns", "id,name"),
-                ],
+                &vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),],
                 Some(payload.clone()),
                 &headers,
                 &emtpy_hashmap,
@@ -2720,9 +2490,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Err(AppError::InvalidBody {
-                message: s(
-                    "Failed to parse json body: EOF while parsing an object at line 1 column 16"
-                )
+                message: s("Failed to parse json body: EOF while parsing an object at line 1 column 16")
             })
             .map_err(|e| format!("{}", e))
         );
@@ -2826,9 +2594,7 @@ pub mod tests {
                             alias: None,
                             cast: None
                         },],
-                        payload: Payload(s(
-                            r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#
-                        )),
+                        payload: Payload(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)),
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
                         where_: ConditionTree {
@@ -2855,11 +2621,7 @@ pub mod tests {
                 &db_schema,
                 &Method::POST,
                 s("dummy"),
-                &vec![
-                    ("select", "id,name,tasks(id),clients(id)"),
-                    ("id", "gt.10"),
-                    ("tasks.id", "gt.20"),
-                ],
+                &vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),],
                 Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)),
                 &headers,
                 &emtpy_hashmap,
@@ -3004,9 +2766,7 @@ pub mod tests {
                                 cast: None
                             },
                         ],
-                        payload: Payload(s(
-                            r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#
-                        )),
+                        payload: Payload(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)),
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
                         where_: ConditionTree {
@@ -3165,9 +2925,7 @@ pub mod tests {
     #[test]
     fn parse_preferences() {
         assert_eq!(
-            preferences().easy_parse(
-                "return=minimal, resolution=merge-duplicates, count=planned, count=exact"
-            ),
+            preferences().easy_parse("return=minimal, resolution=merge-duplicates, count=planned, count=exact"),
             Ok((
                 Preferences {
                     representation: Some(Representation::None),
@@ -3181,23 +2939,14 @@ pub mod tests {
 
     #[test]
     fn parse_filter() {
-        assert_eq!(
-            filter().easy_parse("gte.5"),
-            Ok((Filter::Op(s(">="), SingleVal(s("5"))), ""))
-        );
+        assert_eq!(filter().easy_parse("gte.5"), Ok((Filter::Op(s(">="), SingleVal(s("5"))), "")));
         assert_eq!(
             filter().easy_parse("in.(1,2,3)"),
-            Ok((
-                Filter::In(ListVal(["1", "2", "3"].map(str::to_string).to_vec())),
-                ""
-            ))
+            Ok((Filter::In(ListVal(["1", "2", "3"].map(str::to_string).to_vec())), ""))
         );
         assert_eq!(
             filter().easy_parse("fts.word"),
-            Ok((
-                Filter::Fts(s("@@ to_tsquery"), None, SingleVal(s("word"))),
-                ""
-            ))
+            Ok((Filter::Fts(s("@@ to_tsquery"), None, SingleVal(s("word"))), ""))
         );
     }
 
@@ -3322,10 +3071,7 @@ pub mod tests {
 
     #[test]
     fn parse_fts_operator() {
-        assert_eq!(
-            fts_operator().easy_parse("plfts."),
-            Ok((s("@@ plainto_tsquery"), "."))
-        );
+        assert_eq!(fts_operator().easy_parse("plfts."), Ok((s("@@ plainto_tsquery"), ".")));
         assert_eq!(
             fts_operator().easy_parse("xfts."),
             Err(Errors {
@@ -3337,75 +3083,36 @@ pub mod tests {
 
     #[test]
     fn parse_single_value() {
-        assert_eq!(
-            single_value().easy_parse("any 123 value"),
-            Ok((s("any 123 value"), ""))
-        );
-        assert_eq!(
-            single_value().easy_parse("any123value,another"),
-            Ok((s("any123value,another"), ""))
-        );
+        assert_eq!(single_value().easy_parse("any 123 value"), Ok((s("any 123 value"), "")));
+        assert_eq!(single_value().easy_parse("any123value,another"), Ok((s("any123value,another"), "")));
     }
 
     #[test]
     fn parse_logic_single_value() {
-        assert_eq!(
-            logic_single_value().easy_parse("any 123 value"),
-            Ok((s("any 123 value"), ""))
-        );
-        assert_eq!(
-            logic_single_value().easy_parse("any123value,another"),
-            Ok((s("any123value"), ",another"))
-        );
-        assert_eq!(
-            logic_single_value().easy_parse("\"any 123 value,)\""),
-            Ok((s("any 123 value,)"), ""))
-        );
-        assert_eq!(
-            logic_single_value().easy_parse("{a, b, c}"),
-            Ok((s("{a, b, c}"), ""))
-        );
+        assert_eq!(logic_single_value().easy_parse("any 123 value"), Ok((s("any 123 value"), "")));
+        assert_eq!(logic_single_value().easy_parse("any123value,another"), Ok((s("any123value"), ",another")));
+        assert_eq!(logic_single_value().easy_parse("\"any 123 value,)\""), Ok((s("any 123 value,)"), "")));
+        assert_eq!(logic_single_value().easy_parse("{a, b, c}"), Ok((s("{a, b, c}"), "")));
     }
 
     #[test]
     fn parse_list_element() {
-        assert_eq!(
-            list_element().easy_parse("any 123 value"),
-            Ok((s("any 123 value"), ""))
-        );
-        assert_eq!(
-            list_element().easy_parse("any123value,another"),
-            Ok((s("any123value"), ",another"))
-        );
-        assert_eq!(
-            list_element().easy_parse("any123value)"),
-            Ok((s("any123value"), ")"))
-        );
-        assert_eq!(
-            list_element().easy_parse("\"any123value,)\",another"),
-            Ok((s("any123value,)"), ",another"))
-        );
+        assert_eq!(list_element().easy_parse("any 123 value"), Ok((s("any 123 value"), "")));
+        assert_eq!(list_element().easy_parse("any123value,another"), Ok((s("any123value"), ",another")));
+        assert_eq!(list_element().easy_parse("any123value)"), Ok((s("any123value"), ")")));
+        assert_eq!(list_element().easy_parse("\"any123value,)\",another"), Ok((s("any123value,)"), ",another")));
     }
 
     #[test]
     fn parse_list_value() {
         assert_eq!(list_value().easy_parse("()"), Ok((vec![], "")));
-        assert_eq!(
-            list_value().easy_parse("(any 123 value)"),
-            Ok((vec![s("any 123 value")], ""))
-        );
-        assert_eq!(
-            list_value().easy_parse("(any123value,another)"),
-            Ok((vec![s("any123value"), s("another")], ""))
-        );
+        assert_eq!(list_value().easy_parse("(any 123 value)"), Ok((vec![s("any 123 value")], "")));
+        assert_eq!(list_value().easy_parse("(any123value,another)"), Ok((vec![s("any123value"), s("another")], "")));
         assert_eq!(
             list_value().easy_parse("(\"any123 value\", another)"),
             Ok((vec![s("any123 value"), s("another")], ""))
         );
-        assert_eq!(
-            list_value().easy_parse("(\"any123 value\", 123)"),
-            Ok((vec![s("any123 value"), s("123")], ""))
-        );
+        assert_eq!(list_value().easy_parse("(\"any123 value\", 123)"), Ok((vec![s("any123 value"), s("123")], "")));
         assert_eq!(
             list_value().easy_parse("(\"Double\\\"Quote\\\"McGraw\\\"\")"),
             Ok((vec![s("Double\"Quote\"McGraw\"")], ""))
@@ -3420,15 +3127,9 @@ pub mod tests {
 
     #[test]
     fn parse_json_path() {
-        assert_eq!(
-            json_path().easy_parse("->key"),
-            Ok((vec![JArrow(JKey(s("key")))], ""))
-        );
+        assert_eq!(json_path().easy_parse("->key"), Ok((vec![JArrow(JKey(s("key")))], "")));
 
-        assert_eq!(
-            json_path().easy_parse("->>51"),
-            Ok((vec![J2Arrow(JIdx(s("51")))], ""))
-        );
+        assert_eq!(json_path().easy_parse("->>51"), Ok((vec![J2Arrow(JIdx(s("51")))], "")));
 
         assert_eq!(
             json_path().easy_parse("->key1->>key2"),
@@ -3437,36 +3138,18 @@ pub mod tests {
 
         assert_eq!(
             json_path().easy_parse("->key1->>key2,rest"),
-            Ok((
-                vec![JArrow(JKey(s("key1"))), J2Arrow(JKey(s("key2")))],
-                ",rest"
-            ))
+            Ok((vec![JArrow(JKey(s("key1"))), J2Arrow(JKey(s("key2")))], ",rest"))
         );
     }
 
     #[test]
     fn parse_field_name() {
-        assert_eq!(
-            field_name().easy_parse("field with space "),
-            Ok((s("field with space"), ""))
-        );
+        assert_eq!(field_name().easy_parse("field with space "), Ok((s("field with space"), "")));
         assert_eq!(field_name().easy_parse("field12"), Ok((s("field12"), "")));
-        assert_ne!(
-            field_name().easy_parse("field,invalid"),
-            Ok((s("field,invalid"), ""))
-        );
-        assert_eq!(
-            field_name().easy_parse("field-name"),
-            Ok((s("field-name"), ""))
-        );
-        assert_eq!(
-            field_name().easy_parse("field-name->"),
-            Ok((s("field-name"), "->"))
-        );
-        assert_eq!(
-            quoted_value().easy_parse("\"field name\""),
-            Ok((s("field name"), ""))
-        );
+        assert_ne!(field_name().easy_parse("field,invalid"), Ok((s("field,invalid"), "")));
+        assert_eq!(field_name().easy_parse("field-name"), Ok((s("field-name"), "")));
+        assert_eq!(field_name().easy_parse("field-name->"), Ok((s("field-name"), "->")));
+        assert_eq!(quoted_value().easy_parse("\"field name\""), Ok((s("field name"), "")));
     }
 
     #[test]
@@ -3591,10 +3274,7 @@ pub mod tests {
 
     #[test]
     fn parse_columns() {
-        assert_eq!(
-            columns().easy_parse("col1, col2 "),
-            Ok((vec![s("col1"), s("col2")], ""))
-        );
+        assert_eq!(columns().easy_parse("col1, col2 "), Ok((vec![s("col1"), s("col2")], "")));
 
         assert_eq!(
             columns().easy_parse(position::Stream::new("id,# name")),
@@ -3615,10 +3295,7 @@ pub mod tests {
         assert_eq!(
             columns().easy_parse(position::Stream::new("col1, col2, ")),
             Err(Errors {
-                position: SourcePosition {
-                    line: 1,
-                    column: 13
-                },
+                position: SourcePosition { line: 1, column: 13 },
                 errors: vec![
                     Error::Unexpected("end of input".into()),
                     Error::Expected("whitespace".into()),
@@ -3665,32 +3342,17 @@ pub mod tests {
                 json_path: Some(vec![JArrow(JKey(s("key")))]),
             },
         );
-        assert_eq!(
-            tree_path().easy_parse("sub.path.field->key"),
-            Ok((result, ""))
-        );
+        assert_eq!(tree_path().easy_parse("sub.path.field->key"), Ok((result, "")));
         //println!("{:#?}", tree_path().easy_parse("stores.zone_type_id"));
         //assert!(false);
     }
 
     #[test]
     fn parse_logic_tree_path() {
-        assert_eq!(
-            logic_tree_path().easy_parse("and"),
-            Ok(((vec![], false, And), ""))
-        );
-        assert_eq!(
-            logic_tree_path().easy_parse("not.or"),
-            Ok(((vec![], true, Or), ""))
-        );
-        assert_eq!(
-            logic_tree_path().easy_parse("sub.path.and"),
-            Ok(((vec![s("sub"), s("path")], false, And), ""))
-        );
-        assert_eq!(
-            logic_tree_path().easy_parse("sub.path.not.or"),
-            Ok(((vec![s("sub"), s("path")], true, Or), ""))
-        );
+        assert_eq!(logic_tree_path().easy_parse("and"), Ok(((vec![], false, And), "")));
+        assert_eq!(logic_tree_path().easy_parse("not.or"), Ok(((vec![], true, Or), "")));
+        assert_eq!(logic_tree_path().easy_parse("sub.path.and"), Ok(((vec![s("sub"), s("path")], false, And), "")));
+        assert_eq!(logic_tree_path().easy_parse("sub.path.not.or"), Ok(((vec![s("sub"), s("path")], true, Or), "")));
     }
 
     #[test]

@@ -62,11 +62,7 @@ pub enum Error {
     NoRelBetween { origin: String, target: String },
 
     #[snafu(display("AmbiguousRelBetween {} {} {:?}", origin, target, relations))]
-    AmbiguousRelBetween {
-        origin: String,
-        target: String,
-        relations: Vec<Join>,
-    },
+    AmbiguousRelBetween { origin: String, target: String, relations: Vec<Join> },
 
     #[snafu(display("InvalidFilters"))]
     InvalidFilters,
@@ -114,17 +110,11 @@ pub enum Error {
 
     #[cfg(feature = "postgresql")]
     #[snafu(display("DbError {}", source))]
-    DbError {
-        source: PgError,
-        authenticated: bool,
-    },
+    DbError { source: PgError, authenticated: bool },
 
     #[cfg(feature = "sqlite")]
     #[snafu(display("DbError {}", source))]
-    DbError {
-        source: SqliteError,
-        authenticated: bool,
-    },
+    DbError { source: SqliteError, authenticated: bool },
 
     #[snafu(display("JwtTokenInvalid {}", message))]
     JwtTokenInvalid { message: String },
@@ -167,10 +157,7 @@ impl Error {
                 ("Content-Type".into(), "application/json".into()),
                 (
                     "WWW-Authenticate".into(),
-                    format!(
-                        "Bearer error=\"invalid_token\", error_description=\"{}\"",
-                        message
-                    ),
+                    format!("Bearer error=\"invalid_token\", error_description=\"{}\"", message),
                 ),
             ],
             _ => vec![("Content-Type".into(), "application/json".into())],
@@ -301,13 +288,13 @@ impl Error {
             //     "message": format!("Could not find a relationship between {} and {} in the schema cache", origin, target)
             // }),
             Error::NoRelBetween { origin, target } => json!({
-                "message": format!("Could not find foreign keys between these entities. No relationship found between {} and {}", origin, target)
+                "message":
+                    format!(
+                        "Could not find foreign keys between these entities. No relationship found between {} and {}",
+                        origin, target
+                    )
             }),
-            Error::AmbiguousRelBetween {
-                origin,
-                target,
-                relations,
-            } => json!({
+            Error::AmbiguousRelBetween { origin, target, relations } => json!({
                 "details": relations.iter().map(compressed_rel).collect::<JsonValue>(),
                 "hint":     format!("Try changing '{}' to one of the following: {}. Find the desired relationship in the 'details' key.",target, rel_hint(relations)),
                 "message":  format!("Could not embed because more than one relationship was found for '{}' and '{}'", origin, target),
@@ -318,13 +305,7 @@ impl Error {
             Error::PutMatchingPkError => {
                 json!({"message":"Payload values do not match URL in primary key column(s)"})
             }
-            Error::UnacceptableSchema { schemas } => json!({
-                "message":
-                    format!(
-                        "The schema must be one of the following: {}",
-                        schemas.join(", ")
-                    )
-            }),
+            Error::UnacceptableSchema { schemas } => json!({ "message": format!("The schema must be one of the following: {}", schemas.join(", ")) }),
             Error::UnknownRelation { relation } => {
                 json!({ "message": format!("Unknown relation '{}'", relation) })
             }
@@ -342,25 +323,23 @@ impl Error {
             } => {
                 let prms = format!("({})", argument_keys.join(", "));
                 let msg_part = match (has_prefer_single_object, is_inv_post, content_type) {
-                    (true, _, _)                 => format!(" function with a single json or jsonb parameter"),
-                    (_, true, &TextCSV)       => format!(" function with a single unnamed text parameter"),
+                    (true, _, _) => format!(" function with a single json or jsonb parameter"),
+                    (_, true, &TextCSV) => format!(" function with a single unnamed text parameter"),
                     //(_, true, CTOctetStream)     => " function with a single unnamed bytea parameter",
-                    (_, true, &ApplicationJSON) => format!("{} function or the {}.{} function with a single unnamed json or jsonb parameter", prms, schema, proc_name),
-                    _                            => format!("{} function", prms),
+                    (_, true, &ApplicationJSON) => format!(
+                        "{} function or the {}.{} function with a single unnamed json or jsonb parameter",
+                        prms, schema, proc_name
+                    ),
+                    _ => format!("{} function", prms),
                 };
                 json!({
                     "hint": "If a new function was created in the database with this name and parameters, try reloading the schema cache.",
                     "message": format!("Could not find the {}.{}{} in the schema cache", schema, proc_name, msg_part)
                 })
             }
-            Error::ReadFile { source, path } => json!({
-                "message":
-                    format!(
-                        "Failed to read file {} ({})",
-                        path.to_str().unwrap(),
-                        source
-                    )
-            }),
+            Error::ReadFile { source, path } => {
+                json!({ "message": format!("Failed to read file {} ({})", path.to_str().unwrap(), source) })
+            }
             Error::JsonDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::CsvDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::JsonSerialize { .. } => json!({ "message": format!("{}", self) }),
@@ -368,10 +347,7 @@ impl Error {
             Error::DbPoolError { source } => {
                 json!({ "message": format!("Db pool error {}", source) })
             }
-            Error::SingularityError {
-                count,
-                content_type,
-            } => json!({
+            Error::SingularityError { count, content_type } => json!({
                 "message": "JSON object requested, multiple (or no) rows returned",
                 "details": format!("Results contain {} rows, {} requires 1 row", count, content_type)
             }),

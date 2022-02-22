@@ -24,10 +24,7 @@ use subzero::formatter::sqlite::fmt_main_query;
 use tokio::task;
 
 use subzero::{
-    api::{
-        ApiRequest, ApiResponse, ContentType, ContentType::*, Preferences, QueryNode::*,
-        Representation, Resolution::*,
-    },
+    api::{ApiRequest, ApiResponse, ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*},
     config::VhostConfig,
     dynamic_statement::generate,
     error::{Result, *},
@@ -41,34 +38,21 @@ use std::{
 };
 
 #[cfg(feature = "postgresql")]
-fn get_postgrest_env(
-    role: &String,
-    search_path: &Vec<String>,
-    request: &ApiRequest,
-    jwt_claims: &Option<JsonValue>,
-) -> HashMap<String, String> {
+fn get_postgrest_env(role: &String, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>) -> HashMap<String, String> {
     let mut env = HashMap::new();
     env.insert("role".to_string(), role.clone());
     env.insert("request.method".to_string(), format!("{}", request.method));
     env.insert("request.path".to_string(), format!("{}", request.path));
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
     env.insert("request.jwt.claim.role".to_string(), role.clone());
-    env.insert(
-        "search_path".to_string(),
-        search_path.join(", ").to_string(),
-    );
-    env.extend(request.headers.iter().map(|(k, v)| {
-        (
-            format!("request.header.{}", k.to_lowercase()),
-            v.to_string(),
-        )
-    }));
+    env.insert("search_path".to_string(), search_path.join(", ").to_string());
     env.extend(
         request
-            .cookies
+            .headers
             .iter()
-            .map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())),
+            .map(|(k, v)| (format!("request.header.{}", k.to_lowercase()), v.to_string())),
     );
+    env.extend(request.cookies.iter().map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())));
     match jwt_claims {
         Some(v) => match v.as_object() {
             Some(claims) => {
@@ -90,42 +74,24 @@ fn get_postgrest_env(
 }
 
 #[cfg(feature = "postgresql")]
-fn get_postgrest_env_query<'a>(
-    env: &'a HashMap<String, String>,
-) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
     "select "
         + env
             .iter()
-            .map(|(k, v)| {
-                "set_config("
-                    + param(k as &(dyn ToSql + Sync + 'a))
-                    + ", "
-                    + param(v as &(dyn ToSql + Sync + 'a))
-                    + ", true)"
-            })
+            .map(|(k, v)| "set_config(" + param(k as &(dyn ToSql + Sync + 'a)) + ", " + param(v as &(dyn ToSql + Sync + 'a)) + ", true)")
             .join(",")
 }
 
 fn get_current_timestamp() -> u64 {
     //TODO!!! optimize this to run once per second
     let start = SystemTime::now();
-    start
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards")
-        .as_secs()
+    start.duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs()
 }
 
 #[cfg(feature = "postgresql")]
 async fn query_postgresql<'a>(
-    method: &Method,
-    pool: &'a Pool,
-    readonly: bool,
-    authenticated: bool,
-    schema_name: &String,
-    request: &ApiRequest<'_>,
-    role: &String,
-    jwt_claims: &Option<JsonValue>,
-    config: &VhostConfig,
+    method: &Method, pool: &'a Pool, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest<'_>, role: &String,
+    jwt_claims: &Option<JsonValue>, config: &VhostConfig,
 ) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(DbPoolError)?;
 
@@ -165,10 +131,7 @@ async fn query_postgresql<'a>(
             .prepare_cached(pre_request_statement.as_str())
             .await
             .context(DbError { authenticated })?;
-        transaction
-            .query(&pre_request_stm, &[])
-            .await
-            .context(DbError { authenticated })?;
+        transaction.query(&pre_request_stm, &[]).await.context(DbError { authenticated })?;
     }
 
     let main_stm = transaction
@@ -200,10 +163,7 @@ async fn query_postgresql<'a>(
     };
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
-        transaction
-            .rollback()
-            .await
-            .context(DbError { authenticated })?;
+        transaction.rollback().await.context(DbError { authenticated })?;
         return Err(Error::SingularityError {
             count: api_response.page_total,
             content_type: "application/vnd.pgrst.object+json".to_string(),
@@ -215,23 +175,14 @@ async fn query_postgresql<'a>(
         // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
-        transaction
-            .rollback()
-            .await
-            .context(DbError { authenticated })?;
+        transaction.rollback().await.context(DbError { authenticated })?;
         return Err(Error::PutMatchingPkError);
     }
 
     if config.db_tx_rollback {
-        transaction
-            .rollback()
-            .await
-            .context(DbError { authenticated })?;
+        transaction.rollback().await.context(DbError { authenticated })?;
     } else {
-        transaction
-            .commit()
-            .await
-            .context(DbError { authenticated })?;
+        transaction.commit().await.context(DbError { authenticated })?;
     }
 
     Ok(api_response)
@@ -239,28 +190,16 @@ async fn query_postgresql<'a>(
 
 #[cfg(feature = "sqlite")]
 fn query_sqlite(
-    method: &Method,
-    pool: &Pool<SqliteConnectionManager>,
-    _readonly: bool,
-    authenticated: bool,
-    schema_name: &String,
-    request: &ApiRequest<'_>,
-    _role: &String,
-    _jwt_claims: &Option<JsonValue>,
-    config: &VhostConfig,
+    method: &Method, pool: &Pool<SqliteConnectionManager>, _readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest<'_>,
+    _role: &String, _jwt_claims: &Option<JsonValue>, config: &VhostConfig,
 ) -> Result<ApiResponse> {
     let conn = pool.get().unwrap();
 
-    conn.execute_batch("BEGIN DEFERRED")
-        .context(DbError { authenticated })?;
+    conn.execute_batch("BEGIN DEFERRED").context(DbError { authenticated })?;
     //let transaction = conn.transaction().context(DbError { authenticated })?;
 
     let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request)?);
-    println!(
-        "main_statement: {} \n{}",
-        main_parameters.len(),
-        main_statement
-    );
+    println!("main_statement: {} \n{}", main_parameters.len(), main_statement);
     // for p in params_from_iter(main_parameters.iter()) {
     //     println!("p {:?}", p.to_sql());
     // }
@@ -285,17 +224,16 @@ fn query_sqlite(
 
     let main_row = rows.next().context(DbError { authenticated })?.unwrap();
     let api_response = ApiResponse {
-        page_total: main_row.get(0).context(DbError { authenticated })?, //("page_total"),
+        page_total: main_row.get(0).context(DbError { authenticated })?,       //("page_total"),
         total_result_set: main_row.get(1).context(DbError { authenticated })?, //("total_result_set"),
         top_level_offset: 0,
-        body: main_row.get(2).context(DbError { authenticated })?, //("body"),
+        body: main_row.get(2).context(DbError { authenticated })?,             //("body"),
         response_headers: main_row.get(3).context(DbError { authenticated })?, //("response_headers"),
-        response_status: main_row.get(4).context(DbError { authenticated })?, //("response_status"),
+        response_status: main_row.get(4).context(DbError { authenticated })?,  //("response_status"),
     };
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
-        conn.execute_batch("ROLLBACK")
-            .context(DbError { authenticated })?;
+        conn.execute_batch("ROLLBACK").context(DbError { authenticated })?;
         return Err(Error::SingularityError {
             count: api_response.page_total,
             content_type: "application/vnd.pgrst.object+json".to_string(),
@@ -308,43 +246,26 @@ fn query_sqlite(
         // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
-        conn.execute_batch("ROLLBACK")
-            .context(DbError { authenticated })?;
+        conn.execute_batch("ROLLBACK").context(DbError { authenticated })?;
         return Err(Error::PutMatchingPkError);
     }
 
     if config.db_tx_rollback {
-        conn.execute_batch("ROLLBACK")
-            .context(DbError { authenticated })?;
+        conn.execute_batch("ROLLBACK").context(DbError { authenticated })?;
     } else {
-        conn.execute_batch("COMMIT")
-            .context(DbError { authenticated })?;
+        conn.execute_batch("COMMIT").context(DbError { authenticated })?;
     }
 
     Ok(api_response)
 }
 
 pub async fn handle_postgrest_request(
-    config: &VhostConfig,
-    root: &String,
-    method: &Method,
-    path: String,
-    parameters: &Vec<(&str, &str)>,
-    db_schema: &DbSchema,
-    #[cfg(feature = "postgresql")] pool: &Pool,
-    #[cfg(feature = "sqlite")] pool: &Pool<SqliteConnectionManager>,
-    #[cfg(feature = "clickhouse")] pool: &Option<String>,
-    body: Option<String>,
-    headers: &HashMap<&str, &str>,
-    cookies: &HashMap<&str, &str>,
+    config: &VhostConfig, root: &String, method: &Method, path: String, parameters: &Vec<(&str, &str)>, db_schema: &DbSchema,
+    #[cfg(feature = "postgresql")] pool: &Pool, #[cfg(feature = "sqlite")] pool: &Pool<SqliteConnectionManager>,
+    #[cfg(feature = "clickhouse")] pool: &Option<String>, body: Option<String>, headers: &HashMap<&str, &str>, cookies: &HashMap<&str, &str>,
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
     let mut response_headers = vec![];
-    let schema_name = &(match (
-        config.db_schemas.len() > 1,
-        method,
-        headers.get("Accept-Profile"),
-        headers.get("Content-Profile"),
-    ) {
+    let schema_name = &(match (config.db_schemas.len() > 1, method, headers.get("Accept-Profile"), headers.get("Content-Profile")) {
         (false, ..) => Ok(config.db_schemas.get(0).unwrap().clone()),
         (_, &Method::DELETE, _, Some(&content_profile))
         | (_, &Method::POST, _, Some(&content_profile))
@@ -386,16 +307,10 @@ pub async fn handle_postgrest_request(
                             validate_exp: false,
                             ..Default::default()
                         };
-                        match decode::<JsonValue>(
-                            t,
-                            &DecodingKey::from_secret(key.as_bytes()),
-                            &validation,
-                        ) {
+                        match decode::<JsonValue>(t, &DecodingKey::from_secret(key.as_bytes()), &validation) {
                             Ok(c) => {
                                 if let Some(exp) = c.claims.get("exp") {
-                                    if from_value::<u64>(exp.clone()).context(JsonSerialize)?
-                                        < get_current_timestamp() - 1
-                                    {
+                                    if from_value::<u64>(exp.clone()).context(JsonSerialize)? < get_current_timestamp() - 1 {
                                         return Err(Error::JwtTokenInvalid {
                                             message: format!("JWT expired"),
                                         });
@@ -404,12 +319,8 @@ pub async fn handle_postgrest_request(
                                 Ok(Some(c.claims))
                             }
                             Err(err) => match *err.kind() {
-                                ErrorKind::InvalidToken => Err(Error::JwtTokenInvalid {
-                                    message: format!("{}", err),
-                                }),
-                                _ => Err(Error::JwtTokenInvalid {
-                                    message: format!("{}", err),
-                                }),
+                                ErrorKind::InvalidToken => Err(Error::JwtTokenInvalid { message: format!("{}", err) }),
+                                _ => Err(Error::JwtTokenInvalid { message: format!("{}", err) }),
                             },
                         }
                     }
@@ -427,26 +338,13 @@ pub async fn handle_postgrest_request(
                 [JsonValue::String(s)] => Ok((s, true)),
                 _ => Ok((&config.db_anon_role, false)),
             },
-            Err(e) => Err(Error::JwtTokenInvalid {
-                message: format!("{}", e),
-            }),
+            Err(e) => Err(Error::JwtTokenInvalid { message: format!("{}", e) }),
         },
         None => Ok((&config.db_anon_role, false)),
     }?;
 
     // parse request and generate the query
-    let request = parse(
-        schema_name,
-        root,
-        db_schema,
-        method,
-        path,
-        parameters,
-        body,
-        headers,
-        cookies,
-        config.db_max_rows,
-    )?;
+    let request = parse(schema_name, root, db_schema, method, path, parameters, body, headers, cookies, config.db_max_rows)?;
     //println!("request: \n{:#?}", request);
 
     let readonly = match (method, &request) {
@@ -457,33 +355,10 @@ pub async fn handle_postgrest_request(
     };
 
     #[cfg(feature = "postgresql")]
-    let response = query_postgresql(
-        method,
-        pool,
-        readonly,
-        authenticated,
-        schema_name,
-        &request,
-        role,
-        &jwt_claims,
-        config,
-    )
-    .await?;
+    let response = query_postgresql(method, pool, readonly, authenticated, schema_name, &request, role, &jwt_claims, config).await?;
 
     #[cfg(feature = "sqlite")]
-    let response = task::block_in_place(|| {
-        query_sqlite(
-            method,
-            pool,
-            readonly,
-            authenticated,
-            schema_name,
-            &request,
-            role,
-            &jwt_claims,
-            config,
-        )
-    })?;
+    let response = task::block_in_place(|| query_sqlite(method, pool, readonly, authenticated, schema_name, &request, role, &jwt_claims, config))?;
 
     #[cfg(feature = "clickhouse")]
     let response = ApiResponse {
@@ -547,13 +422,7 @@ pub async fn handle_postgrest_request(
         }?
     }
 
-    let mut status = match (
-        method,
-        &request.query.node,
-        page_total,
-        total_result_set,
-        &request.preferences,
-    ) {
+    let mut status = match (method, &request.query.node, page_total, total_result_set, &request.preferences) {
         (&Method::POST, Insert { .. }, ..) => 201,
         (
             &Method::DELETE,
@@ -589,11 +458,7 @@ pub async fn handle_postgrest_request(
         (.., pt, t, _) => content_range_status(top_level_offset, top_level_offset + pt - 1, t),
     };
 
-    if let Some(Preferences {
-        resolution: Some(r),
-        ..
-    }) = request.preferences
-    {
+    if let Some(Preferences { resolution: Some(r), .. }) = request.preferences {
         response_headers.push((
             "Preference-Applied".to_string(),
             match r {
@@ -605,9 +470,7 @@ pub async fn handle_postgrest_request(
 
     let response_status: Option<String> = response.response_status;
     if let Some(response_status_str) = response_status {
-        status = response_status_str
-            .parse::<u16>()
-            .map_err(|_| Error::GucStatusError)?;
+        status = response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError)?;
     }
 
     Ok((status, content_type, response_headers, response.body))

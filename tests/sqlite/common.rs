@@ -23,11 +23,7 @@ pub fn setup_db(init_db_once: &Once) {
         let mut db = temp_dir();
         db.push(format!(
             "{}.sqlite",
-            thread_rng()
-                .sample_iter(&Alphanumeric)
-                .take(30)
-                .map(char::from)
-                .collect::<String>()
+            thread_rng().sample_iter(&Alphanumeric).take(30).map(char::from).collect::<String>()
         ));
 
         let file = File::create(&db).unwrap();
@@ -60,30 +56,17 @@ where
     T: LazyStatic,
 {
     init_client_once.call_once(|| {
-        env::set_var(
-            "SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE",
-            &"postgrest_test_anonymous",
-        );
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"postgrest_test_anonymous");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TX_ROLLBACK", &"true");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[_sqlite_public_]");
-        env::set_var(
-            "SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST",
-            "test.switch_role",
-        );
-        env::set_var(
-            "SUBZERO_VHOSTS__DEFAULT__JWT_SECRET",
-            "reallyreallyreallyreallyverysafe",
-        );
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");
         env::remove_var("SUBZERO_VHOSTS__DEFAULT__DB_MAX_ROWS");
         lazy_static::initialize(client);
     });
 }
 
-pub fn normalize_url(url: &String) -> String {
-    url.replace(" ", "%20")
-        .replace("\"", "%22")
-        .replace(">", "%3E")
-}
+pub fn normalize_url(url: &String) -> String { url.replace(" ", "%20").replace("\"", "%22").replace(">", "%3E") }
 // pub fn add_header<'a>(
 //     mut request: LocalRequest<'a>,
 //     name: &'static str,
