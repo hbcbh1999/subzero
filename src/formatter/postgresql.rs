@@ -1,37 +1,19 @@
+use super::base::{
+    cast_select_item_format, fmt_as, fmt_body, fmt_condition, fmt_condition_tree, fmt_count_query,
+    fmt_field, fmt_field_format, fmt_filter, fmt_identity, fmt_in_filter, fmt_json_operand,
+    fmt_json_operation, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_main_query, fmt_offset,
+    fmt_operator, fmt_order, fmt_order_term, fmt_qi, fmt_query, fmt_select_item, fmt_select_name,
+    fmt_sub_select_item, return_representation, simple_select_item_format, star_select_item_format,
+};
 use crate::api::{
-    *,
     Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*,
-    LogicOperator::*, QueryNode::*, SelectItem::*,
+    LogicOperator::*, QueryNode::*, SelectItem::*, *,
 };
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet};
+use crate::error::Result;
 use bytes::{BufMut, BytesMut};
 use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
 use std::error::Error;
-use super::base::{
-    fmt_main_query,
-    fmt_query,
-    fmt_count_query,
-    fmt_body,
-    fmt_condition_tree,
-    fmt_condition,
-    fmt_filter,
-    fmt_select_item,
-    fmt_sub_select_item,
-    fmt_operator,
-    fmt_logic_operator,
-    fmt_identity,
-    fmt_qi,
-    fmt_field,
-    fmt_order,
-    fmt_order_term,
-    fmt_as,
-    fmt_limit,
-    fmt_offset,
-    fmt_json_path,
-    fmt_json_operation,
-    fmt_json_operand,
-    return_representation,
-};
 
 impl ToSql for ListVal {
     fn to_sql(
@@ -127,7 +109,6 @@ impl ToSql for Payload {
 type SqlParam<'a> = (dyn ToSql + Sync + 'a);
 type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
 
-
 fmt_main_query!();
 fmt_query!();
 fmt_count_query!();
@@ -135,6 +116,7 @@ fmt_body!();
 fmt_condition_tree!();
 fmt_condition!();
 fmt_filter!();
+fmt_select_name!();
 fmt_select_item!();
 fmt_sub_select_item!();
 fmt_operator!();
@@ -200,7 +182,8 @@ mod tests {
             sub_selects: vec![],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None));
+        let (query_str, parameters, _) =
+            generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
         let p = Payload(payload);
         let pp: Vec<&(dyn ToSql + Sync)> = vec![&p];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
@@ -383,7 +366,8 @@ mod tests {
             ],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None));
+        let (query_str, parameters, _) =
+            generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
         let p0: &(dyn ToSql + Sync) = &ListVal(vec![s("51"), s("52")]);
         let p1: &(dyn ToSql + Sync) = &SingleVal(s("50"));
         let p = Payload(payload);
@@ -610,7 +594,8 @@ mod tests {
             ],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None));
+        let (query_str, parameters, _) =
+            generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
         assert_eq!(
             format!("{:?}", parameters),
             "[SingleVal(\"50\"), ListVal([\"51\", \"52\"]), SingleVal(\"5\"), SingleVal(\"10\")]"
@@ -683,7 +668,7 @@ mod tests {
                         })
                     ]
                 }
-            ))),
+            ).unwrap())),
             format!("{:?}",(s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1 and (\"schema\".\"table\".\"name\" > $2 and \"schema\".\"table\".\"name\" < $3)"), vec![SingleVal(s("2")), SingleVal(s("2")), SingleVal(s("5"))], 4))
         );
     }
@@ -693,17 +678,23 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
-                generate(fmt_condition(
-                    &Qi(s("schema"), s("table")),
-                    &Single {
-                        field: Field {
-                            name: s("name"),
-                            json_path: Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])
-                        },
-                        filter: Op(s(">"), SingleVal(s("2"))),
-                        negate: false
-                    }
-                ))
+                generate(
+                    fmt_condition(
+                        &Qi(s("schema"), s("table")),
+                        &Single {
+                            field: Field {
+                                name: s("name"),
+                                json_path: Some(vec![
+                                    JArrow(JKey(s("key"))),
+                                    J2Arrow(JIdx(s("21")))
+                                ])
+                            },
+                            filter: Op(s(">"), SingleVal(s("2"))),
+                            negate: false
+                        }
+                    )
+                    .unwrap()
+                )
             ),
             format!(
                 "{:?}",
@@ -718,17 +709,20 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
-                generate(fmt_condition(
-                    &Qi(s("schema"), s("table")),
-                    &Single {
-                        field: Field {
-                            name: s("name"),
-                            json_path: None
-                        },
-                        filter: In(ListVal(vec![s("5"), s("6")])),
-                        negate: true
-                    }
-                ))
+                generate(
+                    fmt_condition(
+                        &Qi(s("schema"), s("table")),
+                        &Single {
+                            field: Field {
+                                name: s("name"),
+                                json_path: None
+                            },
+                            filter: In(ListVal(vec![s("5"), s("6")])),
+                            negate: true
+                        }
+                    )
+                    .unwrap()
+                )
             ),
             format!(
                 "{:?}",
@@ -744,13 +738,16 @@ mod tests {
     #[test]
     fn test_fmt_filter() {
         assert_eq!(
-            format!("{:?}", generate(fmt_filter(&Op(s(">"), SingleVal(s("2")))))),
+            format!(
+                "{:?}",
+                generate(fmt_filter(&Op(s(">"), SingleVal(s("2")))).unwrap())
+            ),
             format!("{:?}", (&s("> $1"), vec![SingleVal(s("2"))], 2))
         );
         assert_eq!(
             format!(
                 "{:?}",
-                generate(fmt_filter(&In(ListVal(vec![s("5"), s("6")]))))
+                generate(fmt_filter(&In(ListVal(vec![s("5"), s("6")]))).unwrap())
             ),
             format!(
                 "{:?}",
@@ -760,11 +757,14 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
-                generate(fmt_filter(&Fts(
-                    s("@@ to_tsquery"),
-                    Some(SingleVal(s("eng"))),
-                    SingleVal(s("2"))
-                )))
+                generate(
+                    fmt_filter(&Fts(
+                        s("@@ to_tsquery"),
+                        Some(SingleVal(s("eng"))),
+                        SingleVal(s("2"))
+                    ))
+                    .unwrap()
+                )
             ),
             r#"("@@ to_tsquery ($1,$2)", [SingleVal("eng"), SingleVal("2")], 3)"#.to_string()
         );
@@ -772,13 +772,16 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
-                generate(fmt_filter(&Col(
-                    Qi(s("api"), s("projects")),
-                    Field {
-                        name: s("id"),
-                        json_path: None
-                    }
-                )))
+                generate(
+                    fmt_filter(&Col(
+                        Qi(s("api"), s("projects")),
+                        Field {
+                            name: s("id"),
+                            json_path: None
+                        }
+                    ))
+                    .unwrap()
+                )
             ),
             format!("{:?}", (&s("= \"api\".\"projects\".\"id\""), p, 1))
         );
@@ -786,7 +789,7 @@ mod tests {
 
     #[test]
     fn test_fmt_operator() {
-        assert_eq!(fmt_operator(&s(">")), s("> "));
+        assert_eq!(fmt_operator(&s(">")).unwrap(), s("> "));
     }
 
     #[test]
@@ -805,7 +808,7 @@ mod tests {
             alias: Some(s("alias")),
             cast: None,
         };
-        let select_item = fmt_select_item(&Qi(s("schema"), s("table")), &select);
+        let select_item = fmt_select_item(&Qi(s("schema"), s("table")), &select).unwrap();
         let (query_str, _, _) = generate(select_item);
         assert_eq!(
             query_str,
@@ -830,7 +833,8 @@ mod tests {
                     name: s("name"),
                     json_path: None
                 }
-            ),
+            )
+            .unwrap(),
             s(r#""a"."b"."name""#)
         );
         assert_eq!(
@@ -840,7 +844,8 @@ mod tests {
                     name: s("name"),
                     json_path: Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])
                 }
-            ),
+            )
+            .unwrap(),
             s(r#"to_jsonb("a"."b"."name")->'key'->>21"#)
         );
     }

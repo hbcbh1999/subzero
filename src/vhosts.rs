@@ -9,9 +9,12 @@ use tokio::time::Duration;
 #[cfg(feature = "postgresql")]
 use tokio_postgres::{IsolationLevel, NoTls};
 
-#[cfg(feature = "sqlite")] use r2d2_sqlite::SqliteConnectionManager;
-#[cfg(feature = "sqlite")] use r2d2::Pool;
-#[cfg(feature = "sqlite")] use  rusqlite::vtab::array;
+#[cfg(feature = "sqlite")]
+use r2d2::Pool;
+#[cfg(feature = "sqlite")]
+use r2d2_sqlite::SqliteConnectionManager;
+#[cfg(feature = "sqlite")]
+use rusqlite::vtab::array;
 
 use subzero::{
     config::{SchemaStructure::*, VhostConfig},
@@ -19,17 +22,19 @@ use subzero::{
     schema::DbSchema,
 };
 
-use std::{fs, sync::Arc, };
+use std::{fs, sync::Arc};
 
-#[cfg(feature = "clickhouse")] use std::collections::HashMap;
-#[cfg(feature = "sqlite")] use std::collections::HashMap;
+#[cfg(feature = "clickhouse")]
+use std::collections::HashMap;
+#[cfg(feature = "sqlite")]
+use std::collections::HashMap;
 
 pub struct VhostResources {
     #[cfg(feature = "postgresql")]
     pub db_pool: Pool,
     #[cfg(feature = "sqlite")]
     pub db_pool: Pool<SqliteConnectionManager>,
-    #[cfg(feature = "clickhouse")]
+    #[cfg(not(feature = "sqlite","postgresql"))]
     pub db_pool: Option<String>,
     pub db_schema: DbSchema,
     pub config: VhostConfig,
@@ -86,32 +91,30 @@ pub async fn create_resources(
         .build()
         .unwrap();
 
-    #[cfg(feature = "clickhouse")]
+    #[cfg(not(feature = "sqlite","postgresql"))]
     let db_pool = None;
 
     #[cfg(feature = "sqlite")]
     let db_file = config.db_uri.clone();
 
     #[cfg(feature = "sqlite")]
-    let manager = SqliteConnectionManager::file(db_file)
-    .with_init(|c| array::load_module(&c) );
+    let manager = SqliteConnectionManager::file(db_file).with_init(|c| array::load_module(&c));
     #[cfg(feature = "sqlite")]
-    let db_pool = Pool::builder().max_size(config.db_pool as u32).build(manager).unwrap();
+    let db_pool = Pool::builder()
+        .max_size(config.db_pool as u32)
+        .build(manager)
+        .unwrap();
     //read db schema
     let db_schema = match &config.db_schema_structure {
         SqlFile(f) => match fs::read_to_string(f) {
+            #[cfg(not(feature = "sqlite","postgresql"))]
+            Ok(_s) => Ok(DbSchema {
+                schemas: HashMap::new(),
+            }),
             #[cfg(feature = "sqlite")]
-            Ok(_s) => {
-                Ok(DbSchema {
-                    schemas: HashMap::new()
-                })
-            }
-            #[cfg(feature = "clickhouse")]
-            Ok(_s) => {
-                Ok(DbSchema {
-                    schemas: HashMap::new()
-                })
-            }
+            Ok(_s) => Ok(DbSchema {
+                schemas: HashMap::new(),
+            }),
             #[cfg(feature = "postgresql")]
             Ok(s) => match db_pool.get().await {
                 Ok(mut client) => {

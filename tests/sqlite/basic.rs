@@ -3,7 +3,7 @@ use super::common::*;
 use async_once::AsyncOnce;
 use demonstrate::demonstrate;
 use pretty_assertions::assert_eq;
-use rocket::http::{Accept,};
+use rocket::http::Accept;
 use rocket::local::asynchronous::Client;
 use serde_json::Value;
 use std::str::FromStr;
@@ -20,6 +20,38 @@ lazy_static! {
 
 haskell_test! {
 feature "basic"
+  describe "json operators" $ do
+    it "obtains a json subfield one level with casting" $
+      get "/complex_items?id=eq.1&select=settings->>foo" shouldRespondWith
+        [json| r#"[{"foo":{"int":1,"bar":"baz"}}]"# |] //-- the value of foo here is of type "text"
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+
+    it "renames json subfield one level with casting" $
+      get "/complex_items?id=eq.1&select=myFoo:settings->>foo" shouldRespondWith
+        [json| r#"[{"myFoo":{"int":1,"bar":"baz"}}]"# |] //-- the value of foo here is of type "text"
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+
+
+    it "obtains a json subfield two levels (string)" $
+      get "/complex_items?id=eq.1&select=settings->foo->>bar" shouldRespondWith
+        [json| r#"[{"bar":"baz"}]"# |]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+
+    it "renames json subfield two levels (string)" $
+      get "/complex_items?id=eq.1&select=myBar:settings->foo->>bar" shouldRespondWith
+        [json| r#"[{"myBar":"baz"}]"# |]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+
+    it "obtains a json subfield two levels with casting (int)" $
+      get "/complex_items?id=eq.1&select=settings->foo->>int::integer" shouldRespondWith
+        [json| r#"[{"int":1}]"# |] //-- the value in the db is an int, but here we expect a string for now
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+
+    it "renames json subfield two levels with casting (int)" $
+      get "/complex_items?id=eq.1&select=myInt:settings->foo->>int::integer" shouldRespondWith
+        [json| r#"[{"myInt":1}]"# |] //-- the value in the db is an int, but here we expect a string for now
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+
   describe "all" $
     it "simple select" $
       get "/tbl1?select=one,two" shouldRespondWith
@@ -63,6 +95,29 @@ feature "basic"
             {"id":1,"name":"Windows 7","client":{"id":1,"name":"Microsoft"}},
             {"id":2,"name":"Windows 10","client":{"id":1,"name":"Microsoft"}},
             {"id":3,"name":"IOS","client":{"id":2,"name":"Apple"}}
+          ]
+          "#|]
+        { matchStatus = 200
+        , matchHeaders = ["Content-Type" <:> "application/json"]
+        }
+      it "children and parent" $
+        get "/projects?select=id,name,client:clients(id,name),tasks(id,name)&id=in.(1,2)" shouldRespondWith
+          [json| r#"
+          [
+            {"id":1,"name":"Windows 7", "tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}],  "client":{"id":1,"name":"Microsoft"}},
+            {"id":2,"name":"Windows 10","tasks":[{"id":3,"name":"Design w10"},{"id":4,"name":"Code w10"}],"client":{"id":1,"name":"Microsoft"}}
+          ]
+          "#|]
+        { matchStatus = 200
+        , matchHeaders = ["Content-Type" <:> "application/json"]
+        }
+
+     it "many" $
+        get "/tasks?select=id,name,users(id,name)&id=in.(1,5)" shouldRespondWith
+          [json| r#"
+          [
+            {"id":1,"name":"Design w7","users":[{"id":1,"name":"Angela Martin"},{"id":3,"name":"Dwight Schrute"}]},
+            {"id":5,"name":"Design IOS","users":[{"id":2,"name":"Michael Scott"},{"id":3,"name":"Dwight Schrute"}]}
           ]
           "#|]
         { matchStatus = 200

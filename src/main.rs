@@ -17,18 +17,19 @@ use snafu::OptionExt;
 
 use subzero::{
     config::Config,
-    error::{GucStatusError, Result}
+    error::{GucStatusError, Result},
 };
 
 mod rocket_util;
-use rocket_util::{to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost, cookies_as_hashmap};
+use rocket_util::{
+    cookies_as_hashmap, to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost,
+};
 
 mod postgrest;
 use postgrest::handle_postgrest_request;
 
 mod vhosts;
 use vhosts::{create_resources, get_resources, VhostResources};
-
 
 use figment::{
     providers::{Env, Format, Toml},
@@ -53,7 +54,7 @@ async fn get<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    
+
     let headers = headers
         .iter()
         .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
@@ -335,7 +336,6 @@ mod basic;
 #[cfg(test)]
 #[path = "../tests/postgrest/mod.rs"]
 mod postgrest_core;
-
 
 #[cfg(feature = "sqlite")]
 #[cfg(test)]

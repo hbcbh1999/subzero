@@ -1,18 +1,17 @@
 //use super::super::start; //super in
 //use rocket::local::asynchronous::Client;
-use rocket::http::{Cookie, Header};
-use rocket::local::asynchronous::LocalRequest;
+//use rocket::http::{Cookie, Header};
+//use rocket::local::asynchronous::LocalRequest;
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Once;
 //use async_once::AsyncOnce;
 use lazy_static::LazyStatic;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use std::env::temp_dir;
 use std::fs::File;
-use rand::{thread_rng, Rng};
-use rand::distributions::Alphanumeric;
-
 
 pub static INIT_DB: Once = Once::new();
 pub fn setup_db(init_db_once: &Once) {
@@ -22,13 +21,15 @@ pub fn setup_db(init_db_once: &Once) {
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let init_file = project_dir.join("tests/sqlite/fixtures/load.sql");
         let mut db = temp_dir();
-        db.push(format!("{}.sqlite", thread_rng()
-            .sample_iter(&Alphanumeric)
-            .take(30)
-            .map(char::from)
-            .collect::<String>()
+        db.push(format!(
+            "{}.sqlite",
+            thread_rng()
+                .sample_iter(&Alphanumeric)
+                .take(30)
+                .map(char::from)
+                .collect::<String>()
         ));
- 
+
         let file = File::create(&db).unwrap();
         drop(file);
         println!("created db file: {:?}", init_file);
@@ -47,7 +48,10 @@ pub fn setup_db(init_db_once: &Once) {
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", db_uri);
 
         let schema_file = project_dir.join("tests/sqlite/fixtures/schema.json");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{json_file={}}}"#, schema_file.to_str().unwrap()));
+        env::set_var(
+            "SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE",
+            format!(r#"{{json_file={}}}"#, schema_file.to_str().unwrap()),
+        );
     });
 }
 
@@ -80,22 +84,22 @@ pub fn normalize_url(url: &String) -> String {
         .replace("\"", "%22")
         .replace(">", "%3E")
 }
-pub fn add_header<'a>(
-    mut request: LocalRequest<'a>,
-    name: &'static str,
-    value: &'static str,
-) -> LocalRequest<'a> {
-    request.add_header(Header::new(name, value));
-    if name == "Cookie" {
-        let cookies = value
-            .split(';')
-            .filter_map(|s| Cookie::parse_encoded(s.trim()).ok())
-            .collect::<Vec<_>>();
-        request.cookies(cookies)
-    } else {
-        request
-    }
-}
+// pub fn add_header<'a>(
+//     mut request: LocalRequest<'a>,
+//     name: &'static str,
+//     value: &'static str,
+// ) -> LocalRequest<'a> {
+//     request.add_header(Header::new(name, value));
+//     if name == "Cookie" {
+//         let cookies = value
+//             .split(';')
+//             .filter_map(|s| Cookie::parse_encoded(s.trim()).ok())
+//             .collect::<Vec<_>>();
+//         request.cookies(cookies)
+//     } else {
+//         request
+//     }
+// }
 
 #[macro_export]
 macro_rules! haskell_test {

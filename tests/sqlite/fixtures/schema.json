@@ -5,6 +5,25 @@
             "objects":[
                 {
                     "kind":"table",
+                    "name":"complex_items",
+                    "columns":[
+                        
+                        {
+                            "name":"id",
+                            "data_type":"integer"
+                        },
+                        {
+                            "name":"name",
+                            "data_type":"text"
+                        },
+                        {
+                            "name":"settings",
+                            "data_type":"text"
+                        }
+                    ]
+                },
+                {
+                    "kind":"table",
                     "name":"tbl1",
                     "columns":[
                         {

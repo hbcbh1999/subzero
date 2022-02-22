@@ -45,7 +45,7 @@ pub struct ApiRequest<'r> {
 }
 
 #[derive(Debug)]
-pub struct ApiResponse{
+pub struct ApiResponse {
     pub page_total: i64,
     pub total_result_set: Option<i64>,
     pub top_level_offset: i64,

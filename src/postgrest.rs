@@ -1,30 +1,36 @@
+#[cfg(feature = "postgresql")]
+use deadpool_postgres::Pool;
 use http::Method;
 use jsonpath_lib::select;
 use jsonwebtoken::{decode, errors::ErrorKind, DecodingKey, Validation};
 use serde_json::{from_value, Value as JsonValue};
 use snafu::ResultExt;
-#[cfg(feature = "postgresql")] use deadpool_postgres::{Pool, };
-#[cfg(feature = "postgresql")] use tokio_postgres::{types::ToSql, IsolationLevel, };
-#[cfg(feature = "postgresql")] use subzero::formatter::postgresql::fmt_main_query;
-#[cfg(feature = "postgresql")] use subzero::dynamic_statement::{param, JoinIterator, SqlSnippet};
+#[cfg(feature = "postgresql")]
+use subzero::dynamic_statement::{param, JoinIterator, SqlSnippet};
+#[cfg(feature = "postgresql")]
+use subzero::formatter::postgresql::fmt_main_query;
+#[cfg(feature = "postgresql")]
+use tokio_postgres::{types::ToSql, IsolationLevel};
 
-
-#[cfg(feature = "sqlite")] use r2d2_sqlite::SqliteConnectionManager;
-#[cfg(feature = "sqlite")] use r2d2::Pool;
-#[cfg(feature = "sqlite")] use rusqlite::{params_from_iter };
-#[cfg(feature = "sqlite")] use tokio::task;
-#[cfg(feature = "sqlite")] use subzero::formatter::sqlite::fmt_main_query;
-
+#[cfg(feature = "sqlite")]
+use r2d2::Pool;
+#[cfg(feature = "sqlite")]
+use r2d2_sqlite::SqliteConnectionManager;
+#[cfg(feature = "sqlite")]
+use rusqlite::params_from_iter;
+#[cfg(feature = "sqlite")]
+use subzero::formatter::sqlite::fmt_main_query;
+#[cfg(feature = "sqlite")]
+use tokio::task;
 
 use subzero::{
     api::{
-        ApiRequest, ContentType, ContentType::*, Preferences, QueryNode::*, Representation,
-        Resolution::*, ApiResponse,
+        ApiRequest, ApiResponse, ContentType, ContentType::*, Preferences, QueryNode::*,
+        Representation, Resolution::*,
     },
     config::VhostConfig,
-    dynamic_statement::{generate},
+    dynamic_statement::generate,
     error::{Result, *},
-    
     parser::postgrest::parse,
     schema::DbSchema,
 };
@@ -110,25 +116,34 @@ fn get_current_timestamp() -> u64 {
 }
 
 #[cfg(feature = "postgresql")]
-async fn query_postgresql<'a>(method: &Method, pool: &'a Pool, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest<'_>, role: &String, jwt_claims: &Option<JsonValue>, config: &VhostConfig)
--> Result<ApiResponse> {
+async fn query_postgresql<'a>(
+    method: &Method,
+    pool: &'a Pool,
+    readonly: bool,
+    authenticated: bool,
+    schema_name: &String,
+    request: &ApiRequest<'_>,
+    role: &String,
+    jwt_claims: &Option<JsonValue>,
+    config: &VhostConfig,
+) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(DbPoolError)?;
 
     let transaction = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::ReadCommitted)
-            .read_only(readonly)
-            .start()
-            .await
-            .context(DbError { authenticated })?;
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request));
+        .build_transaction()
+        .isolation_level(IsolationLevel::ReadCommitted)
+        .read_only(readonly)
+        .start()
+        .await
+        .context(DbError { authenticated })?;
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request)?);
     // println!(
     //     "main_statement: \n{}\n{:?}",
     //     main_statement, main_parameters
     // );
     let env = get_postgrest_env(role, &vec![schema_name.clone()], request, jwt_claims);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
-    
+
     //TODO!!! optimize this so we run both queries in paralel
     let env_stm = transaction
         .prepare_cached(env_statement.as_str())
@@ -160,7 +175,7 @@ async fn query_postgresql<'a>(method: &Method, pool: &'a Pool, readonly: bool, a
         .prepare_cached(main_statement.as_str())
         .await
         .context(DbError { authenticated })?;
-    
+
     let rows = transaction
         .query(&main_stm, main_parameters.as_slice())
         .await
@@ -222,16 +237,30 @@ async fn query_postgresql<'a>(method: &Method, pool: &'a Pool, readonly: bool, a
     Ok(api_response)
 }
 
-
 #[cfg(feature = "sqlite")]
-fn query_sqlite(method: &Method, pool: &Pool<SqliteConnectionManager>, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest<'_>, role: &String, jwt_claims: &Option<JsonValue>, config: &VhostConfig) -> Result<ApiResponse> {
+fn query_sqlite(
+    method: &Method,
+    pool: &Pool<SqliteConnectionManager>,
+    _readonly: bool,
+    authenticated: bool,
+    schema_name: &String,
+    request: &ApiRequest<'_>,
+    _role: &String,
+    _jwt_claims: &Option<JsonValue>,
+    config: &VhostConfig,
+) -> Result<ApiResponse> {
     let conn = pool.get().unwrap();
 
-    conn.execute_batch("BEGIN DEFERRED").context(DbError { authenticated })?;
+    conn.execute_batch("BEGIN DEFERRED")
+        .context(DbError { authenticated })?;
     //let transaction = conn.transaction().context(DbError { authenticated })?;
 
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request));
-    println!("main_statement: {} \n{}", main_parameters.len(),  main_statement);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request)?);
+    println!(
+        "main_statement: {} \n{}",
+        main_parameters.len(),
+        main_statement
+    );
     // for p in params_from_iter(main_parameters.iter()) {
     //     println!("p {:?}", p.to_sql());
     // }
@@ -241,31 +270,32 @@ fn query_sqlite(method: &Method, pool: &Pool<SqliteConnectionManager>, readonly:
     let mut main_stm = conn
         .prepare_cached(main_statement.as_str())
         .map_err(|e| {
-            let _ = conn.execute_batch("ROLLBACK"); e
+            let _ = conn.execute_batch("ROLLBACK");
+            e
         })
         .context(DbError { authenticated })?;
 
     let mut rows = main_stm
         .query(params_from_iter(main_parameters.iter()))
         .map_err(|e| {
-            let _ = conn.execute_batch("ROLLBACK"); e
+            let _ = conn.execute_batch("ROLLBACK");
+            e
         })
         .context(DbError { authenticated })?;
 
     let main_row = rows.next().context(DbError { authenticated })?.unwrap();
     let api_response = ApiResponse {
-        page_total: main_row.get(0).context(DbError {authenticated})?, //("page_total"),
-        total_result_set: main_row.get(1).context(DbError {authenticated})?, //("total_result_set"),
+        page_total: main_row.get(0).context(DbError { authenticated })?, //("page_total"),
+        total_result_set: main_row.get(1).context(DbError { authenticated })?, //("total_result_set"),
         top_level_offset: 0,
-        body: main_row.get(2).context(DbError {authenticated})?, //("body"),
-        response_headers: main_row.get(3).context(DbError {authenticated})?, //("response_headers"),
-        response_status: main_row.get(4).context(DbError {authenticated})?, //("response_status"),
-        
+        body: main_row.get(2).context(DbError { authenticated })?, //("body"),
+        response_headers: main_row.get(3).context(DbError { authenticated })?, //("response_headers"),
+        response_status: main_row.get(4).context(DbError { authenticated })?, //("response_status"),
     };
-    
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
-        conn.execute_batch("ROLLBACK").context(DbError { authenticated })?;
+        conn.execute_batch("ROLLBACK")
+            .context(DbError { authenticated })?;
         return Err(Error::SingularityError {
             count: api_response.page_total,
             content_type: "application/vnd.pgrst.object+json".to_string(),
@@ -278,14 +308,17 @@ fn query_sqlite(method: &Method, pool: &Pool<SqliteConnectionManager>, readonly:
         // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
-        conn.execute_batch("ROLLBACK").context(DbError { authenticated })?;
+        conn.execute_batch("ROLLBACK")
+            .context(DbError { authenticated })?;
         return Err(Error::PutMatchingPkError);
     }
 
     if config.db_tx_rollback {
-        conn.execute_batch("ROLLBACK").context(DbError { authenticated })?;
+        conn.execute_batch("ROLLBACK")
+            .context(DbError { authenticated })?;
     } else {
-        conn.execute_batch("COMMIT").context(DbError { authenticated })?;
+        conn.execute_batch("COMMIT")
+            .context(DbError { authenticated })?;
     }
 
     Ok(api_response)
@@ -298,18 +331,13 @@ pub async fn handle_postgrest_request(
     path: String,
     parameters: &Vec<(&str, &str)>,
     db_schema: &DbSchema,
-    #[cfg(feature = "postgresql")]
-    pool: &Pool,
-    #[cfg(feature = "sqlite")]
-    pool: &Pool<SqliteConnectionManager>,
-    #[cfg(feature = "clickhouse")]
-    pool: &Option<String>,
+    #[cfg(feature = "postgresql")] pool: &Pool,
+    #[cfg(feature = "sqlite")] pool: &Pool<SqliteConnectionManager>,
+    #[cfg(feature = "clickhouse")] pool: &Option<String>,
     body: Option<String>,
     headers: &HashMap<&str, &str>,
     cookies: &HashMap<&str, &str>,
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
-
-    
     let mut response_headers = vec![];
     let schema_name = &(match (
         config.db_schemas.len() > 1,
@@ -429,11 +457,32 @@ pub async fn handle_postgrest_request(
     };
 
     #[cfg(feature = "postgresql")]
-    let response = query_postgresql(method, pool, readonly, authenticated, schema_name, &request, role, &jwt_claims, config).await?;
+    let response = query_postgresql(
+        method,
+        pool,
+        readonly,
+        authenticated,
+        schema_name,
+        &request,
+        role,
+        &jwt_claims,
+        config,
+    )
+    .await?;
 
     #[cfg(feature = "sqlite")]
     let response = task::block_in_place(|| {
-        query_sqlite(method, pool, readonly, authenticated, schema_name, &request, role, &jwt_claims, config)
+        query_sqlite(
+            method,
+            pool,
+            readonly,
+            authenticated,
+            schema_name,
+            &request,
+            role,
+            &jwt_claims,
+            config,
+        )
     })?;
 
     #[cfg(feature = "clickhouse")]
@@ -445,8 +494,6 @@ pub async fn handle_postgrest_request(
         response_status: None,
         body: "".to_string(),
     };
-
-
 
     // create and return the response to the client
     let page_total = response.page_total;
@@ -465,8 +512,6 @@ pub async fn handle_postgrest_request(
         (TextCSV, _) => TextCSV,
         _ => ApplicationJSON,
     };
-
-    
 
     let content_range = match (method, &request.query.node, page_total, total_result_set) {
         (&Method::POST, Insert { .. }, _pt, t) => content_range_header(1, 0, t),

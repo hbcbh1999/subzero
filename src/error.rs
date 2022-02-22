@@ -216,7 +216,7 @@ impl Error {
                 PoolError::PostRecycleHook(_) => 503,
             },
             #[cfg(feature = "sqlite")]
-            Error::DbError { 
+            Error::DbError {
                 ..
                 // source,
                 // authenticated,
@@ -278,15 +278,23 @@ impl Error {
             #[cfg(feature = "sqlite")]
             Error::ThreadError { .. } => json!({"message":"internal thread error"}),
             Error::ContentTypeError { message } => json!({ "message": message }),
-            Error::GucHeadersError => json!({"message": "response.headers guc must be a JSON array composed of objects with a single key and a string value"}),
-            Error::GucStatusError => json!({"message":"response.status guc must be a valid status code"}),
+            Error::GucHeadersError => {
+                json!({"message": "response.headers guc must be a JSON array composed of objects with a single key and a string value"})
+            }
+            Error::GucStatusError => {
+                json!({"message":"response.status guc must be a valid status code"})
+            }
             Error::ActionInappropriate => json!({"message": "Bad Request"}),
             Error::InvalidRange => json!({"message": "HTTP Range error"}),
             Error::InvalidBody { message } => json!({ "message": message }),
             Error::InternalError { message } => json!({ "message": message }),
-            Error::ParseRequestError { message, details } => json!({"details": details, "message": message }),
+            Error::ParseRequestError { message, details } => {
+                json!({"details": details, "message": message })
+            }
             Error::JwtTokenInvalid { message } => json!({ "message": message }),
-            Error::LimitOffsetNotAllowedError => json!({"message": "Range header and limit/offset querystring parameters are not allowed for PUT"}),
+            Error::LimitOffsetNotAllowedError => {
+                json!({"message": "Range header and limit/offset querystring parameters are not allowed for PUT"})
+            }
             // Error::NoRelBetween {origin, target}  => json!({
             //     "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
             //     "hint"    .= ("Verify that '" <> parent <> "' and '" <> child <> "' exist in the schema '" <> schema <> "' and that there is a foreign key relationship between them. If a new relationship was created, try reloading the schema cache." :: Text),
@@ -317,7 +325,9 @@ impl Error {
                         schemas.join(", ")
                     )
             }),
-            Error::UnknownRelation {relation}  => json!({ "message": format!("Unknown relation '{}'", relation) }),
+            Error::UnknownRelation { relation } => {
+                json!({ "message": format!("Unknown relation '{}'", relation) })
+            }
             Error::NotFound { target } => {
                 json!({ "message": format!("Entiry '{}' not found", target) })
             }
@@ -343,7 +353,14 @@ impl Error {
                     "message": format!("Could not find the {}.{}{} in the schema cache", schema, proc_name, msg_part)
                 })
             }
-            Error::ReadFile  {source, path}  => json!({ "message": format!("Failed to read file {} ({})", path.to_str().unwrap(), source) }),
+            Error::ReadFile { source, path } => json!({
+                "message":
+                    format!(
+                        "Failed to read file {} ({})",
+                        path.to_str().unwrap(),
+                        source
+                    )
+            }),
             Error::JsonDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::CsvDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::JsonSerialize { .. } => json!({ "message": format!("{}", self) }),
@@ -376,7 +393,9 @@ impl Error {
             },
 
             #[cfg(feature = "sqlite")]
-            Error::DbError { source, .. } =>  json!({ "message": format!("Unhandled db error: {}", source)}),
+            Error::DbError { source, .. } => {
+                json!({ "message": format!("Unhandled db error: {}", source) })
+            }
         }
     }
 }

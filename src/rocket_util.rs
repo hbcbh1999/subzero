@@ -2,7 +2,7 @@
 
 use rocket::{
     form::{DataField, FromForm, Options, Result as FormResult, ValueField},
-    http::{HeaderMap,ContentType as HTTPContentType, Header, Status, CookieJar},
+    http::{ContentType as HTTPContentType, CookieJar, Header, HeaderMap, Status},
     request::{FromRequest, Outcome, Request},
     response::{Responder, Response, Result},
 };
@@ -10,7 +10,7 @@ use rocket::{
 
 use subzero::api::ContentType::{self, *};
 
-use std::{ops::Deref, collections::HashMap};
+use std::{collections::HashMap, ops::Deref};
 
 lazy_static! {
     static ref SINGLE_CONTENT_TYPE: HTTPContentType =

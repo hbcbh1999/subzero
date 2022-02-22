@@ -31,6 +31,12 @@ CREATE TABLE users_tasks (
   primary key (task_id, user_id)
 );
 
+CREATE TABLE complex_items (
+    id integer NOT NULL,
+    name text,
+    settings text
+);
+
 
 INSERT INTO clients VALUES (1, 'Microsoft');
 INSERT INTO clients VALUES (2, 'Apple');
@@ -63,3 +69,8 @@ INSERT INTO users_tasks VALUES (2, 6);
 INSERT INTO users_tasks VALUES (2, 7);
 INSERT INTO users_tasks VALUES (3, 1);
 INSERT INTO users_tasks VALUES (3, 5);
+
+
+INSERT INTO complex_items VALUES (1, 'One', '{"foo":{"int":1,"bar":"baz"}}');
+INSERT INTO complex_items VALUES (2, 'Two', '{"foo":{"int":1,"bar":"baz"}}');
+INSERT INTO complex_items VALUES (3, 'Three', '{"foo":{"int":1,"bar":"baz"}}');
