@@ -7,7 +7,7 @@ pub enum Resolution {
     MergeDuplicates,
     IgnoreDuplicates,
 }
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Representation {
     Full,
     None,
@@ -15,7 +15,7 @@ pub enum Representation {
 }
 // #[derive(Debug, PartialEq)]
 // pub enum Parameters {SingleObject, MultipleObjects}
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Count {
     ExactCount,
     PlannedCount,
@@ -24,7 +24,7 @@ pub enum Count {
 // #[derive(Debug, PartialEq)]
 // pub enum Transaction {Commit, Rollback}
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Preferences {
     pub resolution: Option<Resolution>,
     pub representation: Option<Representation>,
@@ -33,7 +33,7 @@ pub struct Preferences {
     //pub transaction: Option<Transaction>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ApiRequest<'r> {
     pub method: Method,
     pub path: String,
@@ -54,7 +54,7 @@ pub struct ApiResponse {
     pub body: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ContentType {
     ApplicationJSON,
     SingularJSON,
@@ -75,7 +75,7 @@ pub enum CallParams {
     OnePosParam(ProcParam),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Query {
     pub node: QueryNode,
     pub sub_selects: Vec<SubSelect>,
@@ -201,7 +201,7 @@ where
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum QueryNode {
     FunctionCall {
         fn_name: Qi,
@@ -265,20 +265,20 @@ impl QueryNode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct OrderTerm {
     pub term: Field,
     pub direction: Option<OrderDirection>,
     pub null_order: Option<OrderNulls>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum OrderDirection {
     Asc,
     Desc,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum OrderNulls {
     NullsFirst,
     NullsLast,
@@ -311,7 +311,7 @@ pub enum SelectKind {
     Sub(SubSelect),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq,Clone)]
 pub enum SelectItem {
     //TODO!!! better name
     Star,
@@ -322,7 +322,7 @@ pub enum SelectItem {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SubSelect {
     pub query: Query,
     pub alias: Option<String>,
@@ -382,7 +382,7 @@ pub type Operator = String;
 pub type Negate = bool;
 pub type Language = SingleVal;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Payload(pub String);
 
 #[derive(Debug, PartialEq, Clone)]

@@ -16,6 +16,29 @@ lazy_static! {
 
 haskell_test! {
 feature "basic"
+  describe "inserting" $ do
+    it "basic no representation" $ do
+      request methodPost "/clients"
+        [json|r#"{"name":"new client"}"#|]
+        shouldRespondWith
+        [text|""|]
+        { matchStatus  = 201
+          , matchHeaders = [ "Content-Type" <:> "application/json"
+                           //, "Location" <:> "/projects?id=eq.6"
+                           , "Content-Range" <:> "*/*" ]
+        }
+    it "basic with representation" $ do
+        request methodPost "/clients?select=id,name"
+          [("Prefer", "return=representation"), ("Prefer", "count=exact")]
+          [json|r#"{"name":"new client"}"#|]
+          shouldRespondWith
+          [json|r#"[{"id":3,"name":"new client"}]"#|]
+          { matchStatus  = 201
+            , matchHeaders = [ "Content-Type" <:> "application/json"
+                             //, "Location" <:> "/projects?id=eq.6"
+                             , "Content-Range" <:> "*/1" ]
+          }
+        
   describe "json operators" $ do
     it "obtains a json subfield one level with casting" $
       get "/complex_items?id=eq.1&select=settings->>foo" shouldRespondWith
@@ -48,8 +71,8 @@ feature "basic"
         [json| r#"[{"myInt":1}]"# |] //-- the value in the db is an int, but here we expect a string for now
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-  describe "all" $
-    it "simple select" $
+  describe "select" $
+    it "simple" $
       get "/tbl1?select=one,two" shouldRespondWith
         [json| r#"
             [
@@ -60,7 +83,7 @@ feature "basic"
       { matchStatus = 200
       , matchHeaders = ["Content-Type" <:> "application/json"]
       }
-    it "simple select with cast" $
+    it "with cast" $
       get "/tbl1?select=one,two::text" shouldRespondWith
         [json| r#"
             [
@@ -72,51 +95,51 @@ feature "basic"
       , matchHeaders = ["Content-Type" <:> "application/json"]
       }
 
-    describe "embeding" $
-      it "children" $
-        get "/projects?select=id,name,tasks(id,name)&id=in.(1,2)" shouldRespondWith
-          [json| r#"
-          [
-            {"id":1,"name":"Windows 7","tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]},
-            {"id":2,"name":"Windows 10","tasks":[{"id":3,"name":"Design w10"},{"id":4,"name":"Code w10"}]}
-          ]
-          "#|]
-        { matchStatus = 200
-        , matchHeaders = ["Content-Type" <:> "application/json"]
-        }
-      it "parent" $
-        get "/projects?select=id,name,client:clients(id,name)&id=in.(1,2,3)" shouldRespondWith
-          [json| r#"
-          [
-            {"id":1,"name":"Windows 7","client":{"id":1,"name":"Microsoft"}},
-            {"id":2,"name":"Windows 10","client":{"id":1,"name":"Microsoft"}},
-            {"id":3,"name":"IOS","client":{"id":2,"name":"Apple"}}
-          ]
-          "#|]
-        { matchStatus = 200
-        , matchHeaders = ["Content-Type" <:> "application/json"]
-        }
-      it "children and parent" $
-        get "/projects?select=id,name,client:clients(id,name),tasks(id,name)&id=in.(1,2)" shouldRespondWith
-          [json| r#"
-          [
-            {"id":1,"name":"Windows 7", "tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}],  "client":{"id":1,"name":"Microsoft"}},
-            {"id":2,"name":"Windows 10","tasks":[{"id":3,"name":"Design w10"},{"id":4,"name":"Code w10"}],"client":{"id":1,"name":"Microsoft"}}
-          ]
-          "#|]
-        { matchStatus = 200
-        , matchHeaders = ["Content-Type" <:> "application/json"]
-        }
+  describe "embeding" $
+    it "children" $
+      get "/projects?select=id,name,tasks(id,name)&id=in.(1,2)" shouldRespondWith
+        [json| r#"
+        [
+          {"id":1,"name":"Windows 7","tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]},
+          {"id":2,"name":"Windows 10","tasks":[{"id":3,"name":"Design w10"},{"id":4,"name":"Code w10"}]}
+        ]
+        "#|]
+      { matchStatus = 200
+      , matchHeaders = ["Content-Type" <:> "application/json"]
+      }
+    it "parent" $
+      get "/projects?select=id,name,client:clients(id,name)&id=in.(1,2,3)" shouldRespondWith
+        [json| r#"
+        [
+          {"id":1,"name":"Windows 7","client":{"id":1,"name":"Microsoft"}},
+          {"id":2,"name":"Windows 10","client":{"id":1,"name":"Microsoft"}},
+          {"id":3,"name":"IOS","client":{"id":2,"name":"Apple"}}
+        ]
+        "#|]
+      { matchStatus = 200
+      , matchHeaders = ["Content-Type" <:> "application/json"]
+      }
+    it "children and parent" $
+      get "/projects?select=id,name,client:clients(id,name),tasks(id,name)&id=in.(1,2)" shouldRespondWith
+        [json| r#"
+        [
+          {"id":1,"name":"Windows 7", "tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}],  "client":{"id":1,"name":"Microsoft"}},
+          {"id":2,"name":"Windows 10","tasks":[{"id":3,"name":"Design w10"},{"id":4,"name":"Code w10"}],"client":{"id":1,"name":"Microsoft"}}
+        ]
+        "#|]
+      { matchStatus = 200
+      , matchHeaders = ["Content-Type" <:> "application/json"]
+      }
 
-     it "many" $
-        get "/tasks?select=id,name,users(id,name)&id=in.(1,5)" shouldRespondWith
-          [json| r#"
-          [
-            {"id":1,"name":"Design w7","users":[{"id":1,"name":"Angela Martin"},{"id":3,"name":"Dwight Schrute"}]},
-            {"id":5,"name":"Design IOS","users":[{"id":2,"name":"Michael Scott"},{"id":3,"name":"Dwight Schrute"}]}
-          ]
-          "#|]
-        { matchStatus = 200
-        , matchHeaders = ["Content-Type" <:> "application/json"]
-        }
+    it "many" $
+      get "/tasks?select=id,name,users(id,name)&id=in.(1,5)" shouldRespondWith
+        [json| r#"
+        [
+          {"id":1,"name":"Design w7","users":[{"id":1,"name":"Angela Martin"},{"id":3,"name":"Dwight Schrute"}]},
+          {"id":5,"name":"Design IOS","users":[{"id":2,"name":"Michael Scott"},{"id":3,"name":"Dwight Schrute"}]}
+        ]
+        "#|]
+      { matchStatus = 200
+      , matchHeaders = ["Content-Type" <:> "application/json"]
+      }
 }

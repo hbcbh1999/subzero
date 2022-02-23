@@ -1,6 +1,6 @@
 use super::base::{
     fmt_as,
-    fmt_body,
+    //fmt_body,
     fmt_condition,
     fmt_condition_tree,
     //fmt_main_query,
@@ -23,13 +23,14 @@ use super::base::{
     fmt_select_name,
     //fmt_json_operation,
     //fmt_json_operand,
-    return_representation,
+    //return_representation,
 
     star_select_item_format,
 };
+pub use super::base::return_representation;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet};
-use crate::error::Result;
+use crate::error::{Result,Error};
 use rusqlite::{
     types::{ToSqlOutput, Value, Value::*, ValueRef},
     Result as SqliteResult, ToSql,
@@ -46,7 +47,6 @@ macro_rules! cast_select_item_format {
         "'{select_name}', cast({field} as {cast}){as:.0}"
     };
 }
-
 impl ToSql for ListVal {
     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
         match self {
@@ -139,7 +139,17 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
         }
     };
 
-    Ok(fmt_query(schema, return_representation, Some("_subzero_query"), &request.query, &None)?
+    let run_unwrapped_query = match request.query.node {
+        Insert {..} => true,
+        _ => false
+    };
+    let wrap_cte_name = if run_unwrapped_query {None} else {Some("_subzero_query")};
+    let source_query = fmt_query(schema, return_representation, wrap_cte_name, &request.query, &None)?;
+    let main_query = if run_unwrapped_query {
+        source_query
+    }
+    else {
+        source_query
         + " , "
         + if count {
             fmt_count_query(schema, Some("_subzero_count_query"), &request.query)?
@@ -154,121 +164,18 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
         + " as body, "
         + " null as response_headers, "
         + " null as response_status "
-        + " from ( select * from _subzero_query ) _subzero_t")
+        + " from ( select * from _subzero_query ) _subzero_t"
+    };
+    
+    Ok(main_query)
 }
 //fmt_query!();
 fn fmt_query<'a>(
     schema: &String, return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
     let (cte_snippet, query_snippet) = match &q.node {
-        FunctionCall {
-            fn_name,
-            parameters,
-            payload,
-            is_scalar,
-            is_multiple_call,
-            returning,
-            select,
-            where_,
-            limit,
-            offset,
-            order,
-            ..
-        } => {
-            let bb: &(dyn ToSql + Sync + 'a) = payload;
-            let (params_cte, arg_frag): (Snippet<'a>, Snippet<'a>) = match &parameters {
-                CallParams::OnePosParam(_p) => (sql(" "), param(bb)),
-                CallParams::KeyParams(p) if p.len() == 0 => (sql(" "), sql("")),
-                CallParams::KeyParams(prms) => (
-                    fmt_body(payload)
-                        + ", subzero_args as ( "
-                        + "select * from json_to_recordset((select val from subzero_body)) as _("
-                        + prms
-                            .iter()
-                            .map(|p| format!("{} {}", fmt_identity(&p.name), p.type_))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                        + ")"
-                        + " ), ",
-                    sql(prms
-                        .iter()
-                        .map(|p| {
-                            let variadic = if p.variadic { "variadic" } else { "" };
-                            let ident = fmt_identity(&p.name);
-                            if *is_multiple_call {
-                                format!("{} {} := subzero_args.{}", variadic, ident, ident)
-                            } else {
-                                format!("{} {}  := (select {} from subzero_args limit 1)", variadic, ident, ident)
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")),
-                ),
-            };
-            let call_it = fmt_qi(fn_name) + "(" + arg_frag + ")";
-            let returned_columns = if returning.len() == 0 {
-                "*".to_string()
-            } else {
-                returning
-                    .iter()
-                    .map(|r| {
-                        if r.as_str() == "*" {
-                            format!("*")
-                        } else {
-                            format!("{}.{}", fmt_identity(&fn_name.1), fmt_identity(r))
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(",")
-            };
-
-            let args_body = if *is_multiple_call {
-                if *is_scalar {
-                    "select " + call_it + "subzero_scalar from subzero_args"
-                } else {
-                    format!("select subzero_lat_args.* from subzero_args, lateral ( select {} from ", returned_columns)
-                        + call_it
-                        + " ) subzero_lat_args"
-                }
-            } else {
-                if *is_scalar {
-                    "select " + call_it + " as subzero_scalar"
-                } else {
-                    format!("select {} from ", returned_columns) + call_it
-                }
-            };
-
-            let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
-            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
-            let (sub_selects, joins): (Vec<_>, Vec<_>) = q
-                .sub_selects
-                .iter()
-                .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
-                .collect::<Result<Vec<_>>>()?
-                .into_iter()
-                .unzip();
-            select.extend(sub_selects.into_iter());
-            (
-                Some(params_cte + " subzero_source as ( " + args_body + " )"),
-                " select "
-                    + select.join(", ")
-                    + " from "
-                    + fmt_identity(&"subzero_source".to_string())
-                    + " "
-                    + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
-                    + " "
-                    + if where_.conditions.len() > 0 {
-                        "where " + fmt_condition_tree(qi_subzero_source, where_)?
-                    } else {
-                        sql("")
-                    }
-                    + " "
-                    + fmt_order(qi_subzero_source, order)?
-                    + " "
-                    + fmt_limit(limit)
-                    + " "
-                    + fmt_offset(offset),
-            )
+        FunctionCall {..} => {
+            return Err(Error::UnsupportedFeature { message: "function calls in sqlite not supported".to_string()})
         }
         Select {
             select,
@@ -286,6 +193,9 @@ fn fmt_query<'a>(
                 ),
                 None => (Qi(schema.clone(), table.clone()), fmt_qi(&Qi(schema.clone(), table.clone()))),
             };
+            if select.into_iter().any(|s| match s { Star => true, _ => false }) {
+                return Err(Error::UnsupportedFeature {message: "'select *' not supported, use explicit select parameters".to_string()})
+            }
             let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(&qi, s)).collect::<Result<Vec<_>>>()?;
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
@@ -339,20 +249,20 @@ fn fmt_query<'a>(
             payload,
             where_,
             returning,
-            select,
             on_conflict,
+            .. //select
         } => {
             let qi = &Qi(schema.clone(), into.clone());
-            let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
-            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
-            let (sub_selects, joins): (Vec<_>, Vec<_>) = q
-                .sub_selects
-                .iter()
-                .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
-                .collect::<Result<Vec<_>>>()?
-                .into_iter()
-                .unzip();
-            select.extend(sub_selects.into_iter());
+            // let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
+            // let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
+            // let (sub_selects, joins): (Vec<_>, Vec<_>) = q
+            //     .sub_selects
+            //     .iter()
+            //     .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
+            //     .collect::<Result<Vec<_>>>()?
+            //     .into_iter()
+            //     .unzip();
+            // select.extend(sub_selects.into_iter());
             let returned_columns = if returning.len() == 0 {
                 "1".to_string()
             } else {
@@ -370,49 +280,75 @@ fn fmt_query<'a>(
             };
             let select_columns = columns.iter().map(fmt_identity).collect::<Vec<_>>().join(",");
             (
-                Some(
-                    fmt_body(payload)+
-                    ", subzero_source as ( " + 
-                    " insert into " + fmt_qi(qi) + " " +into_columns +
-                    " select " + select_columns +
-                    " from json_populate_recordset(null::" + fmt_qi(qi) + ", (select val from subzero_body)) _ " +
-                    " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql("") } + // this line is only relevant for upsert
-                    match on_conflict {
-                        Some((r,cols)) if cols.len()>0 => {
-                            let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
-                            let on_do = match (r, columns.len()) {
-                                (Resolution::IgnoreDuplicates, _) |
-                                (_, 0) => format!("do nothing"),
-                                _ => format!(
-                                    "do update set {}",
-                                    columns.iter().map(|c|
-                                        format!("{} = excluded.{}", fmt_identity(c), fmt_identity(c))
-                                    ).collect::<Vec<_>>().join(", ")
-                                )
-                            };
-                            format!("{} {}", on_c, on_do)
-                        },
-                        _ => format!("")
-                    } +
-                    " returning " + returned_columns +
-                    " )",
-                ),
-                if return_representation {
-                    " select "
-                        + select.join(", ")
-                        + " from "
-                        + fmt_identity(&"subzero_source".to_string())
-                        + " "
-                        + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
-                        + " "
-                        + if where_.conditions.len() > 0 {
-                            "where " + fmt_condition_tree(qi_subzero_source, where_)?
-                        } else {
-                            sql("")
-                        }
-                } else {
-                    sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
-                },
+                None,
+                "with " +
+                fmt_body(payload, columns) +
+                " insert into " + fmt_qi(qi) + " " +into_columns +
+                " select " + select_columns +
+                " from subzero_body _ " +
+                " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql("") } + // this line is only relevant for upsert
+                match on_conflict {
+                    Some((r,cols)) if cols.len()>0 => {
+                        let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
+                        let on_do = match (r, columns.len()) {
+                            (Resolution::IgnoreDuplicates, _) |
+                            (_, 0) => format!("do nothing"),
+                            _ => format!(
+                                "do update set {}",
+                                columns.iter().map(|c|
+                                    format!("{} = excluded.{}", fmt_identity(c), fmt_identity(c))
+                                ).collect::<Vec<_>>().join(", ")
+                            )
+                        };
+                        format!("{} {}", on_c, on_do)
+                    },
+                    _ => format!("")
+                } +
+                " returning " + returned_columns
+                
+                // Some(
+                //     fmt_body(payload, columns)+
+                //     ", subzero_source as ( " + 
+                //     " insert into " + fmt_qi(qi) + " " +into_columns +
+                //     " select " + select_columns +
+                //     " from subzero_body _ " +
+                //     " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql("") } + // this line is only relevant for upsert
+                //     match on_conflict {
+                //         Some((r,cols)) if cols.len()>0 => {
+                //             let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
+                //             let on_do = match (r, columns.len()) {
+                //                 (Resolution::IgnoreDuplicates, _) |
+                //                 (_, 0) => format!("do nothing"),
+                //                 _ => format!(
+                //                     "do update set {}",
+                //                     columns.iter().map(|c|
+                //                         format!("{} = excluded.{}", fmt_identity(c), fmt_identity(c))
+                //                     ).collect::<Vec<_>>().join(", ")
+                //                 )
+                //             };
+                //             format!("{} {}", on_c, on_do)
+                //         },
+                //         _ => format!("")
+                //     } +
+                //     " returning " + returned_columns +
+                //     " )",
+                // ),
+                // if return_representation {
+                //     " select "
+                //         + select.join(", ")
+                //         + " from "
+                //         + fmt_identity(&"subzero_source".to_string())
+                //         + " "
+                //         + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
+                //         + " "
+                //         + if where_.conditions.len() > 0 {
+                //             "where " + fmt_condition_tree(qi_subzero_source, where_)?
+                //         } else {
+                //             sql("")
+                //         }
+                // } else {
+                //     sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
+                // },
             )
         }
         Delete {
@@ -535,7 +471,7 @@ fn fmt_query<'a>(
                     Some(sql(format!(" subzero_source as (select {} from {} where false )", sel, fmt_qi(qi))))
                 } else {
                     Some(
-                        fmt_body(payload)
+                        fmt_body(payload, columns)
                             + ", subzero_source as ( "
                             + " update "
                             + fmt_qi(qi)
@@ -582,7 +518,24 @@ fn fmt_query<'a>(
     })
 }
 fmt_count_query!();
-fmt_body!();
+//fmt_body!();
+#[rustfmt::skip]
+fn fmt_body<'a>(payload: &'a Payload, columns: &'a Vec<String>) -> Snippet<'a> {
+    let payload_param: &(dyn ToSql + Sync) = payload;
+    " subzero_payload as ( select " + param(payload_param) + " as json_data ),"
+    + " subzero_body as ("
+    + " select "
+    + columns.iter().map(|c| format!("json_extract(value, '$.{}') as {}", c, fmt_identity(c))).collect::<Vec<_>>().join(",")
+    + " from (select value from json_each(("
+        + " select"
+        + " case when json_type(json_data) = 'array'"
+        + " then json_data"
+        + " else json_array(json_data)"
+        + " end as val"
+        + " from subzero_payload"
+    + " )))"
+    + " )"
+}
 fmt_condition_tree!();
 fmt_condition!();
 macro_rules! fmt_in_filter {

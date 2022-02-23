@@ -1,7 +1,7 @@
 //use super::super::start; //super in
 //use rocket::local::asynchronous::Client;
-//use rocket::http::{Cookie, Header};
-//use rocket::local::asynchronous::LocalRequest;
+use rocket::http::{Cookie, Header};
+use rocket::local::asynchronous::LocalRequest;
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
@@ -67,22 +67,22 @@ where
 }
 
 pub fn normalize_url(url: &String) -> String { url.replace(" ", "%20").replace("\"", "%22").replace(">", "%3E") }
-// pub fn add_header<'a>(
-//     mut request: LocalRequest<'a>,
-//     name: &'static str,
-//     value: &'static str,
-// ) -> LocalRequest<'a> {
-//     request.add_header(Header::new(name, value));
-//     if name == "Cookie" {
-//         let cookies = value
-//             .split(';')
-//             .filter_map(|s| Cookie::parse_encoded(s.trim()).ok())
-//             .collect::<Vec<_>>();
-//         request.cookies(cookies)
-//     } else {
-//         request
-//     }
-// }
+pub fn add_header<'a>(
+    mut request: LocalRequest<'a>,
+    name: &'static str,
+    value: &'static str,
+) -> LocalRequest<'a> {
+    request.add_header(Header::new(name, value));
+    if name == "Cookie" {
+        let cookies = value
+            .split(';')
+            .filter_map(|s| Cookie::parse_encoded(s.trim()).ok())
+            .collect::<Vec<_>>();
+        request.cookies(cookies)
+    } else {
+        request
+    }
+}
 
 #[macro_export]
 macro_rules! haskell_test {

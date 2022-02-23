@@ -34,7 +34,7 @@ pub struct VhostResources {
     pub db_pool: Pool,
     #[cfg(feature = "sqlite")]
     pub db_pool: Pool<SqliteConnectionManager>,
-    #[cfg(not(feature = "sqlite", "postgresql"))]
+    #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
     pub db_pool: Option<String>,
     pub db_schema: DbSchema,
     pub config: VhostConfig,
@@ -82,7 +82,7 @@ pub async fn create_resources(vhost: &String, config: VhostConfig, store: Arc<Da
         .build()
         .unwrap();
 
-    #[cfg(not(feature = "sqlite", "postgresql"))]
+    #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
     let db_pool = None;
 
     #[cfg(feature = "sqlite")]
@@ -95,7 +95,7 @@ pub async fn create_resources(vhost: &String, config: VhostConfig, store: Arc<Da
     //read db schema
     let db_schema = match &config.db_schema_structure {
         SqlFile(f) => match fs::read_to_string(f) {
-            #[cfg(not(feature = "sqlite", "postgresql"))]
+            #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
             Ok(_s) => Ok(DbSchema { schemas: HashMap::new() }),
             #[cfg(feature = "sqlite")]
             Ok(_s) => Ok(DbSchema { schemas: HashMap::new() }),

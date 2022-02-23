@@ -90,6 +90,9 @@ pub enum Error {
     #[snafu(display("UnsupportedVerb"))]
     UnsupportedVerb,
 
+    #[snafu(display("Failed to deserialize json: {}", message))]
+    UnsupportedFeature { message: String },
+
     // #[snafu(display("PgError {} {} {} {}", code, message, details, hint))]
     // PgError {code: String, message: String, details: String, hint: String},
     #[snafu(display("Unable to read from {}: {}", path.display(), source))]
@@ -168,6 +171,7 @@ impl Error {
         match self {
             #[cfg(feature = "sqlite")]
             Error::ThreadError { .. } => 500,
+            Error::UnsupportedFeature { .. } => 400,
             Error::ContentTypeError { .. } => 415,
             Error::GucHeadersError => 500,
             Error::GucStatusError => 500,
@@ -262,6 +266,7 @@ impl Error {
 
     fn json_body(&self) -> JsonValue {
         match self {
+            Error::UnsupportedFeature {message} => json!({ "message": message }),
             #[cfg(feature = "sqlite")]
             Error::ThreadError { .. } => json!({"message":"internal thread error"}),
             Error::ContentTypeError { message } => json!({ "message": message }),
