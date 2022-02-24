@@ -21,12 +21,11 @@ use subzero::{
     error::{Result, *},
     schema::DbSchema,
 };
-
+#[cfg(feature = "sqlite")]
+use tokio::task;
 use std::{fs, sync::Arc};
 
 #[cfg(feature = "clickhouse")]
-use std::collections::HashMap;
-#[cfg(feature = "sqlite")]
 use std::collections::HashMap;
 
 pub struct VhostResources {
@@ -98,26 +97,42 @@ pub async fn create_resources(vhost: &String, config: VhostConfig, store: Arc<Da
             #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
             Ok(_s) => Ok(DbSchema { schemas: HashMap::new() }),
             #[cfg(feature = "sqlite")]
-            Ok(_s) => Ok(DbSchema { schemas: HashMap::new() }),
+            Ok(q) => match db_pool.get() {
+                Ok(conn) => {
+                    task::block_in_place(|| {
+                        let authenticated = false;
+                        let mut stmt = conn.prepare(q.as_str()).context(DbError { authenticated })?;
+                        let mut rows = stmt.query([]).context(DbError { authenticated })?;
+                        match rows.next().context(DbError { authenticated })? {
+                            Some(r) => {
+                                serde_json::from_str::<DbSchema>(r.get::<usize,String>(0).context(DbError { authenticated })?.as_str()).context(JsonDeserialize)
+                            },
+                            None => Err(Error::InternalError { message: "sqlite structure query did not return any rows".to_string() }),
+                        }
+                    })
+                }
+                Err(e) => Err(e).context(DbPoolError),
+            },
             #[cfg(feature = "postgresql")]
-            Ok(s) => match db_pool.get().await {
+            Ok(q) => match db_pool.get().await {
                 Ok(mut client) => {
+                    let authenticated = false;
                     let transaction = client
                         .build_transaction()
                         .isolation_level(IsolationLevel::Serializable)
                         .read_only(true)
                         .start()
                         .await
-                        .context(DbError { authenticated: false })?;
+                        .context(DbError { authenticated})?;
                     let _ = transaction.query("set local schema ''", &[]).await;
-                    match transaction.query(&s, &[&config.db_schemas]).await {
+                    match transaction.query(&q, &[&config.db_schemas]).await {
                         Ok(rows) => {
-                            transaction.commit().await.context(DbError { authenticated: false })?;
+                            transaction.commit().await.context(DbError { authenticated })?;
                             serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize)
                         }
                         Err(e) => {
-                            transaction.rollback().await.context(DbError { authenticated: false })?;
-                            Err(e).context(DbError { authenticated: false })
+                            transaction.rollback().await.context(DbError { authenticated })?;
+                            Err(e).context(DbError { authenticated })
                         }
                     }
                 }

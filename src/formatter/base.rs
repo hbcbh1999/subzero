@@ -163,7 +163,7 @@ fn fmt_query<'a>(
                 CallParams::OnePosParam(_p) => (sql(" "), param(bb)),
                 CallParams::KeyParams(p) if p.len() == 0 => (sql(" "), sql("")),
                 CallParams::KeyParams(prms) => (
-                    fmt_body(payload, vec![])
+                    fmt_body(payload)
                         + ", subzero_args as ( "
                         + "select * from json_to_recordset((select val from subzero_body)) as _("
                         + prms
@@ -387,7 +387,7 @@ fn fmt_query<'a>(
                 .join(",");
             (
                 Some(
-                    fmt_body(payload, columns)+
+                    fmt_body(payload)+
                     ", subzero_source as ( " +
                     " insert into " + fmt_qi(qi) + " " +into_columns +
                     " select " + select_columns +
@@ -573,7 +573,7 @@ fn fmt_query<'a>(
                     )))
                 } else {
                     Some(
-                        fmt_body(payload, columns)
+                        fmt_body(payload)
                             + ", subzero_source as ( "
                             + " update "
                             + fmt_qi(qi)
@@ -682,7 +682,7 @@ macro_rules! fmt_count_query {
 macro_rules! fmt_body {
     () => {
         #[rustfmt::skip]
-        fn fmt_body<'a>(payload: &'a Payload, _columns: &'a Vec<String>) -> Snippet<'a> {
+        fn fmt_body<'a>(payload: &'a Payload) -> Snippet<'a> {
             let payload_param: &(dyn ToSql + Sync) = payload;
             " subzero_payload as ( select " + param(payload_param) + "::json as json_data ),"
             + " subzero_body as ("

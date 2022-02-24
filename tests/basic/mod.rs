@@ -45,6 +45,7 @@ fn setup() {
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", &*db_uri);
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[public]");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"anonymous");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=postgresql_structure_query.sql}}"#));
         //env::set_var("SUBZERO_PORT", &"8001");
 
         let output = Command::new("psql")

@@ -43,11 +43,13 @@ pub fn setup_db(init_db_once: &Once) {
 
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", db_uri);
 
-        let schema_file = project_dir.join("tests/sqlite/fixtures/schema.json");
-        env::set_var(
-            "SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE",
-            format!(r#"{{json_file={}}}"#, schema_file.to_str().unwrap()),
-        );
+        // let schema_file = project_dir.join("tests/sqlite/fixtures/schema.json");
+        // env::set_var(
+        //     "SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE",
+        //     format!(r#"{{json_file={}}}"#, schema_file.to_str().unwrap()),
+        // );
+
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=sqlite_structure_query.sql}}"#));
     });
 }
 

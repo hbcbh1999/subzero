@@ -764,7 +764,8 @@ mod tests {
                                         "data_type":"int",
                                         "primary_key":true
                                     }
-                                ]
+                                ],
+                                "foreign_keys":[]
                             }
                         ]
                     }
@@ -784,6 +785,27 @@ mod tests {
         // println!("serialized_result = {:?}", serialized_result);
         // let serialized = serialized_result.unwrap_or(s("failed to serialize"));
         // assert_eq!(serde_json::from_str::<serde_json::Value>(serialized.as_str()).unwrap(), serde_json::from_str::<serde_json::Value>(json_schema).unwrap());
+        
+        //a sample sqlite schema
+        let ss = r#"{
+            "schemas":[
+                {
+                    "name":"_sqlite_public_",
+                    "objects":[
+                        {"kind":"table","name":"tbl1","columns":[{"name":"one","data_type":"varchar(10)","primary_key":false},{"name":"two","data_type":"smallint","primary_key":false}],"foreign_keys":[]},
+                        {"kind":"table","name":"clients","columns":[{"name":"id","data_type":"INTEGER","primary_key":true},{"name":"name","data_type":"TEXT","primary_key":false}],"foreign_keys":[]},
+                        {"kind":"table","name":"projects","columns":[{"name":"id","data_type":"INTEGER","primary_key":true},{"name":"name","data_type":"TEXT","primary_key":false},{"name":"client_id","data_type":"INTEGER","primary_key":false}],"foreign_keys":[{"name":"projects_client_id_fkey","table":["_sqlite_public_","projects"],"columns":["client_id"],"referenced_table":["_sqlite_public_","clients"],"referenced_columns":["id"]}]},{"kind":"view","name":"projects_view","columns":[{"name":"id","data_type":"INTEGER","primary_key":false},{"name":"name","data_type":"TEXT","primary_key":false},{"name":"client_id","data_type":"INTEGER","primary_key":false}],"foreign_keys":[]},
+                        {"kind":"table","name":"tasks","columns":[{"name":"id","data_type":"INTEGER","primary_key":true},{"name":"name","data_type":"TEXT","primary_key":false},{"name":"project_id","data_type":"INTEGER","primary_key":false}],"foreign_keys":[{"name":"tasks_project_id_fkey","table":["_sqlite_public_","tasks"],"columns":["project_id"],"referenced_table":["_sqlite_public_","projects"],"referenced_columns":["id"]}]},
+                        {"kind":"table","name":"users","columns":[{"name":"id","data_type":"INTEGER","primary_key":true},{"name":"name","data_type":"TEXT","primary_key":false}],"foreign_keys":[]},
+                        {"kind":"table","name":"users_tasks","columns":[{"name":"user_id","data_type":"INTEGER","primary_key":false},{"name":"task_id","data_type":"INTEGER","primary_key":true}],"foreign_keys":[{"name":"users_tasks_task_id_fkey","table":["_sqlite_public_","users_tasks"],"columns":["task_id"],"referenced_table":["_sqlite_public_","tasks"],"referenced_columns":["id"]},{"name":"users_tasks_user_id_fkey","table":["_sqlite_public_","users_tasks"],"columns":["user_id"],"referenced_table":["_sqlite_public_","users"],"referenced_columns":["id"]}]},
+                        {"kind":"table","name":"complex_items","columns":[{"name":"id","data_type":"INTEGER","primary_key":false},{"name":"name","data_type":"TEXT","primary_key":false},{"name":"settings","data_type":"TEXT","primary_key":false}],"foreign_keys":[]}
+                    ]
+                }
+            ]
+        }"#;
+        let deserialized_result = serde_json::from_str::<DbSchema>(ss);
+        println!("deserialized_result = {:?}", deserialized_result);
+        assert!(deserialized_result.is_ok());
     }
 
     // #[test]

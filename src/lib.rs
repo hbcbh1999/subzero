@@ -11,6 +11,7 @@ pub mod config;
 pub mod dynamic_statement;
 pub mod error;
 pub mod formatter;
+pub mod backend;
 pub mod parser;
 pub mod schema;
 //pub mod postgrest;

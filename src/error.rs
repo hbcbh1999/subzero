@@ -7,7 +7,7 @@ use serde_json::{json, Value as JsonValue};
 use std::io::Cursor;
 
 #[cfg(feature = "postgresql")]
-use deadpool_postgres::PoolError;
+use deadpool_postgres::PoolError as PgPoolError;
 use rocket::http::Status;
 use rocket::request::Request;
 use rocket::response::{self, Responder, Response};
@@ -17,6 +17,9 @@ use tokio_postgres::Error as PgError;
 
 #[cfg(feature = "sqlite")]
 use rusqlite::Error as SqliteError;
+
+#[cfg(feature = "sqlite")]
+use r2d2::Error as SqlitePoolError;
 
 #[cfg(feature = "sqlite")]
 use tokio::task::JoinError;
@@ -109,7 +112,11 @@ pub enum Error {
 
     #[cfg(feature = "postgresql")]
     #[snafu(display("DbPoolError {}", source))]
-    DbPoolError { source: PoolError },
+    DbPoolError { source: PgPoolError },
+
+    #[cfg(feature = "sqlite")]
+    #[snafu(display("DbPoolError {}", source))]
+    DbPoolError { source: SqlitePoolError },
 
     #[cfg(feature = "postgresql")]
     #[snafu(display("DbError {}", source))]
@@ -196,16 +203,20 @@ impl Error {
             Error::PutMatchingPkError => 400,
             Error::JsonSerialize { .. } => 500,
             Error::SingularityError { .. } => 406,
+            #[cfg(feature = "sqlite")]
+            Error::DbPoolError { .. } => 503,
+
             #[cfg(feature = "postgresql")]
-            Error::DbPoolError { source } => match source {
-                PoolError::Timeout(_) => 503,
-                PoolError::Backend(_) => 503,
-                PoolError::Closed => 503,
-                PoolError::NoRuntimeSpecified => 503,
-                PoolError::PostCreateHook(_) => 503,
-                PoolError::PreRecycleHook(_) => 503,
-                PoolError::PostRecycleHook(_) => 503,
-            },
+            Error::DbPoolError { .. } => 503,
+            // Error::DbPoolError { source } => match source {
+            //     PgPoolError::Timeout(_) => 503,
+            //     PgPoolError::Backend(_) => 503,
+            //     PgPoolError::Closed => 503,
+            //     PgPoolError::NoRuntimeSpecified => 503,
+            //     PgPoolError::PostCreateHook(_) => 503,
+            //     PgPoolError::PreRecycleHook(_) => 503,
+            //     PgPoolError::PostRecycleHook(_) => 503,
+            // },
             #[cfg(feature = "sqlite")]
             Error::DbError {
                 ..
@@ -349,6 +360,10 @@ impl Error {
             Error::CsvDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::JsonSerialize { .. } => json!({ "message": format!("{}", self) }),
             #[cfg(feature = "postgresql")]
+            Error::DbPoolError { source } => {
+                json!({ "message": format!("Db pool error {}", source) })
+            }
+            #[cfg(feature = "sqlite")]
             Error::DbPoolError { source } => {
                 json!({ "message": format!("Db pool error {}", source) })
             }
