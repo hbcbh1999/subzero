@@ -203,38 +203,15 @@ pub async fn handle_postgrest_request(
         }?
     }
 
+    #[rustfmt::skip]
     let mut status = match (method, &request.query.node, page_total, total_result_set, &request.preferences) {
         (&Method::POST, Insert { .. }, ..) => 201,
-        (
-            &Method::DELETE,
-            Delete { .. },
-            ..,
-            Some(Preferences {
-                representation: Some(Representation::Full),
-                ..
-            }),
-        ) => 200,
+        (&Method::DELETE, Delete { .. }, ..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
         (&Method::DELETE, Delete { .. }, ..) => 204,
         (&Method::PATCH, Update { columns, .. }, 0, _, _) if columns.len() > 0 => 404,
-        (
-            &Method::PATCH,
-            Update { .. },
-            ..,
-            Some(Preferences {
-                representation: Some(Representation::Full),
-                ..
-            }),
-        ) => 200,
+        (&Method::PATCH, Update { .. }, ..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
         (&Method::PATCH, Update { .. }, ..) => 204,
-        (
-            &Method::PUT,
-            Insert { .. },
-            ..,
-            Some(Preferences {
-                representation: Some(Representation::Full),
-                ..
-            }),
-        ) => 200,
+        (&Method::PUT,Insert { .. },..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
         (&Method::PUT, Insert { .. }, ..) => 204,
         (.., pt, t, _) => content_range_status(top_level_offset, top_level_offset + pt - 1, t),
     };

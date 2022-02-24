@@ -140,7 +140,7 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
     };
 
     let run_unwrapped_query = match request.query.node {
-        Insert {..} => true,
+        Insert {..} | Update {..} => true,
         _ => false
     };
     let wrap_cte_name = if run_unwrapped_query {None} else {Some("_subzero_query")};
@@ -417,19 +417,19 @@ fn fmt_query<'a>(
             payload,
             where_,
             returning,
-            select,
+            ..//select,
         } => {
             let qi = &Qi(schema.clone(), table.clone());
-            let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
-            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
-            let (sub_selects, joins): (Vec<_>, Vec<_>) = q
-                .sub_selects
-                .iter()
-                .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
-                .collect::<Result<Vec<_>>>()?
-                .into_iter()
-                .unzip();
-            select.extend(sub_selects.into_iter());
+            //let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
+            // let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
+            // let (sub_selects, joins): (Vec<_>, Vec<_>) = q
+            //     .sub_selects
+            //     .iter()
+            //     .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
+            //     .collect::<Result<Vec<_>>>()?
+            //     .into_iter()
+            //     .unzip();
+            // select.extend(sub_selects.into_iter());
             let returned_columns = if returning.len() == 0 {
                 "1".to_string()
             } else {
@@ -452,6 +452,7 @@ fn fmt_query<'a>(
                 .collect::<Vec<_>>()
                 .join(",");
             (
+                None,
                 if columns.len() == 0 {
                     let sel = if returning.len() == 0 {
                         "null".to_string()
@@ -468,40 +469,75 @@ fn fmt_query<'a>(
                             .collect::<Vec<_>>()
                             .join(",")
                     };
-                    Some(sql(format!(" subzero_source as (select {} from {} where false )", sel, fmt_qi(qi))))
+                    sql(format!(" select {} from {} where false ", sel, fmt_qi(qi)))
                 } else {
-                    Some(
-                        fmt_body(payload, columns)
-                            + ", subzero_source as ( "
-                            + " update "
-                            + fmt_qi(qi)
-                            + " set "
-                            + set_columns
-                            + " from (select * from json_populate_recordset (null::"
-                            + fmt_qi(qi)
-                            + " , (select val from subzero_body) )) _ "
-                            + " "
-                            + if where_.conditions.len() > 0 {
-                                "where " + fmt_condition_tree(&qi, where_)?
-                            } else {
-                                sql("")
-                            }
-                            + " returning "
-                            + returned_columns
-                            + " )",
-                    )
-                },
-                if return_representation {
-                    " select "
-                        + select.join(", ")
-                        + " from "
-                        + fmt_identity(&"subzero_source".to_string())
+                        "with "
+                        + fmt_body(payload, columns)
+                        + " update "
+                        + fmt_qi(qi)
+                        + " set "
+                        + set_columns
+                        + " from (select * from subzero_body) _ "
                         + " "
-                        + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
-                    //" " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
-                } else {
-                    sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
-                },
+                        + if where_.conditions.len() > 0 {
+                            "where " + fmt_condition_tree(&qi, where_)?
+                        } else {
+                            sql("")
+                        }
+                        + " returning "
+                        + returned_columns
+                }
+            // (
+            //     if columns.len() == 0 {
+            //         let sel = if returning.len() == 0 {
+            //             "null".to_string()
+            //         } else {
+            //             returning
+            //                 .iter()
+            //                 .map(|r| {
+            //                     if r.as_str() == "*" {
+            //                         format!("{}.*", table)
+            //                     } else {
+            //                         format!("{}.{}", table, r)
+            //                     }
+            //                 })
+            //                 .collect::<Vec<_>>()
+            //                 .join(",")
+            //         };
+            //         Some(sql(format!(" subzero_source as (select {} from {} where false )", sel, fmt_qi(qi))))
+            //     } else {
+            //         Some(
+            //             fmt_body(payload, columns)
+            //                 + ", subzero_source as ( "
+            //                 + " update "
+            //                 + fmt_qi(qi)
+            //                 + " set "
+            //                 + set_columns
+            //                 + " from (select * from json_populate_recordset (null::"
+            //                 + fmt_qi(qi)
+            //                 + " , (select val from subzero_body) )) _ "
+            //                 + " "
+            //                 + if where_.conditions.len() > 0 {
+            //                     "where " + fmt_condition_tree(&qi, where_)?
+            //                 } else {
+            //                     sql("")
+            //                 }
+            //                 + " returning "
+            //                 + returned_columns
+            //                 + " )",
+            //         )
+            //     },
+            //     if return_representation {
+            //         " select "
+            //             + select.join(", ")
+            //             + " from "
+            //             + fmt_identity(&"subzero_source".to_string())
+            //             + " "
+            //             + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
+            //         //" " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
+            //     } else {
+            //         sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
+            //     },
             )
         }
     };

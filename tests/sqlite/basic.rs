@@ -16,6 +16,28 @@ lazy_static! {
 
 haskell_test! {
 feature "basic"
+  describe "updating" $ do
+    it "basic no representation" $ do
+      request methodPatch "/tasks?id=eq.1"
+        [json|r#"{"name":"Design w7 updated"}"#|]
+        shouldRespondWith
+        [text|""|]
+        { matchStatus  = 204
+          , matchHeaders = [ "Content-Type" <:> "application/json"
+                            //, "Location" <:> "/projects?id=eq.6"
+                            , "Content-Range" <:> "0-0/*" ]
+        }
+    it "basic with representation" $ do
+        request methodPatch "/tasks?select=id,name&id=in.(1,3)"
+          [("Prefer", "return=representation, count=exact")]
+          [json|r#"{"name":"updated"}"#|]
+          shouldRespondWith
+          [json|r#"[{"id":1,"name":"updated"},{"id":3,"name":"updated"}]"#|]
+          { matchStatus  = 200
+            , matchHeaders = [ "Content-Type" <:> "application/json"
+                              //, "Location" <:> "/projects?id=eq.6"
+                              , "Content-Range" <:> "0-1/2" ]
+          }
   describe "inserting" $ do
     it "basic no representation" $ do
       request methodPost "/clients"
@@ -29,7 +51,7 @@ feature "basic"
         }
     it "basic with representation" $ do
         request methodPost "/clients?select=id,name"
-          [("Prefer", "return=representation"), ("Prefer", "count=exact")]
+          [("Prefer", "return=representation,count=exact")]
           [json|r#"{"name":"new client"}"#|]
           shouldRespondWith
           [json|r#"[{"id":3,"name":"new client"}]"#|]

@@ -26,9 +26,8 @@ pub fn execute(
     //let transaction = conn.transaction().context(DbError { authenticated })?;
 
     let second_stage_select = match request {
-        ApiRequest {
-            query: Query { node: Insert {into,where_,select,..}, sub_selects },..
-        } => {
+        ApiRequest {query: Query { node: Insert {into:table,where_,select,..}, sub_selects },..} |
+        ApiRequest {query: Query { node: Update {table,where_,select,..}, sub_selects },..} => {
             //sqlite does not support returining in CTEs so we must do a two step process
             let primary_key_column = "rowid"; //evey table has this (TODO!!! check)
             let primary_key_field = Field {name: primary_key_column.to_string(), json_path: None};
@@ -36,7 +35,8 @@ pub fn execute(
             // here we eliminate the sub_selects and also select back
             let mut insert_request = request.clone();
             match &mut insert_request {
-                ApiRequest { query: Query { sub_selects, node: Insert {returning, select, ..}}, ..} => {
+                ApiRequest { query: Query { sub_selects, node: Insert {returning, select, ..}}, ..} |
+                ApiRequest { query: Query { sub_selects, node: Update {returning, select, ..}}, ..} => {
                     returning.clear();
                     returning.push(primary_key_column.to_string());
                     select.clear();
@@ -71,7 +71,7 @@ pub fn execute(
             select_request.method = Method::GET;
             select_request.query = Query {
                 node: Select {
-                    from: (into.to_owned(), None),
+                    from: (table.to_owned(), None),
                     join_tables: vec![],
                     where_: select_where,
                     select: select.iter().cloned().collect(),
@@ -98,9 +98,9 @@ pub fn execute(
     // for p in params_from_iter(main_parameters.iter()) {
     //     println!("p {:?}", p.to_sql());
     // }
-    for p in main_parameters.iter() {
-        println!("p {:?}", p.to_sql());
-    }
+    // for p in main_parameters.iter() {
+    //     println!("p {:?}", p.to_sql());
+    // }
     let mut main_stm = conn
         .prepare_cached(main_statement.as_str())
         .map_err(|e| {

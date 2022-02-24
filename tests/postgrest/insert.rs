@@ -87,7 +87,7 @@ feature "insert"
     describe "requesting full representation1" $ do
       it "includes related data after insert" $
         request methodPost "/projects?select=id,name,clients(id,name)"
-                [("Prefer", "return=representation"), ("Prefer", "count=exact")]
+                [("Prefer", "return=representation, count=exact")]
           [json|r#"{"id":6,"name":"New Project","client_id":2}"#|] shouldRespondWith [json|r#"[{"id":6,"name":"New Project","clients":{"id":2,"name":"Apple"}}]"#|]
           { matchStatus  = 201
           , matchHeaders = [ "Content-Type" <:> "application/json"
