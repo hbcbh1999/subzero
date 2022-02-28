@@ -68,13 +68,7 @@ pub async fn execute<'a>(
 ) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(DbPoolError)?;
 
-    let transaction = client
-        .build_transaction()
-        .isolation_level(IsolationLevel::ReadCommitted)
-        .read_only(readonly)
-        .start()
-        .await
-        .context(DbError { authenticated })?;
+    
     let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request)?);
     // println!(
     //     "main_statement: \n{}\n{:?}",
@@ -82,6 +76,14 @@ pub async fn execute<'a>(
     // );
     let env = get_postgrest_env(role, &vec![schema_name.clone()], request, jwt_claims);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
+
+    let transaction = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::ReadCommitted)
+        .read_only(readonly)
+        .start()
+        .await
+        .context(DbError { authenticated })?;
 
     //TODO!!! optimize this so we run both queries in paralel
     let env_stm = transaction

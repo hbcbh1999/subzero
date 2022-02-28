@@ -48,19 +48,8 @@ pub fn execute(
             
             let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, &insert_request)?);
             println!("main_insert_statement: {} \n{}", main_parameters.len(), main_statement);
-            let mut insert_stmt = conn.prepare(main_statement.as_str())
-                .map_err(|e| {
-                    let _ = conn.execute_batch("ROLLBACK");
-                    e
-                })
-                .context(DbError { authenticated })?;
-            let mut rows = insert_stmt
-                .query(params_from_iter(main_parameters.iter()))
-                .map_err(|e| {
-                    let _ = conn.execute_batch("ROLLBACK");
-                    e
-                })
-                .context(DbError { authenticated })?;
+            let mut insert_stmt = conn.prepare(main_statement.as_str()).context(DbError { authenticated })?;
+            let mut rows = insert_stmt.query(params_from_iter(main_parameters.iter())).context(DbError { authenticated })?;
             let mut ids:Vec<i64> = vec![];
             while let Some(r) = rows.next().context(DbError { authenticated })? {
                 ids.push(r.get(0).context(DbError { authenticated })?)
@@ -81,19 +70,19 @@ pub fn execute(
                 },
                 sub_selects: sub_selects.iter().cloned().collect()
             };
-            Some(select_request)
+            Ok(Some(select_request))
         },
         _ => {
-            None
+            Ok(None)
         }
-    };
+    }.map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
 
     let final_request = match &second_stage_select {
         Some(r) => r,
         None => request
     };
     
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, final_request)?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, final_request).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
     println!("main_statement: {} \n{}", main_parameters.len(), main_statement);
     // for p in params_from_iter(main_parameters.iter()) {
     //     println!("p {:?}", p.to_sql());
@@ -103,30 +92,26 @@ pub fn execute(
     // }
     let mut main_stm = conn
         .prepare_cached(main_statement.as_str())
-        .map_err(|e| {
-            let _ = conn.execute_batch("ROLLBACK");
-            e
-        })
+        .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
         .context(DbError { authenticated })?;
 
     let mut rows = main_stm
         .query(params_from_iter(main_parameters.iter()))
-        .map_err(|e| {
-            let _ = conn.execute_batch("ROLLBACK");
-            e
-        })
+        .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
         .context(DbError { authenticated })?;
 
-    let main_row = rows.next().context(DbError { authenticated })?.unwrap();
+    let main_row = rows.next().context(DbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?.unwrap();
     let return_representation = return_representation(request);
-    let api_response = ApiResponse {
-        page_total: main_row.get("page_total").context(DbError { authenticated })?,       //("page_total"),
-        total_result_set: main_row.get("total_result_set").context(DbError { authenticated })?, //("total_result_set"),
-        top_level_offset: 0,
-        body: if return_representation {main_row.get("body").context(DbError { authenticated })?} else {"".to_string()},             //("body"),
-        response_headers: main_row.get("response_headers").context(DbError { authenticated })?, //("response_headers"),
-        response_status: main_row.get("response_status").context(DbError { authenticated })?,  //("response_status"),
-    };
+    let api_response = {
+        Ok(ApiResponse {
+            page_total: main_row.get("page_total").context(DbError { authenticated })?,       //("page_total"),
+            total_result_set: main_row.get("total_result_set").context(DbError { authenticated })?, //("total_result_set"),
+            top_level_offset: 0,
+            body: if return_representation {main_row.get("body").context(DbError { authenticated })?} else {"".to_string()},             //("body"),
+            response_headers: main_row.get("response_headers").context(DbError { authenticated })?, //("response_headers"),
+            response_status: main_row.get("response_status").context(DbError { authenticated })?,  //("response_status"),
+        })
+    }.map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
 
     println!("{:?} {:?}", return_representation, api_response);
 

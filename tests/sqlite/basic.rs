@@ -16,6 +16,32 @@ lazy_static! {
 
 haskell_test! {
 feature "basic"
+  describe "upsert" $ do
+    it "INSERTs and UPDATEs rows on pk conflict" $
+      request methodPost "/clients?select=id,name" [("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]
+        [json| r#"[
+          { "id": 1, "name": "Microsoft"},
+          { "id": 3, "name": "Oracle"}
+        ]"#|] shouldRespondWith [json| r#"[
+          { "id": 1, "name": "Microsoft"},
+          { "id": 3, "name": "Oracle"}
+        ]"#|]
+        { matchStatus = 201
+        , matchHeaders = ["Preference-Applied" <:> "resolution=merge-duplicates", "Content-Type" <:> "application/json"]
+        }
+
+    it "INSERTs and ignores rows on pk conflict" $
+      request methodPost "/clients?select=id,name" [("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
+        [json| r#"[
+          { "id": 1, "name": "Microsoft"},
+          { "id": 3, "name": "Oracle"}
+        ]"#|] shouldRespondWith [json| r#"[
+          { "id": 3, "name": "Oracle"}
+        ]"#|]
+        { matchStatus = 201
+        , matchHeaders = ["Preference-Applied" <:> "resolution=ignore-duplicates", "Content-Type" <:> "application/json"]
+        }
+
   describe "updating" $ do
     it "basic no representation" $ do
       request methodPatch "/tasks?id=eq.1"

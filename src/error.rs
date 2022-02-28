@@ -13,7 +13,7 @@ use rocket::request::Request;
 use rocket::response::{self, Responder, Response};
 use std::{io, path::PathBuf};
 #[cfg(feature = "postgresql")]
-use tokio_postgres::Error as PgError;
+use tokio_postgres::{Error as PgError};
 
 #[cfg(feature = "sqlite")]
 use rusqlite::Error as SqliteError;

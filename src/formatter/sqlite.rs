@@ -285,8 +285,8 @@ fn fmt_query<'a>(
                 fmt_body(payload, columns) +
                 " insert into " + fmt_qi(qi) + " " +into_columns +
                 " select " + select_columns +
-                " from subzero_body _ " +
-                " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql("") } + // this line is only relevant for upsert
+                " from subzero_body " +
+                " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql(" where true ") } + // this line is only relevant for upsert
                 match on_conflict {
                     Some((r,cols)) if cols.len()>0 => {
                         let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
