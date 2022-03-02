@@ -16,6 +16,25 @@ lazy_static! {
 
 haskell_test! {
 feature "basic"
+  describe "delete" $ do
+      it "succeeds with 204 and deletion count" $
+        request methodDelete "/projects?id=eq.5"
+            // []
+            ""
+          shouldRespondWith
+            [text|""|]
+            { matchStatus  = 204
+            , matchHeaders = [
+                             // matchHeaderAbsent hContentType,
+                             "Content-Range" <:> "*/*" ]
+            }
+
+      it "returns the deleted item and count if requested" $
+        request methodDelete "/projects?id=eq.5" [("Prefer", "return=representation, count=exact")] ""
+          shouldRespondWith [json|r#"[{"rowid":5}]"#|]
+          { matchStatus  = 200
+          , matchHeaders = ["Content-Range" <:> "*/1"]
+          }
   describe "upsert" $ do
     it "INSERTs and UPDATEs rows on pk conflict" $
       request methodPost "/clients?select=id,name" [("Prefer", "return=representation"), ("Prefer", "resolution=merge-duplicates")]

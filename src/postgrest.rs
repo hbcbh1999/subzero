@@ -169,7 +169,7 @@ pub async fn handle_postgrest_request(
 
     let content_range = match (method, &request.query.node, page_total, total_result_set) {
         (&Method::POST, Insert { .. }, _pt, t) => content_range_header(1, 0, t),
-        (&Method::DELETE, Delete { .. }, _pt, t) => content_range_header(1, 0, t),
+        (&Method::DELETE, Delete { .. }, pt, t) => content_range_header(1, top_level_offset + pt - 1, t),
         (_, _, pt, t) => content_range_header(top_level_offset, top_level_offset + pt - 1, t),
     };
 

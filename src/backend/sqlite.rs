@@ -1,3 +1,5 @@
+// use std::collections::HashMap;
+
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::params_from_iter;
@@ -5,16 +7,17 @@ use crate::{
     formatter::sqlite::{fmt_main_query, return_representation},
     api::{
         Condition, Field, SelectItem, Filter, ListVal,
-        ApiRequest, ApiResponse, ContentType::*, Query, QueryNode::*, 
+        ApiRequest, ApiResponse, ContentType::*, Query, QueryNode::*, Preferences, Count
     },
     config::VhostConfig,
     dynamic_statement::generate,
     error::{Result, *},
     schema::DbSchema,
 };
-use serde_json::{Value as JsonValue};
+use serde_json::{Value as JsonValue, json};
 use http::Method;
 use snafu::ResultExt;
+use log::{debug};
 
 pub fn execute(
     method: &Method, pool: &Pool<SqliteConnectionManager>, _readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest<'_>,
@@ -24,18 +27,21 @@ pub fn execute(
 
     conn.execute_batch("BEGIN DEFERRED").context(DbError { authenticated })?;
     //let transaction = conn.transaction().context(DbError { authenticated })?;
-
-    let second_stage_select = match request {
-        ApiRequest {query: Query { node: Insert {into:table,where_,select,..}, sub_selects },..} |
-        ApiRequest {query: Query { node: Update {table,where_,select,..}, sub_selects },..} => {
+    let primary_key_column = "rowid"; //every table has this (TODO!!! check)
+    let return_representation = return_representation(request);
+    let (second_stage_select, first_stage_reponse) = match request {
+        ApiRequest {query: Query { node: node@Insert {into:table,where_,select,..}, sub_selects },..} |
+        ApiRequest {query: Query { node: node@Update {table,where_,select,..}, sub_selects },..} |
+        ApiRequest {query: Query { node: node@Delete {from:table,where_,select,..}, sub_selects },..} => {
             //sqlite does not support returining in CTEs so we must do a two step process
-            let primary_key_column = "rowid"; //evey table has this (TODO!!! check)
+            
             let primary_key_field = Field {name: primary_key_column.to_string(), json_path: None};
             
             // here we eliminate the sub_selects and also select back
-            let mut insert_request = request.clone();
-            match &mut insert_request {
+            let mut mutate_request = request.clone();
+            match &mut mutate_request {
                 ApiRequest { query: Query { sub_selects, node: Insert {returning, select, ..}}, ..} |
+                ApiRequest { query: Query { sub_selects, node: Delete {returning, select, ..}}, ..} |
                 ApiRequest { query: Query { sub_selects, node: Update {returning, select, ..}}, ..} => {
                     returning.clear();
                     returning.push(primary_key_column.to_string());
@@ -46,9 +52,10 @@ pub fn execute(
                 _ => {}
             }
             
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, &insert_request)?);
-            let mut insert_stmt = conn.prepare(main_statement.as_str()).context(DbError { authenticated })?;
-            let mut rows = insert_stmt.query(params_from_iter(main_parameters.iter())).context(DbError { authenticated })?;
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, &mutate_request)?);
+            debug!("pre_statement: {}", main_statement);
+            let mut mutate_stmt = conn.prepare(main_statement.as_str()).context(DbError { authenticated })?;
+            let mut rows = mutate_stmt.query(params_from_iter(main_parameters.iter())).context(DbError { authenticated })?;
             let mut ids:Vec<i64> = vec![];
             while let Some(r) = rows.next().context(DbError { authenticated })? {
                 ids.push(r.get(0).context(DbError { authenticated })?)
@@ -69,12 +76,48 @@ pub fn execute(
                 },
                 sub_selects: sub_selects.iter().cloned().collect()
             };
-            Ok(Some(select_request))
+
+            let response  = match node {
+                Delete { .. } => {
+                    let count = match &request.preferences {
+                        Some(Preferences {
+                            count: Some(Count::ExactCount),
+                            ..
+                        }) => true,
+                        _ => false,
+                    };
+                    
+                    Some(ApiResponse {
+                        page_total: ids.len() as i64,
+                        total_result_set: if count { Some(ids.len() as i64) } else {None},
+                        top_level_offset: 0,
+                        body: if return_representation {
+                            serde_json::to_string(&ids.iter().map(|i| 
+                                json!({primary_key_column:i})
+                            ).collect::<Vec<_>>()).context(JsonSerialize)? 
+                        } else {"".to_string()},
+                        response_headers: None,
+                        response_status: None
+                    })
+                },
+                _ => None
+            };
+
+            Ok((Some(select_request),response))
         },
         _ => {
-            Ok(None)
+            Ok((None,None))
         }
     }.map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
+
+    if let Some(r) = first_stage_reponse { // this is a special case for delete
+        if config.db_tx_rollback {
+            conn.execute_batch("ROLLBACK").context(DbError { authenticated })?;
+        } else {
+            conn.execute_batch("COMMIT").context(DbError { authenticated })?;
+        }
+        return Ok(r)
+    }
 
     let final_request = match &second_stage_select {
         Some(r) => r,
@@ -82,6 +125,7 @@ pub fn execute(
     };
     
     let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, final_request).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+    debug!("main_statement: {}", main_statement);
     let mut main_stm = conn
         .prepare_cached(main_statement.as_str())
         .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
@@ -93,7 +137,7 @@ pub fn execute(
         .context(DbError { authenticated })?;
 
     let main_row = rows.next().context(DbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?.unwrap();
-    let return_representation = return_representation(request);
+    
     let api_response = {
         Ok(ApiResponse {
             page_total: main_row.get("page_total").context(DbError { authenticated })?,       //("page_total"),
