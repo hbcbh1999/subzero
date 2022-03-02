@@ -776,7 +776,6 @@ macro_rules! fmt_filter {
                     match lng {
                         Some(l) => {
                             let ll: &(dyn ToSql + Sync) = l;
-                            //println!("==formating {:?} {:?} {:?}", o, ll, vv);
                             fmt_operator(o)? + ("(" + param(ll) + "," + param(vv) + ")")
                         }
                         None => fmt_operator(o)? + ("(" + param(vv) + ")"),

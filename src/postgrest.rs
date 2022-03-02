@@ -71,7 +71,6 @@ pub async fn handle_postgrest_request(
         }
         _ => Ok(config.db_schemas.get(0).unwrap().clone()),
     }?);
-    //println!("{} -> {:#?}", schema_name, db_schema);
 
     if config.db_schemas.len() > 1 {
         response_headers.push((format!("Content-Profile"), schema_name.clone()));
@@ -126,7 +125,6 @@ pub async fn handle_postgrest_request(
 
     // parse request and generate the query
     let request = parse(schema_name, root, db_schema, method, path, parameters, body, headers, cookies, config.db_max_rows)?;
-    //println!("request: \n{:#?}", request);
 
     let readonly = match (method, &request) {
         (&Method::GET, _) => true,
@@ -177,7 +175,6 @@ pub async fn handle_postgrest_request(
 
     response_headers.push((format!("Content-Range"), content_range));
     if let Some(response_headers_str) = response.response_headers {
-        //println!("response_headers_str: {:?}", response_headers_str);
         match serde_json::from_str(response_headers_str.as_str()) {
             Ok(JsonValue::Array(headers_json)) => {
                 for h in headers_json {

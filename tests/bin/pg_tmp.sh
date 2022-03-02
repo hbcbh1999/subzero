@@ -56,7 +56,7 @@ case ${CMD:-start} in
 initdb)
 	[ -z $TD ] || mkdir -p $TD
 	[ -z $TD ] && TD="$(mktemp -d ${SYSTMP:-/tmp}/ephemeralpg.XXXXXX)"
-	initdb --nosync -D $TD/$PGVER -E UNICODE -A trust  -U $SUPERUSER > $TD/initdb.out
+	initdb --nosync -D $TD/$PGVER -E UNICODE --locale=en_US -A trust  -U $SUPERUSER > $TD/initdb.out
 	cat <<-EOF >> $TD/$PGVER/postgresql.conf
 	    # log_statement = 'all'
 	    # log_min_messages = debug1

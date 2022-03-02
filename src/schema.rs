@@ -30,11 +30,7 @@ impl DbSchema {
             schemas: vec![current_schema.to_owned()],
         })?;
 
-        //println!("--------------looking for {} {}->{}.{:?}", current_schema, origin, target, hint);
-        //println!("in {:#?}", self);
-        // println!("--------------got schema");
         let origin_table = schema.objects.get(origin).context(UnknownRelation { relation: origin.to_owned() })?;
-        // println!("--------------got table");
 
         match origin_table
             .foreign_keys
@@ -45,7 +41,7 @@ impl DbSchema {
             // projects?select=projects_client_id_fkey(*)
             // TODO! when views are involved there may be multiple fks with the same name
             Some(fk) => {
-                //println!("found FK {:?}", fk);
+                
                 if origin == &fk.table.1 {
                     Ok(Parent(fk.clone()))
                 } else {
@@ -56,10 +52,9 @@ impl DbSchema {
                 match schema.objects.get(target) {
                     // the target is an existing table
                     Some(target_table) => {
-                        //println!("--------------got target table");
+                        
                         match hint {
                             Some(h) => {
-                                //println!("--------------got hint {:?}", origin_table.foreign_keys);
                                 // projects?select=clients!projects_client_id_fkey(*)
                                 if let Some(fk) = origin_table
                                     .foreign_keys
@@ -135,7 +130,7 @@ impl DbSchema {
                                         .collect::<Vec<_>>(),
                                 );
 
-                                //println!("joins vector: {:#?}", joins);
+                                
                                 if joins.len() == 1 {
                                     Ok(joins[0].clone())
                                 } else if joins.len() == 0 {
@@ -163,7 +158,6 @@ impl DbSchema {
                                     .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin)
                                     .map(|fk| Child(fk.clone()))
                                     .collect::<Vec<_>>();
-                                //println!("target tbl fks: {:#?}", target_table);
 
                                 // check parent relations
                                 // projects?select=clients(*)
@@ -186,7 +180,6 @@ impl DbSchema {
                                         .iter()
                                         .filter_map(|t| schema.objects.get(t))
                                         .filter_map(|join_table| {
-                                            //println!("entering filter map");
                                             let fks1 = join_table
                                                 .foreign_keys
                                                 .iter()
@@ -229,10 +222,7 @@ impl DbSchema {
                                 joins.extend(parent_joins);
                                 joins.extend(many_joins);
 
-                                //println!("total joins: {:#?}", joins);
-
                                 if joins.len() == 1 {
-                                    // println!("--------------found 1 {:?}", joins[0].clone());
                                     Ok(joins[0].clone())
                                 } else if joins.len() == 0 {
                                     Err(Error::NoRelBetween {

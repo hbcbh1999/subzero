@@ -69,10 +69,8 @@ pub fn parse<'r>(
     let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {
         schemas: vec![schema.to_owned()],
     })?;
-    //println!("got schema");
     let root_obj = schema_obj.objects.get(root).context(NotFound { target: root.clone() })?;
 
-    //println!("root_obj {:#?}", root_obj);
     //let mut select_items = vec![SelectItem::Star];
     let mut limits = vec![];
     let mut offsets = vec![];
@@ -158,7 +156,6 @@ pub fn parse<'r>(
                 let los = if lo == And { "and" } else { "or" };
                 let s = format!("{}{}{}", ns, los, v);
 
-                //println!("ppp {:#?}", (&tp, &n, &lo, &los, &s));
                 let (c, _) = logic_condition()
                     .message("failed to parse logic tree")
                     .easy_parse(s.as_str())
@@ -355,7 +352,6 @@ pub fn parse<'r>(
                     let payload = body.context(InvalidBody {
                         message: "body not available".to_string(),
                     })?;
-                    //println!("============ {:?} {:?}", required_params, parameters);
                     let params = match (parameters.len(), parameters.get(0)) {
                         (1, Some(p)) if p.name == "" && (p.type_ == "json" || p.type_ == "jsonb") => CallParams::OnePosParam(p.clone()),
                         _ => {
@@ -462,7 +458,6 @@ pub fn parse<'r>(
                 },
                 sub_selects,
             };
-            //println!("query {:#?}", q);
             add_join_info(&mut q, &schema, db_schema, 0)?;
             Ok(q)
         }
@@ -799,7 +794,6 @@ pub fn parse<'r>(
                 })
                 .collect::<BTreeSet<_>>();
 
-            println!("before check {:?} {:?}", pk_cols, conditions_on_fields);
             if !(pk_cols.len() > 0 && conditions_on_fields == pk_cols && root_conditions.len() == conditions_on_fields.len()) {
                 return Err(Error::InvalidFilters);
             }
@@ -837,7 +831,6 @@ pub fn parse<'r>(
         _ => Err(Error::UnsupportedVerb),
     }?;
 
-    //println!("{:#?}", query);
     insert_join_conditions(&mut query, &schema, db_schema)?;
     insert_conditions(&mut query, conditions)?;
 
@@ -1187,7 +1180,6 @@ where
         match OPERATORS.get(o.as_str()) {
             Some(oo) => Ok(oo.to_string()),
             None => {
-                //println!("unknown operator {}", o);
                 Err(StreamErrorFor::<Input>::message_static_message("unknown operator"))
             }
         }
@@ -1452,13 +1444,11 @@ fn add_join_info(query: &mut Query, schema: &String, db_schema: &DbSchema, depth
         } = &mut q.node
         {
             let new_join = db_schema.get_join(schema, parent_table, child_table, hint)?;
-            //println!("new join: {:#?}", new_join);
             if is_self_join(&new_join) {
                 *table_alias = Some(format!("{}_{}", child_table, depth));
             }
             match &new_join {
                 Parent(fk) if &fk.referenced_table.1 != child_table => {
-                    // println!("entering swap section: fk:{:#?}\nct:{:#?}\nal:{:#?}", fk, child_table, alias);
                     if alias.is_none() {
                         *alias = Some(child_table.clone());
                     }
@@ -3343,7 +3333,6 @@ pub mod tests {
             },
         );
         assert_eq!(tree_path().easy_parse("sub.path.field->key"), Ok((result, "")));
-        //println!("{:#?}", tree_path().easy_parse("stores.zone_type_id"));
         //assert!(false);
     }
 

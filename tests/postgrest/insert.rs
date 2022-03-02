@@ -192,7 +192,7 @@ feature "insert"
           post "/simple_pk" [json| r#"{ "extra":"foo"}"# |]
           shouldRespondWith
           // (if actualPgVersion >= pgVersion130 then
-            [json|r#"{"code":"23502","message":"null value in column \"k\" violates not-null constraint","details":"Failing row contains (null, foo).","hint":null}"#|]
+            [json|r#"{"code":"23502","message":"null value in column \"k\" of relation \"simple_pk\" violates not-null constraint","details":"Failing row contains (null, foo).","hint":null}"#|]
           //  else
           //   [json|r#"{"hint":null,"details":"Failing row contains (null, foo).","code":"23502","message":"null value in column \"k\" violates not-null constraint"}"#|]
           // )

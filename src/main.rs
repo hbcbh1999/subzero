@@ -6,6 +6,8 @@ extern crate lazy_static;
 #[macro_use]
 extern crate rocket;
 
+use log::{info};
+
 use dashmap::DashMap;
 use http::Method;
 
@@ -219,8 +221,8 @@ async fn start() -> Result<Rocket<Build>> {
         //tokio::spawn(async move {
         //sleep(Duration::from_millis(30 * 1000)).await;
         match create_resources(&vhost, vhost_config, vhost_resources).await {
-            Ok(_) => println!("[{}] loaded config", vhost),
-            Err(e) => println!("[{}] config load failed ({})", vhost, e),
+            Ok(_) => info!("[{}] loaded config", vhost),
+            Err(e) => info!("[{}] config load failed ({})", vhost, e),
         }
         //});
     }

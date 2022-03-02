@@ -49,7 +49,7 @@ pub fn setup_db(init_db_once: &Once) {
         //     format!(r#"{{json_file={}}}"#, schema_file.to_str().unwrap()),
         // );
 
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=sqlite_structure_query.sql}}"#));
+        //env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=sqlite_structure_query.sql}}"#));
     });
 }
 

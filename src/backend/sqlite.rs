@@ -47,7 +47,6 @@ pub fn execute(
             }
             
             let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, &insert_request)?);
-            println!("main_insert_statement: {} \n{}", main_parameters.len(), main_statement);
             let mut insert_stmt = conn.prepare(main_statement.as_str()).context(DbError { authenticated })?;
             let mut rows = insert_stmt.query(params_from_iter(main_parameters.iter())).context(DbError { authenticated })?;
             let mut ids:Vec<i64> = vec![];
@@ -83,13 +82,6 @@ pub fn execute(
     };
     
     let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, final_request).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
-    println!("main_statement: {} \n{}", main_parameters.len(), main_statement);
-    // for p in params_from_iter(main_parameters.iter()) {
-    //     println!("p {:?}", p.to_sql());
-    // }
-    // for p in main_parameters.iter() {
-    //     println!("p {:?}", p.to_sql());
-    // }
     let mut main_stm = conn
         .prepare_cached(main_statement.as_str())
         .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
@@ -113,8 +105,6 @@ pub fn execute(
         })
     }.map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
 
-    println!("{:?} {:?}", return_representation, api_response);
-
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
         conn.execute_batch("ROLLBACK").context(DbError { authenticated })?;
         return Err(Error::SingularityError {
@@ -122,8 +112,6 @@ pub fn execute(
             content_type: "application/vnd.pgrst.object+json".to_string(),
         });
     }
-
-    //println!("before check {:?} {:?}", method, page_total);
 
     if method == &Method::PUT && api_response.page_total != 1 {
         // Makes sure the querystring pk matches the payload pk

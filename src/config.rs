@@ -10,7 +10,12 @@ pub enum SchemaStructure {
     JsonString(String),
 }
 impl Default for SchemaStructure {
-    fn default() -> Self { SchemaStructure::SqlFile("structure_query.sql".to_string()) }
+    #[cfg(feature = "postgresql")]
+    fn default() -> Self { SchemaStructure::SqlFile("postgresql_structure_query.sql".to_string()) }
+    #[cfg(feature = "sqlite")]
+    fn default() -> Self { SchemaStructure::SqlFile("sqlite_structure_query.sql".to_string()) }
+    #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
+    fn default() -> Self { SchemaStructure::JsonString(r#"{"schemas":[]}"#.to_string()) }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]

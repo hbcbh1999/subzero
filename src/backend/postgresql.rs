@@ -70,10 +70,6 @@ pub async fn execute<'a>(
 
     
     let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request)?);
-    // println!(
-    //     "main_statement: \n{}\n{:?}",
-    //     main_statement, main_parameters
-    // );
     let env = get_postgrest_env(role, &vec![schema_name.clone()], request, jwt_claims);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
 
