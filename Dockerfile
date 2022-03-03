@@ -8,7 +8,7 @@ FROM rustlang/rust:nightly as builder
 ARG BACKEND
 WORKDIR /usr/src/subzero
 COPY . .
-RUN cargo build --features postgresql --release
+RUN cargo build --features ${BACKEND} --release
 
 FROM debian:buster-slim
 ARG BACKEND
