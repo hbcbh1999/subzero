@@ -19,13 +19,17 @@ use http::Method;
 use snafu::ResultExt;
 
 
-fn get_postgrest_env(role: &String, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>) -> HashMap<String, String> {
+fn get_postgrest_env(role: Option<&String>, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>) -> HashMap<String, String> {
     let mut env = HashMap::new();
-    env.insert("role".to_string(), role.clone());
+    if let Some(r) = role {
+        env.insert("role".to_string(), r.clone());
+        env.insert("request.jwt.claim.role".to_string(), r.clone());
+    }
+    
     env.insert("request.method".to_string(), format!("{}", request.method));
     env.insert("request.path".to_string(), format!("{}", request.path));
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
-    env.insert("request.jwt.claim.role".to_string(), role.clone());
+    
     env.insert("search_path".to_string(), search_path.join(", ").to_string());
     env.extend(
         request
@@ -63,7 +67,7 @@ fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'
 }
 
 pub async fn execute<'a>(
-    method: &Method, pool: &'a Pool, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest<'_>, role: &String,
+    method: &Method, pool: &'a Pool, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest<'_>, role: Option<&String>,
     jwt_claims: &Option<JsonValue>, config: &VhostConfig, _db_schema: &DbSchema
 ) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(DbPoolError)?;

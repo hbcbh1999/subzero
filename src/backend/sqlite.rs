@@ -21,7 +21,7 @@ use log::{debug};
 
 pub fn execute(
     method: &Method, pool: &Pool<SqliteConnectionManager>, _readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest<'_>,
-    _role: &String, _jwt_claims: &Option<JsonValue>, config: &VhostConfig, _db_schema: &DbSchema
+    _role: Option<&String>, _jwt_claims: &Option<JsonValue>, config: &VhostConfig, _db_schema: &DbSchema
 ) -> Result<ApiResponse> {
     let conn = pool.get().unwrap();
 

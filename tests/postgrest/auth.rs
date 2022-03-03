@@ -112,12 +112,12 @@ feature "auth"
     it "should fail when jwt contains no claims" $ do
       let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.CUIP5V9thWsGGFsFyGijSZf1fJMfarLHI9CEJL-TGNk"
       request methodGet "/authors_only" [auth] ""
-        shouldRespondWith 401
+        shouldRespondWith 403 //401
 
     it "hides tables from users with JWT that contain no claims about role" $ do
       let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6Impkb2UifQ.RVlZDaSyKbFPvxUf3V_NQXybfRB4dlBIkAUQXVXLUAI"
       request methodGet "/authors_only" [auth] ""
-        shouldRespondWith 401
+        shouldRespondWith 403 //401
 
     // it "recovers after 401 error with logged in user" $ do
     //   _ <- post "/authors_only" [json|r#" { "owner": "jdoe", "secret": "test content" } "#|]

@@ -115,13 +115,18 @@ pub async fn handle_postgrest_request(
     let (role, authenticated) = match &jwt_claims {
         Some(claims) => match select(&claims, format!("${}", config.role_claim_key).as_str()) {
             Ok(v) => match &v[..] {
-                [JsonValue::String(s)] => Ok((s, true)),
-                _ => Ok((&config.db_anon_role, false)),
+                [JsonValue::String(s)] => Ok((Some(s), true)),
+                _ => Ok((config.db_anon_role.as_ref(), true)),
             },
             Err(e) => Err(Error::JwtTokenInvalid { message: format!("{}", e) }),
         },
-        None => Ok((&config.db_anon_role, false)),
+        None => Ok((config.db_anon_role.as_ref(), false)),
     }?;
+
+    // do not allow unauthenticated requests when there is no anonymous role setup
+    if let (None, false) = (role, authenticated) {
+        return Err(Error::JwtTokenInvalid {message: "unauthenticated requests not allowed".to_string()})
+    }
 
     // parse request and generate the query
     let request = parse(schema_name, root, db_schema, method, path, parameters, body, headers, cookies, config.db_max_rows)?;

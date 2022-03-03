@@ -10,10 +10,8 @@ pub enum SchemaStructure {
     JsonString(String),
 }
 impl Default for SchemaStructure {
-    #[cfg(feature = "postgresql")]
-    fn default() -> Self { SchemaStructure::SqlFile("postgresql_structure_query.sql".to_string()) }
-    #[cfg(feature = "sqlite")]
-    fn default() -> Self { SchemaStructure::SqlFile("sqlite_structure_query.sql".to_string()) }
+    #[cfg(any(feature = "sqlite", feature = "postgresql"))]
+    fn default() -> Self { SchemaStructure::SqlFile("structure_query.sql".to_string()) }
     #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
     fn default() -> Self { SchemaStructure::JsonString(r#"{"schemas":[]}"#.to_string()) }
 }
@@ -58,10 +56,11 @@ mod vhosts {
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct VhostConfig {
     pub db_uri: String,
+    #[serde(default = "db_schemas")]
     pub db_schemas: Vec<String>,
     #[serde(default)]
     pub db_schema_structure: SchemaStructure,
-    pub db_anon_role: String,
+    pub db_anon_role: Option<String>,
     pub db_max_rows: Option<u32>,
     #[serde(default = "db_pool")]
     pub db_pool: usize,
@@ -74,6 +73,13 @@ pub struct VhostConfig {
     #[serde(default = "role_claim_key")]
     pub role_claim_key: String,
 }
+
+#[cfg(feature = "postgresql")]
+fn db_schemas() -> Vec<String> { vec!["public".to_string()] }
+#[cfg(feature = "sqlite")]
+fn db_schemas() -> Vec<String> { vec!["_sqlite_public_".to_string()] }
+#[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
+fn db_schemas() -> Vec<String> { vec![] }
 
 fn role_claim_key() -> String { ".role".to_string() }
 fn db_pool() -> usize { 10 }
@@ -110,7 +116,7 @@ mod test {
                     db_uri: "db_uri".to_string(),
                     db_schemas: vec!["db_schema".to_string()],
                     db_schema_structure: SchemaStructure::SqlFile("sql_file".to_string()),
-                    db_anon_role: "anonymous".to_string(),
+                    db_anon_role: Some("anonymous".to_string()),
                     db_tx_rollback: false,
                     db_pre_request: Some(("api".to_string(), "test".to_string())),
                     jwt_secret: None,
