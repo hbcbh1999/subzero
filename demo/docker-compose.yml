@@ -23,10 +23,11 @@ services:
       - SUBZERO_ADDRESS=0.0.0.0
       - SUBZERO_VHOSTS__DEFAULT__DB_URI=postgres://postgres:postgrespass@db:5432/app?application_name=subzero
       - SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE=postgres
-      # - SUBZERO_VHOSTS__DEFAULT__DB_USE_LEGACY_GUCS=false
+      - SUBZERO_VHOSTS__DEFAULT__DB_USE_LEGACY_GUCS=false
+      - SUBZERO_VHOSTS__DEFAULT__DB_POOL=10
   postgrest:
     container_name: postgrest
-    image: postgrest/postgrest
+    image: postgrest/postgrest:v9.0.0
     ports:
       - "3000:3000"
     links:
@@ -35,5 +36,8 @@ services:
       - PGRST_DB_URI=postgres://postgres:postgrespass@db:5432/app?application_name=subzpostgrest
       - PGRST_DB_SCHEMA=public 
       - PGRST_DB_ANON_ROLE=postgres
+      - PGRST_DB_CONFIG=false
+      - PGRST_DB_USE_LEGACY_GUCS=false
+      - PGRST_DB_POOL=10
     depends_on:
       - db

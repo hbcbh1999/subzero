@@ -31,7 +31,8 @@ docker run --rm -p 3000:3000 \
 postgrest/postgrest
 
 
-PGRST_DB_SCHEMAS="public" \
-PGRST_DB_ANON_ROLE="postgrest_test_authenticator" \
-PGRST_DB_URI=$url \
-./postgrest
+ PGRST_DB_SCHEMAS="public" \
+ PGRST_DB_ANON_ROLE=postgrest_test_authenticator \
+ PGRST_DB_URI=$url \
+ PGRST_DB_CONFIG=false \
+ ./postgrest
