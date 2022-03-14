@@ -11,3 +11,5 @@ SUBZERO_LOG_LEVEL=debug cargo test --features postgresql -- --test-threads=1
 
 cargo build --features sqlite --release --target=x86_64-unknown-linux-musl
 cargo build --features postgresql --release --target=x86_64-unknown-linux-musl
+
+SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE={sql_file=postgresql_structure_query.sql} SUBZERO_VHOSTS__DEFAULT__DB_URI=postgres://localhost cargo run --bin subzero-postgresql

@@ -6,7 +6,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate rocket;
 
-use log::{info};
+//use log::{info};
 
 use dashmap::DashMap;
 use http::Method;
@@ -215,14 +215,14 @@ async fn start() -> Result<Rocket<Build>> {
 
     let app_config: Config = config.extract().expect("config");
     let vhost_resources = Arc::new(DashMap::new());
-
+    println!("Found {} configured vhosts", app_config.vhosts.len());
     for (vhost, vhost_config) in app_config.vhosts {
         let vhost_resources = vhost_resources.clone();
         //tokio::spawn(async move {
         //sleep(Duration::from_millis(30 * 1000)).await;
         match create_resources(&vhost, vhost_config, vhost_resources).await {
-            Ok(_) => info!("[{}] loaded config", vhost),
-            Err(e) => info!("[{}] config load failed ({})", vhost, e),
+            Ok(_) => println!("[{}] loaded config", vhost),
+            Err(e) => println!("[{}] config load failed ({})", vhost, e),
         }
         //});
     }

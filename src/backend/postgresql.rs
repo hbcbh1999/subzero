@@ -17,9 +17,9 @@ use std::{
 use serde_json::{Value as JsonValue};
 use http::Method;
 use snafu::ResultExt;
+// use futures::future;
 
-
-fn get_postgrest_env(role: Option<&String>, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>) -> HashMap<String, String> {
+fn get_postgrest_env(role: Option<&String>, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
     let mut env = HashMap::new();
     if let Some(r) = role {
         env.insert("role".to_string(), r.clone());
@@ -31,30 +31,62 @@ fn get_postgrest_env(role: Option<&String>, search_path: &Vec<String>, request: 
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
     
     env.insert("search_path".to_string(), search_path.join(", ").to_string());
-    env.extend(
-        request
-            .headers
-            .iter()
-            .map(|(k, v)| (format!("request.header.{}", k.to_lowercase()), v.to_string())),
-    );
-    env.extend(request.cookies.iter().map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())));
-    match jwt_claims {
-        Some(v) => match v.as_object() {
-            Some(claims) => {
-                env.extend(claims.iter().map(|(k, v)| {
-                    (
-                        format!("request.jwt.claim.{}", k),
-                        match v {
-                            JsonValue::String(s) => s.clone(),
-                            _ => format!("{}", v),
-                        },
-                    )
-                }));
-            }
+    if use_legacy_gucs {
+        env.extend(
+            request
+                .headers
+                .iter()
+                .map(|(k, v)| (format!("request.header.{}", k.to_lowercase()), v.to_string())),
+        );
+        env.extend(request.cookies.iter().map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())));
+        match jwt_claims {
+            Some(v) => match v.as_object() {
+                Some(claims) => {
+                    env.extend(claims.iter().map(|(k, v)| {
+                        (
+                            format!("request.jwt.claim.{}", k),
+                            match v {
+                                JsonValue::String(s) => s.clone(),
+                                _ => format!("{}", v),
+                            },
+                        )
+                    }));
+                }
+                None => {}
+            },
             None => {}
-        },
-        None => {}
+        }
     }
+    else {
+        env.insert("request.headers".to_string(), 
+            serde_json::to_string(
+                &request
+                .headers
+                .iter()
+                .map(|(k, v)| (k.to_lowercase(), v.to_string()))
+                .collect::<Vec<_>>()
+            ).unwrap()
+        );
+        env.insert("request.cookies".to_string(), 
+            serde_json::to_string(
+                &request
+                .cookies
+                .iter()
+                .map(|(k, v)| (k, v.to_string()))
+                .collect::<Vec<_>>()
+            ).unwrap()
+        );
+        match jwt_claims {
+            Some(v) => match v.as_object() {
+                Some(claims) => {
+                    env.insert("request.jwt.claims".to_string(), serde_json::to_string(&claims).unwrap());                    
+                }
+                None => {}
+            },
+            None => {}
+        }
+    }
+    
     env
 }
 
@@ -74,7 +106,7 @@ pub async fn execute<'a>(
 
     
     let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request)?);
-    let env = get_postgrest_env(role, &vec![schema_name.clone()], request, jwt_claims);
+    let env = get_postgrest_env(role, &vec![schema_name.clone()], request, jwt_claims, config.db_use_legacy_gucs);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
 
     let transaction = client
@@ -85,7 +117,18 @@ pub async fn execute<'a>(
         .await
         .context(DbError { authenticated })?;
 
-    //TODO!!! optimize this so we run both queries in paralel
+    //paralel
+    // let (env_stm, main_stm) = future::try_join(
+    //         transaction.prepare_cached(env_statement.as_str()),
+    //         transaction.prepare_cached(main_statement.as_str())
+    //     ).await.context(DbError { authenticated })?;
+    
+    // let (_, rows) = future::try_join(
+    //     transaction.query(&env_stm, env_parameters.as_slice()),
+    //     transaction.query(&main_stm, main_parameters.as_slice())
+    // ).await.context(DbError { authenticated })?;
+
+    
     let env_stm = transaction
         .prepare_cached(env_statement.as_str())
         .await
@@ -119,15 +162,7 @@ pub async fn execute<'a>(
         .await
         .context(DbError { authenticated })?;
 
-    // let (env_stm, main_stm) = future::try_join(
-    //         transaction.prepare_cached(env_statement.as_str()),
-    //         transaction.prepare_cached(main_statement.as_str())
-    //     ).await.context(DbError)?;
-
-    // let (_, rows) = future::try_join(
-    //     transaction.query(&env_stm, env_parameters.as_slice()),
-    //     transaction.query(&main_stm, main_parameters.as_slice())
-    // ).await.context(DbError)?;
+    
     let api_response = ApiResponse {
         page_total: rows[0].get("page_total"),
         total_result_set: rows[0].get("total_result_set"),

@@ -16,6 +16,6 @@ RUN apt-get update && \
     # apt-get install -y extra-runtime-dependencies && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/src/subzero/target/release/subzero-${BACKEND} /usr/local/bin/subzero
-COPY --from=builder /usr/src/subzero/${BACKEND}_structure_query.sql /usr/local/bin/structure_query.sql
+COPY --from=builder /usr/src/subzero/${BACKEND}_structure_query.sql /structure_query.sql
 EXPOSE 8000
 CMD ["subzero"]

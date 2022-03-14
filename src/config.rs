@@ -62,6 +62,8 @@ pub struct VhostConfig {
     pub db_schema_structure: SchemaStructure,
     pub db_anon_role: Option<String>,
     pub db_max_rows: Option<u32>,
+    #[serde(default)]
+    pub db_use_legacy_gucs: bool,
     #[serde(default = "db_pool")]
     pub db_pool: usize,
     #[serde(default)]
@@ -117,6 +119,7 @@ mod test {
                     db_schemas: vec!["db_schema".to_string()],
                     db_schema_structure: SchemaStructure::SqlFile("sql_file".to_string()),
                     db_anon_role: Some("anonymous".to_string()),
+                    db_use_legacy_gucs: false,
                     db_tx_rollback: false,
                     db_pre_request: Some(("api".to_string(), "test".to_string())),
                     jwt_secret: None,

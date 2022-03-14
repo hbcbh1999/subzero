@@ -1,0 +1,39 @@
+version: '2'
+services:
+  db:
+    container_name: db
+    image: postgres:14
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgrespass
+      - POSTGRES_DB=app
+    volumes:
+      - "./db/pg_init.sql:/docker-entrypoint-initdb.d/pg_init.sql"
+      #- "./db/pg_init.sh:/docker-entrypoint-initdb.d/pg_init.sh"
+  subzero-postgresql:
+    container_name: subzero-postgresql
+    image: subzero-postgresql
+    ports:
+      - "8000:8000"
+    depends_on:
+      - "db"
+    environment:
+      - SUBZERO_ADDRESS=0.0.0.0
+      - SUBZERO_VHOSTS__DEFAULT__DB_URI=postgres://postgres:postgrespass@db:5432/app?application_name=subzero
+      - SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE=postgres
+      # - SUBZERO_VHOSTS__DEFAULT__DB_USE_LEGACY_GUCS=false
+  postgrest:
+    container_name: postgrest
+    image: postgrest/postgrest
+    ports:
+      - "3000:3000"
+    links:
+      - db:db
+    environment:
+      - PGRST_DB_URI=postgres://postgres:postgrespass@db:5432/app?application_name=subzpostgrest
+      - PGRST_DB_SCHEMA=public 
+      - PGRST_DB_ANON_ROLE=postgres
+    depends_on:
+      - db
