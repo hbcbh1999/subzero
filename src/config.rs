@@ -55,6 +55,7 @@ mod vhosts {
 
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct VhostConfig {
+    pub url_prefix: Option<String>,
     pub db_uri: String,
     #[serde(default = "db_schemas")]
     pub db_schemas: Vec<String>,
@@ -115,6 +116,7 @@ mod test {
             vhosts: HashMap::from([(
                 "domain.com".to_string(),
                 VhostConfig {
+                    url_prefix: None,
                     db_uri: "db_uri".to_string(),
                     db_schemas: vec!["db_schema".to_string()],
                     db_schema_structure: SchemaStructure::SqlFile("sql_file".to_string()),

@@ -16,7 +16,7 @@ cargo build --features postgresql --release --target=x86_64-unknown-linux-musl
 SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE={sql_file=postgresql_structure_query.sql} \
 SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE=postgrest_test_authenticator \
 SUBZERO_VHOSTS__DEFAULT__DB_URI=$url \
-cargo run --features=postgresql --release --bin subzero-postgresql
+cargo run --features=postgresql --bin subzero-postgresql  --release
 
 docker run -p 3000:3000 \
 -env PGRST_DB_URI=$url \
@@ -36,3 +36,9 @@ postgrest/postgrest
  PGRST_DB_URI=$url \
  PGRST_DB_CONFIG=false \
  ./postgrest
+
+
+export SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE={sql_file=postgresql_structure_query.sql} \
+SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE=postgrest_test_authenticator \
+SUBZERO_VHOSTS__DEFAULT__DB_URI=$url \
+&& cargo flamegraph --features=postgresql --root --bin subzero-postgresql

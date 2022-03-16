@@ -63,6 +63,7 @@ where
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[_sqlite_public_]");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__URL_PREFIX", "/rest");
         lazy_static::initialize(client);
     });
 }

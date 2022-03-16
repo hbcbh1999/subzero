@@ -15,8 +15,10 @@ serde = "1.0.130"
 serde_json = "1.0.68"
 csv = "1.1.6"
 snafu = "0.6.10"
+openssl = { version="0.10", optional = true }
 postgres-types = { version = "0.2.2", optional = true }
 tokio-postgres = { version = "0.7.4", optional = true }
+postgres-openssl = { version = "0.5.0", optional = true }
 tokio = "1.6.1"
 bytes = "1.1.0"
 futures = "0.3.17"
@@ -32,7 +34,7 @@ r2d2_sqlite = { version = "0.19.0", optional = true }
 
 [features]
 default = []
-postgresql = ["postgres-types", "tokio-postgres", "deadpool-postgres"]
+postgresql = ["postgres-types", "tokio-postgres", "deadpool-postgres", "postgres-openssl", "openssl"]
 clickhouse = []
 sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
 
@@ -54,6 +56,7 @@ required-features = ["sqlite"]
 [patch.crates-io]
 tokio-postgres = { git = "https://github.com/subzerocloud/rust-postgres" }
 postgres-types = { git = "https://github.com/subzerocloud/rust-postgres" }
+postgres-openssl = { git = "https://github.com/subzerocloud/rust-postgres" }
 
 
 [dev-dependencies]
@@ -72,6 +75,7 @@ rand = "0.8.5"
 
 [profile.release]
 strip = true  # Automatically strip symbols from the binary.
+# debug = true
 lto = true
 codegen-units = 1
 panic = "abort"

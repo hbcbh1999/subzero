@@ -62,10 +62,10 @@ lazy_static! {
     };
 }
 
-pub fn parse<'r>(
+pub fn parse(
     schema: &String, root: &String, db_schema: &DbSchema, method: &Method, path: String, parameters: &Vec<(&str, &str)>, body: Option<String>,
-    headers: &'r HashMap<&'r str, &'r str>, cookies: &'r HashMap<&'r str, &'r str>, max_rows: Option<u32>,
-) -> Result<ApiRequest<'r>> {
+    headers: HashMap<String, String>, cookies: HashMap<String, String>, max_rows: Option<u32>,
+) -> Result<ApiRequest> {
     let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {
         schemas: vec![schema.to_owned()],
     })?;
@@ -85,7 +85,7 @@ pub fn parse<'r>(
         Some(accept_header) => {
             let (act, _) = content_type()
                 .message("failed to parse accept header")
-                .easy_parse(*accept_header)
+                .easy_parse(accept_header.as_str())
                 .map_err(|_| Error::ContentTypeError {
                     message: format!("None of these Content-Types are available: {}", accept_header),
                 })?;
@@ -98,7 +98,7 @@ pub fn parse<'r>(
         Some(t) => {
             let (act, _) = content_type()
                 .message("failed to parse content-type header")
-                .easy_parse(*t)
+                .easy_parse(t.as_str())
                 .map_err(|_| Error::ContentTypeError {
                     message: format!("None of these Content-Types are available: {}", t),
                 })?;
@@ -108,10 +108,10 @@ pub fn parse<'r>(
         None => Ok(ApplicationJSON),
     }?;
     let preferences = match headers.get("Prefer") {
-        Some(&pref) => {
+        Some(pref) => {
             let (p, _) = preferences()
                 .message("failed to parse Prefer header ")
-                .easy_parse(pref)
+                .easy_parse(pref.as_str())
                 .map_err(to_app_error(pref))?;
             Ok(Some(p))
         }
@@ -1865,9 +1865,9 @@ pub mod tests {
             preferences: None,
             path: s("dummy"),
             method: Method::GET,
-            headers: &emtpy_hashmap,
+            headers: emtpy_hashmap.clone(),
             accept_content_type: ApplicationJSON,
-            cookies: &emtpy_hashmap,
+            cookies: emtpy_hashmap.clone(),
             query: Query {
                 node: FunctionCall {
                     fn_name: Qi(s("api"), s("myfunction")),
@@ -1903,8 +1903,8 @@ pub mod tests {
             s("dummy"),
             &vec![("id", "10")],
             None,
-            &emtpy_hashmap,
-            &emtpy_hashmap,
+            emtpy_hashmap.clone(),
+            emtpy_hashmap.clone(),
             None,
         );
 
@@ -1921,8 +1921,8 @@ pub mod tests {
             s("dummy"),
             &vec![],
             Some(body),
-            &emtpy_hashmap,
-            &emtpy_hashmap,
+            emtpy_hashmap.clone(),
+            emtpy_hashmap.clone(),
             None,
         );
         assert_eq!(b.unwrap(), api_request);
@@ -2060,8 +2060,8 @@ pub mod tests {
                 ("tasks.or", "(id.eq.11,id.eq.12)"),
             ],
             None,
-            &emtpy_hashmap,
-            &emtpy_hashmap,
+            emtpy_hashmap.clone(),
+            emtpy_hashmap.clone(),
             None,
         );
 
@@ -2072,8 +2072,8 @@ pub mod tests {
                 path: s("dummy"),
                 method: Method::GET,
                 accept_content_type: ApplicationJSON,
-                headers: &emtpy_hashmap,
-                cookies: &emtpy_hashmap,
+                headers: emtpy_hashmap.clone(),
+                cookies: emtpy_hashmap.clone(),
                 query: Query {
                     node: Select {
                         order: vec![],
@@ -2281,8 +2281,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id,name,unknown(id)")],
                 None,
-                &emtpy_hashmap,
-                &emtpy_hashmap,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2302,8 +2302,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id-,na$me")],
                 None,
-                &emtpy_hashmap,
-                &emtpy_hashmap,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2319,7 +2319,7 @@ pub mod tests {
     fn test_parse_post() {
         let emtpy_hashmap = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-        let headers = [("Prefer", "return=representation")].iter().cloned().collect();
+        let headers = [("Prefer".to_string(), "return=representation".to_string())].iter().cloned().collect::<HashMap<_,_>>();
         let payload = s(r#"{"id":10, "name":"john"}"#);
         assert_eq!(
             parse(
@@ -2330,8 +2330,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id"), ("id", "gt.10"),],
                 Some(payload.clone()),
-                &headers,
-                &emtpy_hashmap,
+                headers.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2344,8 +2344,8 @@ pub mod tests {
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: &headers,
-                cookies: &emtpy_hashmap,
+                headers: headers.clone(),
+                cookies: emtpy_hashmap.clone(),
                 query: Query {
                     node: Insert {
                         on_conflict: None,
@@ -2386,8 +2386,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),],
                 Some(payload.clone()),
-                &headers,
-                &emtpy_hashmap,
+                headers.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2400,8 +2400,8 @@ pub mod tests {
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: &headers,
-                cookies: &emtpy_hashmap,
+                headers: headers.clone(),
+                cookies: emtpy_hashmap.clone(),
                 query: Query {
                     node: Insert {
                         on_conflict: None,
@@ -2453,8 +2453,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id"), ("id", "gt.10"), ("columns", "id,1$name"),],
                 Some(s(r#"{"id":10, "name":"john", "phone":"123"}"#)),
-                &emtpy_hashmap,
-                &emtpy_hashmap,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2474,8 +2474,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id"), ("id", "gt.10"),],
                 Some(s(r#"{"id":10, "name""#)),
-                &emtpy_hashmap,
-                &emtpy_hashmap,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2494,8 +2494,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id"), ("id", "gt.10"),],
                 Some(s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)),
-                &emtpy_hashmap,
-                &emtpy_hashmap,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2514,8 +2514,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id,name,unknown(id)")],
                 None,
-                &emtpy_hashmap,
-                &emtpy_hashmap,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2535,8 +2535,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id-,na$me")],
                 None,
-                &emtpy_hashmap,
-                &emtpy_hashmap,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2556,8 +2556,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id"), ("id", "gt.10"),],
                 Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)),
-                &headers,
-                &emtpy_hashmap,
+                headers.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2570,8 +2570,8 @@ pub mod tests {
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: &headers,
-                cookies: &emtpy_hashmap,
+                headers: headers.clone(),
+                cookies: emtpy_hashmap.clone(),
                 query: Query {
                     sub_selects: vec![],
                     node: Insert {
@@ -2613,8 +2613,8 @@ pub mod tests {
                 s("dummy"),
                 &vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),],
                 Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)),
-                &headers,
-                &emtpy_hashmap,
+                headers.clone(),
+                emtpy_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2627,8 +2627,8 @@ pub mod tests {
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: &headers,
-                cookies: &emtpy_hashmap,
+                headers: headers,
+                cookies: emtpy_hashmap.clone(),
                 query: Query {
                     sub_selects: vec![
                         SubSelect {

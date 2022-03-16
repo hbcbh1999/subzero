@@ -90,18 +90,9 @@ pub fn to_rocket_content_type(ct: ContentType) -> HTTPContentType {
     }
 }
 
-pub fn cookies_as_hashmap<'a>(cookies: &'a CookieJar<'a>) -> HashMap<&'a str, &'a str> {
-    cookies.iter().map(|c| (c.name(), c.value())).collect::<HashMap<_, _>>()
+pub fn cookies_as_hashmap<'a>(cookies: &'a CookieJar<'a>) -> HashMap<String, String> {
+    cookies.iter().map(|c| (c.name().to_string(), c.value().to_string())).collect()
 }
-// pub fn headers_as_hashmap<'a>(headers: AllHeaders<'a>) -> HashMap<&'a str, &'a str> {
-//     match headers {
-//         AllHeaders(hh) => hh
-//             .into_iter_raw()
-//             .flat_map(|(n,v)|
-//              v.into_iter().map(move |val| {
-//                 (n.as_str(), val.as_ref())
-//              })
-//             )
-//             .collect::<HashMap<_, _>>()
-//     }
-// }
+pub fn headers_as_hashmap<'a>(headers: &'a AllHeaders<'a>) -> HashMap<String, String> {
+    headers.iter().map(|h| (h.name().as_str().to_string(), h.value().to_string())).collect()
+}

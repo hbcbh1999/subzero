@@ -99,7 +99,7 @@ fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'
 }
 
 pub async fn execute<'a>(
-    method: &Method, pool: &'a Pool, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest<'_>, role: Option<&String>,
+    method: &Method, pool: &'a Pool, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest, role: Option<&String>,
     jwt_claims: &Option<JsonValue>, config: &VhostConfig, _db_schema: &DbSchema
 ) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(DbPoolError)?;

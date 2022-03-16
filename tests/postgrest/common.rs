@@ -68,6 +68,8 @@ where
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[test]");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_USE_LEGACY_GUCS", "true");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__URL_PREFIX", "/rest");
         env::remove_var("SUBZERO_VHOSTS__DEFAULT__DB_MAX_ROWS");
         lazy_static::initialize(client);
     });

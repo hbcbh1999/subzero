@@ -34,14 +34,15 @@ pub struct Preferences {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ApiRequest<'r> {
+pub struct ApiRequest {
     pub method: Method,
     pub path: String,
     pub accept_content_type: ContentType,
     pub query: Query,
     pub preferences: Option<Preferences>,
-    pub headers: &'r HashMap<&'r str, &'r str>,
-    pub cookies: &'r HashMap<&'r str, &'r str>,
+    pub headers: HashMap<String, String>,
+    pub cookies: HashMap<String, String>,
+
 }
 
 #[derive(Debug)]

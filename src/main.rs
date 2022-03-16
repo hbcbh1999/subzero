@@ -12,6 +12,7 @@ use dashmap::DashMap;
 use http::Method;
 
 use rocket::{
+    routes,
     http::{uri::Origin, CookieJar, Header, Status},
     Build, Config as RocketConfig, Rocket, State,
 };
@@ -23,7 +24,7 @@ use subzero::{
 };
 
 mod rocket_util;
-use rocket_util::{cookies_as_hashmap, to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost};
+use rocket_util::{cookies_as_hashmap, headers_as_hashmap, to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost};
 
 mod postgrest;
 use postgrest::handle_postgrest_request;
@@ -36,7 +37,7 @@ use figment::{
     Figment, Profile,
 };
 
-use std::{collections::HashMap, sync::Arc};
+use std::{sync::Arc};
 
 #[get("/")]
 fn index() -> &'static str { "Hello, world!" }
@@ -48,11 +49,11 @@ async fn get<'a>(
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
 
-    let headers = headers
-        .iter()
-        .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
-        .collect::<HashMap<_, _>>();
-    let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
+    // let headers = headers
+    //     .iter()
+    //     .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
+    //     .collect::<HashMap<_, _>>();
+    //let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
     let (status, content_type, headers, body) = handle_postgrest_request(
         &resources.config,
         &root,
@@ -62,8 +63,8 @@ async fn get<'a>(
         &resources.db_schema,
         &resources.db_pool,
         None,
-        &headers,
-        &cookies_as_hashmap(cookies),
+        headers_as_hashmap(&headers),
+        cookies_as_hashmap(cookies),
     )
     .await?;
 
@@ -79,11 +80,11 @@ async fn post<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    let headers = headers
-        .iter()
-        .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
-        .collect::<HashMap<_, _>>();
-    let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
+    // let headers = headers
+    //     .iter()
+    //     .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
+    //     .collect::<HashMap<_, _>>();
+    //let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
 
     let (status, content_type, headers, body) = handle_postgrest_request(
         &resources.config,
@@ -94,8 +95,8 @@ async fn post<'a>(
         &resources.db_schema,
         &resources.db_pool,
         Some(body),
-        &headers,
-        &cookies_as_hashmap(cookies),
+        headers_as_hashmap(&headers),
+        cookies_as_hashmap(cookies),
     )
     .await?;
 
@@ -111,11 +112,11 @@ async fn delete<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    let headers = headers
-        .iter()
-        .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
-        .collect::<HashMap<_, _>>();
-    let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
+    // let headers = headers
+    //     .iter()
+    //     .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
+    //     .collect::<HashMap<_, _>>();
+    //let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
 
     let (status, content_type, headers, body) = handle_postgrest_request(
         &resources.config,
@@ -126,8 +127,8 @@ async fn delete<'a>(
         &resources.db_schema,
         &resources.db_pool,
         Some(body),
-        &headers,
-        &cookies_as_hashmap(cookies),
+        headers_as_hashmap(&headers),
+        cookies_as_hashmap(cookies),
     )
     .await?;
 
@@ -143,11 +144,11 @@ async fn patch<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    let headers = headers
-        .iter()
-        .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
-        .collect::<HashMap<_, _>>();
-    let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
+    // let headers = headers
+    //     .iter()
+    //     .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
+    //     .collect::<HashMap<_, _>>();
+    //let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
 
     let (status, content_type, headers, body) = handle_postgrest_request(
         &resources.config,
@@ -158,8 +159,8 @@ async fn patch<'a>(
         &resources.db_schema,
         &resources.db_pool,
         Some(body),
-        &headers,
-        &cookies_as_hashmap(cookies),
+        headers_as_hashmap(&headers),
+        cookies_as_hashmap(cookies),
     )
     .await?;
 
@@ -175,11 +176,11 @@ async fn put<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    let headers = headers
-        .iter()
-        .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
-        .collect::<HashMap<_, _>>();
-    let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
+    // let headers = headers
+    //     .iter()
+    //     .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
+    //     .collect::<HashMap<_, _>>();
+    //let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
 
     let (status, content_type, headers, body) = handle_postgrest_request(
         &resources.config,
@@ -190,8 +191,8 @@ async fn put<'a>(
         &resources.db_schema,
         &resources.db_pool,
         Some(body),
-        &headers,
-        &cookies_as_hashmap(cookies),
+        headers_as_hashmap(&headers),
+        cookies_as_hashmap(cookies),
     )
     .await?;
 
@@ -216,22 +217,34 @@ async fn start() -> Result<Rocket<Build>> {
     let app_config: Config = config.extract().expect("config");
     let vhost_resources = Arc::new(DashMap::new());
     println!("Found {} configured vhosts", app_config.vhosts.len());
+    let mut server = rocket::custom(config)
+        .manage(vhost_resources.clone())
+        .mount("/", routes![index]);
+
     for (vhost, vhost_config) in app_config.vhosts {
         let vhost_resources = vhost_resources.clone();
+        match &vhost_config.url_prefix {
+            Some(p) => {
+                server = server
+                .mount(p, routes![get, post, delete, patch, put])
+                .mount(format!("{}/rpc",p), routes![get, post]);
+            },
+            None => {
+                server = server
+                .mount("/", routes![get, post, delete, patch, put])
+                .mount("/rpc", routes![get, post]);
+            }
+        }
         //tokio::spawn(async move {
         //sleep(Duration::from_millis(30 * 1000)).await;
         match create_resources(&vhost, vhost_config, vhost_resources).await {
             Ok(_) => println!("[{}] loaded config", vhost),
             Err(e) => println!("[{}] config load failed ({})", vhost, e),
         }
-        //});
+        //});     
     }
 
-    Ok(rocket::custom(config)
-        .manage(vhost_resources)
-        .mount("/", routes![index])
-        .mount("/rest", routes![get, post, delete, patch, put])
-        .mount("/rest/rpc", routes![get, post]))
+    Ok(server)
 }
 
 #[launch]

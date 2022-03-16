@@ -43,15 +43,15 @@ fn get_current_timestamp() -> u64 {
 pub async fn handle_postgrest_request(
     config: &VhostConfig, root: &String, method: &Method, path: String, parameters: &Vec<(&str, &str)>, db_schema: &DbSchema,
     #[cfg(feature = "postgresql")] pool: &Pool, #[cfg(feature = "sqlite")] pool: &Pool<SqliteConnectionManager>,#[cfg(feature = "clickhouse")] pool: &Option<String>,
-    body: Option<String>, headers: &HashMap<&str, &str>, cookies: &HashMap<&str, &str>,
+    body: Option<String>, headers: HashMap<String, String>, cookies: HashMap<String, String>,
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
     let mut response_headers = vec![];
     let schema_name = &(match (config.db_schemas.len() > 1, method, headers.get("Accept-Profile"), headers.get("Content-Profile")) {
         (false, ..) => Ok(config.db_schemas.get(0).unwrap().clone()),
-        (_, &Method::DELETE, _, Some(&content_profile))
-        | (_, &Method::POST, _, Some(&content_profile))
-        | (_, &Method::PATCH, _, Some(&content_profile))
-        | (_, &Method::PUT, _, Some(&content_profile)) => {
+        (_, &Method::DELETE, _, Some(content_profile))
+        | (_, &Method::POST, _, Some(content_profile))
+        | (_, &Method::PATCH, _, Some(content_profile))
+        | (_, &Method::PUT, _, Some(content_profile)) => {
             if config.db_schemas.contains(&content_profile.to_string()) {
                 Ok(content_profile.to_string())
             } else {
@@ -60,7 +60,7 @@ pub async fn handle_postgrest_request(
                 })
             }
         }
-        (_, _, Some(&accept_profile), _) => {
+        (_, _, Some(accept_profile), _) => {
             if config.db_schemas.contains(&accept_profile.to_string()) {
                 Ok(accept_profile.to_string())
             } else {
@@ -79,7 +79,7 @@ pub async fn handle_postgrest_request(
     // check jwt
     let jwt_claims = match &config.jwt_secret {
         Some(key) => match headers.get("Authorization") {
-            Some(&a) => {
+            Some(a) => {
                 let token_str: Vec<&str> = a.split(' ').collect();
                 match token_str[..] {
                     ["Bearer", t] | ["bearer", t] => {

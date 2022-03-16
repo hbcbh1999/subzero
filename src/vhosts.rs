@@ -1,13 +1,17 @@
 use dashmap::DashMap;
 #[cfg(feature = "postgresql")]
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts, Object, PoolError};
+#[cfg(feature = "postgresql")]
+use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+#[cfg(feature = "postgresql")]
+use postgres_openssl::{MakeTlsConnector};
 // #[cfg(feature = "postgresql")]
 // use futures::future::ok;
 use snafu::ResultExt;
 #[cfg(feature = "postgresql")]
 use tokio::time::{Duration, sleep};
 #[cfg(feature = "postgresql")]
-use tokio_postgres::{IsolationLevel, NoTls};
+use tokio_postgres::{IsolationLevel};
 
 #[cfg(feature = "sqlite")]
 use r2d2::Pool;
@@ -56,49 +60,27 @@ pub fn get_resources<'a>(vhost: &Option<&str>, store: &'a Arc<DashMap<String, Vh
 }
 
 #[cfg(feature="postgresql")]
-async fn wait_for_pg_connection(db_pool: &Pool) -> Result<Object, PoolError> {
-    // let config = pg_uri.parse::<pg::Config>();
-    // if let Err(why) = config {
-    //     return Err(why);
-    // }
-    // let mut c = config.unwrap();
-    // if let None = c.get_application_name() {
-    //     c.application_name("pg-event-proxy");
-    // }
-
-    // if replication_mode {
-    //     c.replication("database");
-    // }
+async fn wait_for_pg_connection(vhost: &String, db_pool: &Pool) -> Result<Object, PoolError> {
 
     let mut i = 1;
     let mut time_since_start = 0;
     let max_delay_interval = 10;
     let max_retry_interval = 30;
-    // let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-    // builder.set_verify(SslVerifyMode::NONE);
-    // let connector = MakeTlsConnector::new(builder.build());
-
-    //let mut conn = pg::connect(&pg_uri, connector).await;
     let mut client = db_pool.get().await;
     while let Err(e)  = client {
-        println!("[{}] Failed to connect to PostgreSQL {:?}", "dd", e);
+        println!("[{}] Failed to connect to PostgreSQL {:?}", vhost, e);
         let time = Duration::from_secs(i);
-        println!("[{}] Retrying the PostgreSQL connection in {:?} seconds..", "dd", time.as_secs());
+        println!("[{}] Retrying the PostgreSQL connection in {:?} seconds..", vhost, time.as_secs());
         sleep(time).await;
-        // let builder = SslConnector::builder(SslMethod::tls()).unwrap();
-        // let connector = MakeTlsConnector::new(builder.build());
-        //conn = pg::connect(&pg_uri, connector).await;
         client = db_pool.get().await;
         i *= 2;
         if i > max_delay_interval { i = max_delay_interval };
         time_since_start += i;
         if time_since_start > max_retry_interval { break }
-        //exit the loop if parent no longer needs the connection
-        //if !running.load(Ordering::SeqCst) { break }
     };
     match client {
         Err(_) =>{},
-        _ => println!("[{}] Connection to PostgreSQL successful", "dd")
+        _ => println!("[{}] Connection to PostgreSQL successful", vhost)
     }
     client
 }
@@ -113,7 +95,14 @@ pub async fn create_resources(vhost: &String, config: VhostConfig, store: Arc<Da
         recycling_method: RecyclingMethod::Fast,
     };
     #[cfg(feature = "postgresql")]
-    let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
+    let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+    #[cfg(feature = "postgresql")]
+    builder.set_verify(SslVerifyMode::NONE);
+    #[cfg(feature = "postgresql")]
+    let tls_connector = MakeTlsConnector::new(builder.build());
+
+    #[cfg(feature = "postgresql")]
+    let mgr = Manager::from_config(pg_config, tls_connector, mgr_config);
     #[cfg(feature = "postgresql")]
     let timeouts = Timeouts {
         create: Some(Duration::from_millis(5000)),
@@ -161,7 +150,7 @@ pub async fn create_resources(vhost: &String, config: VhostConfig, store: Arc<Da
                 Err(e) => Err(e).context(DbPoolError),
             },
             #[cfg(feature = "postgresql")]
-            Ok(q) => match wait_for_pg_connection(&db_pool).await { //match db_pool.get().await {
+            Ok(q) => match wait_for_pg_connection(vhost, &db_pool).await { //match db_pool.get().await {
                 Ok(mut client) => {
                     let authenticated = false;
                     let transaction = client
