@@ -35,18 +35,12 @@ r2d2_sqlite = { version = "0.19.0", optional = true }
 [features]
 default = []
 postgresql = ["postgres-types", "tokio-postgres", "deadpool-postgres", "postgres-openssl", "openssl"]
-clickhouse = []
 sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
 
 [[bin]]
 name = "subzero-postgresql"
 path = "src/main.rs"
 required-features = ["postgresql"]
-
-[[bin]]
-name = "subzero-clickhouse"
-path = "src/main.rs"
-required-features = ["clickhouse"]
 
 [[bin]]
 name = "subzero-sqlite"

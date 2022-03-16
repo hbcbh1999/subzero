@@ -20,11 +20,25 @@ services:
     depends_on:
       - "db"
     environment:
+      # global configuration
       - SUBZERO_ADDRESS=0.0.0.0
+
+      # configuration for the "DEFAULT" vhost (you can have multiple vhosts)
       - SUBZERO_VHOSTS__DEFAULT__DB_URI=postgres://postgres:postgrespass@db:5432/app?application_name=subzero
       - SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE=postgres
       - SUBZERO_VHOSTS__DEFAULT__DB_USE_LEGACY_GUCS=false
       - SUBZERO_VHOSTS__DEFAULT__DB_POOL=10
+      # - SUBZERO_VHOSTS__DEFAULT__URL_PREFIX="/"
+      # - SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS="[public]"
+      # - SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE="{sql_file=structure_query.sql}"
+      # - SUBZERO_VHOSTS__DEFAULT__DB_MAX_ROWS=100,
+      # - SUBZERO_VHOSTS__DEFAULT__DB_USE_LEGACY_GUCS=false,
+      # - SUBZERO_VHOSTS__DEFAULT__DB_TX_ROLLBACK=false,
+      # - SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST="schema_name.function_name",
+      # - SUBZERO_VHOSTS__DEFAULT__JWT_SECRET="reallyreallyreallyreallyverysafe",
+      # - SUBZERO_VHOSTS__DEFAULT__ROLE_CLAIM_KEY=".role",
+  
+  # boot up PostgREST to compare the same request being handled by both systems
   postgrest:
     container_name: postgrest
     image: postgrest/postgrest:v9.0.0

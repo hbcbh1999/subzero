@@ -29,7 +29,7 @@ use subzero::{
 use tokio::task;
 use std::{fs, sync::Arc};
 
-#[cfg(feature = "clickhouse")]
+#[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
 use std::collections::HashMap;
 
 pub struct VhostResources {

@@ -1,13 +1,8 @@
-#![feature(drain_filter)]
-
 #[macro_use]
 extern crate lazy_static;
 
 #[macro_use]
 extern crate rocket;
-
-//use log::{info};
-
 use dashmap::DashMap;
 use http::Method;
 
@@ -21,13 +16,11 @@ use snafu::OptionExt;
 use subzero::{
     config::Config,
     error::{GucStatusError, Result},
+    frontend::postgrest::handle as handle_request
 };
 
 mod rocket_util;
 use rocket_util::{cookies_as_hashmap, headers_as_hashmap, to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost};
-
-mod postgrest;
-use postgrest::handle_postgrest_request;
 
 mod vhosts;
 use vhosts::{create_resources, get_resources, VhostResources};
@@ -48,13 +41,7 @@ async fn get<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-
-    // let headers = headers
-    //     .iter()
-    //     .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
-    //     .collect::<HashMap<_, _>>();
-    //let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
-    let (status, content_type, headers, body) = handle_postgrest_request(
+    let (status, content_type, headers, body) = handle_request(
         &resources.config,
         &root,
         &Method::GET,
@@ -80,13 +67,7 @@ async fn post<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    // let headers = headers
-    //     .iter()
-    //     .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
-    //     .collect::<HashMap<_, _>>();
-    //let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
-
-    let (status, content_type, headers, body) = handle_postgrest_request(
+    let (status, content_type, headers, body) = handle_request(
         &resources.config,
         &root,
         &Method::POST,
@@ -112,13 +93,7 @@ async fn delete<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    // let headers = headers
-    //     .iter()
-    //     .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
-    //     .collect::<HashMap<_, _>>();
-    //let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
-
-    let (status, content_type, headers, body) = handle_postgrest_request(
+    let (status, content_type, headers, body) = handle_request(
         &resources.config,
         &root,
         &Method::DELETE,
@@ -144,13 +119,7 @@ async fn patch<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    // let headers = headers
-    //     .iter()
-    //     .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
-    //     .collect::<HashMap<_, _>>();
-    //let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
-
-    let (status, content_type, headers, body) = handle_postgrest_request(
+    let (status, content_type, headers, body) = handle_request(
         &resources.config,
         &root,
         &Method::PATCH,
@@ -176,13 +145,7 @@ async fn put<'a>(
     vhosts: &State<Arc<DashMap<String, VhostResources>>>,
 ) -> Result<ApiResponse> {
     let resources = get_resources(&vhost, vhosts)?;
-    // let headers = headers
-    //     .iter()
-    //     .map(|h| (h.name().as_str().to_string(), h.value().to_string()))
-    //     .collect::<HashMap<_, _>>();
-    //let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
-
-    let (status, content_type, headers, body) = handle_postgrest_request(
+    let (status, content_type, headers, body) = handle_request(
         &resources.config,
         &root,
         &Method::PUT,

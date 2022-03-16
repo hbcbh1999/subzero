@@ -7,7 +7,7 @@ use snafu::ResultExt;
 #[cfg(feature = "postgresql")]
 use deadpool_postgres::Pool;
 #[cfg(feature = "postgresql")]
-use subzero::backend::postgresql::execute;
+use crate::backend::postgresql::execute;
 
 #[cfg(feature = "sqlite")]
 use tokio::task;
@@ -16,12 +16,12 @@ use r2d2::Pool;
 #[cfg(feature = "sqlite")]
 use r2d2_sqlite::SqliteConnectionManager;
 #[cfg(feature = "sqlite")]
-use subzero::backend::sqlite::execute;
+use crate::backend::sqlite::execute;
 
-#[cfg(feature = "clickhouse")]
-use subzero::api::ApiResponse;
+#[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
+use crate::api::ApiResponse;
 
-use subzero::{
+use crate::{
     api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*},
     config::VhostConfig,
     error::{Result, *},
@@ -40,7 +40,7 @@ fn get_current_timestamp() -> u64 {
     start.duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs()
 }
 
-pub async fn handle_postgrest_request(
+pub async fn handle(
     config: &VhostConfig, root: &String, method: &Method, path: String, parameters: &Vec<(&str, &str)>, db_schema: &DbSchema,
     #[cfg(feature = "postgresql")] pool: &Pool, #[cfg(feature = "sqlite")] pool: &Pool<SqliteConnectionManager>,#[cfg(feature = "clickhouse")] pool: &Option<String>,
     body: Option<String>, headers: HashMap<String, String>, cookies: HashMap<String, String>,
@@ -131,7 +131,7 @@ pub async fn handle_postgrest_request(
     // parse request and generate the query
     let request = parse(schema_name, root, db_schema, method, path, parameters, body, headers, cookies, config.db_max_rows)?;
 
-    let readonly = match (method, &request) {
+    let _readonly = match (method, &request) {
         (&Method::GET, _) => true,
         //TODO!!! optimize not volatile function call can be read only
         //(&Method::POST, ApiRequest { query: FunctionCall {..}, .. }) => true,
@@ -139,12 +139,12 @@ pub async fn handle_postgrest_request(
     };
 
     #[cfg(feature = "postgresql")]
-    let response = execute(method, pool, readonly, authenticated, schema_name, &request, role, &jwt_claims, config, db_schema).await?;
+    let response = execute(method, pool, _readonly, authenticated, schema_name, &request, role, &jwt_claims, config, db_schema).await?;
 
     #[cfg(feature = "sqlite")]
-    let response = task::block_in_place(|| execute(method, pool, readonly, authenticated, schema_name, &request, role, &jwt_claims, config, db_schema))?;
+    let response = task::block_in_place(|| execute(method, pool, _readonly, authenticated, schema_name, &request, role, &jwt_claims, config, db_schema))?;
 
-    #[cfg(feature = "clickhouse")]
+    #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
     let response = ApiResponse {
         page_total: 0,
         total_result_set: None,
