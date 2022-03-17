@@ -20,7 +20,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 #[cfg(feature = "sqlite")]
 use rusqlite::vtab::array;
 
-use subzero::{
+use crate::{
     config::{SchemaStructure::*, VhostConfig},
     error::{Result, *},
     schema::DbSchema,

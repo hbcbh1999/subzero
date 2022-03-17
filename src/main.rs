@@ -1,7 +1,4 @@
 #[macro_use]
-extern crate lazy_static;
-
-#[macro_use]
 extern crate rocket;
 use dashmap::DashMap;
 use http::Method;
@@ -16,14 +13,11 @@ use snafu::OptionExt;
 use subzero::{
     config::Config,
     error::{GucStatusError, Result},
-    frontend::postgrest::handle as handle_request
+    frontend::postgrest::handle as handle_request,
+    vhosts::{create_resources, get_resources, VhostResources},
+    rocket_util::{cookies_as_hashmap, headers_as_hashmap, to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost},
 };
 
-mod rocket_util;
-use rocket_util::{cookies_as_hashmap, headers_as_hashmap, to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost};
-
-mod vhosts;
-use vhosts::{create_resources, get_resources, VhostResources};
 
 use figment::{
     providers::{Env, Format, Toml},
@@ -218,9 +212,9 @@ async fn rocket() -> Rocket<Build> {
     }
 }
 
-// #[cfg(test)]
-// #[macro_use]
-// extern crate lazy_static;
+#[cfg(test)]
+#[macro_use]
+extern crate lazy_static;
 
 #[cfg(feature = "postgresql")]
 #[cfg(test)]

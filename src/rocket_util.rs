@@ -1,4 +1,4 @@
-//helper related to rocket framework
+//helpers related to rocket framework
 
 use rocket::{
     form::{DataField, FromForm, Options, Result as FormResult, ValueField},
@@ -6,9 +6,8 @@ use rocket::{
     request::{FromRequest, Outcome, Request},
     response::{Responder, Response, Result},
 };
-//use rocket::http::uncased::UncasedStr;
 
-use subzero::api::ContentType::{self, *};
+use crate::api::ContentType::{self, SingularJSON, TextCSV, ApplicationJSON};
 
 use std::{collections::HashMap, ops::Deref};
 
