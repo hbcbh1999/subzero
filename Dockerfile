@@ -13,7 +13,7 @@ RUN cargo build --features ${BACKEND} --release
 FROM debian:buster-slim
 ARG BACKEND
 RUN apt-get update && \
-    # apt-get install -y extra-runtime-dependencies && \
+    apt-get install -y openssl && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=builder /usr/src/subzero/target/release/subzero-${BACKEND} /usr/local/bin/subzero
 COPY --from=builder /usr/src/subzero/${BACKEND}_structure_query.sql /structure_query.sql

@@ -6,6 +6,8 @@ drop table if exists tasks;
 drop table if exists projects;
 drop table if exists clients;
 drop table if exists complex_items;
+drop view if exists projects_view;
+
 
 
 create table tbl1 (
