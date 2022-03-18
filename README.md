@@ -1,25 +1,53 @@
-run tests
+## Start a demo in docker
+This will also build the images locally
+```
+docker-compose up -d
+```
+
+## Run tests
+```
 cargo test --features postgresql -- --test-threads=1
+```
+
+```
+cargo test --features sqlite -- --test-threads=1
+```
 
 
-build
-cargo build --features sqlite --release
-cargo build --features postgresql --release
+## Build native binary
+For production add `--release` flag at the end
+```
+cargo build --features sqlite
+```
+
+```
+cargo build --features postgresql
+```
+
+## Build docker images
+```
+docker build --build-arg BACKEND=postgresql -t subzero-postgresql .
+```
+
+```
+docker build --build-arg BACKEND=sqlite -t subzero-sqlite .
+```
 
 
-load database local temporary databse
-export url=$(tests/bin/pg_tmp.sh -t -u postgrest_test_authenticator -w 3600) && psql -f tests/postgrest/fixtures/load.sql $url
-export url=$(tests/bin/pg_tmp.sh -t -u postgrest_test_authenticator -w 3600) && psql -f demo/db/pg_init.sql $url
+
+## Create temporary database
+
+```
+export url=$(tests/bin/pg_tmp.sh -t -u authenticator -w 3600) && psql -f demo/db/pg_init.sql $url
+```
 
 
-run agains a local database
+## Run agains a local database
+
+```
 SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE={sql_file=postgresql_structure_query.sql} \
-SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE=postgrest_test_authenticator \
+SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE=authenticator \
 SUBZERO_VHOSTS__DEFAULT__DB_URI=$url \
-cargo run --features=postgresql --bin subzero-postgresql  --release
+cargo run --features=postgresql --bin subzero-postgresql
+```
 
-
-export SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE={sql_file=postgresql_structure_query.sql} \
-SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE=postgrest_test_authenticator \
-SUBZERO_VHOSTS__DEFAULT__DB_URI=$url \
-&& cargo flamegraph --features=postgresql --root --bin subzero-postgresql
