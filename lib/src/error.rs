@@ -4,13 +4,13 @@ use snafu::Snafu;
 //use combine::error::StringStreamError;
 //use combine;
 use serde_json::{json, Value as JsonValue};
-use std::io::Cursor;
+// use std::io::Cursor;
 
 #[cfg(feature = "postgresql")]
 use deadpool_postgres::PoolError as PgPoolError;
-use rocket::http::Status;
-use rocket::request::Request;
-use rocket::response::{self, Responder, Response};
+// use rocket::http::Status;
+// use rocket::request::Request;
+// use rocket::response::{self, Responder, Response};
 use std::{io, path::PathBuf};
 #[cfg(feature = "postgresql")]
 use tokio_postgres::{Error as PgError};
@@ -26,22 +26,7 @@ use tokio::task::JoinError;
 //use combine::stream::easy::ParseError;
 // use serde_json;
 
-#[rocket::async_trait]
-impl<'r> Responder<'r, 'static> for Error {
-    fn respond_to(self, _: &'r Request<'_>) -> response::Result<'static> {
-        let status = Status::from_code(self.status_code()).unwrap();
-        let body = self.json_body().to_string();
-        let mut response = Response::build();
-        response.status(status);
-        response.sized_body(body.len(), Cursor::new(body));
 
-        for (h, v) in self.headers() {
-            response.raw_header(h, v);
-        }
-
-        response.ok()
-    }
-}
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -112,19 +97,19 @@ pub enum Error {
 
     #[cfg(feature = "postgresql")]
     #[snafu(display("DbPoolError {}", source))]
-    DbPoolError { source: PgPoolError },
+    PgDbPoolError { source: PgPoolError },
 
     #[cfg(feature = "sqlite")]
     #[snafu(display("DbPoolError {}", source))]
-    DbPoolError { source: SqlitePoolError },
+    SqliteDbPoolError { source: SqlitePoolError },
 
     #[cfg(feature = "postgresql")]
     #[snafu(display("DbError {}", source))]
-    DbError { source: PgError, authenticated: bool },
+    PgDbError { source: PgError, authenticated: bool },
 
     #[cfg(feature = "sqlite")]
     #[snafu(display("DbError {}", source))]
-    DbError { source: SqliteError, authenticated: bool },
+    SqliteDbError { source: SqliteError, authenticated: bool },
 
     #[snafu(display("JwtTokenInvalid {}", message))]
     JwtTokenInvalid { message: String },
@@ -153,10 +138,10 @@ pub enum Error {
 }
 
 impl Error {
-    fn headers(&self) -> Vec<(String, String)> {
+    pub fn headers(&self) -> Vec<(String, String)> {
         match self {
             #[cfg(feature = "postgresql")]
-            Error::DbError { .. } => match self.status_code() {
+            Error::PgDbError { .. } => match self.status_code() {
                 401 => vec![
                     ("Content-Type".into(), "application/json".into()),
                     ("WWW-Authenticate".into(), "Bearer".into()),
@@ -174,7 +159,7 @@ impl Error {
         }
     }
 
-    fn status_code(&self) -> u16 {
+    pub fn status_code(&self) -> u16 {
         match self {
             #[cfg(feature = "sqlite")]
             Error::ThreadError { .. } => 500,
@@ -204,10 +189,10 @@ impl Error {
             Error::JsonSerialize { .. } => 500,
             Error::SingularityError { .. } => 406,
             #[cfg(feature = "sqlite")]
-            Error::DbPoolError { .. } => 503,
+            Error::SqliteDbPoolError { .. } => 503,
 
             #[cfg(feature = "postgresql")]
-            Error::DbPoolError { .. } => 503,
+            Error::PgDbPoolError { .. } => 503,
             // Error::DbPoolError { source } => match source {
             //     PgPoolError::Timeout(_) => 503,
             //     PgPoolError::Backend(_) => 503,
@@ -218,13 +203,13 @@ impl Error {
             //     PgPoolError::PostRecycleHook(_) => 503,
             // },
             #[cfg(feature = "sqlite")]
-            Error::DbError {
+            Error::SqliteDbError {
                 ..
                 // source,
                 // authenticated,
             } => 500,
             #[cfg(feature = "postgresql")]
-            Error::DbError {
+            Error::PgDbError {
                 source,
                 authenticated,
             } => match source.code() {
@@ -275,7 +260,7 @@ impl Error {
         }
     }
 
-    fn json_body(&self) -> JsonValue {
+    pub fn json_body(&self) -> JsonValue {
         match self {
             Error::UnsupportedFeature {message} => json!({ "message": message }),
             #[cfg(feature = "sqlite")]
@@ -360,11 +345,11 @@ impl Error {
             Error::CsvDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::JsonSerialize { .. } => json!({ "message": format!("{}", self) }),
             #[cfg(feature = "postgresql")]
-            Error::DbPoolError { source } => {
+            Error::PgDbPoolError { source } => {
                 json!({ "message": format!("Db pool error {}", source) })
             }
             #[cfg(feature = "sqlite")]
-            Error::DbPoolError { source } => {
+            Error::SqliteDbPoolError { source } => {
                 json!({ "message": format!("Db pool error {}", source) })
             }
             Error::SingularityError { count, content_type } => json!({
@@ -372,7 +357,7 @@ impl Error {
                 "details": format!("Results contain {} rows, {} requires 1 row", count, content_type)
             }),
             #[cfg(feature = "postgresql")]
-            Error::DbError { source, .. } => match source.as_db_error() {
+            Error::PgDbError { source, .. } => match source.as_db_error() {
                 Some(db_err) => match db_err.code().code().chars().collect::<Vec<char>>()[..] {
                     ['P', 'T', ..] => json!({
                         "details": match db_err.detail() {Some(v) => v.into(), None => JsonValue::Null},
@@ -389,7 +374,7 @@ impl Error {
             },
 
             #[cfg(feature = "sqlite")]
-            Error::DbError { source, .. } => {
+            Error::SqliteDbError { source, .. } => {
                 json!({ "message": format!("Unhandled db error: {}", source) })
             }
         }

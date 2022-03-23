@@ -1,22 +1,26 @@
 use tokio_postgres::{types::ToSql, IsolationLevel};
-use deadpool_postgres::Pool;
-
+use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts, Object, PoolError};
+use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+use postgres_openssl::{MakeTlsConnector};
+use snafu::ResultExt;
+use tokio::time::{Duration, sleep};
 use crate::{
     api::{ApiRequest, ApiResponse, ContentType::*, },
-    config::VhostConfig,
+    config::{VhostConfig,SchemaStructure::*},
     dynamic_statement::generate,
     error::{Result, *},
-    schema::DbSchema,
+    schema::{DbSchema},
     dynamic_statement::{param, JoinIterator, SqlSnippet},
     formatter::postgresql::fmt_main_query,
 };
+use async_trait::async_trait;
 
-use std::{
-    collections::HashMap,
-};
+use super::Backend;
+
+use std::{collections::HashMap, fs};
 use serde_json::{Value as JsonValue};
 use http::Method;
-use snafu::ResultExt;
+
 // use futures::future;
 
 fn get_postgrest_env(role: Option<&String>, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
@@ -98,11 +102,11 @@ fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'
             .join(",")
 }
 
-pub async fn execute<'a>(
+async fn execute<'a>(
     method: &Method, pool: &'a Pool, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest, role: Option<&String>,
-    jwt_claims: &Option<JsonValue>, config: &VhostConfig, _db_schema: &DbSchema
+    jwt_claims: &Option<JsonValue>, config: &VhostConfig
 ) -> Result<ApiResponse> {
-    let mut client = pool.get().await.context(DbPoolError)?;
+    let mut client = pool.get().await.context(PgDbPoolError)?;
 
     
     let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request)?);
@@ -115,28 +119,28 @@ pub async fn execute<'a>(
         .read_only(readonly)
         .start()
         .await
-        .context(DbError { authenticated })?;
+        .context(PgDbError { authenticated })?;
 
     //paralel
     // let (env_stm, main_stm) = future::try_join(
     //         transaction.prepare_cached(env_statement.as_str()),
     //         transaction.prepare_cached(main_statement.as_str())
-    //     ).await.context(DbError { authenticated })?;
+    //     ).await.context(PgDbError { authenticated })?;
     
     // let (_, rows) = future::try_join(
     //     transaction.query(&env_stm, env_parameters.as_slice()),
     //     transaction.query(&main_stm, main_parameters.as_slice())
-    // ).await.context(DbError { authenticated })?;
+    // ).await.context(PgDbError { authenticated })?;
 
     
     let env_stm = transaction
         .prepare_cached(env_statement.as_str())
         .await
-        .context(DbError { authenticated })?;
+        .context(PgDbError { authenticated })?;
     let _ = transaction
         .query(&env_stm, env_parameters.as_slice())
         .await
-        .context(DbError { authenticated })?;
+        .context(PgDbError { authenticated })?;
 
     if let Some((s, f)) = &config.db_pre_request {
         let fn_schema = match s.as_str() {
@@ -148,19 +152,19 @@ pub async fn execute<'a>(
         let pre_request_stm = transaction
             .prepare_cached(pre_request_statement.as_str())
             .await
-            .context(DbError { authenticated })?;
-        transaction.query(&pre_request_stm, &[]).await.context(DbError { authenticated })?;
+            .context(PgDbError { authenticated })?;
+        transaction.query(&pre_request_stm, &[]).await.context(PgDbError { authenticated })?;
     }
 
     let main_stm = transaction
         .prepare_cached(main_statement.as_str())
         .await
-        .context(DbError { authenticated })?;
+        .context(PgDbError { authenticated })?;
 
     let rows = transaction
         .query(&main_stm, main_parameters.as_slice())
         .await
-        .context(DbError { authenticated })?;
+        .context(PgDbError { authenticated })?;
 
     
     let api_response = ApiResponse {
@@ -173,7 +177,7 @@ pub async fn execute<'a>(
     };
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
-        transaction.rollback().await.context(DbError { authenticated })?;
+        transaction.rollback().await.context(PgDbError { authenticated })?;
         return Err(Error::SingularityError {
             count: api_response.page_total,
             content_type: "application/vnd.pgrst.object+json".to_string(),
@@ -185,16 +189,121 @@ pub async fn execute<'a>(
         // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
-        transaction.rollback().await.context(DbError { authenticated })?;
+        transaction.rollback().await.context(PgDbError { authenticated })?;
         return Err(Error::PutMatchingPkError);
     }
 
     if config.db_tx_rollback {
-        transaction.rollback().await.context(DbError { authenticated })?;
+        transaction.rollback().await.context(PgDbError { authenticated })?;
     } else {
-        transaction.commit().await.context(DbError { authenticated })?;
+        transaction.commit().await.context(PgDbError { authenticated })?;
     }
 
     Ok(api_response)
 }
 
+pub struct PostgreSQLBackend {
+    //vhost: String,
+    config: VhostConfig,
+    pool: Pool,
+    db_schema: DbSchema,
+}
+
+#[async_trait]
+impl Backend for PostgreSQLBackend {
+    async fn init(vhost: String, config: VhostConfig) -> Result<Self> {
+        //setup db connection
+        let pg_uri = config.db_uri.clone();
+        let pg_config = pg_uri.parse::<tokio_postgres::Config>().unwrap();
+        let mgr_config = ManagerConfig {
+            recycling_method: RecyclingMethod::Fast,
+        };
+        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+        builder.set_verify(SslVerifyMode::NONE);
+        let tls_connector = MakeTlsConnector::new(builder.build());
+
+        let mgr = Manager::from_config(pg_config, tls_connector, mgr_config);
+        let timeouts = Timeouts {
+            create: Some(Duration::from_millis(5000)),
+            wait: None,
+            recycle: None,
+        };
+        let pool = Pool::builder(mgr)
+            .runtime(Runtime::Tokio1)
+            .max_size(config.db_pool)
+            .timeouts(timeouts)
+            .build()
+            .unwrap();
+        
+        //read db schema
+        let db_schema = match &config.db_schema_structure {
+            SqlFile(f) => match fs::read_to_string(f) {
+                Ok(q) => match wait_for_pg_connection(&vhost, &pool).await {
+                    Ok(mut client) => {
+                        let authenticated = false;
+                        let transaction = client
+                            .build_transaction()
+                            .isolation_level(IsolationLevel::Serializable)
+                            .read_only(true)
+                            .start()
+                            .await
+                            .context(PgDbError { authenticated})?;
+                        let _ = transaction.query("set local schema ''", &[]).await;
+                        match transaction.query(&q, &[&config.db_schemas]).await {
+                            Ok(rows) => {
+                                transaction.commit().await.context(PgDbError { authenticated })?;
+                                serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize)
+                            }
+                            Err(e) => {
+                                transaction.rollback().await.context(PgDbError { authenticated })?;
+                                Err(e).context(PgDbError { authenticated })
+                            }
+                        }
+                    }
+                    Err(e) => Err(e).context(PgDbPoolError),
+                },
+                Err(e) => Err(e).context(ReadFile { path: f }),
+            },
+            JsonFile(f) => match fs::read_to_string(f) {
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
+                Err(e) => Err(e).context(ReadFile { path: f }),
+            },
+            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
+        }?;
+
+        Ok(PostgreSQLBackend {config, pool, db_schema})
+    }
+    async fn execute(&self,
+        method: &Method, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest, role: Option<&String>,
+        jwt_claims: &Option<JsonValue>
+    ) -> Result<ApiResponse> {
+        execute(method, &self.pool, readonly, authenticated, schema_name, request, role, jwt_claims, &self.config).await
+    }
+    fn db_schema(&self) -> &DbSchema { &self.db_schema }
+    fn config(&self) -> &VhostConfig { &self.config }
+}
+
+async fn wait_for_pg_connection(vhost: &String, db_pool: &Pool) -> Result<Object, PoolError> {
+
+    let mut i = 1;
+    let mut time_since_start = 0;
+    let max_delay_interval = 10;
+    let max_retry_interval = 30;
+    let mut client = db_pool.get().await;
+    while let Err(e)  = client {
+        println!("[{}] Failed to connect to PostgreSQL {:?}", vhost, e);
+        let time = Duration::from_secs(i);
+        println!("[{}] Retrying the PostgreSQL connection in {:?} seconds..", vhost, time.as_secs());
+        sleep(time).await;
+        client = db_pool.get().await;
+        i *= 2;
+        if i > max_delay_interval { i = max_delay_interval };
+        time_since_start += i;
+        if time_since_start > max_retry_interval { break }
+    };
+    match client {
+        Err(_) =>{},
+        _ => println!("[{}] Connection to PostgreSQL successful", vhost)
+    }
+    client
+}

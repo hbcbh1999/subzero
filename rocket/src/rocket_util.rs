@@ -1,14 +1,14 @@
 //helpers related to rocket framework
-
 use rocket::{
     form::{DataField, FromForm, Options, Result as FormResult, ValueField},
     http::{ContentType as HTTPContentType, CookieJar, Header, HeaderMap, Status},
     request::{FromRequest, Outcome, Request},
     response::{Responder, Response, Result},
 };
-
-use crate::api::ContentType::{self, SingularJSON, TextCSV, ApplicationJSON};
-
+use rocket::response::{self,};
+use std::io::Cursor;
+use subzero::api::ContentType::{self, SingularJSON, TextCSV, ApplicationJSON};
+use subzero::error::Error;
 use std::{collections::HashMap, ops::Deref};
 
 lazy_static! {
@@ -68,6 +68,7 @@ impl<'r> Responder<'r, 'static> for ApiResponse {
 }
 
 pub struct Vhost<'a>(pub Option<&'a str>);
+
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for Vhost<'r> {
     type Error = ();
@@ -81,6 +82,24 @@ impl<'r> Deref for Vhost<'r> {
     fn deref(&self) -> &Self::Target { &self.0 }
 }
 
+pub struct RocketError(pub Error);
+#[rocket::async_trait]
+impl<'r> Responder<'r, 'static> for RocketError {
+    fn respond_to(self, _: &'r Request<'_>) -> response::Result<'static> {
+        let err = match self { RocketError(e) => e};
+        let status = Status::from_code(err.status_code()).unwrap();
+        let body = err.json_body().to_string();
+        let mut response = Response::build();
+        response.status(status);
+        response.sized_body(body.len(), Cursor::new(body));
+
+        for (h, v) in err.headers() {
+            response.raw_header(h, v);
+        }
+
+        response.ok()
+    }
+}
 pub fn to_rocket_content_type(ct: ContentType) -> HTTPContentType {
     match ct {
         SingularJSON => SINGLE_CONTENT_TYPE.clone(),

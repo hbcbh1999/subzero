@@ -18,7 +18,7 @@ use super::base::{
     fmt_operator,
     fmt_order,
     fmt_order_term,
-    fmt_qi,
+    //fmt_qi,
     fmt_select_item,
     fmt_select_name,
     //fmt_json_operation,
@@ -655,7 +655,16 @@ fn fmt_sub_select_item<'a>(schema: &String, _qi: &Qi, i: &'a SubSelect) -> Resul
 fmt_operator!();
 fmt_logic_operator!();
 fmt_identity!();
-fmt_qi!();
+//fmt_qi!();
+fn fmt_qi(qi: &Qi) -> String {
+    match (qi.0.as_str(), qi.1.as_str()) {
+        // (_,"subzero_source") |
+        // (_,"subzero_fn_call") |
+        //("", _) | ("_sqlite_public_", _) => format!("{}", fmt_identity(&qi.1)),
+        //_ => format!("{}.{}", fmt_identity(&qi.0), fmt_identity(&qi.1)),
+        _ => format!("{}", fmt_identity(&qi.1)),
+    }
+}
 macro_rules! fmt_field_format {
     () => {
         "json_extract({}.{}, '${}')"

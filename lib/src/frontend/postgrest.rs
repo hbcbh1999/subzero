@@ -4,29 +4,16 @@ use jsonwebtoken::{decode, errors::ErrorKind, DecodingKey, Validation};
 use serde_json::{from_value, Value as JsonValue};
 use snafu::ResultExt;
 
-#[cfg(feature = "postgresql")]
-use deadpool_postgres::Pool;
-#[cfg(feature = "postgresql")]
-use crate::backend::postgresql::execute;
-
 #[cfg(feature = "sqlite")]
 use tokio::task;
-#[cfg(feature = "sqlite")]
-use r2d2::Pool;
-#[cfg(feature = "sqlite")]
-use r2d2_sqlite::SqliteConnectionManager;
-#[cfg(feature = "sqlite")]
-use crate::backend::sqlite::execute;
 
-#[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
 use crate::api::ApiResponse;
 
 use crate::{
     api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*},
-    config::VhostConfig,
     error::{Result, *},
     parser::postgrest::parse,
-    schema::DbSchema,
+    backend::Backend,
 };
 
 use std::{
@@ -41,11 +28,13 @@ fn get_current_timestamp() -> u64 {
 }
 
 pub async fn handle(
-    config: &VhostConfig, root: &String, method: &Method, path: String, parameters: &Vec<(&str, &str)>, db_schema: &DbSchema,
-    #[cfg(feature = "postgresql")] pool: &Pool, #[cfg(feature = "sqlite")] pool: &Pool<SqliteConnectionManager>,#[cfg(feature = "clickhouse")] pool: &Option<String>,
+    root: &String, method: &Method, path: String, parameters: &Vec<(&str, &str)>, 
     body: Option<String>, headers: HashMap<String, String>, cookies: HashMap<String, String>,
+    backend: &Box<dyn Backend + Send + Sync>
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
     let mut response_headers = vec![];
+    let config = backend.config();
+    let db_schema = backend.db_schema();
     let schema_name = &(match (config.db_schemas.len() > 1, method, headers.get("Accept-Profile"), headers.get("Content-Profile")) {
         (false, ..) => Ok(config.db_schemas.get(0).unwrap().clone()),
         (_, &Method::DELETE, _, Some(content_profile))
@@ -138,20 +127,14 @@ pub async fn handle(
         _ => false,
     };
 
-    #[cfg(feature = "postgresql")]
-    let response = execute(method, pool, _readonly, authenticated, schema_name, &request, role, &jwt_claims, config, db_schema).await?;
+    let response:ApiResponse = match config.db_type.as_str() {
+        #[cfg(feature = "postgresql")]
+        "postgresql" => backend.execute(method, _readonly, authenticated, schema_name, &request, role, &jwt_claims).await?,
+        
+        #[cfg(feature = "sqlite")]
+        "sqlite" => task::block_in_place(|| backend.execute(method, _readonly, authenticated, schema_name, &request, role, &jwt_claims)).await?,
 
-    #[cfg(feature = "sqlite")]
-    let response = task::block_in_place(|| execute(method, pool, _readonly, authenticated, schema_name, &request, role, &jwt_claims, config, db_schema))?;
-
-    #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
-    let response = ApiResponse {
-        page_total: 0,
-        total_result_set: None,
-        top_level_offset: 0,
-        response_headers: None,
-        response_status: None,
-        body: "".to_string(),
+        t => panic!("unsuported database type: {}", t),
     };
 
     // create and return the response to the client

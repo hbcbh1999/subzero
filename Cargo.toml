@@ -1,80 +1,11 @@
-[package]
-name = "subzero"
-version = "0.1.0"
-edition = "2018"
-autobins = false
-autobenches = false
-
-[dependencies]
-log = "0.4.14"
-http = "0.2"
-rocket = "0.5.0-rc.1"
-combine = "4.6.1"
-lazy_static = "1.4.0"
-serde = "1.0.130"
-serde_json = "1.0.68"
-csv = "1.1.6"
-snafu = "0.6.10"
-openssl = { version="0.10", optional = true }
-postgres-types = { version = "0.2.2", optional = true }
-tokio-postgres = { version = "0.7.4", optional = true }
-postgres-openssl = { version = "0.5.0", optional = true }
-tokio = "1.6.1"
-bytes = "1.1.0"
-futures = "0.3.17"
-deadpool-postgres = { version = "0.10.0", optional = true }
-figment = { version = "0.10.6", features = ["toml", "env"] }
-jsonwebtoken = "7.2.0"
-jsonpath_lib = "0.3.0"
-dashmap = "5.0.0"
-rusqlite = { version = "0.26.3", features = ["array","bundled","window","series"], optional = true }
-r2d2 = { version = "0.8.9", optional = true }
-r2d2_sqlite = { version = "0.19.0", optional = true }
-
-
-[features]
-default = []
-postgresql = ["postgres-types", "tokio-postgres", "deadpool-postgres", "postgres-openssl", "openssl"]
-sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
-
-[[bin]]
-name = "subzero-postgresql"
-path = "src/main.rs"
-required-features = ["postgresql"]
-
-[[bin]]
-name = "subzero-sqlite"
-path = "src/main.rs"
-required-features = ["sqlite"]
+[workspace]
+members = [
+    "lib",
+    "rocket",
+]
 
 [patch.crates-io]
 tokio-postgres = { git = "https://github.com/subzerocloud/rust-postgres" }
 postgres-types = { git = "https://github.com/subzerocloud/rust-postgres" }
 postgres-openssl = { git = "https://github.com/subzerocloud/rust-postgres" }
-
-
-[dev-dependencies]
-pretty_assertions = "1.0.0"
-dyn_partial_eq = "0.1.2"
-criterion = "0.3"
-speculate = "0.1.2"
-demonstrate = "0.4.5"
-regex = "1.4.6"
-async_once = "0.2.1"
-rand = "0.8.5"
-
-# [[bench]]
-# name = "my_benchmark"
-# harness = false
-
-[profile.release]
-strip = true  # Automatically strip symbols from the binary.
-# debug = true
-lto = true
-codegen-units = 1
-panic = "abort"
-
-# [target.x86_64-unknown-linux-gnu]
-# rustflags = [
-#     "-C", "link-arg=-fuse-ld=lld",
-# ]
+postgres-protocol = { git = "https://github.com/subzerocloud/rust-postgres" }

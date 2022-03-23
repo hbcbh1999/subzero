@@ -56,6 +56,8 @@ mod vhosts {
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct VhostConfig {
     pub url_prefix: Option<String>,
+    #[serde(default = "db_type")]
+    pub db_type: String,
     pub db_uri: String,
     #[serde(default = "db_schemas")]
     pub db_schemas: Vec<String>,
@@ -77,12 +79,13 @@ pub struct VhostConfig {
     pub role_claim_key: String,
 }
 
-#[cfg(feature = "postgresql")]
+//#[cfg(feature = "postgresql")]
+fn db_type() -> String { "postgresql".to_string() }
 fn db_schemas() -> Vec<String> { vec!["public".to_string()] }
-#[cfg(feature = "sqlite")]
-fn db_schemas() -> Vec<String> { vec!["_sqlite_public_".to_string()] }
-#[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
-fn db_schemas() -> Vec<String> { vec![] }
+// #[cfg(feature = "sqlite")]
+// fn db_schemas() -> Vec<String> { vec!["_sqlite_public_".to_string()] }
+// #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
+// fn db_schemas() -> Vec<String> { vec![] }
 
 fn role_claim_key() -> String { ".role".to_string() }
 fn db_pool() -> usize { 10 }
@@ -117,6 +120,7 @@ mod test {
                 "domain.com".to_string(),
                 VhostConfig {
                     url_prefix: None,
+                    db_type: "postgresql".to_string(),
                     db_uri: "db_uri".to_string(),
                     db_schemas: vec!["db_schema".to_string()],
                     db_schema_structure: SchemaStructure::SqlFile("sql_file".to_string()),

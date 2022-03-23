@@ -49,7 +49,7 @@ pub fn setup_db(init_db_once: &Once) {
         //     format!(r#"{{json_file={}}}"#, schema_file.to_str().unwrap()),
         // );
 
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=sqlite_structure_query.sql}}"#));
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=../sqlite_structure_query.sql}}"#));
     });
 }
 
@@ -60,6 +60,7 @@ where
     init_client_once.call_once(|| {
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"postgrest_test_anonymous");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TX_ROLLBACK", &"true");
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TYPE", &"sqlite");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[_sqlite_public_]");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");

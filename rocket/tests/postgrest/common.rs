@@ -54,7 +54,7 @@ pub fn setup_db(init_db_once: &Once) {
         assert!(output.status.success());
 
         env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", &*db_uri);
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=postgresql_structure_query.sql}}"#));
+        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=../postgresql_structure_query.sql}}"#));
     });
 }
 
