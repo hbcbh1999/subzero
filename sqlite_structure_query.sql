@@ -1,10 +1,10 @@
 
 with
 schemas as (
-    select '_sqlite_public_' as schema_name
+    select 'public' as schema_name
 )
 , tables as (
-    select '_sqlite_public_' as table_schema, name as table_name, "type" as kind from sqlite_master
+    select 'public' as table_schema, name as table_name, "type" as kind from sqlite_master
     where type in ('table', 'view') and name not like 'sqlite_%'
 )
 , columns as (
@@ -24,10 +24,10 @@ schemas as (
 , foreign_keys as (
     select
       'constraint_name' as constraint_name,
-      '_sqlite_public_' as table_schema,
+      'public' as table_schema,
       t.table_name as table_name,
       json_array(f."from") as columns,
-      '_sqlite_public_' as foreign_table_schema,
+      'public' as foreign_table_schema,
       f."table" as foreign_table_name,
       json_array(f."to") as foreign_columns
     from

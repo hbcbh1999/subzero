@@ -14,6 +14,7 @@ use crate::{
     error::{Result, *},
     schema::DbSchema,
 };
+use std::path::Path;
 use serde_json::{Value as JsonValue, json};
 use http::Method;
 use snafu::ResultExt;
@@ -199,7 +200,9 @@ impl Backend for SQLiteBackend {
         
         //read db schema
         let db_schema = match &config.db_schema_structure {
-            SqlFile(f) => match fs::read_to_string(f) {
+            SqlFile(f) => match fs::read_to_string(
+                vec![f, &format!("sqlite_{}", f)].into_iter().filter(|f| Path::new(f).exists()).next().unwrap_or(f)
+            ) {
                 Ok(q) => match pool.get() {
                     Ok(conn) => {
                         task::block_in_place(|| {

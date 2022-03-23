@@ -311,7 +311,7 @@ impl Error {
                 json!({ "message": format!("Unknown relation '{}'", relation) })
             }
             Error::NotFound { target } => {
-                json!({ "message": format!("Entiry '{}' not found", target) })
+                json!({ "message": format!("Entry '{}' not found", target) })
             }
             Error::UnsupportedVerb => json!({"message":"Unsupported HTTP verb"}),
             Error::NoRpc {

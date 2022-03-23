@@ -18,6 +18,7 @@ use async_trait::async_trait;
 use super::Backend;
 
 use std::{collections::HashMap, fs};
+use std::path::Path;
 use serde_json::{Value as JsonValue};
 use http::Method;
 
@@ -237,7 +238,9 @@ impl Backend for PostgreSQLBackend {
         
         //read db schema
         let db_schema = match &config.db_schema_structure {
-            SqlFile(f) => match fs::read_to_string(f) {
+            SqlFile(f) => match fs::read_to_string(
+                vec![f, &format!("postgresql_{}", f)].into_iter().filter(|f| Path::new(f).exists()).next().unwrap_or(f)
+            ) {
                 Ok(q) => match wait_for_pg_connection(&vhost, &pool).await {
                     Ok(mut client) => {
                         let authenticated = false;

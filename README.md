@@ -48,6 +48,6 @@ export url=$(tests/bin/pg_tmp.sh -t -u authenticator -w 3600) && psql -f demo/db
 SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE={sql_file=postgresql_structure_query.sql} \
 SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE=authenticator \
 SUBZERO_VHOSTS__DEFAULT__DB_URI=$url \
-cargo run --features=postgresql --bin subzero-postgresql
+cargo run --features=postgresql
 ```
 

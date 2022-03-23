@@ -22,7 +22,10 @@ pub fn get_resources<'a>(vhost: &Option<&str>, store: &'a Arc<DashMap<String, Vh
         },
         Some(v) => match store.get(*v) {
             Some(r) => Ok(r),
-            None => Err(Error::NotFound { target: v.to_string() })
+            None => match store.get("default") {
+                Some(r) => Ok(r),
+                None => Err(Error::NotFound { target: v.to_string() })
+            }
         },
     }
 }
