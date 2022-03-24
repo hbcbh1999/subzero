@@ -32,6 +32,8 @@ pub async fn handle(
     body: Option<String>, headers: HashMap<String, String>, cookies: HashMap<String, String>,
     backend: &Box<dyn Backend + Send + Sync>
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
+    #![allow(unused_variables)]
+    #![allow(unreachable_code)]
     let mut response_headers = vec![];
     let config = backend.config();
     let db_schema = backend.db_schema();

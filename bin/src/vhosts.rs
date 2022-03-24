@@ -30,7 +30,10 @@ pub fn get_resources<'a>(vhost: Option<&str>, store: &'a Arc<DashMap<String, Vho
     }
 }
 
+
 pub async fn create_resources(vhost: &String, config: VhostConfig, store: Arc<DashMap<String, VhostResources>>) -> Result<()> {
+    #![allow(unused_variables)]
+    #![allow(unreachable_code)]
     //setup db connection
     let backend: Box<dyn Backend + Send + Sync> = match config.db_type.as_str() {
         #[cfg(feature = "postgresql")]

@@ -37,10 +37,10 @@ lazy_static! {
 
 async fn handle_request(
     method: &Method, table: &String, origin: &Origin<'_>, parameters: &QueryString<'_>, body: Option<String>, cookies: &CookieJar<'_>,
-    headers: AllHeaders<'_>, vhosts: &State<Resources>,
+    headers: AllHeaders<'_>, resources: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
     let vhost = headers.get_one("Host");
-    let resources = get_resources(vhost, vhosts).map_err(|e| RocketError(e))?;
+    let resources = get_resources(vhost, resources).map_err(|e| RocketError(e))?;
     let (status, content_type, headers, body) = postgrest::handle(
         table,
         method,
@@ -74,41 +74,41 @@ fn index() -> &'static str { "Hello, world!" }
 
 #[get("/<table>?<parameters..>")]
 async fn get<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhosts: &State<Resources>,
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, resources: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::GET, &table, origin, &parameters, None, cookies, headers, vhosts).await
+    handle_request(&Method::GET, &table, origin, &parameters, None, cookies, headers, resources).await
 }
 
 #[post("/<table>?<parameters..>", data = "<body>")]
 async fn post<'a>(
     table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
-    vhosts: &State<Resources>,
+    resources: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::POST, &table, origin, &parameters, Some(body), cookies, headers, vhosts).await
+    handle_request(&Method::POST, &table, origin, &parameters, Some(body), cookies, headers, resources).await
 }
 
 #[delete("/<table>?<parameters..>", data = "<body>")]
 async fn delete<'a>(
     table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
-    vhosts: &State<Resources>,
+    resources: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::DELETE, &table, origin, &parameters, Some(body), cookies, headers, vhosts).await
+    handle_request(&Method::DELETE, &table, origin, &parameters, Some(body), cookies, headers, resources).await
 }
 
 #[patch("/<table>?<parameters..>", data = "<body>")]
 async fn patch<'a>(
     table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
-    vhosts: &State<Resources>,
+    resources: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::PATCH, &table, origin, &parameters, Some(body), cookies, headers, vhosts).await
+    handle_request(&Method::PATCH, &table, origin, &parameters, Some(body), cookies, headers, resources).await
 }
 
 #[put("/<table>?<parameters..>", data = "<body>")]
 async fn put<'a>(
     table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
-    vhosts: &State<Resources>,
+    resources: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::PUT, &table, origin, &parameters, Some(body), cookies, headers, vhosts).await
+    handle_request(&Method::PUT, &table, origin, &parameters, Some(body), cookies, headers, resources).await
 }
 
 async fn start() -> Result<Rocket<Build>, Error> {
@@ -124,12 +124,12 @@ async fn start() -> Result<Rocket<Build>, Error> {
         .select(Profile::from_env_or("SUBZERO_PROFILE", profile));
 
     let app_config: Config = config.extract().expect("config");
-    let vhost_resources = Arc::new(DashMap::new());
+    let resources = Arc::new(DashMap::new());
     println!("Found {} configured vhosts", app_config.vhosts.len());
-    let mut server = rocket::custom(config).manage(vhost_resources.clone()).mount("/", routes![index]);
+    let mut server = rocket::custom(config).manage(resources.clone()).mount("/", routes![index]);
 
     for (vhost, vhost_config) in app_config.vhosts {
-        let vhost_resources = vhost_resources.clone();
+        let vhost_resources = resources.clone();
         match &vhost_config.url_prefix {
             Some(p) => {
                 server = server
