@@ -3,158 +3,98 @@ extern crate lazy_static;
 
 #[macro_use]
 extern crate rocket;
+
+use std::{sync::Arc};
 use dashmap::DashMap;
 use http::Method;
-
-use rocket::{
-    routes,
-    http::{uri::Origin, CookieJar, Header, Status},
+use snafu::OptionExt;
+use figment::{providers::{Env, Format, Toml},Figment, Profile,};
+use rocket::{ routes,
+    http::{uri::Origin, CookieJar, Header, Status, ContentType as HTTPContentType},
     Build, Config as RocketConfig, Rocket, State,
 };
-use snafu::OptionExt;
-
 use subzero::{
     config::Config,
     error::{GucStatusError, Error},
-    frontend::postgrest::handle as handle_request,
-    //vhosts::{create_resources, get_resources, VhostResources},
-    // rocket_util::{cookies_as_hashmap, headers_as_hashmap, to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost},
+    frontend::postgrest,
+    api::ContentType::{SingularJSON, TextCSV, ApplicationJSON}
 };
 
 mod rocket_util;
-use rocket_util::{cookies_as_hashmap, headers_as_hashmap, to_rocket_content_type, AllHeaders, ApiResponse, QueryString, Vhost, RocketError};
+use rocket_util::{AllHeaders, ApiResponse, QueryString, RocketError};
 
 mod vhosts;
 use vhosts::{create_resources, get_resources, VhostResources};
 
-use figment::{
-    providers::{Env, Format, Toml},
-    Figment, Profile,
-};
+type Resources = Arc<DashMap<String, VhostResources>>;
+lazy_static! {
+    static ref SINGLE_CONTENT_TYPE: HTTPContentType = HTTPContentType::parse_flexible("application/vnd.pgrst.object+json").unwrap();
+}
 
-use std::{sync::Arc};
+async fn handle_request(
+    method: &Method, table: &String, origin: &Origin<'_>, parameters: &QueryString<'_>, body: Option<String>, cookies: &CookieJar<'_>, headers: AllHeaders<'_>,vhosts: &State<Resources>,
+) -> Result<ApiResponse, RocketError> {
+    let vhost = headers.get_one("Host");
+    let resources = get_resources(vhost, vhosts).map_err(|e| RocketError(e))?;
+    let (status, content_type, headers, body) = postgrest::handle(
+        table,
+        method,
+        origin.path().to_string(),
+        parameters,
+        body,
+        headers.iter().map(|h| (h.name().as_str().to_string(), h.value().to_string())).collect(),
+        cookies.iter().map(|c| (c.name().to_string(), c.value().to_string())).collect(),
+        &resources.backend,
+    )
+    .await.map_err(|e| RocketError(e))?;
+
+    let http_content_type = match content_type {
+        SingularJSON => SINGLE_CONTENT_TYPE.clone(),
+        TextCSV => HTTPContentType::CSV,
+        ApplicationJSON => HTTPContentType::JSON,
+    };
+
+    Ok(ApiResponse {
+        response: (Status::from_code(status).context(GucStatusError).map_err(|e| RocketError(e))?, (http_content_type, body)),
+        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
+    })
+}
 
 #[get("/")]
 fn index() -> &'static str { "Hello, world!" }
 
-#[get("/<root>?<parameters..>")]
-async fn get<'a>(
-    root: String, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhost: Vhost<'a>,
-    vhosts: &State<Arc<DashMap<String, VhostResources>>>,
+#[get("/<table>?<parameters..>")]
+async fn get<'a>(table: String, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    let resources = get_resources(&vhost, vhosts).map_err(|e| RocketError(e))?;
-    let (status, content_type, headers, body) = handle_request(
-        &root,
-        &Method::GET,
-        origin.path().to_string(),
-        &parameters,
-        None,
-        headers_as_hashmap(&headers),
-        cookies_as_hashmap(cookies),
-        &resources.backend,
-    )
-    .await.map_err(|e| RocketError(e))?;
-
-    Ok(ApiResponse {
-        response: (Status::from_code(status).context(GucStatusError).map_err(|e| RocketError(e))?, (to_rocket_content_type(content_type), body)),
-        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
-    })
+    handle_request(&Method::GET,&table,origin,&parameters,None,cookies,headers,vhosts).await
 }
 
-#[post("/<root>?<parameters..>", data = "<body>")]
+#[post("/<table>?<parameters..>", data = "<body>")]
 async fn post<'a>(
-    root: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhost: Vhost<'a>,
-    vhosts: &State<Arc<DashMap<String, VhostResources>>>,
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    let resources = get_resources(&vhost, vhosts).map_err(|e| RocketError(e))?;
-    let (status, content_type, headers, body) = handle_request(
-        &root,
-        &Method::POST,
-        origin.path().to_string(),
-        &parameters,
-        Some(body),
-        headers_as_hashmap(&headers),
-        cookies_as_hashmap(cookies),
-        &resources.backend,
-    )
-    .await.map_err(|e| RocketError(e))?;
-
-    Ok(ApiResponse {
-        response: (Status::from_code(status).context(GucStatusError).map_err(|e| RocketError(e))?, (to_rocket_content_type(content_type), body)),
-        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
-    })
+    handle_request(&Method::POST,&table,origin,&parameters,Some(body),cookies,headers,vhosts).await
 }
 
-#[delete("/<root>?<parameters..>", data = "<body>")]
+#[delete("/<table>?<parameters..>", data = "<body>")]
 async fn delete<'a>(
-    root: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhost: Vhost<'a>,
-    vhosts: &State<Arc<DashMap<String, VhostResources>>>,
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    let resources = get_resources(&vhost, vhosts).map_err(|e| RocketError(e))?;
-    let (status, content_type, headers, body) = handle_request(
-        &root,
-        &Method::DELETE,
-        origin.path().to_string(),
-        &parameters,
-        Some(body),
-        headers_as_hashmap(&headers),
-        cookies_as_hashmap(cookies),
-        &resources.backend,
-    )
-    .await.map_err(|e| RocketError(e))?;
-
-    Ok(ApiResponse {
-        response: (Status::from_code(status).context(GucStatusError).map_err(|e| RocketError(e))?, (to_rocket_content_type(content_type), body)),
-        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
-    })
+    handle_request(&Method::DELETE,&table,origin,&parameters,Some(body),cookies,headers,vhosts).await
 }
 
-#[patch("/<root>?<parameters..>", data = "<body>")]
+#[patch("/<table>?<parameters..>", data = "<body>")]
 async fn patch<'a>(
-    root: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhost: Vhost<'a>,
-    vhosts: &State<Arc<DashMap<String, VhostResources>>>,
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    let resources = get_resources(&vhost, vhosts).map_err(|e| RocketError(e))?;
-    let (status, content_type, headers, body) = handle_request(
-        &root,
-        &Method::PATCH,
-        origin.path().to_string(),
-        &parameters,
-        Some(body),
-        headers_as_hashmap(&headers),
-        cookies_as_hashmap(cookies),
-        &resources.backend,
-    )
-    .await.map_err(|e| RocketError(e))?;
-
-    Ok(ApiResponse {
-        response: (Status::from_code(status).context(GucStatusError).map_err(|e| RocketError(e))?, (to_rocket_content_type(content_type), body)),
-        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
-    })
+    handle_request(&Method::PATCH,&table,origin,&parameters,Some(body),cookies,headers,vhosts).await
 }
 
-#[put("/<root>?<parameters..>", data = "<body>")]
+#[put("/<table>?<parameters..>", data = "<body>")]
 async fn put<'a>(
-    root: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhost: Vhost<'a>,
-    vhosts: &State<Arc<DashMap<String, VhostResources>>>,
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    let resources = get_resources(&vhost, vhosts).map_err(|e| RocketError(e))?;
-    let (status, content_type, headers, body) = handle_request(
-        &root,
-        &Method::PUT,
-        origin.path().to_string(),
-        &parameters,
-        Some(body),
-        headers_as_hashmap(&headers),
-        cookies_as_hashmap(cookies),
-        &resources.backend,
-    )
-    .await.map_err(|e| RocketError(e))?;
-
-    Ok(ApiResponse {
-        response: (Status::from_code(status).context(GucStatusError).map_err(|e| RocketError(e))?, (to_rocket_content_type(content_type), body)),
-        headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
-    })
+    handle_request(&Method::PUT,&table,origin,&parameters,Some(body),cookies,headers,vhosts).await
 }
 
 async fn start() -> Result<Rocket<Build>, Error> {

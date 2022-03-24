@@ -14,13 +14,13 @@ pub struct VhostResources  {
     pub backend: Box<dyn Backend + Send + Sync>
 }
 
-pub fn get_resources<'a>(vhost: &Option<&str>, store: &'a Arc<DashMap<String, VhostResources>>) -> Result<Ref<'a, String, VhostResources>> {
+pub fn get_resources<'a>(vhost: Option<&str>, store: &'a Arc<DashMap<String, VhostResources>>) -> Result<Ref<'a, String, VhostResources>> {
     match vhost {
         None => match store.get("default") {
             Some(r) => Ok(r),
             None => Err(Error::NotFound { target: "vhost".to_string() })
         },
-        Some(v) => match store.get(*v) {
+        Some(v) => match store.get(v) {
             Some(r) => Ok(r),
             None => match store.get("default") {
                 Some(r) => Ok(r),
