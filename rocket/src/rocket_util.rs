@@ -5,11 +5,10 @@ use rocket::{
     request::{FromRequest, Outcome, Request},
     response::{Responder, Response, Result},
 };
-use rocket::response::{self,};
+use rocket::response::{self};
 use std::io::Cursor;
 use subzero::error::Error;
 use std::ops::Deref;
-
 
 #[derive(Debug)]
 pub struct QueryString<'r>(Vec<(&'r str, &'r str)>);
@@ -62,7 +61,9 @@ pub struct RocketError(pub Error);
 #[rocket::async_trait]
 impl<'r> Responder<'r, 'static> for RocketError {
     fn respond_to(self, _: &'r Request<'_>) -> response::Result<'static> {
-        let err = match self { RocketError(e) => e};
+        let err = match self {
+            RocketError(e) => e,
+        };
         let status = Status::from_code(err.status_code()).unwrap();
         let body = err.json_body().to_string();
         let mut response = Response::build();
@@ -76,4 +77,3 @@ impl<'r> Responder<'r, 'static> for RocketError {
         response.ok()
     }
 }
-

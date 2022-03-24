@@ -8,8 +8,12 @@ use std::{sync::Arc};
 use dashmap::DashMap;
 use http::Method;
 use snafu::OptionExt;
-use figment::{providers::{Env, Format, Toml},Figment, Profile,};
-use rocket::{ routes,
+use figment::{
+    providers::{Env, Format, Toml},
+    Figment, Profile,
+};
+use rocket::{
+    routes,
     http::{uri::Origin, CookieJar, Header, Status, ContentType as HTTPContentType},
     Build, Config as RocketConfig, Rocket, State,
 };
@@ -17,7 +21,7 @@ use subzero::{
     config::Config,
     error::{GucStatusError, Error},
     frontend::postgrest,
-    api::ContentType::{SingularJSON, TextCSV, ApplicationJSON}
+    api::ContentType::{SingularJSON, TextCSV, ApplicationJSON},
 };
 
 mod rocket_util;
@@ -32,7 +36,8 @@ lazy_static! {
 }
 
 async fn handle_request(
-    method: &Method, table: &String, origin: &Origin<'_>, parameters: &QueryString<'_>, body: Option<String>, cookies: &CookieJar<'_>, headers: AllHeaders<'_>,vhosts: &State<Resources>,
+    method: &Method, table: &String, origin: &Origin<'_>, parameters: &QueryString<'_>, body: Option<String>, cookies: &CookieJar<'_>,
+    headers: AllHeaders<'_>, vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
     let vhost = headers.get_one("Host");
     let resources = get_resources(vhost, vhosts).map_err(|e| RocketError(e))?;
@@ -46,7 +51,8 @@ async fn handle_request(
         cookies.iter().map(|c| (c.name().to_string(), c.value().to_string())).collect(),
         &resources.backend,
     )
-    .await.map_err(|e| RocketError(e))?;
+    .await
+    .map_err(|e| RocketError(e))?;
 
     let http_content_type = match content_type {
         SingularJSON => SINGLE_CONTENT_TYPE.clone(),
@@ -55,7 +61,10 @@ async fn handle_request(
     };
 
     Ok(ApiResponse {
-        response: (Status::from_code(status).context(GucStatusError).map_err(|e| RocketError(e))?, (http_content_type, body)),
+        response: (
+            Status::from_code(status).context(GucStatusError).map_err(|e| RocketError(e))?,
+            (http_content_type, body),
+        ),
         headers: headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
     })
 }
@@ -64,37 +73,42 @@ async fn handle_request(
 fn index() -> &'static str { "Hello, world!" }
 
 #[get("/<table>?<parameters..>")]
-async fn get<'a>(table: String, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,vhosts: &State<Resources>,
+async fn get<'a>(
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::GET,&table,origin,&parameters,None,cookies,headers,vhosts).await
+    handle_request(&Method::GET, &table, origin, &parameters, None, cookies, headers, vhosts).await
 }
 
 #[post("/<table>?<parameters..>", data = "<body>")]
 async fn post<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,vhosts: &State<Resources>,
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::POST,&table,origin,&parameters,Some(body),cookies,headers,vhosts).await
+    handle_request(&Method::POST, &table, origin, &parameters, Some(body), cookies, headers, vhosts).await
 }
 
 #[delete("/<table>?<parameters..>", data = "<body>")]
 async fn delete<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,vhosts: &State<Resources>,
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::DELETE,&table,origin,&parameters,Some(body),cookies,headers,vhosts).await
+    handle_request(&Method::DELETE, &table, origin, &parameters, Some(body), cookies, headers, vhosts).await
 }
 
 #[patch("/<table>?<parameters..>", data = "<body>")]
 async fn patch<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,vhosts: &State<Resources>,
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::PATCH,&table,origin,&parameters,Some(body),cookies,headers,vhosts).await
+    handle_request(&Method::PATCH, &table, origin, &parameters, Some(body), cookies, headers, vhosts).await
 }
 
 #[put("/<table>?<parameters..>", data = "<body>")]
 async fn put<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,vhosts: &State<Resources>,
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    vhosts: &State<Resources>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::PUT,&table,origin,&parameters,Some(body),cookies,headers,vhosts).await
+    handle_request(&Method::PUT, &table, origin, &parameters, Some(body), cookies, headers, vhosts).await
 }
 
 async fn start() -> Result<Rocket<Build>, Error> {
@@ -112,22 +126,20 @@ async fn start() -> Result<Rocket<Build>, Error> {
     let app_config: Config = config.extract().expect("config");
     let vhost_resources = Arc::new(DashMap::new());
     println!("Found {} configured vhosts", app_config.vhosts.len());
-    let mut server = rocket::custom(config)
-        .manage(vhost_resources.clone())
-        .mount("/", routes![index]);
+    let mut server = rocket::custom(config).manage(vhost_resources.clone()).mount("/", routes![index]);
 
     for (vhost, vhost_config) in app_config.vhosts {
         let vhost_resources = vhost_resources.clone();
         match &vhost_config.url_prefix {
             Some(p) => {
                 server = server
-                .mount(p, routes![get, post, delete, patch, put])
-                .mount(format!("{}/rpc",p), routes![get, post]);
-            },
+                    .mount(p, routes![get, post, delete, patch, put])
+                    .mount(format!("{}/rpc", p), routes![get, post]);
+            }
             None => {
                 server = server
-                .mount("/", routes![get, post, delete, patch, put])
-                .mount("/rpc", routes![get, post]);
+                    .mount("/", routes![get, post, delete, patch, put])
+                    .mount("/rpc", routes![get, post]);
             }
         }
         //tokio::spawn(async move {
@@ -136,7 +148,7 @@ async fn start() -> Result<Rocket<Build>, Error> {
             Ok(_) => println!("[{}] loaded config", vhost),
             Err(e) => println!("[{}] config load failed ({})", vhost, e),
         }
-        //});     
+        //});
     }
 
     Ok(server)
