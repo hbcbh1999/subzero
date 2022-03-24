@@ -42,11 +42,11 @@ fn setup() {
         assert!(output.status.success());
 
         let db_uri = String::from_utf8_lossy(&output.stdout);
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", &*db_uri);
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[public]");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"anonymous");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=../postgresql_structure_query.sql}}"#));
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__URL_PREFIX", "/rest");
+        env::set_var("SUBZERO_DB_URI", &*db_uri);
+        env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
+        env::set_var("SUBZERO_DB_ANON_ROLE", &"anonymous");
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=../postgresql_structure_query.sql}}"#));
+        env::set_var("SUBZERO_URL_PREFIX", "/rest");
         //env::set_var("SUBZERO_PORT", &"8001");
 
         let output = Command::new("psql")

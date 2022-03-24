@@ -13,7 +13,7 @@ pub static INIT_CLIENT: Once = Once::new();
 
 lazy_static! {
     pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async {
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[v1, v2]");
+        env::set_var("SUBZERO_DB_SCHEMAS", "[v1, v2]");
         Client::untracked(start().await.unwrap()).await.expect("valid client")
     });
 }

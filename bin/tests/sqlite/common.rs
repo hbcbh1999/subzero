@@ -41,15 +41,15 @@ pub fn setup_db(init_db_once: &Once) {
 
         let db_uri = db.to_str().unwrap();
 
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", db_uri);
+        env::set_var("SUBZERO_DB_URI", db_uri);
 
         // let schema_file = project_dir.join("tests/sqlite/fixtures/schema.json");
         // env::set_var(
-        //     "SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE",
+        //     "SUBZERO_DB_SCHEMA_STRUCTURE",
         //     format!(r#"{{json_file={}}}"#, schema_file.to_str().unwrap()),
         // );
 
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=../sqlite_structure_query.sql}}"#));
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=../sqlite_structure_query.sql}}"#));
     });
 }
 
@@ -58,13 +58,13 @@ where
     T: LazyStatic,
 {
     init_client_once.call_once(|| {
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"postgrest_test_anonymous");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TX_ROLLBACK", &"true");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TYPE", &"sqlite");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[_sqlite_public_]");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__URL_PREFIX", "/rest");
+        env::set_var("SUBZERO_DB_ANON_ROLE", &"postgrest_test_anonymous");
+        env::set_var("SUBZERO_DB_TX_ROLLBACK", &"true");
+        env::set_var("SUBZERO_DB_TYPE", &"sqlite");
+        //env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
+        env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
+        env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
+        env::set_var("SUBZERO_URL_PREFIX", "/rest");
         lazy_static::initialize(client);
     });
 }

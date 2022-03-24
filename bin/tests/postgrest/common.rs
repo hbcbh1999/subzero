@@ -53,8 +53,8 @@ pub fn setup_db(init_db_once: &Once) {
         // println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         assert!(output.status.success());
 
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_URI", &*db_uri);
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=../postgresql_structure_query.sql}}"#));
+        env::set_var("SUBZERO_DB_URI", &*db_uri);
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=../postgresql_structure_query.sql}}"#));
     });
 }
 
@@ -63,14 +63,14 @@ where
     T: LazyStatic,
 {
     init_client_once.call_once(|| {
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_ANON_ROLE", &"postgrest_test_anonymous");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_TX_ROLLBACK", &"true");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_SCHEMAS", "[test]");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_PRE_REQUEST", "test.switch_role");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__JWT_SECRET", "reallyreallyreallyreallyverysafe");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__DB_USE_LEGACY_GUCS", "true");
-        env::set_var("SUBZERO_VHOSTS__DEFAULT__URL_PREFIX", "/rest");
-        env::remove_var("SUBZERO_VHOSTS__DEFAULT__DB_MAX_ROWS");
+        env::set_var("SUBZERO_DB_ANON_ROLE", &"postgrest_test_anonymous");
+        env::set_var("SUBZERO_DB_TX_ROLLBACK", &"true");
+        env::set_var("SUBZERO_DB_SCHEMAS", "[test]");
+        env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
+        env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
+        env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "true");
+        env::set_var("SUBZERO_URL_PREFIX", "/rest");
+        env::remove_var("SUBZERO_DB_MAX_ROWS");
         lazy_static::initialize(client);
     });
 }

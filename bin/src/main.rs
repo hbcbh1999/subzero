@@ -4,8 +4,6 @@ extern crate lazy_static;
 #[macro_use]
 extern crate rocket;
 
-use std::{sync::Arc};
-use dashmap::DashMap;
 use http::Method;
 use snafu::OptionExt;
 use figment::{
@@ -18,29 +16,32 @@ use rocket::{
     Build, Config as RocketConfig, Rocket, State,
 };
 use subzero::{
-    config::Config,
+    config::VhostConfig,
     error::{GucStatusError, Error},
     frontend::postgrest,
     api::ContentType::{SingularJSON, TextCSV, ApplicationJSON},
+    backend::{Backend},
 };
+#[cfg(feature = "postgresql")]
+use subzero::backend::postgresql::PostgreSQLBackend;
+#[cfg(feature = "sqlite")]
+use subzero::backend::sqlite::SQLiteBackend;
+
 
 mod rocket_util;
 use rocket_util::{AllHeaders, ApiResponse, QueryString, RocketError};
 
-mod vhosts;
-use vhosts::{create_resources, get_resources, VhostResources};
-
-type Resources = Arc<DashMap<String, VhostResources>>;
+type DbBackend = Box<dyn Backend + Send + Sync>;
 lazy_static! {
     static ref SINGLE_CONTENT_TYPE: HTTPContentType = HTTPContentType::parse_flexible("application/vnd.pgrst.object+json").unwrap();
 }
 
+// main request handler
+// this is mostly to align types between rocket and subzero functions
 async fn handle_request(
     method: &Method, table: &String, origin: &Origin<'_>, parameters: &QueryString<'_>, body: Option<String>, cookies: &CookieJar<'_>,
-    headers: AllHeaders<'_>, resources: &State<Resources>,
+    headers: AllHeaders<'_>, db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    let vhost = headers.get_one("Host");
-    let resources = get_resources(vhost, resources).map_err(|e| RocketError(e))?;
     let (status, content_type, headers, body) = postgrest::handle(
         table,
         method,
@@ -49,7 +50,7 @@ async fn handle_request(
         body,
         headers.iter().map(|h| (h.name().as_str().to_string(), h.value().to_string())).collect(),
         cookies.iter().map(|c| (c.name().to_string(), c.value().to_string())).collect(),
-        &resources.backend,
+        db_backend,
     )
     .await
     .map_err(|e| RocketError(e))?;
@@ -69,48 +70,53 @@ async fn handle_request(
     })
 }
 
+
+// define rocket request handlers, they are just wrappers arround handle_request function
+// since rocket does not allow yet a single function to handle multiple verbs
 #[get("/")]
 fn index() -> &'static str { "Hello, world!" }
 
 #[get("/<table>?<parameters..>")]
 async fn get<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, resources: &State<Resources>,
+    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::GET, &table, origin, &parameters, None, cookies, headers, resources).await
+    handle_request(&Method::GET, &table, origin, &parameters, None, cookies, headers, db_backend).await
 }
 
 #[post("/<table>?<parameters..>", data = "<body>")]
 async fn post<'a>(
     table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
-    resources: &State<Resources>,
+    db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::POST, &table, origin, &parameters, Some(body), cookies, headers, resources).await
+    handle_request(&Method::POST, &table, origin, &parameters, Some(body), cookies, headers, db_backend).await
 }
 
 #[delete("/<table>?<parameters..>", data = "<body>")]
 async fn delete<'a>(
     table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
-    resources: &State<Resources>,
+    db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::DELETE, &table, origin, &parameters, Some(body), cookies, headers, resources).await
+    handle_request(&Method::DELETE, &table, origin, &parameters, Some(body), cookies, headers, db_backend).await
 }
 
 #[patch("/<table>?<parameters..>", data = "<body>")]
 async fn patch<'a>(
     table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
-    resources: &State<Resources>,
+    db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::PATCH, &table, origin, &parameters, Some(body), cookies, headers, resources).await
+    handle_request(&Method::PATCH, &table, origin, &parameters, Some(body), cookies, headers, db_backend).await
 }
 
 #[put("/<table>?<parameters..>", data = "<body>")]
 async fn put<'a>(
     table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
-    resources: &State<Resources>,
+    db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::PUT, &table, origin, &parameters, Some(body), cookies, headers, resources).await
+    handle_request(&Method::PUT, &table, origin, &parameters, Some(body), cookies, headers, db_backend).await
 }
 
+// main function where we read the configuration and initialize the rocket webserver
+#[allow(unreachable_code)]
 async fn start() -> Result<Rocket<Build>, Error> {
     #[cfg(debug_assertions)]
     let profile = RocketConfig::DEBUG_PROFILE;
@@ -118,38 +124,34 @@ async fn start() -> Result<Rocket<Build>, Error> {
     #[cfg(not(debug_assertions))]
     let profile = RocketConfig::RELEASE_PROFILE;
 
+    // try to read the configuration from both a file and env vars
+    // this configuration includes both subzero specific settings (VhostConfig type)
+    // and rocket configuration
     let config = Figment::from(RocketConfig::default())
         .merge(Toml::file(Env::var_or("SUBZERO_CONFIG", "config.toml")).nested())
         .merge(Env::prefixed("SUBZERO_").split("__").ignore(&["PROFILE"]).global())
         .select(Profile::from_env_or("SUBZERO_PROFILE", profile));
 
-    let app_config: Config = config.extract().expect("config");
-    let resources = Arc::new(DashMap::new());
-    println!("Found {} configured vhosts", app_config.vhosts.len());
-    let mut server = rocket::custom(config).manage(resources.clone()).mount("/", routes![index]);
+    // extract the subzero specific part of the configuration
+    let vhost_config: VhostConfig = config.extract().expect("config");
+    #[allow(unused_variables)]
+    let url_prefix = vhost_config.url_prefix.clone().unwrap_or("/".to_string());
 
-    for (vhost, vhost_config) in app_config.vhosts {
-        let vhost_resources = resources.clone();
-        match &vhost_config.url_prefix {
-            Some(p) => {
-                server = server
-                    .mount(p, routes![get, post, delete, patch, put])
-                    .mount(format!("{}/rpc", p), routes![get, post]);
-            }
-            None => {
-                server = server
-                    .mount("/", routes![get, post, delete, patch, put])
-                    .mount("/rpc", routes![get, post]);
-            }
-        }
-        //tokio::spawn(async move {
-        //sleep(Duration::from_millis(30 * 1000)).await;
-        match create_resources(&vhost, vhost_config, vhost_resources).await {
-            Ok(_) => println!("[{}] loaded config", vhost),
-            Err(e) => println!("[{}] config load failed ({})", vhost, e),
-        }
-        //});
-    }
+    //initialize the backend
+    #[allow(unused_variables)]
+    let backend: Box<dyn Backend + Send + Sync> = match vhost_config.db_type.as_str() {
+        #[cfg(feature = "postgresql")]
+        "postgresql" => Box::new(PostgreSQLBackend::init("default".to_string(), vhost_config).await?),
+        #[cfg(feature = "sqlite")]
+        "sqlite" => Box::new(SQLiteBackend::init("default".to_string(), vhost_config).await?),
+        t => panic!("unsuported database type: {}", t),
+    };
+
+    // initialize the web server
+    let server = rocket::custom(config)
+        .manage(backend).mount("/", routes![index])
+        .mount(&url_prefix, routes![get, post, delete, patch, put])
+        .mount(format!("{}/rpc", &url_prefix), routes![get, post]);
 
     Ok(server)
 }
@@ -161,6 +163,7 @@ async fn rocket() -> Rocket<Build> {
         Err(e) => panic!("{}", e),
     }
 }
+
 
 // #[cfg(test)]
 // #[macro_use]

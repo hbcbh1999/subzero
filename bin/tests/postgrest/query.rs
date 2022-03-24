@@ -465,7 +465,7 @@ feature "query"
           //[json|
           //  r#"{"hint":"Verify that 'car_model_sales_202101' and 'car_models' exist in the schema 'test' and that there is a foreign key relationship between them. If a new relationship was created, try reloading the schema cache.",
           //    "message":"Could not find a relationship between 'car_model_sales_202101' and 'car_models' in the schema cache"}"# |]
-          [json|r#"{"message":"Entiry 'car_model_sales_202101' not found"}"#|]
+          [json|r#"{"message":"Entry 'car_model_sales_202101' not found"}"#|]
           { matchStatus  = 404
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
@@ -485,7 +485,7 @@ feature "query"
           //[json|
           //  r#"{"hint":"Verify that 'car_models_default' and 'car_model_sales' exist in the schema 'test' and that there is a foreign key relationship between them. If a new relationship was created, try reloading the schema cache.",
           //    "message":"Could not find a relationship between 'car_models_default' and 'car_model_sales' in the schema cache"}"# |]
-          [json|r#"{"message":"Entiry 'car_models_default' not found"}"#|]
+          [json|r#"{"message":"Entry 'car_models_default' not found"}"#|]
           { matchStatus  = 404
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
