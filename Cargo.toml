@@ -9,3 +9,15 @@ tokio-postgres = { git = "https://github.com/subzerocloud/rust-postgres" }
 postgres-types = { git = "https://github.com/subzerocloud/rust-postgres" }
 postgres-openssl = { git = "https://github.com/subzerocloud/rust-postgres" }
 postgres-protocol = { git = "https://github.com/subzerocloud/rust-postgres" }
+
+[profile.release]
+strip = true  # Automatically strip symbols from the binary.
+# debug = true
+lto = true
+codegen-units = 1
+panic = "abort"
+
+# [target.x86_64-unknown-linux-gnu]
+# rustflags = [
+#     "-C", "link-arg=-fuse-ld=lld",
+# ]
