@@ -27,7 +27,6 @@ use subzero::backend::postgresql::PostgreSQLBackend;
 #[cfg(feature = "sqlite")]
 use subzero::backend::sqlite::SQLiteBackend;
 
-
 mod rocket_util;
 use rocket_util::{AllHeaders, ApiResponse, QueryString, RocketError};
 
@@ -71,7 +70,7 @@ async fn handle_request(
 }
 
 
-// define rocket request handlers, they are just wrappers arround handle_request function
+// define rocket request handlers, they are just wrappers around handle_request function
 // since rocket does not allow yet a single function to handle multiple verbs
 #[get("/")]
 fn index() -> &'static str { "Hello, world!" }
@@ -144,7 +143,7 @@ async fn start() -> Result<Rocket<Build>, Error> {
         "postgresql" => Box::new(PostgreSQLBackend::init("default".to_string(), vhost_config).await?),
         #[cfg(feature = "sqlite")]
         "sqlite" => Box::new(SQLiteBackend::init("default".to_string(), vhost_config).await?),
-        t => panic!("unsuported database type: {}", t),
+        t => panic!("unsupported database type: {}", t),
     };
 
     // initialize the web server
