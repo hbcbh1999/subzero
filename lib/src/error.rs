@@ -5,6 +5,8 @@ use snafu::Snafu;
 //use combine;
 use serde_json::{json, Value as JsonValue};
 // use std::io::Cursor;
+use hyper::Error as HyperError;
+use http::Error as HttpError;
 
 #[cfg(feature = "postgresql")]
 use deadpool_postgres::PoolError as PgPoolError;
@@ -135,6 +137,15 @@ pub enum Error {
     #[cfg(feature = "sqlite")]
     #[snafu(display("ThreadError: {}", source))]
     ThreadError { source: JoinError },
+    
+    #[snafu(display("IoError: {}", source))]
+    IoError { source: io::Error },
+    
+    #[snafu(display("ProxyError: {}", source))]
+    ProxyError { source: HyperError },
+
+    #[snafu(display("HttpRequestError: {}", source))]
+    HttpRequestError { source: HttpError },
 }
 
 impl Error {
@@ -161,6 +172,9 @@ impl Error {
 
     pub fn status_code(&self) -> u16 {
         match self {
+            Error::HttpRequestError { .. } => 500,
+            Error::ProxyError {..} => 500,
+            Error::IoError { ..} => 500,
             #[cfg(feature = "sqlite")]
             Error::ThreadError { .. } => 500,
             Error::UnsupportedFeature { .. } => 400,
@@ -262,6 +276,9 @@ impl Error {
 
     pub fn json_body(&self) -> JsonValue {
         match self {
+            Error::HttpRequestError { source } => {json!({ "message": format!("Proxy error {}", source) })},
+            Error::ProxyError { source } => {json!({ "message": format!("Proxy error {}", source) })}
+            Error::IoError { source } => {json!({ "message": format!("IO error {}", source) })}
             Error::UnsupportedFeature {message} => json!({ "message": message }),
             #[cfg(feature = "sqlite")]
             Error::ThreadError { .. } => json!({"message":"internal thread error"}),

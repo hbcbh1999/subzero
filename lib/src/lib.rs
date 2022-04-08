@@ -14,5 +14,6 @@ pub mod backend;
 pub mod frontend;
 pub mod parser;
 pub mod schema;
+pub mod deno;
 //pub mod vhosts;
 //pub mod rocket_util;

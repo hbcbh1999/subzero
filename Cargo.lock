@@ -1759,6 +1759,7 @@ dependencies = [
  "deadpool-postgres",
  "futures",
  "http",
+ "hyper",
  "jsonpath_lib",
  "jsonwebtoken",
  "lazy_static",
@@ -1783,9 +1784,11 @@ name = "subzero-rocket"
 version = "0.1.0"
 dependencies = [
  "async_once",
+ "bytes",
  "demonstrate",
  "figment",
  "http",
+ "hyper",
  "lazy_static",
  "pretty_assertions",
  "rand",

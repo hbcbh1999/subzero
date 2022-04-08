@@ -30,12 +30,12 @@ services:
   
   subzero-postgresql:
     container_name: subzero-postgresql
-    image: subzero-postgresql
+    image: subzero
     build:
       context: ./
       dockerfile: Dockerfile
-      args:
-        - BACKEND=postgresql
+      # args:
+      #   - BACKEND=postgresql
     ports:
       - "8000:8000"
     depends_on:
@@ -50,7 +50,7 @@ services:
       - SUBZERO_DB_USE_LEGACY_GUCS=false
       - SUBZERO_DB_POOL=10
       - SUBZERO_DB_TYPE=postgresql
-      # - SUBZERO_URL_PREFIX="/"
+      - SUBZERO_URL_PREFIX="/rest/"
       # - SUBZERO_DB_SCHEMAS="[public]"
       # - SUBZERO_DB_SCHEMA_STRUCTURE="{sql_file=structure_query.sql}"
       # - SUBZERO_DB_MAX_ROWS=100,
@@ -62,12 +62,12 @@ services:
   
   subzero-sqlite:
     container_name: subzero-sqlite
-    image: subzero-sqlite
+    image: subzero
     build:
       context: ./
       dockerfile: Dockerfile
-      args:
-        - BACKEND=sqlite
+      # args:
+      #   - BACKEND=sqlite
     ports:
       - "9000:8000"
     volumes:
@@ -83,7 +83,7 @@ services:
       # - SUBZERO_DB_USE_LEGACY_GUCS=false
       - SUBZERO_DB_POOL=10
       - SUBZERO_DB_TYPE=sqlite
-      # - SUBZERO_URL_PREFIX="/"
+      - SUBZERO_URL_PREFIX="/rest/"
       # - SUBZERO_DB_SCHEMAS="[public]"
       # - SUBZERO_DB_SCHEMA_STRUCTURE="{sql_file=structure_query.sql}"
       # - SUBZERO_DB_MAX_ROWS=100,

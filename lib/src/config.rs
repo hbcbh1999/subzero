@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all(serialize = "snake_case", deserialize = "snake_case"))]
 pub enum SchemaStructure {
     SqlFile(String),
@@ -53,9 +53,10 @@ mod vhosts {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct VhostConfig {
     pub url_prefix: Option<String>,
+    pub static_files_dir: Option<String>,
     #[serde(default = "db_type")]
     pub db_type: String,
     pub db_uri: String,
@@ -77,6 +78,14 @@ pub struct VhostConfig {
     pub jwt_aud: Option<String>,
     #[serde(default = "role_claim_key")]
     pub role_claim_key: String,
+    pub deno: Option<DenoConfig>,
+}
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct DenoConfig {
+    pub base_url: String,
+    pub parameters: String,
+    pub paths: Vec<String>,
+    pub script: String,
 }
 
 //#[cfg(feature = "postgresql")]
@@ -119,7 +128,9 @@ mod test {
             vhosts: HashMap::from([(
                 "domain.com".to_string(),
                 VhostConfig {
+                    deno: None,
                     url_prefix: None,
+                    static_files_dir: None,
                     db_type: "postgresql".to_string(),
                     db_uri: "db_uri".to_string(),
                     db_schemas: vec!["db_schema".to_string()],

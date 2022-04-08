@@ -1,5 +1,22 @@
-[vhosts.default]
+[default]
 db_uri = "postgres://localhost/app"
-db_schemas = ["public"]
-db_anon_role = "anonymous"
-# db_schema_structure = { sql_file = "structure_query.sql" }
+static_files_dir = "demo/static_files"
+db_anon_role = "authenticator"
+url_prefix = "/rest"
+# db_type = "postgresql"
+# db_schemas = "[public]"
+# db_schema_structure = "{{sql_file=postgresql_structure_query.sql}}"
+# db_anon_role = ""
+# db_max_rows = 
+# db_use_legacy_gucs = false
+# db_pool = 10
+# db_tx_rollback = false
+# db_pre_request = "schema.function"
+# jwt_secret = "reallysafe"
+# jwt_aud = ""
+# role_claim_key = ".role"
+[default.deno]
+base_url = "http://localhost:8080"
+parameters = "--allow-net=localhost"
+paths = ["/custom"]
+script = "demo/deno/webserver.ts"

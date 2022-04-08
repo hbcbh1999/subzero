@@ -42,6 +42,7 @@ fn setup() {
         assert!(output.status.success());
 
         let db_uri = String::from_utf8_lossy(&output.stdout);
+        env::set_var("SUBZERO_CONFIG", &"inexistent_config.toml");
         env::set_var("SUBZERO_DB_URI", &*db_uri);
         env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
         env::set_var("SUBZERO_DB_ANON_ROLE", &"anonymous");
@@ -106,12 +107,12 @@ demonstrate! {
             //let client = Client::tracked(server().await).await.expect("valid client");
 
         }
-        it "hello world" {
-            let client = CLIENT.get().await;
-            let response = client.get("/").dispatch().await;
-            assert_eq!(response.status(), Status::Ok);
-            assert_eq!(response.into_string().await.unwrap(), "Hello, world!");
-        }
+        // it "hello world" {
+        //     let client = CLIENT.get().await;
+        //     let response = client.get("/").dispatch().await;
+        //     assert_eq!(response.status(), Status::Ok);
+        //     assert_eq!(response.into_string().await.unwrap(), "Hello, world!");
+        // }
 
         it "simple get" {
             let client = CLIENT.get().await;
