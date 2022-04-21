@@ -1,18 +1,19 @@
-# docker build --build-arg BACKEND=postgresql -t subzero-postgresql .
-# docker build --build-arg BACKEND=sqlite -t subzero-sqlite .
+# build with support for all backends
+# docker build -t subzero .
 
-# ARG BACKEND="postgresql"
+# build with support for specific backends
+# docker build --build-arg FEATURES="postgresql,sqlite" -t subzero .
 
-# FROM rust:1.59 as builder
+ARG FEATURES="all"
+
 FROM rustlang/rust:nightly as builder
-# ARG BACKEND
+ARG FEATURES
 WORKDIR /usr/src/subzero
 COPY . .
-# RUN cargo build --features ${BACKEND} --release
-RUN cargo build --release
+RUN cargo build --features ${FEATURES} --release
 
 FROM debian:buster-slim
-# ARG BACKEND
+ARG FEATURES
 RUN apt-get update && \
     apt-get install -y openssl && \
     rm -rf /var/lib/apt/lists/*

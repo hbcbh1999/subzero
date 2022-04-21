@@ -17,7 +17,8 @@ hyper = { version = "0.14", features = ["full"] }
 # hyper-reverse-proxy = "0.5"
 
 [features]
-default = ["postgresql", "sqlite"]
+default = ["all"]
+all = ["postgresql", "sqlite"]
 postgresql = ["subzero/postgresql"]
 sqlite = ["subzero/sqlite"]
 

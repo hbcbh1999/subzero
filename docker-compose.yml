@@ -31,11 +31,6 @@ services:
   subzero-postgresql:
     container_name: subzero-postgresql
     image: subzero
-    build:
-      context: ./
-      dockerfile: Dockerfile
-      # args:
-      #   - BACKEND=postgresql
     ports:
       - "8000:8000"
     depends_on:
@@ -47,15 +42,13 @@ services:
       # configuration for the "DEFAULT" vhost (you can have multiple vhosts)
       - SUBZERO_DB_URI=postgres://postgres:postgrespass@db:5432/app?application_name=subzero
       - SUBZERO_DB_ANON_ROLE=postgres
-      - SUBZERO_DB_USE_LEGACY_GUCS=false
       - SUBZERO_DB_POOL=10
       - SUBZERO_DB_TYPE=postgresql
-      - SUBZERO_URL_PREFIX="/rest/"
+      - SUBZERO_URL_PREFIX="/"
       # - SUBZERO_DB_SCHEMAS="[public]"
       # - SUBZERO_DB_SCHEMA_STRUCTURE="{sql_file=structure_query.sql}"
       # - SUBZERO_DB_MAX_ROWS=100,
       # - SUBZERO_DB_USE_LEGACY_GUCS=false,
-      # - SUBZERO_DB_TX_ROLLBACK=false,
       # - SUBZERO_DB_PRE_REQUEST="schema_name.function_name",
       # - SUBZERO_JWT_SECRET="reallyreallyreallyreallyverysafe",
       # - SUBZERO_ROLE_CLAIM_KEY=".role",
@@ -63,11 +56,6 @@ services:
   subzero-sqlite:
     container_name: subzero-sqlite
     image: subzero
-    build:
-      context: ./
-      dockerfile: Dockerfile
-      # args:
-      #   - BACKEND=sqlite
     ports:
       - "9000:8000"
     volumes:
@@ -80,33 +68,14 @@ services:
 
       - SUBZERO_DB_URI=/root/db/appdb.db
       - SUBZERO_DB_ANON_ROLE=anonymous
-      # - SUBZERO_DB_USE_LEGACY_GUCS=false
       - SUBZERO_DB_POOL=10
       - SUBZERO_DB_TYPE=sqlite
-      - SUBZERO_URL_PREFIX="/rest/"
+      - SUBZERO_URL_PREFIX="/"
       # - SUBZERO_DB_SCHEMAS="[public]"
       # - SUBZERO_DB_SCHEMA_STRUCTURE="{sql_file=structure_query.sql}"
       # - SUBZERO_DB_MAX_ROWS=100,
       # - SUBZERO_DB_USE_LEGACY_GUCS=false,
-      # - SUBZERO_DB_TX_ROLLBACK=false,
       # - SUBZERO_DB_PRE_REQUEST="schema_name.function_name",
       # - SUBZERO_JWT_SECRET="reallyreallyreallyreallyverysafe",
       # - SUBZERO_ROLE_CLAIM_KEY=".role",
-  
-  # boot up PostgREST to compare the same request being handled by both systems
-  postgrest:
-    container_name: postgrest
-    image: postgrest/postgrest:v9.0.0
-    ports:
-      - "3000:3000"
-    links:
-      - db:db
-    environment:
-      - PGRST_DB_URI=postgres://postgres:postgrespass@db:5432/app?application_name=subzpostgrest
-      - PGRST_DB_SCHEMA=public 
-      - PGRST_DB_ANON_ROLE=postgres
-      - PGRST_DB_CONFIG=false
-      - PGRST_DB_USE_LEGACY_GUCS=false
-      - PGRST_DB_POOL=10
-    depends_on:
-      - db
+ 
