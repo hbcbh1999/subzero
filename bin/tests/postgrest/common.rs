@@ -36,9 +36,12 @@ pub fn setup_db(init_db_once: &Once) {
             .arg("postgrest_test_authenticator")
             .output()
             .expect("failed to start temporary pg process");
-        // println!("status: {}", output.status);
-        // println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-        // println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        if !output.status.success() {
+            println!("status: {}", output.status);
+            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        }
+        
         assert!(output.status.success());
 
         let db_uri = String::from_utf8_lossy(&output.stdout);
@@ -49,9 +52,12 @@ pub fn setup_db(init_db_once: &Once) {
             .arg(db_uri.clone().into_owned())
             .output()
             .expect("failed to execute process");
-        // println!("status: {}", output.status);
-        // println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-        // println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        
+        if !output.status.success() {
+            println!("status: {}", output.status);
+            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        }
         assert!(output.status.success());
 
         env::set_var("SUBZERO_DB_URI", &*db_uri);

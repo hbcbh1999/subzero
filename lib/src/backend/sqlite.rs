@@ -79,6 +79,7 @@ fn execute(
                     limit:None,
                     offset:None,
                     order:vec![],
+                    groupby: vec![],
                 },
                 sub_selects: sub_selects.iter().cloned().collect()
             };

@@ -9,3 +9,10 @@
 \ir jsonschema.sql
 \ir privileges.sql
 \ir data.sql
+
+\ir subzero.request.sql
+\ir subzero.firebase.sql
+\ir subzero.basecamp.sql
+\ir subzero.cities.sql
+\ir subzero.odata.sql
+\ir subzero.aggregates.sql

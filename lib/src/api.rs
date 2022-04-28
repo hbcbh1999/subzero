@@ -42,7 +42,7 @@ pub struct ApiRequest {
     pub preferences: Option<Preferences>,
     pub headers: HashMap<String, String>,
     pub cookies: HashMap<String, String>,
-
+    pub get: Vec<(String, String)>,
 }
 
 #[derive(Debug)]
@@ -227,10 +227,11 @@ pub enum QueryNode {
         limit: Option<SingleVal>,
         offset: Option<SingleVal>,
         order: Vec<OrderTerm>,
+        groupby: Vec<GroupByTerm>,
     },
     Insert {
         into: String,
-        columns: Vec<String>,
+        columns: Vec<ColumnName>,
         payload: Payload,
         where_: ConditionTree, //used only for put
         returning: Vec<String>,
@@ -274,6 +275,9 @@ pub struct OrderTerm {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct GroupByTerm (pub Field);
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum OrderDirection {
     Asc,
     Desc,
@@ -294,9 +298,9 @@ pub struct Qi(pub String, pub String);
 pub struct ForeignKey {
     pub name: String,
     pub table: Qi,
-    pub columns: Vec<String>,
+    pub columns: Vec<ColumnName>,
     pub referenced_table: Qi,
-    pub referenced_columns: Vec<String>,
+    pub referenced_columns: Vec<ColumnName>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -312,7 +316,13 @@ pub enum SelectKind {
     Sub(SubSelect),
 }
 
-#[derive(Debug, PartialEq,Clone)]
+#[derive(Debug, PartialEq, Clone)]
+pub enum FunctionParam {
+    Fld(Field),
+    Val(SingleVal,Option<String>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum SelectItem {
     //TODO!!! better name
     Star,
@@ -321,6 +331,13 @@ pub enum SelectItem {
         alias: Option<String>,
         cast: Option<String>,
     },
+    Func {
+        fn_name: String,
+        parameters: Vec<FunctionParam>,
+        partitions: Vec<Field>,
+        orders: Vec<OrderTerm>,
+        alias: Option<String>,
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -331,20 +348,26 @@ pub struct SubSelect {
     pub join: Option<Join>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, )]
 pub struct ConditionTree {
     pub operator: LogicOperator,
     pub conditions: Vec<Condition>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
+#[serde(rename_all = "snake_case")]
 pub enum Condition {
     Group(Negate, ConditionTree),
-    Single { field: Field, filter: Filter, negate: Negate },
+    Single { 
+        field: Field, 
+        filter: Filter,
+        #[serde(default, skip_serializing_if = "is_default")]
+        negate: Negate
+    },
     Foreign { left: (Qi, Field), right: (Qi, Field) },
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
 pub enum TrileanVal {
     TriTrue,
     TriFalse,
@@ -352,7 +375,8 @@ pub enum TrileanVal {
     TriUnknown,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
+#[serde(rename_all = "snake_case")]
 pub enum Filter {
     Op(Operator, SingleVal),
     In(ListVal),
@@ -361,15 +385,19 @@ pub enum Filter {
     Col(Qi, Field),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
 pub struct Field {
-    pub name: String,
+    pub name: ColumnName,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub json_path: Option<Vec<JsonOperation>>, //TODO!! should contain some info about the data type so that fmt_field function could make better decisions
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
 pub enum JsonOperation {
+    #[serde(rename = "->")]
     JArrow(JsonOperand),
+    #[serde(rename = "->>")]
     J2Arrow(JsonOperand),
 }
 
@@ -378,22 +406,124 @@ pub enum JsonOperand {
     JKey(String),
     JIdx(String),
 }
+impl serde::Serialize for JsonOperand {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::JKey(s) => serializer.serialize_str(format!("'{}'", s).as_str()),
+            Self::JIdx(s) => serializer.serialize_str(s),
+        }
+    }
+}
+impl<'de> serde::Deserialize<'de> for JsonOperand {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        if s.starts_with('\'') && s.ends_with('\'') {
+            Ok(Self::JKey(s[1..s.len() - 1].to_string()))
+        } else {
+            Ok(Self::JIdx(s))
+        }
+    }
+}
 
 pub type Operator = String;
 pub type Negate = bool;
 pub type Language = SingleVal;
+pub type ColumnName = String;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Payload(pub String);
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
 pub struct SingleVal(pub String);
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
 pub struct ListVal(pub Vec<String>);
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, )]
+#[serde(rename_all = "snake_case")]
 pub enum LogicOperator {
     And,
     Or,
+}
+
+
+fn is_default<T: Default + PartialEq>(t: &T) -> bool {
+    t == &T::default()
+}
+
+#[cfg(test)]
+mod tests {
+    //use std::collections::HashSet;
+    use super::*;
+    use pretty_assertions::assert_eq;
+    fn s(s: &str) -> String { s.to_string() }
+    #[test]
+    fn serialize() {
+        assert_eq!(r#"["schema","table"]"#, serde_json::to_string(&Qi(s("schema"),s("table"))).unwrap());
+        assert_eq!(serde_json::from_str::<Qi>(r#"["schema","table"]"#).unwrap(), Qi(s("schema"),s("table")));
+        assert_eq!(r#""and""#, serde_json::to_string(&LogicOperator::And).unwrap());
+        assert_eq!(serde_json::from_str::<LogicOperator>(r#""and""#).unwrap(), LogicOperator::And);
+        assert_eq!(r#""10""#, serde_json::to_string(&SingleVal(s("10"))).unwrap());
+        assert_eq!(serde_json::from_str::<SingleVal>(r#""10""#).unwrap(), SingleVal(s("10")));
+        assert_eq!(r#"["1","2","3"]"#, serde_json::to_string(&ListVal(vec![s("1"),s("2"),s("3")])).unwrap());
+        assert_eq!(serde_json::from_str::<ListVal>(r#"["1","2","3"]"#).unwrap(), ListVal(vec![s("1"),s("2"),s("3")]));
+        assert_eq!(r#"{"name":"id"}"#, serde_json::to_string(&Field{name:s("id"), json_path:None}).unwrap());
+        assert_eq!(serde_json::from_str::<Field>(r#"{"name":"id"}"#).unwrap(), Field{name:s("id"), json_path:None});
+        assert_eq!(r#"{"op":["eq","10"]}"#, serde_json::to_string(&Filter::Op(s("eq"), SingleVal(s("10")))).unwrap());
+        assert_eq!(serde_json::from_str::<Filter>(r#"{"op":["eq","10"]}"#).unwrap(), Filter::Op(s("eq"), SingleVal(s("10"))));
+        assert_eq!(r#"{"name":"id","json_path":[{"->":"'id'"},{"->>":"0"}]}"#, serde_json::to_string(&Field{name:s("id"), json_path:Some(
+            vec![
+                JsonOperation::JArrow(JsonOperand::JKey(s("id"))),
+                JsonOperation::J2Arrow(JsonOperand::JIdx(s("0")))
+            ]
+        )}).unwrap());
+        assert_eq!(serde_json::from_str::<Field>(r#"{"name":"id","json_path":[{"->":"'id'"},{"->>":"0"}]}"#).unwrap(), Field{name:s("id"), json_path:Some(
+            vec![
+                JsonOperation::JArrow(JsonOperand::JKey(s("id"))),
+                JsonOperation::J2Arrow(JsonOperand::JIdx(s("0")))
+            ]
+        )});
+        assert_eq!(r#"{"single":{"field":{"name":"id"},"filter":{"op":["eq","10"]}}}"#, serde_json::to_string(&Condition::Single{
+            field: Field{name:s("id"), json_path:None},
+            filter: Filter::Op(s("eq"), SingleVal(s("10"))),
+            negate:false,
+        }).unwrap());
+        assert_eq!(serde_json::from_str::<Condition>(r#"{"single":{"field":{"name":"id"},"filter":{"op":["eq","10"]}}}"#).unwrap(), Condition::Single{
+            field: Field{name:s("id"), json_path:None},
+            filter: Filter::Op(s("eq"), SingleVal(s("10"))),
+            negate:false,
+        });
+        assert_eq!(serde_json::from_str::<Condition>(r#"{"group":[false,{"operator":"and","conditions":[{"single":{"field":{"name":"id"},"filter":{"op":["eq","10"]}}}]}]}"#).unwrap(), Condition::Group(
+            false,
+            ConditionTree{
+                operator:LogicOperator::And,
+                conditions:vec![
+                    Condition::Single{
+                        field: Field{name:s("id"), json_path:None},
+                        filter: Filter::Op(s("eq"), SingleVal(s("10"))),
+                        negate:false,
+                    },
+                ],
+            }
+        ));
+        assert_eq!(r#"{"group":[false,{"operator":"and","conditions":[{"single":{"field":{"name":"id"},"filter":{"op":["eq","10"]}}}]}]}"#, serde_json::to_string(&Condition::Group(
+            false,
+            ConditionTree{
+                operator:LogicOperator::And,
+                conditions:vec![
+                    Condition::Single{
+                        field: Field{name:s("id"), json_path:None},
+                        filter: Filter::Op(s("eq"), SingleVal(s("10"))),
+                        negate:false,
+                    },
+                ],
+            }
+        )).unwrap());
+    }
 }

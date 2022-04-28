@@ -1,19 +1,25 @@
-use crate::api::{ForeignKey, Join, Join::*, ProcParam, Qi};
+use crate::api::{ForeignKey, Join, Join::*, ProcParam, Qi, ColumnName, Condition};
 use crate::error::*;
 use serde::{Deserialize, Deserializer};
 use snafu::OptionExt;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::iter::FromIterator;
+//use serde_json::{Value as JsonValue};
+
+
+
+type HttpMethod = String;
 
 #[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct DbSchema {
-    #[serde(with = "schemas")]
+    #[serde(deserialize_with = "deserialize_schemas")]
     pub schemas: HashMap<String, Schema>,
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 pub struct Schema {
     pub name: String,
-    #[serde(with = "objects")]
+    #[serde(deserialize_with = "deserialize_objects")]
     pub objects: BTreeMap<String, Object>,
     #[serde(default)]
     join_tables: BTreeMap<(String, String), BTreeSet<String>>,
@@ -271,14 +277,16 @@ impl DbSchema {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize)]
+type Role = String;
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Object {
     pub kind: ObjectType,
     pub name: String,
-    #[serde(with = "columns")]
     pub columns: HashMap<String, Column>,
-    #[serde(with = "foreign_keys", default)]
     pub foreign_keys: Vec<ForeignKey>,
+    pub column_level_permissions: Option<HashMap<(Role, HttpMethod), Vec<ColumnName>>>,
+    pub row_level_permissions: Option<HashMap<(Role, HttpMethod), Vec<Condition>>>,
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
@@ -286,10 +294,14 @@ struct ObjectDef {
     //common files
     pub kind: String,
     pub name: String,
-    #[serde(with = "columns", default)]
+    #[serde(deserialize_with = "deserialize_columns", default)]
     pub columns: HashMap<String, Column>,
-    #[serde(with = "foreign_keys", default)]
+    #[serde(deserialize_with = "deserialize_foreign_keys", default)]
     pub foreign_keys: Vec<ForeignKey>,
+    #[serde(deserialize_with = "deserialize_column_level_permissions", default)]
+    pub column_level_permissions: Option<HashMap<(Role, HttpMethod), Vec<ColumnName>>>,
+    #[serde(deserialize_with = "deserialize_row_level_permissions", default)]
+    pub row_level_permissions: Option<HashMap<(Role, HttpMethod), Vec<Condition>>>,
 
     //fields for functions
     #[serde(default)]
@@ -302,7 +314,7 @@ struct ObjectDef {
     pub return_type: String,
     #[serde(default = "pg_catalog")]
     pub return_type_schema: String,
-    #[serde(default, deserialize_with = "vec_procparam")]
+    #[serde(default, deserialize_with = "deserialize_vec_procparam")]
     parameters: Vec<ProcParam>,
 }
 
@@ -347,20 +359,9 @@ pub enum ObjectType {
     Function {
         volatile: ProcVolatility,
         return_type: ProcReturnType,
-        #[serde(deserialize_with = "vec_procparam")]
+        #[serde(deserialize_with = "deserialize_vec_procparam")]
         parameters: Vec<ProcParam>,
     },
-}
-
-fn vec_procparam<'de, D>(deserializer: D) -> Result<Vec<ProcParam>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    struct Wrapper(#[serde(with = "ProcParamDef")] ProcParam);
-
-    let v = Vec::deserialize(deserializer)?;
-    Ok(v.into_iter().map(|Wrapper(a)| a).collect())
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
@@ -375,211 +376,176 @@ struct ForeignKeyDef {
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 pub struct Column {
     #[serde(default)]
-    pub name: String,
+    pub name: ColumnName,
     pub data_type: String,
     // #[serde(default, skip_serializing_if = "is_default")]
     #[serde(default)]
     pub primary_key: bool,
 }
 
-// code for deserialization
 
-mod schemas {
-    use super::{ObjectType, Schema};
-
-    use std::{
-        collections::{BTreeMap, BTreeSet, HashMap},
-        iter::FromIterator,
-    };
-    //use std::collections::BTreeMap;
-
-    //use serde::ser::Serializer;
-    use serde::de::{Deserialize, Deserializer};
-    // pub fn serialize<S>(map: &HashMap<String, Schema>, serializer: S) -> Result<S::Ok, S::Error>
-    //     where S: Serializer
-    // {
-    //     serializer.collect_seq(map.values())
-    // }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Schema>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let mut map = HashMap::new();
-        for mut schema in Vec::<Schema>::deserialize(deserializer)? {
-            let join_tables: BTreeMap<(String, String), Vec<String>> = schema
-                .objects
-                .iter()
-                .map(|(n, o)| match o.kind {
-                    ObjectType::Function { .. } => vec![],
-                    _ => o
-                        .foreign_keys
-                        .iter()
-                        .map(|fk1| {
-                            o.foreign_keys
-                                .iter()
-                                .filter(|&fk2| fk2 != fk1 && fk1.referenced_table.0 == schema.name && fk2.referenced_table.0 == schema.name)
-                                .map(|fk2| {
-                                    vec![
-                                        ((fk1.referenced_table.1.clone(), fk2.referenced_table.1.clone()), n.clone()),
-                                        ((fk2.referenced_table.1.clone(), fk1.referenced_table.1.clone()), n.clone()),
-                                    ]
-                                })
-                                .flatten()
-                                .collect::<Vec<((String, String), String)>>()
-                        })
-                        .flatten()
-                        .collect::<Vec<((String, String), String)>>(),
-                })
-                .flatten()
-                .fold(BTreeMap::new(), |mut acc, (k, v)| {
-                    acc.entry(k).or_default().push(v);
-                    acc
-                });
-            for (k, v) in join_tables {
-                schema.join_tables.insert(k, BTreeSet::from_iter(v.into_iter()));
-            }
-            map.insert(schema.name.clone(), schema);
+fn deserialize_column_level_permissions<'de, D>(deserializer: D) -> Result<Option<HashMap<(Role, HttpMethod), Vec<ColumnName>>>, D::Error>
+where D: Deserializer<'de>,
+{
+    let mut map = HashMap::new();
+    let map_in = HashMap::<Role,HashMap::<HttpMethod,Vec::<ColumnName>>>::deserialize(deserializer);
+    for (role, rules) in map_in? {
+        for (method, columns) in rules {
+            map.insert((role.clone(), method), columns);
         }
-        Ok(map)
     }
+    Ok(Some(map))
 }
 
-mod objects {
-    use crate::api::Qi;
-
-    use super::{Object, ObjectDef, ObjectType, PgType::*, ProcReturnType::*, ProcVolatility};
-
-    //use std::collections::HashMap;
-    use std::collections::BTreeMap;
-
-    //use serde::ser::Serializer;
-    use serde::de::{Deserialize, Deserializer};
-    // pub fn serialize<S>(map: &HashMap<String, Object>, serializer: S) -> Result<S::Ok, S::Error>
-    //     where S: Serializer
-    // {
-    //     serializer.collect_seq(map.values())
-    // }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<BTreeMap<String, Object>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let mut map = BTreeMap::new();
-        for o in Vec::<ObjectDef>::deserialize(deserializer)? {
-            map.insert(
-                o.name.clone(),
-                match o.kind.as_str() {
-                    "function" => {
-                        Object {
-                            kind: ObjectType::Function {
-                                volatile: match o.volatile {
-                                    'i' => ProcVolatility::Imutable,
-                                    's' => ProcVolatility::Stable,
-                                    _ => ProcVolatility::Volatile,
-                                },
-                                return_type: match (o.setof, o.composite) {
-                                    (true, true) => SetOf(Composite(Qi(o.return_type_schema, o.return_type))),
-                                    (true, false) => SetOf(Scalar),
-                                    (false, true) => One(Composite(Qi(o.return_type_schema, o.return_type))),
-                                    (false, false) => One(Scalar),
-                                },
-                                parameters: o.parameters,
-                            },
-                            name: o.name,
-                            columns: o.columns,
-                            foreign_keys: o.foreign_keys,
-                            //join_for,
-                        }
-                    }
-                    "view" => {
-                        Object {
-                            kind: ObjectType::View,
-                            name: o.name,
-                            columns: o.columns,
-                            foreign_keys: o.foreign_keys,
-                            //join_for,
-                        }
-                    }
-                    _ => {
-                        Object {
-                            kind: ObjectType::Table,
-                            name: o.name,
-                            columns: o.columns,
-                            foreign_keys: o.foreign_keys,
-                            //join_for,
-                        }
-                    }
-                },
-            );
+fn deserialize_row_level_permissions<'de, D>(deserializer: D) -> Result<Option<HashMap<(Role, HttpMethod), Vec<Condition>>>, D::Error>
+where D: Deserializer<'de>,
+{
+    let mut map = HashMap::new();
+    let map_in = HashMap::<Role,HashMap::<HttpMethod,Vec::<Condition>>>::deserialize(deserializer);
+    for (role, rules) in map_in? {
+        for (method, conditions) in rules {
+            map.insert((role.clone(), method), conditions);
         }
-        Ok(map)
     }
+    Ok(Some(map))
 }
 
-mod foreign_keys {
-    use super::{ForeignKey, ForeignKeyDef};
+fn deserialize_vec_procparam<'de, D>(deserializer: D) -> Result<Vec<ProcParam>, D::Error>
+where D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    struct Wrapper(#[serde(with = "ProcParamDef")] ProcParam);
 
-    //use std::collections::HashMap;
+    let v = Vec::deserialize(deserializer)?;
+    Ok(v.into_iter().map(|Wrapper(a)| a).collect())
+}
 
-    //use serde::ser::Serializer;
-    use serde::de::{Deserialize, Deserializer};
-    // pub fn serialize<S>(v: &Vec<ForeignKey>, serializer: S) -> Result<S::Ok, S::Error>
-    //     where S: Serializer
-    // {
-    //     serializer.collect_seq(v.iter().map(|f|
-    //         ForeignKeyDef {
-    //             name: f.name.clone(),
-    //             table: f.table.clone(),
-    //             columns: f.columns.clone(),
-    //             referenced_table: f.referenced_table.clone(),
-    //             referenced_columns: f.referenced_columns.clone(),
-    //         }
-    //     ))
-    // }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<ForeignKey>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let mut v = vec![];
-        for foreign_key in Vec::<ForeignKeyDef>::deserialize(deserializer)? {
-            v.push(ForeignKey {
-                name: foreign_key.name,
-                table: foreign_key.table,
-                columns: foreign_key.columns,
-                referenced_table: foreign_key.referenced_table,
-                referenced_columns: foreign_key.referenced_columns,
+fn deserialize_schemas<'de, D>(deserializer: D) -> Result<HashMap<String, Schema>, D::Error>
+where D: Deserializer<'de>,
+{
+    let mut map = HashMap::new();
+    for mut schema in Vec::<Schema>::deserialize(deserializer)? {
+        let join_tables: BTreeMap<(String, String), Vec<String>> = schema
+            .objects
+            .iter()
+            .map(|(n, o)| match o.kind {
+                ObjectType::Function { .. } => vec![],
+                _ => o
+                    .foreign_keys
+                    .iter()
+                    .map(|fk1| {
+                        o.foreign_keys
+                            .iter()
+                            .filter(|&fk2| fk2 != fk1 && fk1.referenced_table.0 == schema.name && fk2.referenced_table.0 == schema.name)
+                            .map(|fk2| {
+                                vec![
+                                    ((fk1.referenced_table.1.clone(), fk2.referenced_table.1.clone()), n.clone()),
+                                    ((fk2.referenced_table.1.clone(), fk1.referenced_table.1.clone()), n.clone()),
+                                ]
+                            })
+                            .flatten()
+                            .collect::<Vec<((String, String), String)>>()
+                    })
+                    .flatten()
+                    .collect::<Vec<((String, String), String)>>(),
+            })
+            .flatten()
+            .fold(BTreeMap::new(), |mut acc, (k, v)| {
+                acc.entry(k).or_default().push(v);
+                acc
             });
+        for (k, v) in join_tables {
+            schema.join_tables.insert(k, BTreeSet::from_iter(v.into_iter()));
         }
-        Ok(v)
+        map.insert(schema.name.clone(), schema);
     }
+    Ok(map)
 }
 
-mod columns {
-    use super::Column;
-
-    use std::collections::HashMap;
-
-    //use serde::ser::Serializer;
-    use serde::de::{Deserialize, Deserializer};
-    // pub fn serialize<S>(map: &HashMap<String, Column>, serializer: S) -> Result<S::Ok, S::Error>
-    //     where S: Serializer
-    // {
-    //     serializer.collect_seq(map.values())
-    // }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<HashMap<String, Column>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let mut map = HashMap::new();
-        for column in Vec::<Column>::deserialize(deserializer)? {
-            map.insert(column.name.clone(), column);
-        }
-        Ok(map)
+fn deserialize_objects<'de, D>(deserializer: D) -> Result<BTreeMap<String, Object>, D::Error>
+where D: Deserializer<'de>,
+{
+    let mut map = BTreeMap::new();
+    for o in Vec::<ObjectDef>::deserialize(deserializer)? {
+        map.insert(
+            o.name.clone(),
+            match o.kind.as_str() {
+                "function" => {
+                    Object {
+                        kind: ObjectType::Function {
+                            volatile: match o.volatile {
+                                'i' => ProcVolatility::Imutable,
+                                's' => ProcVolatility::Stable,
+                                _ => ProcVolatility::Volatile,
+                            },
+                            return_type: match (o.setof, o.composite) {
+                                (true, true) => ProcReturnType::SetOf(PgType::Composite(Qi(o.return_type_schema, o.return_type))),
+                                (true, false) => ProcReturnType::SetOf(PgType::Scalar),
+                                (false, true) => ProcReturnType::One(PgType::Composite(Qi(o.return_type_schema, o.return_type))),
+                                (false, false) => ProcReturnType::One(PgType::Scalar),
+                            },
+                            parameters: o.parameters,
+                        },
+                        name: o.name,
+                        columns: o.columns,
+                        foreign_keys: o.foreign_keys,
+                        column_level_permissions: o.column_level_permissions,
+                        row_level_permissions: None,
+                        //join_for,
+                    }
+                }
+                "view" => {
+                    Object {
+                        kind: ObjectType::View,
+                        name: o.name,
+                        columns: o.columns,
+                        foreign_keys: o.foreign_keys,
+                        column_level_permissions: o.column_level_permissions,
+                        row_level_permissions: None,
+                    }
+                }
+                _ => {
+                    Object {
+                        kind: ObjectType::Table,
+                        name: o.name,
+                        columns: o.columns,
+                        foreign_keys: o.foreign_keys,
+                        column_level_permissions: o.column_level_permissions,
+                        row_level_permissions: o.row_level_permissions,
+                    }
+                }
+            },
+        );
     }
+    Ok(map)
 }
+
+fn deserialize_foreign_keys<'de, D>(deserializer: D) -> Result<Vec<ForeignKey>, D::Error>
+where D: Deserializer<'de>,
+{
+    let mut v = vec![];
+    for foreign_key in Vec::<ForeignKeyDef>::deserialize(deserializer)? {
+        v.push(ForeignKey {
+            name: foreign_key.name,
+            table: foreign_key.table,
+            columns: foreign_key.columns,
+            referenced_table: foreign_key.referenced_table,
+            referenced_columns: foreign_key.referenced_columns,
+        });
+    }
+    Ok(v)
+}
+
+fn deserialize_columns<'de, D>(deserializer: D) -> Result<HashMap<String, Column>, D::Error>
+where D: Deserializer<'de>,
+{
+    let mut map = HashMap::new();
+    for column in Vec::<Column>::deserialize(deserializer)? {
+        map.insert(column.name.clone(), column);
+    }
+    Ok(map)
+}
+
 
 // fn is_default<T: Default + PartialEq>(t: &T) -> bool {
 //     t == &T::default()
@@ -591,7 +557,8 @@ fn pg_catalog() -> String { "pg_catalog".to_string() }
 mod tests {
     //use std::collections::HashSet;
     use super::*;
-    use super::{ObjectType::*, ProcParam};
+    use crate::api::{Field, Filter, SingleVal};
+    use super::{ObjectType::*, ProcParam, };
     use crate::error::Error as AppError;
     use pretty_assertions::assert_eq;
     fn s(s: &str) -> String { s.to_string() }
@@ -620,7 +587,8 @@ mod tests {
                                 name: s("myfunction"),
                                 columns: [].iter().cloned().map(t).collect(),
                                 foreign_keys: [].iter().cloned().collect(),
-                                //join_for: [].iter().cloned().collect(),
+                                column_level_permissions: None,
+                                row_level_permissions: None,
                             },
                         ),
                         (
@@ -660,7 +628,8 @@ mod tests {
                                 .iter()
                                 .cloned()
                                 .collect(),
-                                //join_for: [].iter().cloned().collect(),
+                                column_level_permissions: None,
+                                row_level_permissions: None,
                             },
                         ),
                         (
@@ -681,7 +650,32 @@ mod tests {
                                 .map(t)
                                 .collect(),
                                 foreign_keys: [].iter().cloned().collect(),
-                                //join_for: [].iter().cloned().collect(),
+                                column_level_permissions: Some(
+                                    vec![
+                                        (
+                                            (s("role"), s("get")),
+                                            vec![s("id"),s("name"),
+                                            ],
+                                        ),
+                                    ]
+                                    .iter().cloned().collect(),
+                                ),
+                                //row_level_permissions: None,
+                                row_level_permissions: Some(
+                                    vec![
+                                        (
+                                            (s("role"), s("get")),
+                                            vec![
+                                                Condition::Single{
+                                                    field: Field{name:s("id"), json_path:None},
+                                                    filter: Filter::Op(s("eq"), SingleVal(s("10"))),
+                                                    negate:false,
+                                                }
+                                            ],
+                                        ),
+                                    ]
+                                    .iter().cloned().collect(),
+                                ),
                             },
                         ),
                     ]
@@ -755,7 +749,19 @@ mod tests {
                                         "primary_key":true
                                     }
                                 ],
-                                "foreign_keys":[]
+                                "foreign_keys":[],
+                                "column_level_permissions":{
+                                    "role": {
+                                        "get": ["id","name"]
+                                    }
+                                },
+                                "row_level_permissions": {
+                                    "role": {
+                                        "get": [
+                                            {"single":{"field":{"name":"id"},"filter":{"op":["eq","10"]}}}
+                                        ]
+                                    }
+                                }
                             }
                         ]
                     }

@@ -1,8 +1,8 @@
 use super::base::{
     cast_select_item_format, fmt_as, fmt_body, fmt_condition, fmt_condition_tree, fmt_count_query, fmt_field, fmt_field_format, fmt_filter,
     fmt_identity, fmt_in_filter, fmt_json_operand, fmt_json_operation, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_main_query, fmt_offset,
-    fmt_operator, fmt_order, fmt_order_term, fmt_qi, fmt_query, fmt_select_item, fmt_select_name, fmt_sub_select_item, return_representation,
-    simple_select_item_format, star_select_item_format,
+    fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_query, fmt_select_item, fmt_select_name, fmt_sub_select_item, return_representation,
+    simple_select_item_format, star_select_item_format, fmt_function_param, 
 };
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet};
@@ -90,6 +90,7 @@ fmt_condition!();
 fmt_filter!();
 fmt_select_name!();
 fmt_select_item!();
+fmt_function_param!();
 fmt_sub_select_item!();
 fmt_operator!();
 fmt_logic_operator!();
@@ -98,6 +99,8 @@ fmt_qi!();
 fmt_field!();
 fmt_order!();
 fmt_order_term!();
+fmt_groupby!();
+fmt_groupby_term!();
 fmt_as!();
 fmt_limit!();
 fmt_offset!();
@@ -236,6 +239,7 @@ mod tests {
                                 alias: None,
                                 cast: None,
                             }],
+                            groupby: vec![],
                             from: (s("clients"), None),
                             join_tables: vec![],
                             where_: ConditionTree {
@@ -272,6 +276,7 @@ mod tests {
                     query: Query {
                         node: Select {
                             order: vec![],
+                            groupby: vec![],
                             limit: None,
                             offset: None,
                             select: vec![Simple {
@@ -404,6 +409,7 @@ mod tests {
         let q = Query {
             node: Select {
                 order: vec![],
+                groupby: vec![],
                 limit: None,
                 offset: None,
                 select: vec![
@@ -453,6 +459,7 @@ mod tests {
                     query: Query {
                         node: Select {
                             order: vec![],
+                            groupby: vec![],
                             limit: None,
                             offset: None,
                             select: vec![Simple {
@@ -499,6 +506,7 @@ mod tests {
                     query: Query {
                         node: Select {
                             order: vec![],
+                            groupby: vec![],
                             limit: None,
                             offset: None,
                             select: vec![Simple {

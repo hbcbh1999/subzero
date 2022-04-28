@@ -1,0 +1,3 @@
+- enforce static conditions
+- generate schema based on 3rd party metadata
+- integrate 3rd party ui

@@ -4,6 +4,7 @@ extern crate lazy_static;
 #[macro_use]
 extern crate rocket;
 use http::{Method, HeaderMap};
+// use lazy_static::__Deref;
 use snafu::{OptionExt, ResultExt};
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -48,41 +49,41 @@ lazy_static! {
 
 #[get("/<table>?<parameters..>")]
 async fn get<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, db_backend: &State<DbBackend>,
+    table: String, origin: &Origin<'_>, parameters: QueryString, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::GET, &table, origin, &parameters, None, cookies, headers, db_backend).await
+    handle_request(&Method::GET, &table, origin, parameters, None, cookies, headers, db_backend).await
 }
 
 #[post("/<table>?<parameters..>", data = "<body>")]
 async fn post<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    table: String, origin: &Origin<'_>, parameters: QueryString, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::POST, &table, origin, &parameters, Some(body), cookies, headers, db_backend).await
+    handle_request(&Method::POST, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
 }
 
 #[delete("/<table>?<parameters..>", data = "<body>")]
 async fn delete<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    table: String, origin: &Origin<'_>, parameters: QueryString, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::DELETE, &table, origin, &parameters, Some(body), cookies, headers, db_backend).await
+    handle_request(&Method::DELETE, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
 }
 
 #[patch("/<table>?<parameters..>", data = "<body>")]
 async fn patch<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    table: String, origin: &Origin<'_>, parameters: QueryString, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::PATCH, &table, origin, &parameters, Some(body), cookies, headers, db_backend).await
+    handle_request(&Method::PATCH, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
 }
 
 #[put("/<table>?<parameters..>", data = "<body>")]
 async fn put<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString<'a>, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    table: String, origin: &Origin<'_>, parameters: QueryString, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::PUT, &table, origin, &parameters, Some(body), cookies, headers, db_backend).await
+    handle_request(&Method::PUT, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
 }
 
 #[get("/<_..>")]
@@ -117,14 +118,14 @@ async fn proxy_put<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: Stri
 // main request handler
 // this is mostly to align types between rocket and subzero functions
 async fn handle_request(
-    method: &Method, table: &String, origin: &Origin<'_>, parameters: &QueryString<'_>, body: Option<String>, cookies: &CookieJar<'_>,
+    method: &Method, table: &String, origin: &Origin<'_>, parameters: QueryString, body: Option<String>, cookies: &CookieJar<'_>,
     headers: AllHeaders<'_>, db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
     let (status, response_content_type, response_headers, response_body) = postgrest::handle(
         table,
         method,
         origin.path().to_string(),
-        parameters,
+        parameters.0,
         body,
         headers.iter().map(|h| (h.name().as_str().to_string(), h.value().to_string())).collect(),
         cookies.iter().map(|c| (c.name().to_string(), c.value().to_string())).collect(),

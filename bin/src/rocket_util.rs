@@ -15,21 +15,21 @@ use bytes::{Bytes};
 //use hyper::{Client, client::HttpConnector};
 
 #[derive(Debug)]
-pub struct QueryString<'r>(Vec<(&'r str, &'r str)>);
+pub struct QueryString(pub Vec<(String, String)>);
 
 #[rocket::async_trait]
-impl<'v> FromForm<'v> for QueryString<'v> {
-    type Context = Vec<(&'v str, &'v str)>;
+impl<'v> FromForm<'v> for QueryString {
+    type Context = Vec<(String, String)>;
     fn init(_opts: Options) -> Self::Context { vec![] }
-    fn push_value(ctxt: &mut Self::Context, field: ValueField<'v>) { ctxt.push((field.name.source(), field.value)); }
+    fn push_value(ctxt: &mut Self::Context, field: ValueField) { ctxt.push((field.name.source().to_string(), field.value.to_string())); }
     async fn push_data(_ctxt: &mut Self::Context, _field: DataField<'v, '_>) {}
     fn finalize(this: Self::Context) -> FormResult<'v, Self> { Ok(QueryString(this)) }
 }
 
-impl<'r> Deref for QueryString<'r> {
-    type Target = Vec<(&'r str, &'r str)>;
-    fn deref(&self) -> &Self::Target { &self.0 }
-}
+// impl<'r> Deref for QueryString {
+//     type Target = Vec<(String, String)>;
+//     fn deref(&self) -> &Self::Target { &self.0 }
+// }
 
 #[derive(Debug)]
 pub struct AllHeaders<'r>(&'r HeaderMap<'r>);

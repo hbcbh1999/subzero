@@ -35,3 +35,4 @@ mod singular;
 mod unicode;
 mod update;
 mod upsert;
+mod aggregates;

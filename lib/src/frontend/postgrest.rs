@@ -10,7 +10,7 @@ use tokio::task;
 use crate::api::ApiResponse;
 
 use crate::{
-    api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*},
+    api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*, SelectItem::*},
     error::{Result, *},
     parser::postgrest::parse,
     backend::Backend,
@@ -28,7 +28,7 @@ fn get_current_timestamp() -> u64 {
 }
 
 pub async fn handle(
-    root: &String, method: &Method, path: String, parameters: &Vec<(&str, &str)>, 
+    root: &String, method: &Method, path: String, get: Vec<(String, String)>, 
     body: Option<String>, headers: HashMap<String, String>, cookies: HashMap<String, String>,
     backend: &Box<dyn Backend + Send + Sync>
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
@@ -120,8 +120,31 @@ pub async fn handle(
     }
 
     // parse request and generate the query
-    let request = parse(schema_name, root, db_schema, method, path, parameters, body, headers, cookies, config.db_max_rows)?;
-
+    let request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, config.db_max_rows)?;
+    // check only safe functions are used
+    for (p, n) in &request.query {
+        match n {
+            FunctionCall { select, .. } |
+            Select { select, .. } |
+            Insert { select, .. } |
+            Update { select, .. } |
+            Delete { select, ..} => {
+                for s in select {
+                    match s {
+                        Func {fn_name, ..} => {
+                            if !config.db_allowd_select_functions.contains(fn_name) {
+                                return Err(Error::ParseRequestError { 
+                                    details: format!("calling: '{}' is not allowed", fn_name),
+                                    message: format!("Unsafe functions called"),
+                                });
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
     let _readonly = match (method, &request) {
         (&Method::GET, _) => true,
         //TODO!!! optimize not volatile function call can be read only

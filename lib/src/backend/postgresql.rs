@@ -28,7 +28,7 @@ fn get_postgrest_env(role: Option<&String>, search_path: &Vec<String>, request: 
     let mut env = HashMap::new();
     if let Some(r) = role {
         env.insert("role".to_string(), r.clone());
-        env.insert("request.jwt.claim.role".to_string(), r.clone());
+        
     }
     
     env.insert("request.method".to_string(), format!("{}", request.method));
@@ -37,25 +37,23 @@ fn get_postgrest_env(role: Option<&String>, search_path: &Vec<String>, request: 
     
     env.insert("search_path".to_string(), search_path.join(", ").to_string());
     if use_legacy_gucs {
-        env.extend(
-            request
-                .headers
-                .iter()
-                .map(|(k, v)| (format!("request.header.{}", k.to_lowercase()), v.to_string())),
-        );
+        if let Some(r) = role {
+            env.insert("request.jwt.claim.role".to_string(), r.clone());
+        }
+        
+        env.extend(request.headers.iter().map(|(k, v)| (format!("request.header.{}", k.to_lowercase()), v.to_string())));
         env.extend(request.cookies.iter().map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())));
+        env.extend(request.get.iter().map(|(k, v)| (format!("request.get.{}", k), v.to_string())));
         match jwt_claims {
             Some(v) => match v.as_object() {
                 Some(claims) => {
-                    env.extend(claims.iter().map(|(k, v)| {
-                        (
-                            format!("request.jwt.claim.{}", k),
-                            match v {
-                                JsonValue::String(s) => s.clone(),
-                                _ => format!("{}", v),
-                            },
-                        )
-                    }));
+                    env.extend(claims.iter().map(|(k, v)| (
+                        format!("request.jwt.claim.{}", k),
+                        match v {
+                            JsonValue::String(s) => s.clone(),
+                            _ => format!("{}", v),
+                        }
+                    )));
                 }
                 None => {}
             },
@@ -76,6 +74,15 @@ fn get_postgrest_env(role: Option<&String>, search_path: &Vec<String>, request: 
             serde_json::to_string(
                 &request
                 .cookies
+                .iter()
+                .map(|(k, v)| (k, v.to_string()))
+                .collect::<Vec<_>>()
+            ).unwrap()
+        );
+        env.insert("request.get".to_string(), 
+            serde_json::to_string(
+                &request
+                .get
                 .iter()
                 .map(|(k, v)| (k, v.to_string()))
                 .collect::<Vec<_>>()
@@ -113,7 +120,7 @@ async fn execute<'a>(
     let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request)?);
     let env = get_postgrest_env(role, &vec![schema_name.clone()], request, jwt_claims, config.db_use_legacy_gucs);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
-
+    //println!("{}\n{}\n{:?}", main_statement, env_statement, env_parameters);
     let transaction = client
         .build_transaction()
         .isolation_level(IsolationLevel::ReadCommitted)

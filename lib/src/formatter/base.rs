@@ -1,4 +1,4 @@
-use crate::api::{ApiRequest, Method, Preferences, QueryNode::*, Representation};
+use crate::api::{ApiRequest, Method, Preferences, QueryNode::*, Representation,};
 
 #[allow(unused_macros)]
 macro_rules! fmt_field_format {
@@ -269,6 +269,7 @@ fn fmt_query<'a>(
             limit,
             offset,
             order,
+            groupby,
         } => {
             let (qi, from_snippet) = match table_alias {
                 Some(a) => (
@@ -322,6 +323,7 @@ fn fmt_query<'a>(
                         sql("")
                     }
                     + " "
+                    + (fmt_groupby(&qi, groupby)?)
                     + (fmt_order(&qi, order)?)
                     + " "
                     + fmt_limit(limit)
@@ -812,6 +814,48 @@ fn fmt_select_item<'a>(qi: &Qi, i: &'a SelectItem) -> Result<Snippet<'a>> {
             as=fmt_as(name, json_path, alias),
             select_name=fmt_select_name(name, json_path, alias).unwrap_or("".to_string())
         ))),
+        Func {
+            alias,
+            fn_name,
+            parameters,
+            partitions,
+            orders,
+        } => {
+            Ok(
+                sql(fmt_identity(fn_name)) + 
+                "(" +
+                    parameters
+                    .iter()
+                    .map(|p| fmt_function_param(qi, p))
+                    .collect::<Result<Vec<_>>>()?
+                    .join(",") +
+                ")" + 
+                if partitions.is_empty() && orders.is_empty() {
+                    sql("")
+                } else {
+                    sql(" over( ") +
+                        if partitions.is_empty() {
+                            sql("")
+                        } else {
+                            sql("partition by ") +
+                            partitions
+                                .iter()
+                                .map(|p| fmt_field(qi, p))
+                                .collect::<Result<Vec<_>>>()?
+                                .join(",")
+                        } +
+                        " " +
+                        if orders.is_empty() {
+                            "".to_string()
+                        } else {
+                            fmt_order(qi, orders)?
+                        } +
+                    " )"
+                } +
+                fmt_as(fn_name, &None, alias)
+            ) 
+
+        }
     }
 }
 }}
@@ -923,6 +967,23 @@ macro_rules! fmt_field {
     };
 }
 #[allow(unused_macros)]
+macro_rules! fmt_function_param {
+    () => {
+        fn fmt_function_param<'a>(qi: &Qi, p: &'a FunctionParam) -> Result<Snippet<'a>> {
+            Ok(match p {
+                FunctionParam::Val(v,c) => {
+                    let vv: &(dyn ToSql + Sync) = v;
+                    match c {
+                        Some(c) => "cast(" + param(vv) + format!(" as {}", c) + ")",
+                        None => param(vv),
+                    }
+                },
+                FunctionParam::Fld(f) => sql(fmt_field(qi, f)?),
+            })
+        }
+    };
+}
+#[allow(unused_macros)]
 macro_rules! fmt_order {
     () => {
         fn fmt_order(qi: &Qi, o: &Vec<OrderTerm>) -> Result<String> {
@@ -953,6 +1014,26 @@ macro_rules! fmt_order_term {
                 },
             };
             Ok(format!("{} {} {}", fmt_field(qi, &t.term)?, direction, nulls))
+        }
+    };
+}
+#[allow(unused_macros)]
+macro_rules! fmt_groupby {
+    () => {
+        fn fmt_groupby(qi: &Qi, o: &Vec<GroupByTerm>) -> Result<String> {
+            Ok(if o.len() > 0 {
+                format!("group by {}", o.iter().map(|t| fmt_groupby_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", "))
+            } else {
+                format!("")
+            })
+        }
+    };
+}
+#[allow(unused_macros)]
+macro_rules! fmt_groupby_term {
+    () => {
+        fn fmt_groupby_term(qi: &Qi, t: &GroupByTerm) -> Result<String> {
+            fmt_field(qi, &t.0)
         }
     };
 }
@@ -1168,6 +1249,10 @@ pub(super) use fmt_order;
 #[allow(unused_imports)]
 pub(super) use fmt_order_term;
 #[allow(unused_imports)]
+pub(super) use fmt_groupby;
+#[allow(unused_imports)]
+pub(super) use fmt_groupby_term;
+#[allow(unused_imports)]
 pub(super) use fmt_qi;
 #[allow(unused_imports)]
 pub(super) use fmt_query;
@@ -1181,3 +1266,7 @@ pub(super) use fmt_sub_select_item;
 pub(super) use simple_select_item_format;
 #[allow(unused_imports)]
 pub(super) use star_select_item_format;
+#[allow(unused_imports)]
+pub(super) use fmt_function_param;
+
+

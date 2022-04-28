@@ -312,6 +312,7 @@ INSERT INTO users_projects VALUES (2, 3);
 INSERT INTO users_projects VALUES (2, 4);
 INSERT INTO users_projects VALUES (3, 1);
 INSERT INTO users_projects VALUES (3, 3);
+INSERT INTO users_projects VALUES (3, 5);
 
 TRUNCATE TABLE "Escap3e;" CASCADE;
 INSERT INTO "Escap3e;" VALUES (1), (2), (3), (4), (5);

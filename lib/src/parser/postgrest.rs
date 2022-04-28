@@ -11,7 +11,7 @@ use combine::{
     look_ahead,
     parser::{
         char::{char, digit, letter, spaces, string},
-        choice::{choice, optional},
+        choice::{choice, optional, or},
         combinator::{attempt, not_followed_by},
         repeat::many,
         repeat::{many1, sep_by, sep_by1},
@@ -63,7 +63,7 @@ lazy_static! {
 }
 
 pub fn parse(
-    schema: &String, root: &String, db_schema: &DbSchema, method: &Method, path: String, parameters: &Vec<(&str, &str)>, body: Option<String>,
+    schema: &String, root: &String, db_schema: &DbSchema, method: &Method, path: String, get: Vec<(String, String)>, body: Option<String>,
     headers: HashMap<String, String>, cookies: HashMap<String, String>, max_rows: Option<u32>,
 ) -> Result<ApiRequest> {
     let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {
@@ -75,6 +75,7 @@ pub fn parse(
     let mut limits = vec![];
     let mut offsets = vec![];
     let mut orders = vec![];
+    let mut groupbys = vec![];
     let mut conditions = vec![];
     let mut columns_ = None;
     let mut on_conflict_ = None;
@@ -120,37 +121,43 @@ pub fn parse(
 
     let mut select_items = vec![Item(Star)];
     // iterate over parameters, parse and collect them in the relevant vectors
-    for &(k, v) in parameters.iter() {
-        match k {
+    for (k, v) in get.iter() {
+        match k.as_str() {
             "select" => {
                 let (parsed_value, _) = select()
                     .message("failed to parse select parameter")
-                    .easy_parse(v)
-                    .map_err(to_app_error(v))?;
+                    .easy_parse(v.as_str())
+                    .map_err(to_app_error(v.as_str()))?;
                 select_items = parsed_value;
             }
 
             "columns" => {
                 let (parsed_value, _) = columns()
                     .message("failed to parse columns parameter")
-                    .easy_parse(v)
-                    .map_err(to_app_error(v))?;
+                    .easy_parse(v.as_str())
+                    .map_err(to_app_error(v.as_str()))?;
                 columns_ = Some(parsed_value);
             }
-
+            "groupby" => {
+                let (parsed_value, _) = groupby()
+                    .message("failed to parse groupby parameter")
+                    .easy_parse(v.as_str())
+                    .map_err(to_app_error(v.as_str()))?;
+                groupbys = parsed_value;
+            }
             "on_conflict" => {
                 let (parsed_value, _) = on_conflict()
                     .message("failed to parse on_conflict parameter")
-                    .easy_parse(v)
-                    .map_err(to_app_error(v))?;
+                    .easy_parse(v.as_str())
+                    .map_err(to_app_error(v.as_str()))?;
                 on_conflict_ = Some(parsed_value);
             }
 
             kk if is_logical(kk) => {
                 let ((tp, n, lo), _) = logic_tree_path()
                     .message("failed to parser logic tree path")
-                    .easy_parse(k)
-                    .map_err(to_app_error(k))?;
+                    .easy_parse(k.as_str())
+                    .map_err(to_app_error(k.as_str()))?;
 
                 let ns = if n { "not." } else { "" };
                 let los = if lo == And { "and" } else { "or" };
@@ -166,33 +173,33 @@ pub fn parse(
             kk if is_limit(kk) => {
                 let ((tp, _), _) = tree_path()
                     .message("failed to parser limit tree path")
-                    .easy_parse(k)
-                    .map_err(to_app_error(k))?;
+                    .easy_parse(k.as_str())
+                    .map_err(to_app_error(k.as_str()))?;
                 let (parsed_value, _) = limit()
                     .message("failed to parse limit parameter")
-                    .easy_parse(v)
-                    .map_err(to_app_error(v))?;
+                    .easy_parse(v.as_str())
+                    .map_err(to_app_error(v.as_str()))?;
                 limits.push((tp, parsed_value));
             }
 
             kk if is_offset(kk) => {
                 let ((tp, _), _) = tree_path()
                     .message("failed to parser offset tree path")
-                    .easy_parse(k)
-                    .map_err(to_app_error(k))?;
+                    .easy_parse(k.as_str())
+                    .map_err(to_app_error(k.as_str()))?;
                 let (parsed_value, _) = offset()
                     .message("failed to parse limit parameter")
-                    .easy_parse(v)
-                    .map_err(to_app_error(v))?;
+                    .easy_parse(v.as_str())
+                    .map_err(to_app_error(v.as_str()))?;
                 offsets.push((tp, parsed_value));
             }
 
             kk if is_order(kk) => {
                 let ((tp, _), _) = tree_path()
                     .message("failed to parser order tree path")
-                    .easy_parse(k)
-                    .map_err(to_app_error(k))?;
-                let (parsed_value, _) = order().message("failed to parse order").easy_parse(v).map_err(to_app_error(v))?;
+                    .easy_parse(k.as_str())
+                    .map_err(to_app_error(k.as_str()))?;
+                let (parsed_value, _) = order().message("failed to parse order").easy_parse(v.as_str()).map_err(to_app_error(v.as_str()))?;
                 orders.push((tp, parsed_value));
             }
 
@@ -200,17 +207,17 @@ pub fn parse(
             _ => {
                 let ((tp, field), _) = tree_path()
                     .message("failed to parser filter tree path")
-                    .easy_parse(k)
-                    .map_err(to_app_error(k))?;
+                    .easy_parse(k.as_str())
+                    .map_err(to_app_error(k.as_str()))?;
 
                 match root_obj.kind {
                     Function { .. } => {
-                        if tp.len() > 0 || has_operator(v) {
+                        if tp.len() > 0 || has_operator(v.as_str()) {
                             // this is a filter
                             let ((negate, filter), _) = negatable_filter()
                                 .message("failed to parse filter")
-                                .easy_parse(v)
-                                .map_err(to_app_error(v))?;
+                                .easy_parse(v.as_str())
+                                .map_err(to_app_error(v.as_str()))?;
                             conditions.push((tp, Condition::Single { field, filter, negate }));
                         } else {
                             //this is a function parameter
@@ -220,8 +227,8 @@ pub fn parse(
                     _ => {
                         let ((negate, filter), _) = negatable_filter()
                             .message("failed to parse filter")
-                            .easy_parse(v)
-                            .map_err(to_app_error(v))?;
+                            .easy_parse(v.as_str())
+                            .map_err(to_app_error(v.as_str()))?;
                         conditions.push((tp, Condition::Single { field, filter, negate }));
                     }
                 };
@@ -302,9 +309,9 @@ pub fn parse(
             let all_params: HashSet<String> = HashSet::from_iter(parameters.iter().map(|p| p.name.clone()));
             let (payload, params) = match *method {
                 Method::GET => {
-                    let mut args: HashMap<&str, JsonValue> = HashMap::new();
-                    for (n, v) in &fn_arguments {
-                        if let Some(p) = parameters_map.get(n) {
+                    let mut args: HashMap<&String, JsonValue> = HashMap::new();
+                    for (n, v) in fn_arguments {
+                        if let Some(p) = parameters_map.get(n.as_str()) {
                             if p.variadic {
                                 if let Some(e) = args.get_mut(n) {
                                     if let JsonValue::Array(a) = e {
@@ -328,10 +335,12 @@ pub fn parse(
                             //let specified_parameters = args.keys().collect::<Vec<_>>();
                             let specified_parameters: HashSet<String> = HashSet::from_iter(args.keys().map(|k| k.to_string()));
                             if !specified_parameters.is_superset(&required_params) || !specified_parameters.is_subset(&all_params) {
+                                let mut argument_keys = args.keys().map(|k| k.to_string()).collect::<Vec<String>>();
+                                argument_keys.sort();
                                 return Err(Error::NoRpc {
                                     schema: schema.clone(),
                                     proc_name: root.clone(),
-                                    argument_keys: fn_arguments.iter().map(|(k, _)| k.to_string()).collect(),
+                                    argument_keys,
                                     has_prefer_single_object: false,
                                     content_type: accept_content_type,
                                     is_inv_post: false,
@@ -455,6 +464,7 @@ pub fn parse(
                     limit: None,
                     offset: None,
                     order: vec![],
+                    groupby: groupbys,
                 },
                 sub_selects,
             };
@@ -905,6 +915,7 @@ pub fn parse(
         accept_content_type,
         headers,
         cookies,
+        get,
     })
 }
 
@@ -918,6 +929,21 @@ where
 }
 
 fn field_name<Input>() -> impl Parser<Input, Output = String>
+where
+    Input: Stream<Token = char>,
+{
+    let dash = attempt(char('-').skip(not_followed_by(char('>'))));
+    lex(choice((
+        quoted_value(),
+        sep_by1(
+            many1::<String, _, _>(choice((letter(), digit(), one_of("_ ".chars())))).map(|s| s.trim().to_owned()),
+            dash,
+        )
+        .map(|words: Vec<String>| words.join("-")),
+    )))
+}
+
+fn function_name<Input>() -> impl Parser<Input, Output = String>
 where
     Input: Stream<Token = char>,
 {
@@ -1068,6 +1094,23 @@ where
     sep_by1(field_name(), lex(char(','))).skip(eof())
 }
 
+fn function_param<Input>() -> impl Parser<Input, Output = FunctionParam>
+where
+    Input: Stream<Token = char>,
+{
+    or(
+        field().map(|f| FunctionParam::Fld(f)),
+        between(
+            char('\''), 
+            char('\''), 
+            many::<String,_,_>(none_of("'".chars())),
+        )
+        .and(optional(cast()))
+        .map(|(v,c)| FunctionParam::Val(SingleVal(v),c))
+    )
+}
+
+
 // We need to use `parser!` to break the recursive use of `select_item` to prevent the returned parser
 // from containing itself
 #[inline]
@@ -1089,6 +1132,29 @@ parser! {
             .and(field())
             .and(optional(cast()))
             .map(|((alias, field), cast)| Item(Simple {field: field, alias: alias, cast}));
+        let function = (
+            optional(attempt(alias())),
+            char('$'),
+            function_name(),
+            between(lex(char('(')), lex(char(')')),  sep_by(function_param(), lex(char(',')))),
+            optional(
+                attempt(string("-p")
+                .and(between(lex(char('(')), lex(char(')')),  sep_by(field(), lex(char(','))))))
+            ),
+            optional(
+                attempt(string("-o")
+                .and(between(lex(char('(')), lex(char(')')),  sep_by(order_term(), lex(char(','))))))
+            )
+        )
+        .map(|(alias, _, fn_name, parameters, partitions, orders)| 
+            Item(Func{
+                alias, fn_name, parameters, 
+                partitions: match partitions { None => vec![], Some((_,p))=>p},
+                orders: match orders {None => vec![], Some((_,o))=>o},
+                
+            })
+        );
+
         let sub_select = (
             optional(attempt(alias())),
             lex(field_name()),
@@ -1106,6 +1172,7 @@ parser! {
                         //from_alias: alias,
                         where_: ConditionTree { operator: And, conditions: vec![]},
                         limit: None, offset: None, order: vec![],
+                        groupby: vec![],
                     },
                     sub_selects: sub_sel
                 },
@@ -1115,7 +1182,12 @@ parser! {
             })
         });
 
-        attempt(sub_select).or(column).or(star)
+        choice!(
+            attempt(function),
+            attempt(sub_select),
+            attempt(column),
+            star
+        )
     }
 }
 
@@ -1293,6 +1365,21 @@ where
         .and(optional(direction).and(optional(nulls)))
         .map(|(term, (direction, null_order))| OrderTerm { term, direction, null_order })
 }
+
+fn groupby<Input>() -> impl Parser<Input, Output = Vec<GroupByTerm>>
+where
+    Input: Stream<Token = char>,
+{
+    sep_by1(groupby_term(), lex(char(','))).skip(eof())
+}
+
+fn groupby_term<Input>() -> impl Parser<Input, Output = GroupByTerm>
+where
+    Input: Stream<Token = char>,
+{
+    field().map(|t| GroupByTerm(t))
+}
+
 
 fn content_type<Input>() -> impl Parser<Input, Output = ContentType>
 where
@@ -1675,6 +1762,7 @@ fn get_returning(selects: &Vec<SelectItem>, sub_selects: &Vec<SubSelect>) -> Res
         .map(|s| match s {
             Simple { field, .. } => Ok(vec![&field.name]),
             Star => Ok(vec![&*STAR]),
+            Func {..} => Ok(vec![]),
         })
         .chain(sub_selects.iter().map(|s| match s {
             SubSelect { join: Some(j), .. } => match j {
@@ -1856,12 +1944,15 @@ pub mod tests {
                 "#;
 
     fn s(s: &str) -> String { s.to_string() }
-
+    fn vs(v: Vec<(&str, &str)>) -> Vec<(String, String)> {
+        v.into_iter().map(|(s, s2)| (s.to_string(), s2.to_string())).collect()
+    }
     #[test]
     fn test_parse_get_function() {
         let emtpy_hashmap = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
         let mut api_request = ApiRequest {
+            get:vs(vec![("id", "10")]),
             preferences: None,
             path: s("dummy"),
             method: Method::GET,
@@ -1901,7 +1992,7 @@ pub mod tests {
             &db_schema,
             &Method::GET,
             s("dummy"),
-            &vec![("id", "10")],
+            vs(vec![("id", "10")]),
             None,
             emtpy_hashmap.clone(),
             emtpy_hashmap.clone(),
@@ -1911,6 +2002,7 @@ pub mod tests {
         assert_eq!(a.unwrap(), api_request);
 
         api_request.method = Method::POST;
+        api_request.get = vs(vec![]);
 
         let body = s(r#"{"id":"10"}"#);
         let b = parse(
@@ -1919,7 +2011,7 @@ pub mod tests {
             &db_schema,
             &Method::POST,
             s("dummy"),
-            &vec![],
+            vs(vec![]),
             Some(body),
             emtpy_hashmap.clone(),
             emtpy_hashmap.clone(),
@@ -1932,6 +2024,7 @@ pub mod tests {
     fn test_insert_conditions() {
         let mut query = Query {
             node: Select {
+                groupby: vec![],
                 order: vec![],
                 limit: None,
                 offset: None,
@@ -1955,6 +2048,7 @@ pub mod tests {
                 query: Query {
                     node: Select {
                         order: vec![],
+                        groupby: vec![],
                         limit: None,
                         offset: None,
                         select: vec![Simple {
@@ -1993,6 +2087,7 @@ pub mod tests {
             Query {
                 node: Select {
                     order: vec![],
+                    groupby: vec![],
                     limit: None,
                     offset: None,
                     select: vec![Simple {
@@ -2014,6 +2109,7 @@ pub mod tests {
                     query: Query {
                         node: Select {
                             order: vec![],
+                            groupby: vec![],
                             limit: None,
                             offset: None,
                             select: vec![Simple {
@@ -2052,13 +2148,13 @@ pub mod tests {
             &db_schema,
             &Method::GET,
             s("dummy"),
-            &vec![
+            vs(vec![
                 ("select", "id,name,clients(id),tasks(id)"),
                 ("id", "not.gt.10"),
                 ("tasks.id", "lt.500"),
                 ("not.or", "(id.eq.11,id.eq.12)"),
                 ("tasks.or", "(id.eq.11,id.eq.12)"),
-            ],
+            ]),
             None,
             emtpy_hashmap.clone(),
             emtpy_hashmap.clone(),
@@ -2068,6 +2164,13 @@ pub mod tests {
         assert_eq!(
             a.unwrap(),
             ApiRequest {
+                get: vs(vec![
+                    ("select", "id,name,clients(id),tasks(id)"),
+                    ("id", "not.gt.10"),
+                    ("tasks.id", "lt.500"),
+                    ("not.or", "(id.eq.11,id.eq.12)"),
+                    ("tasks.or", "(id.eq.11,id.eq.12)"),
+                ]),
                 preferences: None,
                 path: s("dummy"),
                 method: Method::GET,
@@ -2077,6 +2180,7 @@ pub mod tests {
                 query: Query {
                     node: Select {
                         order: vec![],
+                        groupby: vec![],
                         limit: None,
                         offset: None,
                         select: vec![
@@ -2144,6 +2248,7 @@ pub mod tests {
                                 sub_selects: vec![],
                                 node: Select {
                                     order: vec![],
+                                    groupby: vec![],
                                     limit: None,
                                     offset: None,
                                     select: vec![Simple {
@@ -2191,6 +2296,7 @@ pub mod tests {
                                 sub_selects: vec![],
                                 node: Select {
                                     order: vec![],
+                                    groupby: vec![],
                                     limit: None,
                                     offset: None,
                                     select: vec![Simple {
@@ -2279,7 +2385,7 @@ pub mod tests {
                 &db_schema,
                 &Method::GET,
                 s("dummy"),
-                &vec![("select", "id,name,unknown(id)")],
+                vs(vec![("select", "id,name,unknown(id)")]),
                 None,
                 emtpy_hashmap.clone(),
                 emtpy_hashmap.clone(),
@@ -2300,7 +2406,7 @@ pub mod tests {
                 &db_schema,
                 &Method::GET,
                 s("dummy"),
-                &vec![("select", "id-,na$me")],
+                vs(vec![("select", "id-,na$me")]),
                 None,
                 emtpy_hashmap.clone(),
                 emtpy_hashmap.clone(),
@@ -2309,7 +2415,7 @@ pub mod tests {
             .map_err(|e| format!("{}", e)),
             Err(AppError::ParseRequestError {
                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
-                details: s("Unexpected `,` Expected `letter`, `digit`, `_` or ` `")
+                details: s("Unexpected `,` Unexpected `i` Expected `letter`, `digit`, `_` or ` `")
             })
             .map_err(|e| format!("{}", e))
         );
@@ -2328,7 +2434,7 @@ pub mod tests {
                 &db_schema,
                 &Method::POST,
                 s("dummy"),
-                &vec![("select", "id"), ("id", "gt.10"),],
+                vs(vec![("select", "id"), ("id", "gt.10"),]),
                 Some(payload.clone()),
                 headers.clone(),
                 emtpy_hashmap.clone(),
@@ -2336,6 +2442,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Ok(ApiRequest {
+                get: vs(vec![("select", "id"), ("id", "gt.10"),]),
                 preferences: Some(Preferences {
                     representation: Some(Representation::Full),
                     resolution: None,
@@ -2384,7 +2491,7 @@ pub mod tests {
                 &db_schema,
                 &Method::POST,
                 s("dummy"),
-                &vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),],
+                vs(vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),]),
                 Some(payload.clone()),
                 headers.clone(),
                 emtpy_hashmap.clone(),
@@ -2392,6 +2499,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Ok(ApiRequest {
+                get: vs(vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),]),
                 preferences: Some(Preferences {
                     representation: Some(Representation::Full),
                     resolution: None,
@@ -2451,7 +2559,7 @@ pub mod tests {
                 &db_schema,
                 &Method::POST,
                 s("dummy"),
-                &vec![("select", "id"), ("id", "gt.10"), ("columns", "id,1$name"),],
+                vs(vec![("select", "id"), ("id", "gt.10"), ("columns", "id,1$name"),]),
                 Some(s(r#"{"id":10, "name":"john", "phone":"123"}"#)),
                 emtpy_hashmap.clone(),
                 emtpy_hashmap.clone(),
@@ -2472,7 +2580,7 @@ pub mod tests {
                 &db_schema,
                 &Method::POST,
                 s("dummy"),
-                &vec![("select", "id"), ("id", "gt.10"),],
+                vs(vec![("select", "id"), ("id", "gt.10"),]),
                 Some(s(r#"{"id":10, "name""#)),
                 emtpy_hashmap.clone(),
                 emtpy_hashmap.clone(),
@@ -2492,7 +2600,7 @@ pub mod tests {
                 &db_schema,
                 &Method::POST,
                 s("dummy"),
-                &vec![("select", "id"), ("id", "gt.10"),],
+                vs(vec![("select", "id"), ("id", "gt.10"),]),
                 Some(s(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#)),
                 emtpy_hashmap.clone(),
                 emtpy_hashmap.clone(),
@@ -2512,7 +2620,7 @@ pub mod tests {
                 &db_schema,
                 &Method::GET,
                 s("dummy"),
-                &vec![("select", "id,name,unknown(id)")],
+                vs(vec![("select", "id,name,unknown(id)")]),
                 None,
                 emtpy_hashmap.clone(),
                 emtpy_hashmap.clone(),
@@ -2533,7 +2641,7 @@ pub mod tests {
                 &db_schema,
                 &Method::GET,
                 s("dummy"),
-                &vec![("select", "id-,na$me")],
+                vs(vec![("select", "id-,na$me")]),
                 None,
                 emtpy_hashmap.clone(),
                 emtpy_hashmap.clone(),
@@ -2542,7 +2650,7 @@ pub mod tests {
             .map_err(|e| format!("{}", e)),
             Err(AppError::ParseRequestError {
                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
-                details: s("Unexpected `,` Expected `letter`, `digit`, `_` or ` `")
+                details: s("Unexpected `,` Unexpected `i` Expected `letter`, `digit`, `_` or ` `")
             })
             .map_err(|e| format!("{}", e))
         );
@@ -2554,7 +2662,7 @@ pub mod tests {
                 &db_schema,
                 &Method::POST,
                 s("dummy"),
-                &vec![("select", "id"), ("id", "gt.10"),],
+                vs(vec![("select", "id"), ("id", "gt.10"),]),
                 Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)),
                 headers.clone(),
                 emtpy_hashmap.clone(),
@@ -2562,6 +2670,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Ok(ApiRequest {
+                get: vs(vec![("select", "id"), ("id", "gt.10"),]),
                 preferences: Some(Preferences {
                     representation: Some(Representation::Full),
                     resolution: None,
@@ -2611,7 +2720,7 @@ pub mod tests {
                 &db_schema,
                 &Method::POST,
                 s("dummy"),
-                &vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),],
+                vs(vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),]),
                 Some(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#)),
                 headers.clone(),
                 emtpy_hashmap.clone(),
@@ -2619,6 +2728,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Ok(ApiRequest {
+                get: vs(vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),]),
                 preferences: Some(Preferences {
                     representation: Some(Representation::Full),
                     resolution: None,
@@ -2636,6 +2746,7 @@ pub mod tests {
                                 sub_selects: vec![],
                                 node: Select {
                                     order: vec![],
+                                    groupby: vec![],
                                     limit: None,
                                     offset: None,
                                     select: vec![Simple {
@@ -2693,6 +2804,7 @@ pub mod tests {
                                 sub_selects: vec![],
                                 node: Select {
                                     order: vec![],
+                                    groupby: vec![],
                                     limit: None,
                                     offset: None,
                                     select: vec![Simple {
@@ -3347,6 +3459,56 @@ pub mod tests {
     #[test]
     fn parse_select_item() {
         assert_eq!(
+            select_item().easy_parse("alias:$sum(field)-p(city)-o(city.desc)"),
+            Ok((
+                Item(Func {
+                    alias: Some(s("alias")),
+                    fn_name: s("sum"),
+                    parameters: vec![
+                        FunctionParam::Fld(Field {
+                            name: s("field"),
+                            json_path: None,
+                        })
+                    ],
+                    partitions: vec![Field{
+                        name: s("city"),
+                        json_path: None,
+                    }],
+                    orders: vec![
+                        OrderTerm {
+                            term: Field {
+                                name: s("city"),
+                                json_path: None,
+                            },
+                            direction: Some(OrderDirection::Desc),
+                            null_order: None,
+                        }
+                    ],
+                }),
+                ""
+            ))
+        );
+        assert_eq!(
+            select_item().easy_parse("alias:$upper(field, '10')"),
+            Ok((
+                Item(Func {
+                    alias: Some(s("alias")),
+                    fn_name: s("upper"),
+                    parameters: vec![
+                        FunctionParam::Fld(Field {
+                            name: s("field"),
+                            json_path: None,
+                        }),
+                        FunctionParam::Val(SingleVal(s("10")),None),
+                    ],
+                    partitions: vec![],
+                    orders: vec![],
+                }),
+                ""
+            ))
+        );
+
+        assert_eq!(
             select_item().easy_parse("alias:column"),
             Ok((
                 Item(Simple {
@@ -3414,6 +3576,7 @@ pub mod tests {
                         sub_selects: vec![],
                         node: Select {
                             order: vec![],
+                            groupby: vec![],
                             limit: None,
                             offset: None,
                             select: vec![
@@ -3467,6 +3630,7 @@ pub mod tests {
                         sub_selects: vec![],
                         node: Select {
                             order: vec![],
+                            groupby: vec![],
                             limit: None,
                             offset: None,
                             select: vec![

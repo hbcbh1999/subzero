@@ -18,8 +18,11 @@ use super::base::{
     fmt_operator,
     fmt_order,
     fmt_order_term,
+    fmt_groupby,
+    fmt_groupby_term,
     //fmt_qi,
     fmt_select_item,
+    fmt_function_param,
     fmt_select_name,
     //fmt_json_operation,
     //fmt_json_operand,
@@ -185,6 +188,7 @@ fn fmt_query<'a>(
             limit,
             offset,
             order,
+            groupby,
         } => {
             let (qi, from_snippet) = match table_alias {
                 Some(a) => (
@@ -235,6 +239,8 @@ fn fmt_query<'a>(
                     } else {
                         sql("")
                     }
+                    + " "
+                    + fmt_groupby(&qi, groupby)?
                     + " "
                     + fmt_order(&qi, order)?
                     + " "
@@ -596,6 +602,7 @@ macro_rules! fmt_in_filter {
 fmt_filter!();
 fmt_select_name!();
 fmt_select_item!();
+fmt_function_param!();
 //fmt_sub_select_item!();
 fn fmt_sub_select_item<'a>(schema: &String, _qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
     match i {
@@ -673,6 +680,8 @@ macro_rules! fmt_field_format {
 fmt_field!();
 fmt_order!();
 fmt_order_term!();
+fmt_groupby!();
+fmt_groupby_term!();
 fmt_as!();
 fmt_limit!();
 fmt_offset!();
