@@ -30,7 +30,7 @@ services:
   
   subzero-postgresql:
     container_name: subzero-postgresql
-    image: subzero
+    image: subzerocloud/subzero
     ports:
       - "8000:8000"
     depends_on:
@@ -55,7 +55,7 @@ services:
   
   subzero-sqlite:
     container_name: subzero-sqlite
-    image: subzero
+    image: subzerocloud/subzero
     ports:
       - "9000:8000"
     volumes:
