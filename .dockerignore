@@ -1,4 +1,7 @@
 target
+bin/tests
+demo
+benches
 Dockerfile
 .dockerignore
 .git
