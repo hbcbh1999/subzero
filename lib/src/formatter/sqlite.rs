@@ -29,6 +29,7 @@ use super::base::{
     //return_representation,
 
     star_select_item_format,
+    //fmt_select_item_function,
 };
 pub use super::base::return_representation;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
@@ -601,6 +602,49 @@ macro_rules! fmt_in_filter {
 }
 fmt_filter!();
 fmt_select_name!();
+//fmt_select_item_function!();
+fn fmt_select_item_function<'a>(qi: &Qi, fn_name: &String,
+    parameters: &'a Vec<FunctionParam>,
+    partitions: &'a Vec<Field>,
+    orders: &'a Vec<OrderTerm>,
+    alias: &'a Option<String>,) -> Result<Snippet<'a>>
+{
+
+    Ok(
+        format!("'{}', ", fmt_select_name(fn_name, &None, alias).unwrap_or("".to_string())) +
+        sql(fmt_identity(fn_name)) + 
+        "(" +
+            parameters
+            .iter()
+            .map(|p| fmt_function_param(qi, p))
+            .collect::<Result<Vec<_>>>()?
+            .join(",") +
+        ")" + 
+        if partitions.is_empty() && orders.is_empty() {
+            sql("")
+        } else {
+            sql(" over( ") +
+                if partitions.is_empty() {
+                    sql("")
+                } else {
+                    sql("partition by ") +
+                    partitions
+                        .iter()
+                        .map(|p| fmt_field(qi, p))
+                        .collect::<Result<Vec<_>>>()?
+                        .join(",")
+                } +
+                " " +
+                if orders.is_empty() {
+                    "".to_string()
+                } else {
+                    fmt_order(qi, orders)?
+                } +
+            " )"
+        }
+        
+    )
+}
 fmt_select_item!();
 fmt_function_param!();
 //fmt_sub_select_item!();

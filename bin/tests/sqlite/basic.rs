@@ -17,6 +17,59 @@ lazy_static! {
 
 haskell_test! {
 feature "basic"
+  describe "Function calls in select" $ do
+    it "can call a function on a row column" $
+      get "/projects?select=name:$upper(name)" shouldRespondWith
+        [json|r#"[
+          {"name":"WINDOWS 7"},
+          {"name":"WINDOWS 10"},
+          {"name":"IOS"},
+          {"name":"OSX"},
+          {"name":"ORPHAN"}
+        ]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+    // it "can call more functions on a row column" $
+    //   get "/projects?select=name:$upper(name),name2:$concat('X-'::text, name)" shouldRespondWith
+    //     [json|r#"[
+    //       {"name":"WINDOWS 7","name2":"X-Windows 7"},
+    //       {"name":"WINDOWS 10","name2":"X-Windows 10"},
+    //       {"name":"IOS","name2":"X-IOS"},
+    //       {"name":"OSX","name2":"X-OSX"},
+    //       {"name":"ORPHAN","name2":"X-Orphan"}
+    //     ]"#|]
+    //     { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "can NOT call unsafe functions" $
+        get "/projects?select=name,random:$random(),tasks($randomagain())" shouldRespondWith
+          [json|r#"{"details":"calling: 'random' is not allowed","message":"Unsafe functions called"}"#|]
+          { matchStatus  = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
+    // it "can call a function with multiple parameters" $
+    //   get "/projects?select=name:$concat('X-'::text, name)" shouldRespondWith
+    //     [json|r#"[
+    //       {"name":"X-Windows 7"},
+    //       {"name":"X-Windows 10"},
+    //       {"name":"X-IOS"},
+    //       {"name":"X-OSX"},
+    //       {"name":"X-Orphan"}
+    //     ]"#|]
+    //     { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "can call a function with integer parameters" $
+      get "/projects?select=name:$substr(name, '2')" shouldRespondWith
+        [json|r#"[
+          {"name":"indows 7"},
+          {"name":"indows 10"},
+          {"name":"OS"},
+          {"name":"SX"},
+          {"name":"rphan"}
+        ]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "can call an aggregate function" $
+      get "/users_tasks?select=user_id, total:$count(task_id)&groupby=user_id&order=user_id.asc" shouldRespondWith
+        [json|r#"[
+          {"user_id":1,"total":4},
+          {"user_id":2,"total":3},
+          {"user_id":3,"total":2}
+        ]"#|]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
   describe "delete" $ do
       it "succeeds with 204 and deletion count" $
         request methodDelete "/projects?id=eq.5"

@@ -789,38 +789,15 @@ macro_rules! fmt_filter {
     };
 }
 #[allow(unused_macros)]
-macro_rules! fmt_select_item { () => {
-fn fmt_select_item<'a>(qi: &Qi, i: &'a SelectItem) -> Result<Snippet<'a>> {
-    match i {
-        Star => Ok(sql(format!(star_select_item_format!(), fmt_qi(qi)))),
-        Simple {
-            field: field @ Field { name, json_path },
-            alias,
-            cast: None,
-        } => Ok(sql(format!(
-            simple_select_item_format!(),
-            field=fmt_field(qi, field)?,
-            as=fmt_as(name, json_path, alias),
-            select_name=fmt_select_name(name, json_path, alias).unwrap_or("".to_string())
-        ))),
-        Simple {
-            field: field @ Field { name, json_path },
-            alias,
-            cast: Some(cast),
-        } => Ok(sql(format!(
-            cast_select_item_format!(),
-            field=fmt_field(qi, field)?,
-            cast=cast,
-            as=fmt_as(name, json_path, alias),
-            select_name=fmt_select_name(name, json_path, alias).unwrap_or("".to_string())
-        ))),
-        Func {
-            alias,
-            fn_name,
-            parameters,
-            partitions,
-            orders,
-        } => {
+macro_rules! fmt_select_item_function {
+    () => {
+        fn fmt_select_item_function<'a>(qi: &Qi, fn_name: &String,
+            parameters: &'a Vec<FunctionParam>,
+            partitions: &'a Vec<Field>,
+            orders: &'a Vec<OrderTerm>,
+            alias: &'a Option<String>,) -> Result<Snippet<'a>>
+        {
+
             Ok(
                 sql(fmt_identity(fn_name)) + 
                 "(" +
@@ -853,12 +830,50 @@ fn fmt_select_item<'a>(qi: &Qi, i: &'a SelectItem) -> Result<Snippet<'a>> {
                     " )"
                 } +
                 fmt_as(fn_name, &None, alias)
-            ) 
-
+            )
         }
-    }
+    };   
 }
-}}
+
+
+#[allow(unused_macros)]
+macro_rules! fmt_select_item { 
+    () => {
+        fn fmt_select_item<'a>(qi: &Qi, i: &'a SelectItem) -> Result<Snippet<'a>> {
+            match i {
+                Star => Ok(sql(format!(star_select_item_format!(), fmt_qi(qi)))),
+                Simple {
+                    field: field @ Field { name, json_path },
+                    alias,
+                    cast: None,
+                } => Ok(sql(format!(
+                    simple_select_item_format!(),
+                    field=fmt_field(qi, field)?,
+                    as=fmt_as(name, json_path, alias),
+                    select_name=fmt_select_name(name, json_path, alias).unwrap_or("".to_string())
+                ))),
+                Simple {
+                    field: field @ Field { name, json_path },
+                    alias,
+                    cast: Some(cast),
+                } => Ok(sql(format!(
+                    cast_select_item_format!(),
+                    field=fmt_field(qi, field)?,
+                    cast=cast,
+                    as=fmt_as(name, json_path, alias),
+                    select_name=fmt_select_name(name, json_path, alias).unwrap_or("".to_string())
+                ))),
+                Func {
+                    alias,
+                    fn_name,
+                    parameters,
+                    partitions,
+                    orders,
+                } => fmt_select_item_function(qi, fn_name, parameters, partitions, orders, alias),
+            }
+        }
+    };
+}
 #[allow(unused_macros)]
 macro_rules! fmt_sub_select_item {
     () => {
@@ -1256,6 +1271,8 @@ pub(super) use fmt_groupby_term;
 pub(super) use fmt_qi;
 #[allow(unused_imports)]
 pub(super) use fmt_query;
+#[allow(unused_imports)]
+pub(super) use fmt_select_item_function;
 #[allow(unused_imports)]
 pub(super) use fmt_select_item;
 #[allow(unused_imports)]

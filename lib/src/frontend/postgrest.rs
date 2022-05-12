@@ -37,7 +37,7 @@ pub async fn handle(
     let mut response_headers = vec![];
     let config = backend.config();
     let db_schema = backend.db_schema();
-    let schema_name = &(match (config.db_schemas.len() > 1, method, headers.get("Accept-Profile"), headers.get("Content-Profile")) {
+    let schema_name = &(match (config.db_schemas.len() > 1, method, headers.get("accept-profile"), headers.get("content-profile")) {
         (false, ..) => Ok(config.db_schemas.get(0).unwrap().clone()),
         (_, &Method::DELETE, _, Some(content_profile))
         | (_, &Method::POST, _, Some(content_profile))
@@ -69,7 +69,7 @@ pub async fn handle(
 
     // check jwt
     let jwt_claims = match &config.jwt_secret {
-        Some(key) => match headers.get("Authorization") {
+        Some(key) => match headers.get("authorization") {
             Some(a) => {
                 let token_str: Vec<&str> = a.split(' ').collect();
                 match token_str[..] {

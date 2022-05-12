@@ -81,7 +81,7 @@ pub fn parse(
     let mut on_conflict_ = None;
     //let mut
     let mut fn_arguments = vec![];
-    let accept_content_type = match headers.get("Accept") {
+    let accept_content_type = match headers.get("accept") {
         //TODO!!! accept header can have multiple content types
         Some(accept_header) => {
             let (act, _) = content_type()
@@ -95,7 +95,7 @@ pub fn parse(
         }
         None => Ok(ApplicationJSON),
     }?;
-    let content_type = match headers.get("Content-Type") {
+    let content_type = match headers.get("content-type") {
         Some(t) => {
             let (act, _) = content_type()
                 .message("failed to parse content-type header")
@@ -108,7 +108,7 @@ pub fn parse(
         }
         None => Ok(ApplicationJSON),
     }?;
-    let preferences = match headers.get("Prefer") {
+    let preferences = match headers.get("prefer") {
         Some(pref) => {
             let (p, _) = preferences()
                 .message("failed to parse Prefer header ")
@@ -2425,7 +2425,7 @@ pub mod tests {
     fn test_parse_post() {
         let emtpy_hashmap = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-        let headers = [("Prefer".to_string(), "return=representation".to_string())].iter().cloned().collect::<HashMap<_,_>>();
+        let headers = [("prefer".to_string(), "return=representation".to_string())].iter().cloned().collect::<HashMap<_,_>>();
         let payload = s(r#"{"id":10, "name":"john"}"#);
         assert_eq!(
             parse(

@@ -127,7 +127,7 @@ async fn handle_request(
         origin.path().to_string(),
         parameters.0,
         body,
-        headers.iter().map(|h| (h.name().as_str().to_string(), h.value().to_string())).collect(),
+        headers.iter().map(|h| (h.name().as_str().to_lowercase().to_string(), h.value().to_string())).collect(),
         cookies.iter().map(|c| (c.name().to_string(), c.value().to_string())).collect(),
         db_backend,
     )
