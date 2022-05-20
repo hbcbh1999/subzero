@@ -70,16 +70,9 @@ impl<'a, T: ?Sized> Add for SqlSnippet<'a, T> {
     type Output = Self;
 
     fn add(self, other: Self) -> Self::Output {
-        match (self, other) {
-            (SqlSnippet(mut l), SqlSnippet(r)) => {
-                // let mut n = vec![];
-                // n.extend(l.into_iter());
-                // n.extend(r.into_iter());
-                // SqlSnippet(n)
-                l.extend(r.into_iter());
-                SqlSnippet(l)
-            }
-        }
+        let (SqlSnippet(mut l), SqlSnippet(r)) = (self, other);
+        l.extend(r.into_iter());
+        SqlSnippet(l)
     }
 }
 

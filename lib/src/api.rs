@@ -303,6 +303,7 @@ pub struct ForeignKey {
     pub referenced_columns: Vec<ColumnName>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, PartialEq, Clone)]
 pub enum Join {
     Child(ForeignKey),
@@ -313,7 +314,7 @@ pub enum Join {
 #[derive(Debug, PartialEq)]
 pub enum SelectKind {
     Item(SelectItem),
-    Sub(SubSelect),
+    Sub(Box<SubSelect>), //TODO! check performance implications for using box
 }
 
 #[derive(Debug, PartialEq, Clone)]

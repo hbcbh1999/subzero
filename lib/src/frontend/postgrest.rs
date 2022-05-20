@@ -27,6 +27,7 @@ fn get_current_timestamp() -> u64 {
     start.duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs()
 }
 
+#[allow(clippy::borrowed_box)]
 pub async fn handle(
     root: &String, method: &Method, path: String, get: Vec<(String, String)>, 
     body: Option<String>, headers: HashMap<String, String>, cookies: HashMap<String, String>,
@@ -130,16 +131,13 @@ pub async fn handle(
             Update { select, .. } |
             Delete { select, ..} => {
                 for s in select {
-                    match s {
-                        Func {fn_name, ..} => {
-                            if !config.db_allowd_select_functions.contains(fn_name) {
-                                return Err(Error::ParseRequestError { 
-                                    details: format!("calling: '{}' is not allowed", fn_name),
-                                    message: "Unsafe functions called".to_string(),
-                                });
-                            }
+                    if let Func {fn_name, ..} = s {
+                        if !config.db_allowd_select_functions.contains(fn_name) {
+                            return Err(Error::ParseRequestError { 
+                                details: format!("calling: '{}' is not allowed", fn_name),
+                                message: "Unsafe functions called".to_string(),
+                            });
                         }
-                        _ => {}
                     }
                 }
             }

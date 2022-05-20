@@ -834,7 +834,7 @@ pub fn parse(
         _ => Err(Error::UnsupportedVerb),
     }?;
 
-    insert_join_conditions(&mut query, schema, db_schema)?;
+    insert_join_conditions(&mut query, schema)?;
     insert_conditions(&mut query, conditions)?;
 
     insert_properties(&mut query, limits, |q, p| {
@@ -1157,7 +1157,7 @@ parser! {
         )
         .map(|(alias, from, hint, select)| {
             let (sel, sub_sel) = split_select(select);
-            Sub(SubSelect {
+            Sub(Box::new(SubSelect {
                 query: Query{
                     node: Select {
                         select: sel,//select,
@@ -1173,7 +1173,7 @@ parser! {
                 alias,
                 hint,
                 join: None
-            })
+            }))
         });
 
         choice!(
@@ -1478,7 +1478,7 @@ fn split_select(select: Vec<SelectKind>) -> (Vec<SelectItem>, Vec<SubSelect>) {
     for i in select {
         match i {
             Item(s) => sel.push(s),
-            Sub(s) => sub_sel.push(s),
+            Sub(s) => sub_sel.push(*s),
         }
     }
     (sel, sub_sel)
@@ -1535,7 +1535,7 @@ fn add_join_info(query: &mut Query, schema: &String, db_schema: &DbSchema, depth
     Ok(())
 }
 
-fn insert_join_conditions(query: &mut Query, schema: &String, db_schema: &DbSchema) -> Result<()> {
+fn insert_join_conditions(query: &mut Query, schema: &String) -> Result<()> {
     let subzero_source = "subzero_source".to_string();
     let empty = "".to_string();
     let parent_qi: Qi = match &query.node {
@@ -1649,7 +1649,7 @@ fn insert_join_conditions(query: &mut Query, schema: &String, db_schema: &DbSche
                 }
             };
             insert_conditions(q, conditions)?;
-            insert_join_conditions(q, schema, db_schema)?;
+            insert_join_conditions(q, schema)?;
         }
     }
     Ok(())
@@ -3553,7 +3553,7 @@ pub mod tests {
         assert_eq!(
             select_item().easy_parse("table!hint( column0->key, column1 ,  alias2:column2 )"),
             Ok((
-                Sub(SubSelect {
+                Sub(Box::new(SubSelect {
                     query: Query {
                         sub_selects: vec![],
                         node: Select {
@@ -3599,7 +3599,7 @@ pub mod tests {
                     alias: None,
                     hint: Some(s("hint")),
                     join: None
-                }),
+                })),
                 ""
             ))
         );
@@ -3607,7 +3607,7 @@ pub mod tests {
         assert_eq!(
             select_item().easy_parse("table.hint ( column0->key, column1 ,  alias2:column2 )"),
             Ok((
-                Sub(SubSelect {
+                Sub(Box::new(SubSelect {
                     query: Query {
                         sub_selects: vec![],
                         node: Select {
@@ -3653,7 +3653,7 @@ pub mod tests {
                     alias: None,
                     hint: Some(s("hint")),
                     join: None
-                }),
+                })),
                 ""
             ))
         );

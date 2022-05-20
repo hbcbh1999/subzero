@@ -9,6 +9,7 @@ use std::iter::FromIterator;
 
 
 type HttpMethod = String;
+type Permissions<T> = HashMap<(Role, HttpMethod), Vec<T>>;
 
 #[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct DbSchema {
@@ -79,19 +80,12 @@ impl DbSchema {
 
                                 // users?select=tasks!users_tasks(*)
                                 if let Some(join_table) = schema.objects.get(h) {
-                                    let ofk1 = join_table.foreign_keys.iter().find_map(|fk| {
-                                        if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
-                                            Some(fk)
-                                        } else {
-                                            None
-                                        }
+                                    let ofk1 = join_table.foreign_keys.iter().find(|fk| {
+                                        &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin
                                     });
-                                    let ofk2 = join_table.foreign_keys.iter().find_map(|fk| {
-                                        if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
-                                            Some(fk)
-                                        } else {
-                                            None
-                                        }
+                                    let ofk2 = join_table.foreign_keys.iter().find(|fk| {
+                                        &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target
+                                        
                                     });
                                     if let (Some(fk1), Some(fk2)) = (ofk1, ofk2) {
                                         return Ok(Many(Qi(current_schema.clone(), join_table.name.clone()), fk1.clone(), fk2.clone()));
@@ -185,41 +179,32 @@ impl DbSchema {
                                     Some(jt) => jt
                                         .iter()
                                         .filter_map(|t| schema.objects.get(t))
-                                        .filter_map(|join_table| {
+                                        .flat_map(|join_table| {
                                             let fks1 = join_table
                                                 .foreign_keys
                                                 .iter()
-                                                .filter_map(|fk| {
-                                                    if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin {
-                                                        Some(fk)
-                                                    } else {
-                                                        None
-                                                    }
+                                                .filter(|fk| {
+                                                    &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin
                                                 })
                                                 .collect::<Vec<_>>();
                                             let fks2 = join_table
                                                 .foreign_keys
                                                 .iter()
-                                                .filter_map(|fk| {
-                                                    if &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target {
-                                                        Some(fk)
-                                                    } else {
-                                                        None
-                                                    }
+                                                .filter(|fk| {
+                                                    &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target
+                                                    
                                                 })
                                                 .collect::<Vec<_>>();
                                             let product = fks1
                                                 .iter()
-                                                .map(|&fk1| {
+                                                .flat_map(|&fk1| {
                                                     fks2.iter().map(move |&fk2| {
                                                         Many(Qi(current_schema.clone(), join_table.name.clone()), fk1.clone(), fk2.clone())
                                                     })
                                                 })
-                                                .flatten()
                                                 .collect::<Vec<Join>>();
-                                            Some(product)
+                                            product
                                         })
-                                        .flatten()
                                         .collect::<Vec<_>>(),
                                 };
 
@@ -384,7 +369,7 @@ pub struct Column {
 }
 
 
-fn deserialize_column_level_permissions<'de, D>(deserializer: D) -> Result<Option<HashMap<(Role, HttpMethod), Vec<ColumnName>>>, D::Error>
+fn deserialize_column_level_permissions<'de, D>(deserializer: D) -> Result<Option<Permissions<ColumnName>>, D::Error>
 where D: Deserializer<'de>,
 {
     let mut map = HashMap::new();
@@ -397,7 +382,7 @@ where D: Deserializer<'de>,
     Ok(Some(map))
 }
 
-fn deserialize_row_level_permissions<'de, D>(deserializer: D) -> Result<Option<HashMap<(Role, HttpMethod), Vec<Condition>>>, D::Error>
+fn deserialize_row_level_permissions<'de, D>(deserializer: D) -> Result<Option<Permissions<Condition>>, D::Error>
 where D: Deserializer<'de>,
 {
     let mut map = HashMap::new();
@@ -428,28 +413,25 @@ where D: Deserializer<'de>,
         let join_tables: BTreeMap<(String, String), Vec<String>> = schema
             .objects
             .iter()
-            .map(|(n, o)| match o.kind {
+            .flat_map(|(n, o)| match o.kind {
                 ObjectType::Function { .. } => vec![],
                 _ => o
                     .foreign_keys
                     .iter()
-                    .map(|fk1| {
+                    .flat_map(|fk1| {
                         o.foreign_keys
                             .iter()
                             .filter(|&fk2| fk2 != fk1 && fk1.referenced_table.0 == schema.name && fk2.referenced_table.0 == schema.name)
-                            .map(|fk2| {
+                            .flat_map(|fk2| {
                                 vec![
                                     ((fk1.referenced_table.1.clone(), fk2.referenced_table.1.clone()), n.clone()),
                                     ((fk2.referenced_table.1.clone(), fk1.referenced_table.1.clone()), n.clone()),
                                 ]
                             })
-                            .flatten()
                             .collect::<Vec<((String, String), String)>>()
                     })
-                    .flatten()
                     .collect::<Vec<((String, String), String)>>(),
             })
-            .flatten()
             .fold(BTreeMap::new(), |mut acc, (k, v)| {
                 acc.entry(k).or_default().push(v);
                 acc

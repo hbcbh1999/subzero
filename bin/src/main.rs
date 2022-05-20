@@ -191,8 +191,9 @@ async fn start() -> Result<Rocket<Build>, Error> {
     // extract the subzero specific part of the configuration
     let vhost_config: VhostConfig = config.extract().expect("config");
     
+    let default_prefix = "/".to_string();
     #[allow(unused_variables)]
-    let url_prefix = vhost_config.url_prefix.clone().unwrap_or("/".to_string());
+    let url_prefix = vhost_config.url_prefix.clone().unwrap_or(default_prefix);
     //initialize the backend
     #[allow(unused_variables)]
     let backend: Box<dyn Backend + Send + Sync> = match vhost_config.db_type.as_str() {

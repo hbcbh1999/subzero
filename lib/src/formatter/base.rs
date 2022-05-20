@@ -1156,69 +1156,21 @@ macro_rules! fmt_json_operand {
 
 #[allow(unused)]
 pub fn return_representation(request: &ApiRequest) -> bool {
-    match (&request.method, &request.query.node, &request.preferences) {
-        (&Method::POST, Insert { .. }, None)
-        | (
-            &Method::POST,
-            Insert { .. },
-            Some(Preferences {
-                representation: Some(Representation::None),
-                ..
-            }),
-        )
-        | (
-            &Method::POST,
-            Insert { .. },
-            Some(Preferences {
-                representation: Some(Representation::HeadersOnly),
-                ..
-            }),
-        )
-        | (&Method::PATCH, Update { .. }, None)
-        | (
-            &Method::PATCH,
-            Update { .. },
-            Some(Preferences {
-                representation: Some(Representation::None),
-                ..
-            }),
-        )
-        | (
-            &Method::PATCH,
-            Update { .. },
-            Some(Preferences {
-                representation: Some(Representation::HeadersOnly),
-                ..
-            }),
-        )
-        | (&Method::PUT, Insert { .. }, None)
-        | (
-            &Method::PUT,
-            Insert { .. },
-            Some(Preferences {
-                representation: Some(Representation::None),
-                ..
-            }),
-        )
-        | (
-            &Method::PUT,
-            Insert { .. },
-            Some(Preferences {
-                representation: Some(Representation::HeadersOnly),
-                ..
-            }),
-        )
-        | (&Method::DELETE, Delete { .. }, None)
-        | (
-            &Method::DELETE,
-            Delete { .. },
-            Some(Preferences {
-                representation: Some(Representation::None),
-                ..
-            }),
-        ) => false,
-        _ => true,
-    }
+    !matches!(
+        (&request.method, &request.query.node, &request.preferences),
+        
+        (&Method::POST, Insert { .. }, None) |
+        (&Method::POST, Insert { .. }, Some(Preferences {representation: Some(Representation::None),..})) |
+        (&Method::POST, Insert { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
+        (&Method::PATCH, Update { .. }, None)|
+        (&Method::PATCH, Update { .. }, Some(Preferences {representation: Some(Representation::None),..}))|
+        (&Method::PATCH, Update { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
+        (&Method::PUT, Insert { .. }, None)|
+        (&Method::PUT, Insert { .. }, Some(Preferences {representation: Some(Representation::None),..}))|
+        (&Method::PUT, Insert { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
+        (&Method::DELETE, Delete { .. }, None)|
+        (&Method::DELETE, Delete { .. }, Some(Preferences {representation: Some(Representation::None),..}))
+    )
 }
 
 #[allow(unused_imports)]

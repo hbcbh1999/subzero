@@ -211,7 +211,7 @@ fn fmt_query<'a>(
                     + " from "
                     + from_snippet
                     + " "
-                    + if join_tables.len() > 0 {
+                    + if !join_tables.is_empty() {
                         format!(
                             ", {}",
                             join_tables
@@ -602,7 +602,7 @@ fn fmt_select_item_function<'a>(qi: &Qi, fn_name: &String,
 {
 
     Ok(
-        format!("'{}', ", fmt_select_name(fn_name, &None, alias).unwrap_or("".to_string())) +
+        format!("'{}', ", fmt_select_name(fn_name, &None, alias).unwrap_or_default()) +
         sql(fmt_identity(fn_name)) + 
         "(" +
             parameters
@@ -640,57 +640,56 @@ fmt_select_item!();
 fmt_function_param!();
 //fmt_sub_select_item!();
 fn fmt_sub_select_item<'a>(schema: &String, _qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
-    match i {
-        SubSelect { query, alias, join, .. } => match join {
-            Some(j) => match j {
-                Parent(fk) => {
-                    let alias_or_name = format!("'{}'", alias.as_ref().unwrap_or(&fk.referenced_table.1));
-                    //let local_table_name = format!("{}_{}", qi.1, alias_or_name);
-                    let subquery = fmt_query(schema, true, None, query, join)?;
+    let SubSelect { query, alias, join, .. } = i;
+    match join {
+        Some(j) => match j {
+            Parent(fk) => {
+                let alias_or_name = format!("'{}'", alias.as_ref().unwrap_or(&fk.referenced_table.1));
+                //let local_table_name = format!("{}_{}", qi.1, alias_or_name);
+                let subquery = fmt_query(schema, true, None, query, join)?;
 
-                    Ok(((sql(alias_or_name) + ", " + "(" + subquery + ")"), vec![]))
-                }
-                Child(fk) => {
-                    let alias_or_name = format!("'{}'", alias.as_ref().unwrap_or(&fk.table.1));
-                    let local_table_name = fmt_identity(&fk.table.1);
-                    let subquery = fmt_query(schema, true, None, query, join)?;
-                    Ok((
-                        (sql(alias_or_name)
-                            + ", "
-                            + "("
-                            + " select json_group_array("
-                            + local_table_name.clone()
-                            + ".row)"
-                            + " from ("
-                            + subquery
-                            + " ) as "
-                            + local_table_name
-                            + ")"),
-                        vec![],
-                    ))
-                }
-                Many(_table, _fk1, fk2) => {
-                    let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
-                    let local_table_name = fmt_identity(&fk2.referenced_table.1);
-                    let subquery = fmt_query(schema, true, None, query, join)?;
-                    Ok((
-                        (sql(alias_or_name)
-                            + ", "
-                            + "("
-                            + " select json_group_array("
-                            + local_table_name.clone()
-                            + ".row)"
-                            + " from ("
-                            + subquery
-                            + " ) as "
-                            + local_table_name
-                            + ")"),
-                        vec![],
-                    ))
-                }
-            },
-            None => panic!("unable to format join query without matching relation"),
+                Ok(((sql(alias_or_name) + ", " + "(" + subquery + ")"), vec![]))
+            }
+            Child(fk) => {
+                let alias_or_name = format!("'{}'", alias.as_ref().unwrap_or(&fk.table.1));
+                let local_table_name = fmt_identity(&fk.table.1);
+                let subquery = fmt_query(schema, true, None, query, join)?;
+                Ok((
+                    (sql(alias_or_name)
+                        + ", "
+                        + "("
+                        + " select json_group_array("
+                        + local_table_name.clone()
+                        + ".row)"
+                        + " from ("
+                        + subquery
+                        + " ) as "
+                        + local_table_name
+                        + ")"),
+                    vec![],
+                ))
+            }
+            Many(_table, _fk1, fk2) => {
+                let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
+                let local_table_name = fmt_identity(&fk2.referenced_table.1);
+                let subquery = fmt_query(schema, true, None, query, join)?;
+                Ok((
+                    (sql(alias_or_name)
+                        + ", "
+                        + "("
+                        + " select json_group_array("
+                        + local_table_name.clone()
+                        + ".row)"
+                        + " from ("
+                        + subquery
+                        + " ) as "
+                        + local_table_name
+                        + ")"),
+                    vec![],
+                ))
+            }
         },
+        None => panic!("unable to format join query without matching relation"),
     }
 }
 
