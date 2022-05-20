@@ -143,14 +143,13 @@ pub async fn handle(
             }
         }
     }
-    let _readonly = matches!((method, &request), (&Method::GET, _));
-
+    
     let response:ApiResponse = match config.db_type.as_str() {
         #[cfg(feature = "postgresql")]
-        "postgresql" => backend.execute(method, _readonly, authenticated, schema_name, &request, role, &jwt_claims).await?,
+        "postgresql" => backend.execute(authenticated, &request, role, &jwt_claims).await?,
         
         #[cfg(feature = "sqlite")]
-        "sqlite" => task::block_in_place(|| backend.execute(method, _readonly, authenticated, schema_name, &request, role, &jwt_claims)).await?,
+        "sqlite" => task::block_in_place(|| backend.execute(authenticated, &request, role, &jwt_claims)).await?,
 
         t => panic!("unsuported database type: {}", t),
     };

@@ -26,7 +26,7 @@ use super::Backend;
 use tokio::task;
 
 fn execute(
-    method: &Method, pool: &Pool<SqliteConnectionManager>, _readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest,
+    pool: &Pool<SqliteConnectionManager>, authenticated: bool, request: &ApiRequest,
     _role: Option<&String>, _jwt_claims: &Option<JsonValue>, config: &VhostConfig,
 ) -> Result<ApiResponse> {
     let conn = pool.get().unwrap();
@@ -58,7 +58,7 @@ fn execute(
                 _ => {}
             }
             
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, &mutate_request)?);
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, &mutate_request)?);
             debug!("pre_statement: {}", main_statement);
             let mut mutate_stmt = conn.prepare(main_statement.as_str()).context(SqliteDbError { authenticated })?;
             let mut rows = mutate_stmt.query(params_from_iter(main_parameters.iter())).context(SqliteDbError { authenticated })?;
@@ -125,7 +125,7 @@ fn execute(
         None => request
     };
     
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, final_request).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, final_request).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
     debug!("main_statement: {}", main_statement);
     let mut main_stm = conn
         .prepare_cached(main_statement.as_str())
@@ -158,7 +158,7 @@ fn execute(
         });
     }
 
-    if method == Method::PUT && api_response.page_total != 1 {
+    if request.method == Method::PUT && api_response.page_total != 1 {
         // Makes sure the querystring pk matches the payload pk
         // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
@@ -225,11 +225,10 @@ impl Backend for SQLiteBackend {
 
         Ok(SQLiteBackend {config, pool, db_schema})
     }
-    async fn execute(&self,
-        method: &Method, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest, role: Option<&String>,
-        jwt_claims: &Option<JsonValue>
+    async fn execute(
+        &self, authenticated: bool, request: &ApiRequest, role: Option<&String>, jwt_claims: &Option<JsonValue>
     ) -> Result<ApiResponse> {
-        execute(method, &self.pool, readonly, authenticated, schema_name, request, role, jwt_claims, &self.config)
+        execute(&self.pool, authenticated, request, role, jwt_claims, &self.config)
     }
     fn db_schema(&self) -> &DbSchema { &self.db_schema }
     fn config(&self) -> &VhostConfig { &self.config }

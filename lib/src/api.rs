@@ -37,6 +37,8 @@ pub struct Preferences {
 pub struct ApiRequest {
     pub method: Method,
     pub path: String,
+    pub schema_name: String,
+    pub read_only: bool,
     pub accept_content_type: ContentType,
     pub query: Query,
     pub preferences: Option<Preferences>,

@@ -111,20 +111,20 @@ fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'
 }
 
 async fn execute<'a>(
-    method: &Method, pool: &'a Pool, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest, role: Option<&String>,
+    pool: &'a Pool, authenticated: bool, request: &ApiRequest, role: Option<&String>,
     jwt_claims: &Option<JsonValue>, config: &VhostConfig
 ) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(PgDbPoolError)?;
 
     
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request)?);
-    let env = get_postgrest_env(role, &[schema_name.clone()], request, jwt_claims, config.db_use_legacy_gucs);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, request)?);
+    let env = get_postgrest_env(role, &[request.schema_name.clone()], request, jwt_claims, config.db_use_legacy_gucs);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
     //println!("{}\n{}\n{:?}", main_statement, env_statement, env_parameters);
     let transaction = client
         .build_transaction()
         .isolation_level(IsolationLevel::ReadCommitted)
-        .read_only(readonly)
+        .read_only(request.read_only)
         .start()
         .await
         .context(PgDbError { authenticated })?;
@@ -152,7 +152,7 @@ async fn execute<'a>(
 
     if let Some((s, f)) = &config.db_pre_request {
         let fn_schema = match s.as_str() {
-            "" => schema_name,
+            "" => &request.schema_name,
             _ => s,
         };
 
@@ -192,7 +192,7 @@ async fn execute<'a>(
         });
     }
 
-    if method == Method::PUT && api_response.page_total != 1 {
+    if request.method == Method::PUT && api_response.page_total != 1 {
         // Makes sure the querystring pk matches the payload pk
         // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
@@ -283,11 +283,10 @@ impl Backend for PostgreSQLBackend {
 
         Ok(PostgreSQLBackend {config, pool, db_schema})
     }
-    async fn execute(&self,
-        method: &Method, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest, role: Option<&String>,
-        jwt_claims: &Option<JsonValue>
+    async fn execute(
+        &self, authenticated: bool, request: &ApiRequest, role: Option<&String>, jwt_claims: &Option<JsonValue>
     ) -> Result<ApiResponse> {
-        execute(method, &self.pool, readonly, authenticated, schema_name, request, role, jwt_claims, &self.config).await
+        execute(&self.pool, authenticated, request, role, jwt_claims, &self.config).await
     }
     fn db_schema(&self) -> &DbSchema { &self.db_schema }
     fn config(&self) -> &VhostConfig { &self.config }

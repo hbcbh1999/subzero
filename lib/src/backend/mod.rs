@@ -1,4 +1,4 @@
-use crate::{config::VhostConfig, error::Result, api::{ApiRequest,ApiResponse, Method}, schema::DbSchema};
+use crate::{config::VhostConfig, error::Result, api::{ApiRequest,ApiResponse}, schema::DbSchema};
 use serde_json::{Value};
 use async_trait::async_trait;
 
@@ -11,10 +11,7 @@ pub mod sqlite;
 pub trait Backend{
     async fn init(vhost: String, config: VhostConfig) -> Result<Self>
     where Self: Sized;
-    async fn execute(&self,
-        method: &Method, readonly: bool, authenticated: bool, schema_name: &String, request: &ApiRequest, role: Option<&String>,
-        jwt_claims: &Option<Value>
-    ) -> Result<ApiResponse>;
+    async fn execute(&self, authenticated: bool, request: &ApiRequest, role: Option<&String>, jwt_claims: &Option<Value>) -> Result<ApiResponse>;
     fn db_schema(&self) -> &DbSchema;
     fn config(&self) -> &VhostConfig;
 }

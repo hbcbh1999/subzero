@@ -901,6 +901,8 @@ pub fn parse(
     }
 
     Ok(ApiRequest {
+        schema_name: schema.clone(),
+        read_only: matches!(method, &Method::GET),
         preferences,
         method: method.clone(),
         path,
@@ -1934,10 +1936,12 @@ pub mod tests {
         let emtpy_hashmap = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
         let mut api_request = ApiRequest {
+            schema_name: s("api"),
             get:vs(vec![("id", "10")]),
             preferences: None,
             path: s("dummy"),
             method: Method::GET,
+            read_only: true,
             headers: emtpy_hashmap.clone(),
             accept_content_type: ApplicationJSON,
             cookies: emtpy_hashmap.clone(),
@@ -1985,6 +1989,7 @@ pub mod tests {
 
         api_request.method = Method::POST;
         api_request.get = vs(vec![]);
+        api_request.read_only = false;
 
         let body = s(r#"{"id":"10"}"#);
         let b = parse(
@@ -2146,6 +2151,7 @@ pub mod tests {
         assert_eq!(
             a.unwrap(),
             ApiRequest {
+                schema_name: s("api"),
                 get: vs(vec![
                     ("select", "id,name,clients(id),tasks(id)"),
                     ("id", "not.gt.10"),
@@ -2156,6 +2162,7 @@ pub mod tests {
                 preferences: None,
                 path: s("dummy"),
                 method: Method::GET,
+                read_only: true,
                 accept_content_type: ApplicationJSON,
                 headers: emtpy_hashmap.clone(),
                 cookies: emtpy_hashmap.clone(),
@@ -2424,6 +2431,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Ok(ApiRequest {
+                schema_name: s("api"),
                 get: vs(vec![("select", "id"), ("id", "gt.10"),]),
                 preferences: Some(Preferences {
                     representation: Some(Representation::Full),
@@ -2432,6 +2440,7 @@ pub mod tests {
                 }),
                 path: s("dummy"),
                 method: Method::POST,
+                read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers: headers.clone(),
                 cookies: emtpy_hashmap.clone(),
@@ -2481,6 +2490,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Ok(ApiRequest {
+                schema_name: s("api"),
                 get: vs(vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),]),
                 preferences: Some(Preferences {
                     representation: Some(Representation::Full),
@@ -2489,6 +2499,7 @@ pub mod tests {
                 }),
                 path: s("dummy"),
                 method: Method::POST,
+                read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers: headers.clone(),
                 cookies: emtpy_hashmap.clone(),
@@ -2652,6 +2663,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Ok(ApiRequest {
+                schema_name: s("api"),
                 get: vs(vec![("select", "id"), ("id", "gt.10"),]),
                 preferences: Some(Preferences {
                     representation: Some(Representation::Full),
@@ -2660,6 +2672,7 @@ pub mod tests {
                 }),
                 path: s("dummy"),
                 method: Method::POST,
+                read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers: headers.clone(),
                 cookies: emtpy_hashmap.clone(),
@@ -2710,6 +2723,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Ok(ApiRequest {
+                schema_name: s("api"),
                 get: vs(vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),]),
                 preferences: Some(Preferences {
                     representation: Some(Representation::Full),
@@ -2718,6 +2732,7 @@ pub mod tests {
                 }),
                 path: s("dummy"),
                 method: Method::POST,
+                read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers,
                 cookies: emtpy_hashmap,
