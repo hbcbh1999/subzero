@@ -75,24 +75,18 @@ fn execute(
                     from: (table.to_owned(), None),
                     join_tables: vec![],
                     where_: select_where,
-                    select: select.iter().cloned().collect(),
+                    select: select.to_vec(),
                     limit:None,
                     offset:None,
                     order:vec![],
                     groupby: vec![],
                 },
-                sub_selects: sub_selects.iter().cloned().collect()
+                sub_selects: sub_selects.to_vec()
             };
 
             let response  = match node {
                 Delete { .. } => {
-                    let count = match &request.preferences {
-                        Some(Preferences {
-                            count: Some(Count::ExactCount),
-                            ..
-                        }) => true,
-                        _ => false,
-                    };
+                    let count = matches!(&request.preferences, Some(Preferences { count: Some(Count::ExactCount), ..}));
                     
                     Some(ApiResponse {
                         page_total: ids.len() as i64,
@@ -164,7 +158,7 @@ fn execute(
         });
     }
 
-    if method == &Method::PUT && api_response.page_total != 1 {
+    if method == Method::PUT && api_response.page_total != 1 {
         // Makes sure the querystring pk matches the payload pk
         // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
@@ -195,14 +189,14 @@ impl Backend for SQLiteBackend {
     async fn init(_vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
         let db_file = config.db_uri.clone();
-        let manager = SqliteConnectionManager::file(db_file).with_init(|c| array::load_module(&c));
+        let manager = SqliteConnectionManager::file(db_file).with_init(|c| array::load_module(c));
         let pool = Pool::builder().max_size(config.db_pool as u32).build(manager).unwrap();
 
         
         //read db schema
         let db_schema = match &config.db_schema_structure {
             SqlFile(f) => match fs::read_to_string(
-                vec![f, &format!("sqlite_{}", f)].into_iter().filter(|f| Path::new(f).exists()).next().unwrap_or(f)
+                vec![f, &format!("sqlite_{}", f)].into_iter().find(|f| Path::new(f).exists()).unwrap_or(f)
             ) {
                 Ok(q) => match pool.get() {
                     Ok(conn) => {

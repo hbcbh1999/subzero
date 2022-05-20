@@ -139,7 +139,7 @@ impl DbSchema {
                                 
                                 if joins.len() == 1 {
                                     Ok(joins[0].clone())
-                                } else if joins.len() == 0 {
+                                } else if joins.is_empty() {
                                     Err(Error::NoRelBetween {
                                         origin: origin.to_owned(),
                                         target: target.to_owned(),
@@ -230,7 +230,7 @@ impl DbSchema {
 
                                 if joins.len() == 1 {
                                     Ok(joins[0].clone())
-                                } else if joins.len() == 0 {
+                                } else if joins.is_empty() {
                                     Err(Error::NoRelBetween {
                                         origin: origin.to_owned(),
                                         target: target.to_owned(),
@@ -258,7 +258,7 @@ impl DbSchema {
                         //Ok(joins)
                         if joins.len() == 1 {
                             Ok(joins[0].clone())
-                        } else if joins.len() == 0 {
+                        } else if joins.is_empty() {
                             Err(Error::NoRelBetween {
                                 origin: origin.to_owned(),
                                 target: target.to_owned(),
@@ -586,7 +586,7 @@ mod tests {
                                 },
                                 name: s("myfunction"),
                                 columns: [].iter().cloned().map(t).collect(),
-                                foreign_keys: [].iter().cloned().collect(),
+                                foreign_keys: [].to_vec(),
                                 column_level_permissions: None,
                                 row_level_permissions: None,
                             },
@@ -624,10 +624,7 @@ mod tests {
                                     columns: vec![s("project_id")],
                                     referenced_table: Qi(s("api"), s("projects")),
                                     referenced_columns: vec![s("id")],
-                                }]
-                                .iter()
-                                .cloned()
-                                .collect(),
+                                }].to_vec(),
                                 column_level_permissions: None,
                                 row_level_permissions: None,
                             },
@@ -649,7 +646,7 @@ mod tests {
                                 .cloned()
                                 .map(t)
                                 .collect(),
-                                foreign_keys: [].iter().cloned().collect(),
+                                foreign_keys: [].to_vec(),
                                 column_level_permissions: Some(
                                     vec![
                                         (
@@ -947,7 +944,7 @@ mod tests {
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
         assert_eq!(
             db_schema
-                .get_join(&s("api"), &s("projects"), &s("tasks"), &mut None)
+                .get_join(&s("api"), &s("projects"), &s("tasks"), &None)
                 .map_err(|e| format!("{}", e)),
             Ok(Child(ForeignKey {
                 name: s("project_id_fk"),
@@ -959,7 +956,7 @@ mod tests {
         );
         assert_eq!(
             db_schema
-                .get_join(&s("api"), &s("tasks"), &s("projects"), &mut None)
+                .get_join(&s("api"), &s("tasks"), &s("projects"), &None)
                 .map_err(|e| format!("{}", e)),
             Ok(Parent(ForeignKey {
                 name: s("project_id_fk"),
@@ -971,7 +968,7 @@ mod tests {
         );
         assert_eq!(
             db_schema
-                .get_join(&s("api"), &s("clients"), &s("projects"), &mut None)
+                .get_join(&s("api"), &s("clients"), &s("projects"), &None)
                 .map_err(|e| format!("{}", e)),
             Ok(Child(ForeignKey {
                 name: s("client_id_fk"),
@@ -983,7 +980,7 @@ mod tests {
         );
         assert_eq!(
             db_schema
-                .get_join(&s("api"), &s("tasks"), &s("users"), &mut None)
+                .get_join(&s("api"), &s("tasks"), &s("users"), &None)
                 .map_err(|e| format!("{}", e)),
             Ok(Many(
                 Qi(s("api"), s("users_tasks")),
@@ -1005,7 +1002,7 @@ mod tests {
         );
         assert_eq!(
             db_schema
-                .get_join(&s("api"), &s("tasks"), &s("users"), &mut Some(s("users_tasks")))
+                .get_join(&s("api"), &s("tasks"), &s("users"), &Some(s("users_tasks")))
                 .map_err(|e| format!("{}", e)),
             Ok(Many(
                 Qi(s("api"), s("users_tasks")),
@@ -1066,7 +1063,7 @@ mod tests {
         //     1
         // );
         assert!(matches!(
-            db_schema.get_join(&s("api"), &s("users"), &s("addresses"), &mut None),
+            db_schema.get_join(&s("api"), &s("users"), &s("addresses"), &None),
             Err(AppError::AmbiguousRelBetween { .. })
         ));
     }

@@ -262,10 +262,7 @@ impl Error {
                         }
                     }
                     ['P', 'T', a, b, c] => {
-                        match [a, b, c].iter().collect::<String>().parse::<u16>() {
-                            Ok(c) => c,
-                            Err(_) => 500,
-                        }
+                        [a, b, c].iter().collect::<String>().parse::<u16>().unwrap_or(500)
                     }
                     _ => 400,
                 },
@@ -341,8 +338,8 @@ impl Error {
             } => {
                 let prms = format!("({})", argument_keys.join(", "));
                 let msg_part = match (has_prefer_single_object, is_inv_post, content_type) {
-                    (true, _, _) => format!(" function with a single json or jsonb parameter"),
-                    (_, true, &TextCSV) => format!(" function with a single unnamed text parameter"),
+                    (true, _, _) => " function with a single json or jsonb parameter".to_string(),
+                    (_, true, &TextCSV) => " function with a single unnamed text parameter".to_string(),
                     //(_, true, CTOctetStream)     => " function with a single unnamed bytea parameter",
                     (_, true, &ApplicationJSON) => format!(
                         "{} function or the {}.{} function with a single unnamed json or jsonb parameter",
@@ -398,7 +395,7 @@ impl Error {
     }
 }
 
-fn rel_hint(joins: &Vec<Join>) -> String {
+fn rel_hint(joins: &[Join]) -> String {
     joins
         .iter()
         .map(|j| match j {

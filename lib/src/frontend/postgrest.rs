@@ -43,7 +43,7 @@ pub async fn handle(
         | (_, &Method::POST, _, Some(content_profile))
         | (_, &Method::PATCH, _, Some(content_profile))
         | (_, &Method::PUT, _, Some(content_profile)) => {
-            if config.db_schemas.contains(&content_profile.to_string()) {
+            if config.db_schemas.contains(content_profile) {
                 Ok(content_profile.to_string())
             } else {
                 Err(Error::UnacceptableSchema {
@@ -52,7 +52,7 @@ pub async fn handle(
             }
         }
         (_, _, Some(accept_profile), _) => {
-            if config.db_schemas.contains(&accept_profile.to_string()) {
+            if config.db_schemas.contains(accept_profile) {
                 Ok(accept_profile.to_string())
             } else {
                 Err(Error::UnacceptableSchema {
@@ -64,7 +64,7 @@ pub async fn handle(
     }?);
 
     if config.db_schemas.len() > 1 {
-        response_headers.push((format!("Content-Profile"), schema_name.clone()));
+        response_headers.push(("Content-Profile".to_string(), schema_name.clone()));
     }
 
     // check jwt
@@ -83,7 +83,7 @@ pub async fn handle(
                                 if let Some(exp) = c.claims.get("exp") {
                                     if from_value::<u64>(exp.clone()).context(JsonSerialize)? < get_current_timestamp() - 1 {
                                         return Err(Error::JwtTokenInvalid {
-                                            message: format!("JWT expired"),
+                                            message: "JWT expired".to_string(),
                                         });
                                     }
                                 }
@@ -104,7 +104,7 @@ pub async fn handle(
     }?;
 
     let (role, authenticated) = match &jwt_claims {
-        Some(claims) => match select(&claims, format!("${}", config.role_claim_key).as_str()) {
+        Some(claims) => match select(claims, format!("${}", config.role_claim_key).as_str()) {
             Ok(v) => match &v[..] {
                 [JsonValue::String(s)] => Ok((Some(s), true)),
                 _ => Ok((config.db_anon_role.as_ref(), true)),
@@ -135,7 +135,7 @@ pub async fn handle(
                             if !config.db_allowd_select_functions.contains(fn_name) {
                                 return Err(Error::ParseRequestError { 
                                     details: format!("calling: '{}' is not allowed", fn_name),
-                                    message: format!("Unsafe functions called"),
+                                    message: "Unsafe functions called".to_string(),
                                 });
                             }
                         }
@@ -145,12 +145,7 @@ pub async fn handle(
             }
         }
     }
-    let _readonly = match (method, &request) {
-        (&Method::GET, _) => true,
-        //TODO!!! optimize not volatile function call can be read only
-        //(&Method::POST, ApiRequest { query: FunctionCall {..}, .. }) => true,
-        _ => false,
-    };
+    let _readonly = matches!((method, &request), (&Method::GET, _));
 
     let response:ApiResponse = match config.db_type.as_str() {
         #[cfg(feature = "postgresql")]
@@ -186,7 +181,7 @@ pub async fn handle(
         (_, _, pt, t) => content_range_header(top_level_offset, top_level_offset + pt - 1, t),
     };
 
-    response_headers.push((format!("Content-Range"), content_range));
+    response_headers.push(("Content-Range".to_string(), content_range));
     if let Some(response_headers_str) = response.response_headers {
         match serde_json::from_str(response_headers_str.as_str()) {
             Ok(JsonValue::Array(headers_json)) => {
@@ -218,7 +213,7 @@ pub async fn handle(
         (&Method::POST, Insert { .. }, ..) => 201,
         (&Method::DELETE, Delete { .. }, ..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
         (&Method::DELETE, Delete { .. }, ..) => 204,
-        (&Method::PATCH, Update { columns, .. }, 0, _, _) if columns.len() > 0 => 404,
+        (&Method::PATCH, Update { columns, .. }, 0, _, _) if !columns.is_empty() => 404,
         (&Method::PATCH, Update { .. }, ..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
         (&Method::PATCH, Update { .. }, ..) => 204,
         (&Method::PUT,Insert { .. },..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
@@ -248,11 +243,11 @@ fn content_range_header(lower: i64, upper: i64, total: Option<i64>) -> String {
     let range_string = if total != Some(0) && lower <= upper {
         format!("{}-{}", lower, upper)
     } else {
-        format!("*")
+        "*".to_string()
     };
     let total_string = match total {
         Some(t) => format!("{}", t),
-        None => format!("*"),
+        None => "*".to_string(),
     };
     format!("{}/{}", range_string, total_string)
 }

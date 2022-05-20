@@ -15,6 +15,11 @@ impl<'a, T: ?Sized> SqlSnippet<'a, T> {
             SqlSnippet(v) => v.len(),
         }
     }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 pub trait JoinIterator<'a, T: ?Sized> {
@@ -32,7 +37,7 @@ where
             SqlSnippet(acc)
         }) {
             SqlSnippet(mut v) => {
-                if v.len() > 0 {
+                if !v.is_empty() {
                     v.remove(0);
                 }
                 SqlSnippet(v)
@@ -51,7 +56,7 @@ where
 {
     s.into()
 }
-pub fn param<'a, T: ?Sized>(p: &'a T) -> SqlSnippet<'a, T> { SqlSnippet(vec![SqlSnippetChunk::Param(p)]) }
+pub fn param<T: ?Sized>(p: &T) -> SqlSnippet<T> { SqlSnippet(vec![SqlSnippetChunk::Param(p)]) }
 
 impl<'a, T: ?Sized> IntoSnippet<'a, T> for &'a str {
     fn into(self) -> SqlSnippet<'a, T> { SqlSnippet(vec![SqlSnippetChunk::Sql(self.to_string())]) }
@@ -140,7 +145,7 @@ impl<'a, T: ?Sized> Add<String> for SqlSnippet<'a, T> {
     }
 }
 
-pub fn generate<'a, T: ?Sized>(s: SqlSnippet<'a, T>) -> (String, Vec<&T>, u32) {
+pub fn generate<T: ?Sized>(s: SqlSnippet<T>) -> (String, Vec<&T>, u32) {
     match s {
         SqlSnippet(c) => c.iter().fold((String::new(), vec![], 1), |acc, v| {
             let (mut sql, mut params, pos) = acc;

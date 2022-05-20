@@ -212,7 +212,7 @@ pub fn parse(
 
                 match root_obj.kind {
                     Function { .. } => {
-                        if tp.len() > 0 || has_operator(v.as_str()) {
+                        if !tp.is_empty() || has_operator(v.as_str()) {
                             // this is a filter
                             let ((negate, filter), _) = negatable_filter()
                                 .message("failed to parse filter")
@@ -238,10 +238,7 @@ pub fn parse(
 
     // in some cases we don't want to select anything back, event when select parameter is specified,
     // so in order to not trigger any permissions errors, we select nothing back
-    let is_function_call = match &root_obj.kind {
-        Function { .. } => true,
-        _ => false,
-    };
+    let is_function_call = matches!(&root_obj.kind, Function { .. });
     if !is_function_call {
         match (method, &preferences) {
             (&Method::POST, None)
@@ -330,7 +327,7 @@ pub fn parse(
                     }
                     let payload = serde_json::to_string(&args).context(JsonSerialize)?;
                     let params = match (parameters.len(), parameters.get(0)) {
-                        (1, Some(p)) if p.name == "" => CallParams::OnePosParam(p.clone()),
+                        (1, Some(p)) if p.name.is_empty() => CallParams::OnePosParam(p.clone()),
                         _ => {
                             //let specified_parameters = args.keys().collect::<Vec<_>>();
                             let specified_parameters: HashSet<String> = HashSet::from_iter(args.keys().map(|k| k.to_string()));
@@ -362,18 +359,18 @@ pub fn parse(
                         message: "body not available".to_string(),
                     })?;
                     let params = match (parameters.len(), parameters.get(0)) {
-                        (1, Some(p)) if p.name == "" && (p.type_ == "json" || p.type_ == "jsonb") => CallParams::OnePosParam(p.clone()),
+                        (1, Some(p)) if p.name.is_empty() && (p.type_ == "json" || p.type_ == "jsonb") => CallParams::OnePosParam(p.clone()),
                         _ => {
                             let json_payload = match (payload.len(), content_type) {
                                 (0, _) => serde_json::from_str("{}").context(JsonDeserialize),
                                 (_, _) => serde_json::from_str(&payload).context(JsonDeserialize),
                             }?;
                             let argument_keys = match (json_payload, columns_) {
-                                (JsonValue::Object(o), None) => o.keys().map(|k| k.clone()).collect(),
-                                (JsonValue::Object(o), Some(c)) => o.keys().filter(|k| c.contains(k)).map(|k| k.clone()).collect(),
+                                (JsonValue::Object(o), None) => o.keys().cloned().collect(),
+                                (JsonValue::Object(o), Some(c)) => o.keys().filter(|k| c.contains(k)).cloned().collect(),
                                 _ => vec![],
                             };
-                            let specified_parameters: HashSet<String> = HashSet::from_iter(argument_keys.clone());
+                            let specified_parameters: HashSet<String> = argument_keys.iter().cloned().collect();
 
                             if !specified_parameters.is_superset(&required_params) || !specified_parameters.is_subset(&all_params) {
                                 return Err(Error::NoRpc {
@@ -407,11 +404,7 @@ pub fn parse(
                     //CallParams::KeyParams(vec![]),
                     payload: Payload(payload),
 
-                    is_scalar: match return_type {
-                        One(Scalar) => true,
-                        SetOf(Scalar) => true,
-                        _ => false,
-                    },
+                    is_scalar: matches!(return_type, One(Scalar) | SetOf(Scalar)),
                     returns_single: match return_type {
                         One(_) => true,
                         SetOf(_) => false,
@@ -435,7 +428,7 @@ pub fn parse(
                 },
                 sub_selects,
             };
-            add_join_info(&mut q, &schema, db_schema, 0)?;
+            add_join_info(&mut q, schema, db_schema, 0)?;
 
             //we populate the returing becasue it relies on the "join" information
             if let Query {
@@ -447,7 +440,7 @@ pub fn parse(
                 ref sub_selects,
             } = q
             {
-                returning.extend(get_returning(&select, &sub_selects)?);
+                returning.extend(get_returning(select, sub_selects)?);
             }
             Ok(q)
         }
@@ -468,7 +461,7 @@ pub fn parse(
                 },
                 sub_selects,
             };
-            add_join_info(&mut q, &schema, db_schema, 0)?;
+            add_join_info(&mut q, schema, db_schema, 0)?;
             Ok(q)
         }
         (&Method::POST, _) => {
@@ -494,7 +487,7 @@ pub fn parse(
                                         Ok(m.keys().cloned().collect())
                                     } else {
                                         Err(Error::InvalidBody {
-                                            message: format!("All object keys must match"),
+                                            message: "All object keys must match".to_string(),
                                         })
                                     }
                                 }
@@ -559,7 +552,7 @@ pub fn parse(
             let mut q = Query {
                 node: Insert {
                     into: root.clone(),
-                    columns: columns,
+                    columns,
                     payload: Payload(payload),
                     where_: ConditionTree {
                         operator: And,
@@ -571,7 +564,7 @@ pub fn parse(
                 },
                 sub_selects,
             };
-            add_join_info(&mut q, &schema, db_schema, 0)?;
+            add_join_info(&mut q, schema, db_schema, 0)?;
             //we populate the returing becasue it relies on the "join" information
             if let Query {
                 node: Insert {
@@ -582,7 +575,7 @@ pub fn parse(
                 ref sub_selects,
             } = q
             {
-                returning.extend(get_returning(&select, &sub_selects)?);
+                returning.extend(get_returning(select, sub_selects)?);
             }
             Ok(q)
         }
@@ -599,7 +592,7 @@ pub fn parse(
                 },
                 sub_selects,
             };
-            add_join_info(&mut q, &schema, db_schema, 0)?;
+            add_join_info(&mut q, schema, db_schema, 0)?;
             //we populate the returing because it relies on the "join" information
             if let Query {
                 node: Delete {
@@ -610,7 +603,7 @@ pub fn parse(
                 ref sub_selects,
             } = q
             {
-                returning.extend(get_returning(&select, &sub_selects)?);
+                returning.extend(get_returning(select, sub_selects)?);
             }
             Ok(q)
         }
@@ -637,7 +630,7 @@ pub fn parse(
                                         Ok(m.keys().cloned().collect())
                                     } else {
                                         Err(Error::InvalidBody {
-                                            message: format!("All object keys must match"),
+                                            message: "All object keys must match".to_string(),
                                         })
                                     }
                                 }
@@ -685,7 +678,7 @@ pub fn parse(
             let mut q = Query {
                 node: Update {
                     table: root.clone(),
-                    columns: columns,
+                    columns,
                     payload: Payload(payload),
                     where_: ConditionTree {
                         operator: And,
@@ -696,7 +689,7 @@ pub fn parse(
                 },
                 sub_selects,
             };
-            add_join_info(&mut q, &schema, db_schema, 0)?;
+            add_join_info(&mut q, schema, db_schema, 0)?;
             //we populate the returing becasue it relies on the "join" information
             if let Query {
                 node: Update {
@@ -707,7 +700,7 @@ pub fn parse(
                 ref sub_selects,
             } = q
             {
-                returning.extend(get_returning(&select, &sub_selects)?);
+                returning.extend(get_returning(select, sub_selects)?);
             }
             Ok(q)
         }
@@ -734,7 +727,7 @@ pub fn parse(
                                         Ok(m.keys().cloned().collect())
                                     } else {
                                         Err(Error::InvalidBody {
-                                            message: format!("All object keys must match"),
+                                            message: "All object keys must match".to_string(),
                                         })
                                     }
                                 }
@@ -784,7 +777,7 @@ pub fn parse(
             let eq = &"=".to_string();
             let root_conditions = conditions
                 .iter()
-                .filter_map(|(p, c)| if p.len() == 0 { Some(c) } else { None })
+                .filter_map(|(p, c)| if p.is_empty() { Some(c) } else { None })
                 .collect::<Vec<_>>();
             let pk_cols = root_obj
                 .columns
@@ -804,14 +797,14 @@ pub fn parse(
                 })
                 .collect::<BTreeSet<_>>();
 
-            if !(pk_cols.len() > 0 && conditions_on_fields == pk_cols && root_conditions.len() == conditions_on_fields.len()) {
+            if !(!pk_cols.is_empty() && conditions_on_fields == pk_cols && root_conditions.len() == conditions_on_fields.len()) {
                 return Err(Error::InvalidFilters);
             }
 
             let mut q = Query {
                 node: Insert {
                     into: root.clone(),
-                    columns: columns,
+                    columns,
                     payload: Payload(payload),
                     where_: ConditionTree {
                         operator: And,
@@ -823,7 +816,7 @@ pub fn parse(
                 },
                 sub_selects,
             };
-            add_join_info(&mut q, &schema, db_schema, 0)?;
+            add_join_info(&mut q, schema, db_schema, 0)?;
             //we populate the returing becasue it relies on the "join" information
             if let Query {
                 node: Insert {
@@ -834,14 +827,14 @@ pub fn parse(
                 ref sub_selects,
             } = q
             {
-                returning.extend(get_returning(&select, &sub_selects)?);
+                returning.extend(get_returning(select, sub_selects)?);
             }
             Ok(q)
         }
         _ => Err(Error::UnsupportedVerb),
     }?;
 
-    insert_join_conditions(&mut query, &schema, db_schema)?;
+    insert_join_conditions(&mut query, schema, db_schema)?;
     insert_conditions(&mut query, conditions)?;
 
     insert_properties(&mut query, limits, |q, p| {
@@ -970,8 +963,8 @@ where
     Input: Stream<Token = char>,
 {
     field_name().and(optional(json_path())).map(|(name, json_path)| Field {
-        name: name,
-        json_path: json_path,
+        name,
+        json_path,
     })
 }
 
@@ -991,7 +984,7 @@ where
             let (s, (n, _)) = v;
             format!("{}{}", s.unwrap_or(""), n)
         });
-    let operand = choice((attempt(signed_number.map(|n| JsonOperand::JIdx(n))), field_name().map(|k| JsonOperand::JKey(k))));
+    let operand = choice((attempt(signed_number.map(JsonOperand::JIdx)), field_name().map(JsonOperand::JKey)));
     //many1(arrow.and(operand.and(end)).map(|((arrow,(operand,_)))| arrow(operand)))
     many1(arrow.and(operand).map(|(arrow, operand)| arrow(operand)))
 }
@@ -1099,7 +1092,7 @@ where
     Input: Stream<Token = char>,
 {
     or(
-        field().map(|f| FunctionParam::Fld(f)),
+        field().map(FunctionParam::Fld),
         between(
             char('\''), 
             char('\''), 
@@ -1121,6 +1114,7 @@ where
     select_item_()
 }
 
+
 parser! {
     #[inline]
     fn select_item_[Input]()(Input) -> SelectKind
@@ -1131,7 +1125,7 @@ parser! {
             optional(attempt(alias()))
             .and(field())
             .and(optional(cast()))
-            .map(|((alias, field), cast)| Item(Simple {field: field, alias: alias, cast}));
+            .map(|((alias, field), cast)| Item(Simple {field, alias, cast}));
         let function = (
             optional(attempt(alias())),
             char('$'),
@@ -1161,7 +1155,7 @@ parser! {
             optional(char('!').or(char('.')).and(field_name()).map(|(_,hint)| hint)),
             between(lex(char('(')), lex(char(')')),  sep_by(select_item(), lex(char(','))))
         )
-        .map(|(alias, from, join_hint, select)| {
+        .map(|(alias, from, hint, select)| {
             let (sel, sub_sel) = split_select(select);
             Sub(SubSelect {
                 query: Query{
@@ -1176,8 +1170,8 @@ parser! {
                     },
                     sub_selects: sub_sel
                 },
-                alias: alias,
-                hint: join_hint,
+                alias,
+                hint,
                 join: None
             })
         });
@@ -1202,7 +1196,7 @@ fn integer<Input>() -> impl Parser<Input, Output = SingleVal>
 where
     Input: Stream<Token = char>,
 {
-    many1(digit()).map(|v| SingleVal(v))
+    many1(digit()).map(SingleVal)
 }
 
 fn limit<Input>() -> impl Parser<Input, Output = SingleVal>
@@ -1282,7 +1276,7 @@ where
 
     choice((
         attempt(operator().skip(dot()).and(single_value()).map(|(o, v)| match &*o {
-            "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace("*", "%")))),
+            "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace('*', "%")))),
             "is" => match &*v {
                 "null" => Ok(Filter::Is(TrileanVal::TriNull)),
                 "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
@@ -1297,7 +1291,7 @@ where
         attempt(string("in").skip(dot()).and(list_value()).map(|(_, v)| Ok(Filter::In(ListVal(v))))),
         fts_operator()
             .and(optional(
-                between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(|v| SingleVal(v)),
+                between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(SingleVal),
             ))
             .skip(dot())
             .and(single_value())
@@ -1314,7 +1308,7 @@ where
 
     choice((
         attempt(operator().skip(dot()).and(logic_single_value()).map(|(o, v)| match &*o {
-            "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace("*", "%")))),
+            "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace('*', "%")))),
             "is" => match &*v {
                 "null" => Ok(Filter::Is(TrileanVal::TriNull)),
                 "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
@@ -1329,7 +1323,7 @@ where
         attempt(string("in").skip(dot()).and(list_value()).map(|(_, v)| Ok(Filter::In(ListVal(v))))),
         fts_operator()
             .and(optional(
-                between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(|v| SingleVal(v)),
+                between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(SingleVal),
             ))
             .skip(dot())
             .and(logic_single_value())
@@ -1377,7 +1371,7 @@ fn groupby_term<Input>() -> impl Parser<Input, Output = GroupByTerm>
 where
     Input: Stream<Token = char>,
 {
-    field().map(|t| GroupByTerm(t))
+    field().map(GroupByTerm)
 }
 
 
@@ -1394,7 +1388,7 @@ where
     ))
 }
 
-fn preferences<'a, Input>() -> impl Parser<Input, Output = Preferences>
+fn preferences<Input>() -> impl Parser<Input, Output = Preferences>
 where
     Input: Stream<Token = char>,
 {
@@ -1455,11 +1449,7 @@ parser! {
             .and(optional(attempt(string("not").skip(dot()))))
             .and(logic_filter())
             .map(|((field,negate),filter)|
-                Condition::Single {
-                    field: field,
-                    filter: filter,
-                    negate: negate.is_some()
-                }
+                Condition::Single {field,filter,negate: negate.is_some()}
             );
 
         let group = optional(attempt(string("not").skip(dot())))
@@ -1474,10 +1464,7 @@ parser! {
                 .and(between(lex(char('(')),lex(char(')')),sep_by1(logic_condition(), lex(char(',')))))
             )
             .map(|(negate, (operator, conditions))|{
-                Condition::Group(negate.is_some(), ConditionTree {
-                    operator: operator,
-                    conditions: conditions
-                })
+                Condition::Group(negate.is_some(), ConditionTree { operator, conditions,})
             });
 
         attempt(single).or(group)
@@ -1512,13 +1499,11 @@ fn add_join_info(query: &mut Query, schema: &String, db_schema: &DbSchema, depth
         Insert { into, .. } => into,
         Delete { from, .. } => from,
         Update { table, .. } => table,
-        FunctionCall { return_table_type, .. } => {
-            let table = match return_table_type {
-                Some(q) => &q.1,
-                None => dummy_source,
-            };
-            table
+        FunctionCall { return_table_type, .. } => match return_table_type {
+            Some(q) => &q.1,
+            None => dummy_source,
         }
+        
     };
 
     for SubSelect {
@@ -1671,8 +1656,8 @@ fn insert_join_conditions(query: &mut Query, schema: &String, db_schema: &DbSche
 }
 
 fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>, T)>, f: fn(&mut Query, Vec<T>) -> Result<()>) -> Result<()> {
-    let node_properties = properties.drain_filter(|(path, _)| path.len() == 0).map(|(_, c)| c).collect::<Vec<_>>();
-    if node_properties.len() > 0 {
+    let node_properties = properties.drain_filter(|(path, _)| path.is_empty()).map(|(_, c)| c).collect::<Vec<_>>();
+    if !node_properties.is_empty() {
         f(query, node_properties)?
     };
 
@@ -1735,10 +1720,7 @@ fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
     move |mut e| {
         let m = e
             .errors
-            .drain_filter(|v| match v {
-                ParserError::Message(_) => true,
-                _ => false,
-            })
+            .drain_filter(|v| matches!(v, ParserError::Message(_)))
             .collect::<Vec<_>>();
         let position = e.position.translate_position(s);
         let message = match m.as_slice() {
@@ -1748,7 +1730,7 @@ fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
         let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
         let details = format!("{}", e)
             .replace(format!("Parse error at {}", e.position).as_str(), "")
-            .replace("\n", " ")
+            .replace('\n', " ")
             .trim()
             .to_string();
         Error::ParseRequestError { message, details }
@@ -1756,7 +1738,7 @@ fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
 }
 
 //fn get_returning(select: &Vec<SelectKind>) -> Result<Vec<String>> {
-fn get_returning(selects: &Vec<SelectItem>, sub_selects: &Vec<SubSelect>) -> Result<Vec<String>> {
+fn get_returning(selects: &[SelectItem], sub_selects: &[SubSelect]) -> Result<Vec<String>> {
     let returning = selects
         .iter()
         .map(|s| match s {
@@ -2014,7 +1996,7 @@ pub mod tests {
             vs(vec![]),
             Some(body),
             emtpy_hashmap.clone(),
-            emtpy_hashmap.clone(),
+            emtpy_hashmap,
             None,
         );
         assert_eq!(b.unwrap(), api_request);
@@ -2125,7 +2107,7 @@ pub mod tests {
                             //from_alias: None,
                             where_: ConditionTree {
                                 operator: And,
-                                conditions: vec![condition.clone()]
+                                conditions: vec![condition]
                             }
                         },
                         sub_selects: vec![]
@@ -2409,7 +2391,7 @@ pub mod tests {
                 vs(vec![("select", "id-,na$me")]),
                 None,
                 emtpy_hashmap.clone(),
-                emtpy_hashmap.clone(),
+                emtpy_hashmap,
                 None
             )
             .map_err(|e| format!("{}", e)),
@@ -2737,8 +2719,8 @@ pub mod tests {
                 path: s("dummy"),
                 method: Method::POST,
                 accept_content_type: ApplicationJSON,
-                headers: headers,
-                cookies: emtpy_hashmap.clone(),
+                headers,
+                cookies: emtpy_hashmap,
                 query: Query {
                     sub_selects: vec![
                         SubSelect {
@@ -3145,7 +3127,7 @@ pub mod tests {
                                         },
                                         Single {
                                             filter: Filter::Op(s("<="), SingleVal(s("4"))),
-                                            field: field.clone(),
+                                            field,
                                             negate: false
                                         }
                                     ]

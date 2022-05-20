@@ -36,7 +36,7 @@ mod vhosts {
     {
         serializer.collect_map(
             map.iter()
-                .map(|(k, v)| (k.replace(".", "_"), v))
+                .map(|(k, v)| (k.replace('.', "_"), v))
                 .collect::<HashMap<String, &VhostConfig>>(),
         )
     }
@@ -47,7 +47,7 @@ mod vhosts {
     {
         let mut map = HashMap::new();
         for (k, v) in HashMap::<String, VhostConfig>::deserialize(deserializer)? {
-            map.insert(k.replace("_", "."), v);
+            map.insert(k.replace('_', "."), v);
         }
         Ok(map)
     }

@@ -127,12 +127,12 @@ async fn handle_request(
         origin.path().to_string(),
         parameters.0,
         body,
-        headers.iter().map(|h| (h.name().as_str().to_lowercase().to_string(), h.value().to_string())).collect(),
+        headers.iter().map(|h| (h.name().as_str().to_lowercase(), h.value().to_string())).collect(),
         cookies.iter().map(|c| (c.name().to_string(), c.value().to_string())).collect(),
         db_backend,
     )
     .await
-    .map_err(|e| RocketError(e))?;
+    .map_err(RocketError)?;
 
     let http_content_type = match response_content_type {
         SingularJSON => SINGLE_CONTENT_TYPE.clone(),
@@ -142,7 +142,7 @@ async fn handle_request(
 
     Ok(ApiResponse {
         response: (
-            Status::from_code(status).context(GucStatusError).map_err(|e| RocketError(e))?,
+            Status::from_code(status).context(GucStatusError).map_err(RocketError)?,
             (http_content_type, response_body),
         ),
         headers: response_headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
@@ -162,7 +162,7 @@ async fn proxy_deno<'a>(
             let (parts, body) = response.into_parts();
             let status = parts.status.as_u16();
             let headers = parts.headers;
-            let body = hyper::body::to_bytes(body).await.context(ProxyError).map_err(|e| RocketError(e))?;
+            let body = hyper::body::to_bytes(body).await.context(ProxyError).map_err(RocketError)?;
             Ok(ProxyResponse { status, headers, body})
         },
         Err(e) => {

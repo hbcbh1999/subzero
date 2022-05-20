@@ -42,7 +42,7 @@ impl<'r> FromRequest<'r> for AllHeaders<'r> {
 
 impl<'r> Deref for AllHeaders<'r> {
     type Target = HeaderMap<'r>;
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target { self.0 }
 }
 
 #[derive(Debug)]
@@ -53,7 +53,7 @@ pub struct ApiResponse {
 
 impl<'r> Responder<'r, 'static> for ApiResponse {
     fn respond_to(self, req: &'r Request<'_>) -> Result<'static> {
-        let mut response = Response::build_from(self.response.respond_to(&req)?);
+        let mut response = Response::build_from(self.response.respond_to(req)?);
         for h in self.headers {
             if h.name() != "content-type" { response.header_adjoin(h);}
         }
@@ -118,9 +118,7 @@ pub struct RocketError(pub Error);
 #[rocket::async_trait]
 impl<'r> Responder<'r, 'static> for RocketError {
     fn respond_to(self, _: &'r Request<'_>) -> response::Result<'static> {
-        let err = match self {
-            RocketError(e) => e,
-        };
+        let RocketError(err) = self;
         let status = Status::from_code(err.status_code()).unwrap();
         let body = err.json_body().to_string();
         let mut response = Response::build();

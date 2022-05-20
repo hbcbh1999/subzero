@@ -792,7 +792,7 @@ macro_rules! fmt_filter {
 macro_rules! fmt_select_item_function {
     () => {
         fn fmt_select_item_function<'a>(qi: &Qi, fn_name: &String,
-            parameters: &'a Vec<FunctionParam>,
+            parameters: &'a [FunctionParam],
             partitions: &'a Vec<Field>,
             orders: &'a Vec<OrderTerm>,
             alias: &'a Option<String>,) -> Result<Snippet<'a>>
@@ -1155,7 +1155,7 @@ macro_rules! fmt_json_operand {
 }
 
 #[allow(unused)]
-pub fn return_representation<'a>(request: &'a ApiRequest) -> bool {
+pub fn return_representation(request: &ApiRequest) -> bool {
     match (&request.method, &request.query.node, &request.preferences) {
         (&Method::POST, Insert { .. }, None)
         | (

@@ -24,7 +24,7 @@ use http::Method;
 
 // use futures::future;
 
-fn get_postgrest_env(role: Option<&String>, search_path: &Vec<String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
+fn get_postgrest_env(role: Option<&String>, search_path: &[String], request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
     let mut env = HashMap::new();
     if let Some(r) = role {
         env.insert("role".to_string(), r.clone());
@@ -32,10 +32,10 @@ fn get_postgrest_env(role: Option<&String>, search_path: &Vec<String>, request: 
     }
     
     env.insert("request.method".to_string(), format!("{}", request.method));
-    env.insert("request.path".to_string(), format!("{}", request.path));
+    env.insert("request.path".to_string(), request.path.to_string());
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
     
-    env.insert("search_path".to_string(), search_path.join(", ").to_string());
+    env.insert("search_path".to_string(), search_path.join(", "));
     if use_legacy_gucs {
         if let Some(r) = role {
             env.insert("request.jwt.claim.role".to_string(), r.clone());
@@ -118,7 +118,7 @@ async fn execute<'a>(
 
     
     let (main_statement, main_parameters, _) = generate(fmt_main_query(schema_name, request)?);
-    let env = get_postgrest_env(role, &vec![schema_name.clone()], request, jwt_claims, config.db_use_legacy_gucs);
+    let env = get_postgrest_env(role, &[schema_name.clone()], request, jwt_claims, config.db_use_legacy_gucs);
     let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
     //println!("{}\n{}\n{:?}", main_statement, env_statement, env_parameters);
     let transaction = client
@@ -153,7 +153,7 @@ async fn execute<'a>(
     if let Some((s, f)) = &config.db_pre_request {
         let fn_schema = match s.as_str() {
             "" => schema_name,
-            _ => &s,
+            _ => s,
         };
 
         let pre_request_statement = format!(r#"select "{}"."{}"()"#, fn_schema, f);
@@ -246,7 +246,7 @@ impl Backend for PostgreSQLBackend {
         //read db schema
         let db_schema = match &config.db_schema_structure {
             SqlFile(f) => match fs::read_to_string(
-                vec![f, &format!("postgresql_{}", f)].into_iter().filter(|f| Path::new(f).exists()).next().unwrap_or(f)
+                vec![f, &format!("postgresql_{}", f)].into_iter().find(|f| Path::new(f).exists()).unwrap_or(f)
             ) {
                 Ok(q) => match wait_for_pg_connection(&vhost, &pool).await {
                     Ok(mut client) => {

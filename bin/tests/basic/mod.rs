@@ -46,7 +46,7 @@ fn setup() {
         env::set_var("SUBZERO_DB_URI", &*db_uri);
         env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
         env::set_var("SUBZERO_DB_ANON_ROLE", &"anonymous");
-        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", format!(r#"{{sql_file=../postgresql_structure_query.sql}}"#));
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", r#"{sql_file=../postgresql_structure_query.sql}"#);
         env::set_var("SUBZERO_URL_PREFIX", "/rest");
         //env::set_var("SUBZERO_PORT", &"8001");
 

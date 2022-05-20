@@ -15,12 +15,12 @@ impl ToSql for ListVal {
     fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
         match self {
             ListVal(v) => {
-                if v.len() > 0 {
+                if !v.is_empty() {
                     out.put_slice(
                         format!(
                             "{{\"{}\"}}",
                             v.iter()
-                                .map(|e| e.replace("\\", "\\\\").replace("\"", "\\\""))
+                                .map(|e| e.replace('\\', "\\\\").replace('\"', "\\\""))
                                 .collect::<Vec<_>>()
                                 .join("\",\"")
                         )
@@ -28,7 +28,7 @@ impl ToSql for ListVal {
                         .as_bytes(),
                     );
                 } else {
-                    out.put_slice(format!("{{}}").as_str().as_bytes());
+                    out.put_slice(r#"{}"#.as_bytes());
                 }
 
                 Ok(IsNull::No)

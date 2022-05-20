@@ -54,7 +54,7 @@ macro_rules! cast_select_item_format {
 impl ToSql for ListVal {
     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
         match self {
-            ListVal(v) => Ok(ToSqlOutput::Array(Rc::new(v.into_iter().map(|v| Value::from(v.clone())).collect()))),
+            ListVal(v) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
         }
     }
 }
@@ -81,13 +81,7 @@ type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
 
 //fmt_main_query!();
 pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Snippet<'a>> {
-    let count = match &request.preferences {
-        Some(Preferences {
-            count: Some(Count::ExactCount),
-            ..
-        }) => true,
-        _ => false,
-    };
+    let count = matches!(&request.preferences, Some(Preferences {count: Some(Count::ExactCount),..}));
 
     let return_representation = return_representation(request);
     let body_snippet = match (return_representation, &request.accept_content_type, &request.query.node) {
@@ -143,10 +137,7 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
         }
     };
 
-    let run_unwrapped_query = match request.query.node {
-        Insert {..} | Update {..} | Delete {..} => true,
-        _ => false
-    };
+    let run_unwrapped_query = matches!(request.query.node, Insert {..} | Update {..} | Delete {..});
     let wrap_cte_name = if run_unwrapped_query {None} else {Some("_subzero_query")};
     let source_query = fmt_query(schema, return_representation, wrap_cte_name, &request.query, &None)?;
     let main_query = if run_unwrapped_query {
@@ -194,11 +185,11 @@ fn fmt_query<'a>(
             let (qi, from_snippet) = match table_alias {
                 Some(a) => (
                     Qi("".to_string(), a.clone()),
-                    format!("{} as {}", fmt_qi(&Qi(schema.clone(), table.clone())), fmt_identity(&a)),
+                    format!("{} as {}", fmt_qi(&Qi(schema.clone(), table.clone())), fmt_identity(a)),
                 ),
                 None => (Qi(schema.clone(), table.clone()), fmt_qi(&Qi(schema.clone(), table.clone()))),
             };
-            if select.into_iter().any(|s| match s { Star => true, _ => false }) {
+            if select.iter().any(|s| matches!( s, Star)) {
                 return Err(Error::UnsupportedFeature {message: "'select *' not supported, use explicit select parameters".to_string()})
             }
             let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(&qi, s)).collect::<Result<Vec<_>>>()?;
@@ -230,12 +221,12 @@ fn fmt_query<'a>(
                                 .join(", ")
                         )
                     } else {
-                        format!("")
+                        String::new()
                     }
                     + " "
                     + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
                     + " "
-                    + if where_.conditions.len() > 0 {
+                    + if !where_.conditions.is_empty() {
                         "where " + fmt_condition_tree(&qi, where_)?
                     } else {
                         sql("")
@@ -270,20 +261,20 @@ fn fmt_query<'a>(
             //     .into_iter()
             //     .unzip();
             // select.extend(sub_selects.into_iter());
-            let returned_columns = if returning.len() == 0 {
+            let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
                 returning
                     .iter()
-                    .map(|r| if r.as_str() == "*" { format!("*") } else { fmt_identity(r) })
+                    .map(|r| if r.as_str() == "*" { "*".to_string() } else { fmt_identity(r) })
                     .collect::<Vec<_>>()
                     .join(",")
             };
 
-            let into_columns = if columns.len() > 0 {
+            let into_columns = if !columns.is_empty() {
                 format!("({})", columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","))
             } else {
-                format!("")
+                String::new()
             };
             let select_columns = columns.iter().map(fmt_identity).collect::<Vec<_>>().join(",");
             (
@@ -293,13 +284,13 @@ fn fmt_query<'a>(
                 " insert into " + fmt_qi(qi) + " " +into_columns +
                 " select " + select_columns +
                 " from subzero_body " +
-                " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql(" where true ") } + // this line is only relevant for upsert
+                " " + if !where_.conditions.is_empty() { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql(" where true ") } + // this line is only relevant for upsert
                 match on_conflict {
-                    Some((r,cols)) if cols.len()>0 => {
+                    Some((r,cols)) if !cols.is_empty() => {
                         let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
                         let on_do = match (r, columns.len()) {
                             (Resolution::IgnoreDuplicates, _) |
-                            (_, 0) => format!("do nothing"),
+                            (_, 0) => "do nothing".to_string(),
                             _ => format!(
                                 "do update set {}",
                                 columns.iter().map(|c|
@@ -309,7 +300,7 @@ fn fmt_query<'a>(
                         };
                         format!("{} {}", on_c, on_do)
                     },
-                    _ => format!("")
+                    _ => String::new()
                 } +
                 " returning " + returned_columns
                 
@@ -375,12 +366,12 @@ fn fmt_query<'a>(
             //     .into_iter()
             //     .unzip();
             // select.extend(sub_selects.into_iter());
-            let returned_columns = if returning.len() == 0 {
+            let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
                 returning
                     .iter()
-                    .map(|r| if r.as_str() == "*" { format!("*") } else { fmt_identity(r) })
+                    .map(|r| if r.as_str() == "*" { "*".to_string() } else { fmt_identity(r) })
                     .collect::<Vec<_>>()
                     .join(",")
             };
@@ -390,8 +381,8 @@ fn fmt_query<'a>(
                 sql(" delete from ")
                 + fmt_qi(qi)
                 + " "
-                + if where_.conditions.len() > 0 {
-                    "where " + fmt_condition_tree(&qi, where_)?
+                + if !where_.conditions.is_empty() {
+                    "where " + fmt_condition_tree(qi, where_)?
                 } else {
                     sql("")
                 }
@@ -451,7 +442,7 @@ fn fmt_query<'a>(
             //     .into_iter()
             //     .unzip();
             // select.extend(sub_selects.into_iter());
-            let returned_columns = if returning.len() == 0 {
+            let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
                 returning
@@ -474,8 +465,8 @@ fn fmt_query<'a>(
                 .join(",");
             (
                 None,
-                if columns.len() == 0 {
-                    let sel = if returning.len() == 0 {
+                if columns.is_empty() {
+                    let sel = if returning.is_empty() {
                         "null".to_string()
                     } else {
                         returning
@@ -500,8 +491,8 @@ fn fmt_query<'a>(
                         + set_columns
                         + " from (select * from subzero_body) _ "
                         + " "
-                        + if where_.conditions.len() > 0 {
-                            "where " + fmt_condition_tree(&qi, where_)?
+                        + if !where_.conditions.is_empty() {
+                            "where " + fmt_condition_tree(qi, where_)?
                         } else {
                             sql("")
                         }
@@ -577,7 +568,7 @@ fn fmt_query<'a>(
 fmt_count_query!();
 //fmt_body!();
 #[rustfmt::skip]
-fn fmt_body<'a>(payload: &'a Payload, columns: &'a Vec<String>) -> Snippet<'a> {
+fn fmt_body<'a>(payload: &'a Payload, columns: &'a [String]) -> Snippet<'a> {
     let payload_param: &(dyn ToSql + Sync) = payload;
     " subzero_payload as ( select " + param(payload_param) + " as json_data ),"
     + " subzero_body as ("
@@ -604,7 +595,7 @@ fmt_filter!();
 fmt_select_name!();
 //fmt_select_item_function!();
 fn fmt_select_item_function<'a>(qi: &Qi, fn_name: &String,
-    parameters: &'a Vec<FunctionParam>,
+    parameters: &'a [FunctionParam],
     partitions: &'a Vec<Field>,
     orders: &'a Vec<OrderTerm>,
     alias: &'a Option<String>,) -> Result<Snippet<'a>>
@@ -708,13 +699,10 @@ fmt_logic_operator!();
 fmt_identity!();
 //fmt_qi!();
 fn fmt_qi(qi: &Qi) -> String {
-    match (qi.0.as_str(), qi.1.as_str()) {
-        // (_,"subzero_source") |
-        // (_,"subzero_fn_call") |
-        //("", _) | ("_sqlite_public_", _) => format!("{}", fmt_identity(&qi.1)),
-        //_ => format!("{}.{}", fmt_identity(&qi.0), fmt_identity(&qi.1)),
-        _ => format!("{}", fmt_identity(&qi.1)),
-    }
+    // match (qi.0.as_str(), qi.1.as_str()) {
+    //     _ => format!("{}", fmt_identity(&qi.1)),
+    // }
+    fmt_identity(&qi.1)
 }
 macro_rules! fmt_field_format {
     () => {
@@ -740,7 +728,7 @@ fn fmt_json_operation(j: &JsonOperation) -> String {
 //fmt_json_operand!();
 fn fmt_json_operand(o: &JsonOperand) -> String {
     match o {
-        JKey(k) => format!("{}", k),
+        JKey(k) => k.clone(),
         JIdx(i) => format!("[{}]", i),
     }
 }
