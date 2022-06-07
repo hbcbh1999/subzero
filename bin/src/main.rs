@@ -31,6 +31,8 @@ use subzero::{
 
 #[cfg(feature = "postgresql")]
 use subzero::backend::postgresql::PostgreSQLBackend;
+#[cfg(feature = "clickhouse")]
+use subzero::backend::clickhouse::ClickhouseBackend;
 #[cfg(feature = "sqlite")]
 use subzero::backend::sqlite::SQLiteBackend;
 
@@ -117,6 +119,7 @@ async fn proxy_put<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: Stri
 
 // main request handler
 // this is mostly to align types between rocket and subzero functions
+#[allow(clippy::too_many_arguments)]
 async fn handle_request(
     method: &Method, table: &String, origin: &Origin<'_>, parameters: QueryString, body: Option<String>, cookies: &CookieJar<'_>,
     headers: AllHeaders<'_>, db_backend: &State<DbBackend>,
@@ -199,6 +202,8 @@ async fn start() -> Result<Rocket<Build>, Error> {
     let backend: Box<dyn Backend + Send + Sync> = match vhost_config.db_type.as_str() {
         #[cfg(feature = "postgresql")]
         "postgresql" => Box::new(PostgreSQLBackend::init("default".to_string(), vhost_config.clone()).await?),
+        #[cfg(feature = "clickhouse")]
+        "clickhouse" => Box::new(ClickhouseBackend::init("default".to_string(), vhost_config.clone()).await?),
         #[cfg(feature = "sqlite")]
         "sqlite" => Box::new(SQLiteBackend::init("default".to_string(), vhost_config.clone()).await?),
         t => panic!("unsupported database type: {}", t),
@@ -256,3 +261,8 @@ mod postgrest_core;
 #[cfg(test)]
 #[path = "../tests/sqlite/mod.rs"]
 mod sqlite;
+
+#[cfg(feature = "clickhouse")]
+#[cfg(test)]
+#[path = "../tests/clickhouse/mod.rs"]
+mod clickhouse;

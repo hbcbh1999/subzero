@@ -49,7 +49,7 @@ PGVER=$(pg_ctl -V | awk '{print $NF}')
 
 [ -n "$LISTENTO" ] && [ -z "$PGPORT" ] && {
 	#PGPORT="$(getsocket)"
-	PGPORT="$(comm -23 <(seq 49152 65535 | sort) <(ss -Htan | awk '{print $4}' | cut -d':' -f2 | sort -u) | shuf | head -n 1)"
+	PGPORT="$(comm -23 <(seq 49152 65535 | sort) <(netstat -na  -p tcp | awk '/tcp/{print $4}' | sed 's/\.\([0-9]*\)$/:\1/' | cut -d':' -f2 | sort -u) | shuf | head -n 1)"
 }
 
 case ${CMD:-start} in

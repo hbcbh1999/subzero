@@ -647,7 +647,7 @@ mod tests {
                                             vec![
                                                 Condition::Single{
                                                     field: Field{name:s("id"), json_path:None},
-                                                    filter: Filter::Op(s("eq"), SingleVal(s("10"))),
+                                                    filter: Filter::Op(s("eq"), SingleVal(s("10"),None)),
                                                     negate:false,
                                                 }
                                             ],

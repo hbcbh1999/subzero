@@ -137,7 +137,16 @@ impl<'a, T: ?Sized> Add<String> for SqlSnippet<'a, T> {
         }
     }
 }
-
+#[allow(unused_macros)]
+macro_rules! param_placeholder_format {
+    () => {
+        "${pos}"
+    };
+}
+#[allow(unused_imports)]
+pub(super) use param_placeholder_format;
+#[allow(unused_macros)]
+macro_rules! generate_fn { () => {
 pub fn generate<T: ?Sized>(s: SqlSnippet<T>) -> (String, Vec<&T>, u32) {
     match s {
         SqlSnippet(c) => c.iter().fold((String::new(), vec![], 1), |acc, v| {
@@ -148,7 +157,7 @@ pub fn generate<T: ?Sized>(s: SqlSnippet<T>) -> (String, Vec<&T>, u32) {
                     (sql, params, pos)
                 }
                 SqlSnippetChunk::Param(p) => {
-                    sql.push_str(format!("${}", pos).as_str());
+                    sql.push_str(format!(param_placeholder_format!(), pos=pos).as_str());
                     params.push(p);
                     (sql, params, pos + 1)
                 }
@@ -156,7 +165,10 @@ pub fn generate<T: ?Sized>(s: SqlSnippet<T>) -> (String, Vec<&T>, u32) {
         }),
     }
 }
-
+}}
+generate_fn!();
+#[allow(unused_imports)]
+pub(super) use generate_fn;
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "postgresql")]

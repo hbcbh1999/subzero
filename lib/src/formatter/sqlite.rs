@@ -54,7 +54,7 @@ macro_rules! cast_select_item_format {
 impl ToSql for ListVal {
     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
         match self {
-            ListVal(v) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
+            ListVal(v, ..) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
         }
     }
 }
@@ -62,7 +62,7 @@ impl ToSql for ListVal {
 impl ToSql for SingleVal {
     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
         match self {
-            SingleVal(v) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
+            SingleVal(v, ..) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
         }
     }
 }
@@ -70,7 +70,7 @@ impl ToSql for SingleVal {
 impl ToSql for Payload {
     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
         match self {
-            Payload(v) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
+            Payload(v, ..) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
         }
     }
 }

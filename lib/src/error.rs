@@ -28,6 +28,11 @@ use tokio::task::JoinError;
 //use combine::stream::easy::ParseError;
 // use serde_json;
 
+#[cfg(feature = "clickhouse")]
+use clickhouse::error::Error as ClickhouseError;
+#[cfg(feature = "clickhouse")]
+use deadpool::managed::PoolError as ClickhousePoolError;
+
 
 
 #[derive(Debug, Snafu)]
@@ -101,6 +106,10 @@ pub enum Error {
     #[snafu(display("DbPoolError {}", source))]
     PgDbPoolError { source: PgPoolError },
 
+    #[cfg(feature = "clickhouse")]
+    #[snafu(display("DbPoolError {}", source))]
+    ClickhouseDbPoolError { source: ClickhousePoolError<ClickhouseError> },
+
     #[cfg(feature = "sqlite")]
     #[snafu(display("DbPoolError {}", source))]
     SqliteDbPoolError { source: SqlitePoolError },
@@ -112,6 +121,10 @@ pub enum Error {
     #[cfg(feature = "sqlite")]
     #[snafu(display("DbError {}", source))]
     SqliteDbError { source: SqliteError, authenticated: bool },
+
+    #[cfg(feature = "clickhouse")]
+    #[snafu(display("DbError {}", source))]
+    ClickhouseDbError { source: ClickhouseError, authenticated: bool },
 
     #[snafu(display("JwtTokenInvalid {}", message))]
     JwtTokenInvalid { message: String },
@@ -207,6 +220,12 @@ impl Error {
 
             #[cfg(feature = "postgresql")]
             Error::PgDbPoolError { .. } => 503,
+
+            #[cfg(feature = "clickhouse")]
+            Error::ClickhouseDbPoolError { .. } => 503,
+
+            #[cfg(feature = "clickhouse")]
+            Error::ClickhouseDbError { .. } => 503,
             // Error::DbPoolError { source } => match source {
             //     PgPoolError::Timeout(_) => 503,
             //     PgPoolError::Backend(_) => 503,
@@ -362,9 +381,17 @@ impl Error {
             Error::PgDbPoolError { source } => {
                 json!({ "message": format!("Db pool error {}", source) })
             }
+            #[cfg(feature = "clickhouse")]
+            Error::ClickhouseDbPoolError { source } => {
+                json!({ "message": format!("Db pool error {}", source) })
+            }
             #[cfg(feature = "sqlite")]
             Error::SqliteDbPoolError { source } => {
                 json!({ "message": format!("Db pool error {}", source) })
+            }
+            #[cfg(feature = "clickhouse")]
+            Error::ClickhouseDbError { source, .. } => {
+                json!({ "message": format!("Unhandled db error: {}", source) })
             }
             Error::SingularityError { count, content_type } => json!({
                 "message": "JSON object requested, multiple (or no) rows returned",

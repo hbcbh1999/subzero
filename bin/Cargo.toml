@@ -21,6 +21,7 @@ default = ["all"]
 all = ["postgresql", "sqlite"]
 postgresql = ["subzero/postgresql"]
 sqlite = ["subzero/sqlite"]
+clickhouse = ["subzero/clickhouse_b"]
 
 [[bin]]
 name = "subzero"

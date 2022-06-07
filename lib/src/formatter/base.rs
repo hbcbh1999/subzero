@@ -158,7 +158,7 @@ fn fmt_query<'a>(
             order,
             ..
         } => {
-            let bb: &(dyn ToSql + Sync + 'a) = payload;
+            let bb: &SqlParam = payload;
             let (params_cte, arg_frag): (Snippet<'a>, Snippet<'a>) = match &parameters {
                 CallParams::OnePosParam(_p) => (sql(" "), param(bb)),
                 CallParams::KeyParams(p) if p.len() == 0 => (sql(" "), sql("")),
@@ -685,7 +685,7 @@ macro_rules! fmt_body {
     () => {
         #[rustfmt::skip]
         fn fmt_body<'a>(payload: &'a Payload) -> Snippet<'a> {
-            let payload_param: &(dyn ToSql + Sync) = payload;
+            let payload_param: &SqlParam = payload;
             " subzero_payload as ( select " + param(payload_param) + "::json as json_data ),"
             + " subzero_body as ("
                 + " select"
@@ -757,11 +757,11 @@ macro_rules! fmt_filter {
         fn fmt_filter<'a>(f: &'a Filter) -> Result<Snippet<'a>> {
             Ok(match f {
                 Op(o, v) => {
-                    let vv: &(dyn ToSql + Sync) = v;
+                    let vv: &SqlParam = v;
                     fmt_operator(o)? + param(vv)
                 }
                 In(l) => {
-                    let ll: &(dyn ToSql + Sync) = l;
+                    let ll: &SqlParam = l;
                     fmt_in_filter!(ll)
                 }
                 Is(v) => {
@@ -774,10 +774,10 @@ macro_rules! fmt_filter {
                     sql(format!("is {}", vv))
                 }
                 Fts(o, lng, v) => {
-                    let vv: &(dyn ToSql + Sync) = v;
+                    let vv: &SqlParam = v;
                     match lng {
                         Some(l) => {
-                            let ll: &(dyn ToSql + Sync) = l;
+                            let ll: &SqlParam = l;
                             fmt_operator(o)? + ("(" + param(ll) + "," + param(vv) + ")")
                         }
                         None => fmt_operator(o)? + ("(" + param(vv) + ")"),
@@ -987,7 +987,7 @@ macro_rules! fmt_function_param {
         fn fmt_function_param<'a>(qi: &Qi, p: &'a FunctionParam) -> Result<Snippet<'a>> {
             Ok(match p {
                 FunctionParam::Val(v,c) => {
-                    let vv: &(dyn ToSql + Sync) = v;
+                    let vv: &SqlParam = v;
                     match c {
                         Some(c) => "cast(" + param(vv) + format!(" as {}", c) + ")",
                         None => param(vv),
@@ -1098,7 +1098,7 @@ macro_rules! fmt_limit {
         fn fmt_limit<'a>(l: &'a Option<SingleVal>) -> Snippet<'a> {
             match l {
                 Some(ll) => {
-                    let vv: &(dyn ToSql + Sync) = ll;
+                    let vv: &SqlParam = ll;
                     "limit " + param(vv)
                 }
                 None => sql(""),
@@ -1112,7 +1112,7 @@ macro_rules! fmt_offset {
         fn fmt_offset<'a>(o: &'a Option<SingleVal>) -> Snippet<'a> {
             match o {
                 Some(oo) => {
-                    let vv: &(dyn ToSql + Sync) = oo;
+                    let vv: &SqlParam = oo;
                     "offset " + param(vv)
                 }
                 None => sql(""),

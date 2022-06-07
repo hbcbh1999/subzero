@@ -28,6 +28,7 @@ fn get_current_timestamp() -> u64 {
 }
 
 #[allow(clippy::borrowed_box)]
+#[allow(clippy::too_many_arguments)]
 pub async fn handle(
     root: &String, method: &Method, path: String, get: Vec<(String, String)>, 
     body: Option<String>, headers: HashMap<String, String>, cookies: HashMap<String, String>,
@@ -147,6 +148,9 @@ pub async fn handle(
     let response:ApiResponse = match config.db_type.as_str() {
         #[cfg(feature = "postgresql")]
         "postgresql" => backend.execute(authenticated, &request, role, &jwt_claims).await?,
+
+        #[cfg(feature = "clickhouse")]
+        "clickhouse" => backend.execute(authenticated, &request, role, &jwt_claims).await?,
         
         #[cfg(feature = "sqlite")]
         "sqlite" => task::block_in_place(|| backend.execute(authenticated, &request, role, &jwt_claims)).await?,
