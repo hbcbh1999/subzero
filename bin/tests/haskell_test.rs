@@ -41,7 +41,7 @@ macro_rules! haskell_test {
       println!("expected: ===\n{}\n====", s );
       println!("body: ===\n{}\n====", body );
       self::assert_eq!(body.as_str(),s);
-  };
+    };
     (
         $(feature $feature:literal
         $(

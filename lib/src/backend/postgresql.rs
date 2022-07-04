@@ -7,10 +7,10 @@ use tokio::time::{Duration, sleep};
 use crate::{
     api::{ApiRequest, ApiResponse, ContentType::*, },
     config::{VhostConfig,SchemaStructure::*},
-    dynamic_statement::generate,
+    dynamic_statement::{ generate_fn, SqlSnippet, SqlSnippetChunk},
     error::{Result, *},
     schema::{DbSchema},
-    dynamic_statement::{param, JoinIterator, SqlSnippet},
+    dynamic_statement::{param, JoinIterator, param_placeholder_format},
     formatter::postgresql::fmt_main_query,
 };
 use async_trait::async_trait;
@@ -22,6 +22,7 @@ use std::path::Path;
 use serde_json::{Value as JsonValue};
 use http::Method;
 
+generate_fn!();
 // use futures::future;
 
 fn get_postgrest_env(role: Option<&String>, search_path: &[String], request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {

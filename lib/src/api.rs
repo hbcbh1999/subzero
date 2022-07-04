@@ -1,6 +1,4 @@
 pub use http::Method;
-#[cfg(feature = "clickhouse")]
-use clickhouse::Row;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
@@ -50,7 +48,6 @@ pub struct ApiRequest {
 }
 
 #[derive(Debug)]
-#[cfg_attr(feature = "clickhouse_b", derive(Row, Deserialize))]
 pub struct ApiResponse {
     pub page_total: i64,
     pub total_result_set: Option<i64>,

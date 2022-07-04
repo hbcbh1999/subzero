@@ -3,12 +3,13 @@
 // use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 // use postgres_openssl::{MakeTlsConnector};
 //use clickhouse::{Client, query::Query, error::Error as ClickhouseErr};
-use http::Uri;
-use hyper::{Client, client::HttpConnector, Body};
-use form_urlencoded::Serializer;
+use hyper::{Client, client::HttpConnector, Body, Uri, };
+use url::{Url,};
+// use form_urlencoded::Serializer;
+use formdata::{FormData, generate_boundary, write_formdata};
 use deadpool::{managed,};
 use snafu::ResultExt;
-use tokio::time::{Duration, sleep};
+use tokio::time::{Duration, };
 use crate::{
     api::{ApiRequest, ApiResponse, ContentType::*, SingleVal, Payload, ListVal},
     config::{VhostConfig,SchemaStructure::*},
@@ -16,19 +17,21 @@ use crate::{
     error::{Result, *},
     schema::{DbSchema},
     //dynamic_statement::{param, JoinIterator, SqlSnippet},
-    formatter::clickhouse::{fmt_main_query, Param::*, SqlParam},
+    formatter::clickhouse::{fmt_main_query, Param::*, ToSql, },
 };
-use log::{debug};
+//use log::{debug};
 use async_trait::async_trait;
+use http::Error as HttpError;
 
 use super::Backend;
 
+// use core::slice::SlicePattern;
 use std::{fs};
 use std::path::Path;
 use serde_json::{Value as JsonValue};
 use http::Method;
 
-type HttpClient = (String, Client<HttpConnector>);
+type HttpClient = (Url, Uri, Client<HttpConnector>);
 struct Manager {
     uri: String,
 }
@@ -40,9 +43,9 @@ const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 #[async_trait]
 impl managed::Manager for Manager {
     type Type = HttpClient;
-    type Error = HttpRequestError;
+    type Error = HttpError;
     
-    async fn create(&self) -> Result<HttpClient, HttpRequestError> {
+    async fn create(&self) -> Result<HttpClient, HttpError> {
         let mut connector = HttpConnector::new();
 
         // TODO: make configurable in `Client::builder()`.
@@ -51,52 +54,69 @@ impl managed::Manager for Manager {
         let client = hyper::Client::builder()
             .pool_idle_timeout(POOL_IDLE_TIMEOUT)
             .build(connector);
-        Ok((self.uri, client))
+        Ok((self.uri.parse::<Url>().unwrap(), self.uri.parse::<Uri>().unwrap(), client))
     }
     
-    async fn recycle(&self, _: &mut HttpClient) -> managed::RecycleResult<HttpRequestError> {
+    async fn recycle(&self, _: &mut HttpClient) -> managed::RecycleResult<HttpError> {
         Ok(())
     }
 }
 
 type Pool = managed::Pool<Manager>;
 
-macro_rules! param_placeholder_format {() => {"{{p_{pos}:String}}"};}
-generate_fn!();
+macro_rules! param_placeholder_format {() => {"{{p{pos}:{data_type}}}"};}
+generate_fn!(true);
 
 async fn execute<'a>(
-    pool: &'a Pool, authenticated: bool, request: &ApiRequest, _role: Option<&String>,
+    pool: &'a Pool, _authenticated: bool, request: &ApiRequest, _role: Option<&String>,
     _jwt_claims: &Option<JsonValue>, _config: &VhostConfig
 ) -> Result<ApiResponse> {
     let o = pool.get().await.unwrap();//.context(ClickhouseDbPoolError)?;
-    let base_url = o.0.clone();
-    let client = &o.1;
+    let uri = &o.0;
+    let base_url = &o.1;
+    let client = &o.2;
     let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, request)?);
+    println!("main_statement {}", main_statement);
     let mut parameters = vec![("query".to_string(), main_statement)];
     for (k, v) in main_parameters.iter().enumerate() {
         let p = match v.to_param() {
-            SV(SingleVal(v)) => v.to_string(),
-            LV(ListVal(v)) => format!("[{}]",v.join(",")),
-            PL(Payload(v)) => v.to_string(),
+            SV(SingleVal(v, _)) => v.to_string(),
+            LV(ListVal(v, _)) => format!("[{}]",v.join(",")),
+            PL(Payload(v, _)) => v.to_string(),
         };
-        parameters.push((format!("p_{}",k+1), p));
+        parameters.push((format!("param_p{}",k+1), p));
     }
-    let http_body = Serializer::new(String::new()).extend_pairs(
-        parameters.iter().map(|(k, v)| { (&k[..], &v[..]) })
-    ).finish();
+    println!("parameters {:?}", parameters);
 
-    let http_request = hyper::Request::builder()
+    let formdata = FormData {
+        fields: parameters,
+        files: vec![  ],
+    };
+    let mut http_body: Vec<u8> = Vec::new();
+    let boundary = generate_boundary();
+    write_formdata(&mut http_body, &boundary, &formdata).expect("write_formdata error");
+    
+
+    let mut http_request = hyper::Request::builder()
         .uri(base_url)
         .method(http::Method::POST)
-        .body(Body::from(http_body)).context(HttpRequestError)?;
-
-    let http_response = match client.request(http_request).await {
+        .header("Content-Type", format!("multipart/form-data; boundary={}", std::str::from_utf8(boundary.as_slice()).unwrap()));
+        //.body(Body::from(http_body)).context(HttpRequestError)?;
+    if uri.username() != "" {
+        http_request = http_request.header(
+            hyper::header::AUTHORIZATION,
+            format!("Basic {}", base64::encode(&format!("{}:{}", uri.username(), uri.password().unwrap_or_default())))
+        );
+    }
+    
+    let http_req = http_request.body(Body::from(http_body)).context(HttpRequestError)?;
+    let http_response = match client.request(http_req).await {
         Ok(r) => Ok(r),
         Err(e) => Err(Error::InternalError { message: e.to_string() }),
     }?;
     let (parts, body) = http_response.into_parts();
-    let status = parts.status.as_u16();
-    let headers = parts.headers;
+    let _status = parts.status.as_u16();
+    let _headers = parts.headers;
     let bytes = hyper::body::to_bytes(body).await.context(ProxyError)?;
     let body = String::from_utf8(bytes.to_vec()).unwrap_or("".to_string());
 
@@ -160,33 +180,46 @@ impl Backend for ClickhouseBackend {
                 vec![f, &format!("clickhouse_{}", f)].into_iter().find(|f| Path::new(f).exists()).unwrap_or(f)
             ) {
                 Ok(q) => match pool.get().await {
-                    Ok(client) => {
-                        let authenticated = false;
-                        // let transaction = client
-                        //     .build_transaction()
-                        //     .isolation_level(IsolationLevel::Serializable)
-                        //     .read_only(true)
-                        //     .start()
-                        //     .await
-                        //     .context(PgDbError { authenticated})?;
-                        // let _ = transaction.query("set local schema ''", &[]).await;
-                        // match transaction.query(&q, &[&config.db_schemas]).await {
-                        let lv = ListVal(config.db_schemas.clone());
-                        let params:Vec<&SqlParam> = vec![&lv];
-                        let main_stm = params.into_iter().fold(client.query(&q), bind);
-                        let mut cursor = main_stm.fetch::<String>().context(ClickhouseDbError {authenticated})?;
-                        match cursor.next().await.context(ClickhouseDbError {authenticated})? {
-                            Some(s) => {
-                                // transaction.commit().await.context(PgDbError { authenticated })?;
-                                debug!("introspection query response: {:?}", s);
-                                serde_json::from_str::<DbSchema>(&s).context(JsonDeserialize)
-                            }
-                            None => {
-                                //transaction.rollback().await.context(PgDbError { authenticated })?;
-                                debug!("got no rows error");
-                                Err(Error::InternalError { message: "clickhouse structure query did not return any rows".to_string() })
-                            }
+                    Ok(o) => {
+                        let uri = &o.0;
+                        let base_url = &o.1;
+                        let client = &o.2;
+                        let formdata = FormData {
+                            fields: vec![
+                                ("param_p1".to_owned(), format!("['{}']",config.db_schemas.join("','"))),
+                                ("query".to_owned(), q), 
+                            ],
+                            files: vec![  ],
+                        };
+                        let mut http_body: Vec<u8> = Vec::new();
+                        let boundary = generate_boundary();
+                        write_formdata(&mut http_body, &boundary, &formdata).expect("write_formdata error");
+                        
+                        
+                        let mut http_request = hyper::Request::builder()
+                            .uri(base_url)
+                            .method(http::Method::POST)
+                            .header("Content-Type", format!("multipart/form-data; boundary={}", std::str::from_utf8(boundary.as_slice()).unwrap()));
+                            //.body(Body::from(http_body)).context(HttpRequestError)?;
+                        if uri.username() != "" {
+                            http_request = http_request.header(
+                                hyper::header::AUTHORIZATION,
+                                format!("Basic {}", base64::encode(&format!("{}:{}", uri.username(), uri.password().unwrap_or_default())))
+                            );
                         }
+                        
+                        let http_req = http_request.body(Body::from(http_body)).context(HttpRequestError)?;
+                        let http_response = match client.request(http_req).await {
+                            Ok(r) => Ok(r),
+                            Err(e) => Err(Error::InternalError { message: e.to_string() }),
+                        }?;
+                        let (parts, body) = http_response.into_parts();
+                        let _status = parts.status.as_u16();
+                        let _headers = parts.headers;
+                        let bytes = hyper::body::to_bytes(body).await.context(ProxyError)?;
+                        let s = String::from_utf8(bytes.to_vec()).unwrap_or("".to_string());
+                        serde_json::from_str::<DbSchema>(&s).context(JsonDeserialize)
+                        
                     }
                     Err(e) => Err(e).context(ClickhouseDbPoolError),
                 },

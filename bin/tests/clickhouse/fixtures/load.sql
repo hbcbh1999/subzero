@@ -4,6 +4,8 @@ drop table if exists tasks;
 drop table if exists projects;
 drop table if exists clients;
 drop table if exists complex_items;
+drop table if exists trips;
+drop dictionary if exists taxi_zone_dictionary;
 
 
 
@@ -20,7 +22,6 @@ create table projects (
     primary key (id)
 ) ENGINE = MergeTree();
 
--- create view projects_view as select * from projects;
 
 create table tasks (
     id integer,
@@ -137,22 +138,22 @@ insert into complex_items values (1, 'One', '{"foo":{"int":1,"bar":"baz"}}');
 insert into complex_items values (2, 'Two', '{"foo":{"int":1,"bar":"baz"}}');
 insert into complex_items values (3, 'Three', '{"foo":{"int":1,"bar":"baz"}}');
 
-INSERT INTO trips
-    SELECT * FROM s3(
-        'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_1.gz',
-        'TabSeparatedWithNames'
-    );
+-- INSERT INTO trips
+--     SELECT * FROM s3(
+--         'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_1.gz',
+--         'TabSeparatedWithNames'
+--     );
 
-CREATE DICTIONARY taxi_zone_dictionary (
-    LocationID UInt16 DEFAULT 0,
-    Borough String,
-    Zone String,
-    service_zone String
-)
-PRIMARY KEY LocationID
-SOURCE(HTTP(
-    url 'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/taxi_zone_lookup.csv'
-    format 'CSVWithNames'
-))
-LIFETIME(0)
-LAYOUT(HASHED());
+-- CREATE DICTIONARY taxi_zone_dictionary (
+--     LocationID UInt16 DEFAULT 0,
+--     Borough String,
+--     Zone String,
+--     service_zone String
+-- )
+-- PRIMARY KEY LocationID
+-- SOURCE(HTTP(
+--     url 'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/taxi_zone_lookup.csv'
+--     format 'CSVWithNames'
+-- ))
+-- LIFETIME(0)
+-- LAYOUT(HASHED());

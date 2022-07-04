@@ -7,6 +7,9 @@ autobenches = false
 [dependencies]
 log = "0.4.14"
 http = "0.2"
+url = { version = "2.2.2", optional = true }
+base64 = { version = "0.13.0", optional = true }
+formdata = { version = "0.13.0", optional = true }
 hyper = { version = "0.14", features = ["full"] }
 form_urlencoded = "1.0.1"
 async-trait = "0.1.52"
@@ -30,13 +33,12 @@ jsonpath_lib = "0.3.0"
 rusqlite = { version = "0.26.3", features = ["array","bundled","window","series"], optional = true }
 r2d2 = { version = "0.8.9", optional = true }
 r2d2_sqlite = { version = "0.19.0", optional = true }
-clickhouse = {version="0.10", optional = true }
 
 
 [features]
 default = []
 postgresql = ["postgres-types", "tokio-postgres", "deadpool-postgres", "postgres-openssl", "openssl"]
-clickhouse_b = ["clickhouse", "deadpool"]
+clickhouse = ["deadpool", "url", "formdata", "base64"]
 sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
 
 [dev-dependencies]

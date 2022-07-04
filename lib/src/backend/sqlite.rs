@@ -2,7 +2,7 @@
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::params_from_iter;
+use rusqlite::{params_from_iter, ToSql};
 use crate::{
     formatter::sqlite::{fmt_main_query, return_representation},
     api::{
@@ -10,7 +10,7 @@ use crate::{
         ApiRequest, ApiResponse, ContentType::*, Query, QueryNode::*, Preferences, Count
     },
     config::{VhostConfig,SchemaStructure::*},
-    dynamic_statement::generate,
+    dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk,param_placeholder_format},
     error::{Result, *},
     schema::DbSchema,
 };
@@ -25,6 +25,7 @@ use std::{fs};
 use super::Backend;
 use tokio::task;
 
+generate_fn!();
 fn execute(
     pool: &Pool<SqliteConnectionManager>, authenticated: bool, request: &ApiRequest,
     _role: Option<&String>, _jwt_claims: &Option<JsonValue>, config: &VhostConfig,

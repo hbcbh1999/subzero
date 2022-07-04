@@ -1,4 +1,3 @@
--- clickhouse-client --param_p1="['default']" < clickhouse_structure_query.sql
 with 
 schemas as (
   select name from system.databases
@@ -30,7 +29,7 @@ columns as (
     name,
     type,
     comment,
-    is_in_primary_key
+    cast(is_in_primary_key,'Bool') as is_in_primary_key
   from system.columns
   where
     database not in ('system', 'information_schema', 'INFORMATION_SCHEMA')
@@ -38,14 +37,7 @@ columns as (
 ),
 
 json_schema as (
-  select cast(
-    tuple(schemas_agg.array_agg),
-    concat(
-            'Tuple(', 
-            'schemas ', toTypeName(schemas_agg.array_agg),
-            ')'
-        )
-  ) as json_schema
+  select schemas_agg.array_agg as schemas
   from (
     select groupArray(r) as array_agg
     from (
@@ -89,7 +81,7 @@ json_schema as (
                 concat(
                   'Tuple(',
                   'name ', toTypeName(c.name), ',',
-                  'type ', toTypeName(c.type), ',',
+                  'data_type ', toTypeName(c.type), ',',
                   'primary_key ', toTypeName(c.primary_key),
                   ')'
                 )
@@ -115,6 +107,6 @@ json_schema as (
   ) schemas_agg
 )
 
-select json_schema from json_schema
+select schemas from json_schema
 format JSONEachRow
 settings output_format_json_named_tuples_as_objects=1

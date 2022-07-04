@@ -29,8 +29,6 @@ use tokio::task::JoinError;
 // use serde_json;
 
 #[cfg(feature = "clickhouse")]
-use clickhouse::error::Error as ClickhouseError;
-#[cfg(feature = "clickhouse")]
 use deadpool::managed::PoolError as ClickhousePoolError;
 
 
@@ -108,7 +106,7 @@ pub enum Error {
 
     #[cfg(feature = "clickhouse")]
     #[snafu(display("DbPoolError {}", source))]
-    ClickhouseDbPoolError { source: ClickhousePoolError<ClickhouseError> },
+    ClickhouseDbPoolError { source: ClickhousePoolError<HttpError> },
 
     #[cfg(feature = "sqlite")]
     #[snafu(display("DbPoolError {}", source))]
@@ -124,7 +122,7 @@ pub enum Error {
 
     #[cfg(feature = "clickhouse")]
     #[snafu(display("DbError {}", source))]
-    ClickhouseDbError { source: ClickhouseError, authenticated: bool },
+    ClickhouseDbError { source: HttpError, authenticated: bool },
 
     #[snafu(display("JwtTokenInvalid {}", message))]
     JwtTokenInvalid { message: String },

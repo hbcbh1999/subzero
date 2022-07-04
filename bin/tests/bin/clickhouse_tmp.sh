@@ -84,7 +84,7 @@ start)
 	CHHOST=$TD
 	export CHPORT CHHOST
 	if [ -n "$CHPORT" ]; then
-		url="http://default:default@$LISTENTO:$CHPORT/default"
+		url="http://default:default@$LISTENTO:$CHPORT/"
 	else
 		url="postgresql:///test?host=$(echo $CHHOST | sed 's:/:%2F:g')&user=default&password=default"
 	fi

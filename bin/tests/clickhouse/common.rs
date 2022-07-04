@@ -47,16 +47,14 @@ pub fn setup_db(init_db_once: &Once) {
         assert!(output.status.success());
 
         let db_uri = String::from_utf8_lossy(&output.stdout);
-        println!("db_uri: {}", db_uri);
 
         // curl -X POST \
         // -F 'query=<clickhouse_structure_query.sql' \
         // -F "param_p1=['default']" \
         // 'http://default:clickhouse@localhost:8123/'
 
-        let output = Command::new("curl")
-            .arg("-X").arg("POST")
-            .arg("-F").arg(format!("query=<{}",init_file.to_str().unwrap()))
+        let output = Command::new("tests/bin/ch_run_sql.sh")
+            .arg(format!("{}",init_file.to_str().unwrap()))
             .arg(db_uri.clone().into_owned())
             .output()
             .expect("failed to execute process");
@@ -66,6 +64,9 @@ pub fn setup_db(init_db_once: &Once) {
             println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
             println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
+        // else {
+        //     println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+        // }
         assert!(output.status.success());
         println!("db init ok");
         env::set_var("SUBZERO_DB_URI", &*db_uri);
@@ -83,7 +84,7 @@ where
         env::set_var("SUBZERO_DB_ANON_ROLE", &"default");
         env::set_var("SUBZERO_DB_TX_ROLLBACK", &"true");
         env::set_var("SUBZERO_DB_TYPE", &"clickhouse");
-        env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
+        env::set_var("SUBZERO_DB_SCHEMAS", "[default]");
         //env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
         // env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "true");

@@ -210,12 +210,12 @@ pub fn parse(
                     .message("failed to parser filter tree path")
                     .easy_parse(k.as_str())
                     .map_err(to_app_error(k.as_str()))?;
-
+                let data_type = root_obj.columns.get(&field.name).map(|c| c.data_type.clone());
                 match root_obj.kind {
                     Function { .. } => {
                         if !tp.is_empty() || has_operator(v.as_str()) {
                             // this is a filter
-                            let ((negate, filter), _) = negatable_filter(&None)
+                            let ((negate, filter), _) = negatable_filter(&data_type)
                                 .message("failed to parse filter")
                                 .easy_parse(v.as_str())
                                 .map_err(to_app_error(v.as_str()))?;
@@ -226,7 +226,8 @@ pub fn parse(
                         }
                     }
                     _ => {
-                        let ((negate, filter), _) = negatable_filter(&None)
+                        
+                        let ((negate, filter), _) = negatable_filter(&data_type)
                             .message("failed to parse filter")
                             .easy_parse(v.as_str())
                             .map_err(to_app_error(v.as_str()))?;
@@ -1233,7 +1234,7 @@ fn list_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = 
 where
     Input: Stream<Token = char>,
 {
-    let dt = data_type.clone();
+    let dt = data_type.as_ref().map(|v| format!("Array({})",v)); //TODO!!! this is hardcoded for clickhouse
     lex(between(lex(char('(')), lex(char(')')), sep_by(list_element(), lex(char(','))))).map(move |v| (v, dt.clone()))
 }
 

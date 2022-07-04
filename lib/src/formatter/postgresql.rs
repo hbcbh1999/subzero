@@ -111,7 +111,7 @@ fmt_json_operand!();
 
 #[cfg(test)]
 mod tests {
-    use crate::dynamic_statement::generate;
+    use crate::dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk, param_placeholder_format};
     use pretty_assertions::assert_eq;
     use regex::Regex;
     //use crate::api::{SelectItem::*};
@@ -124,6 +124,7 @@ mod tests {
     // use combine::EasyParser;
     use super::*;
     //use crate::parser::subzero::tests::{JSON_SCHEMA};
+    generate_fn!();
     fn s(s: &str) -> String { s.to_string() }
 
     #[test]
