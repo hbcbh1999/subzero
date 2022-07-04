@@ -27,10 +27,10 @@ pub fn setup_db(init_db_once: &Once) {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-        let tmp_pg_cmd = project_dir.join("tests/bin/clickhouse_tmp.sh");
+        let tmp_ch_cmd = project_dir.join("tests/bin/clickhouse_tmp.sh");
         let init_file = project_dir.join("tests/clickhouse/fixtures/load.sql");
 
-        let output = Command::new(tmp_pg_cmd)
+        let output = Command::new(tmp_ch_cmd)
             .arg("-t")
             // .arg("-u")
             // .arg("postgrest_test_authenticator")

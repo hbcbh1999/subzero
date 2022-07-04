@@ -473,14 +473,14 @@ mod tests {
         assert_eq!(serde_json::from_str::<Qi>(r#"["schema","table"]"#).unwrap(), Qi(s("schema"),s("table")));
         assert_eq!(r#""and""#, serde_json::to_string(&LogicOperator::And).unwrap());
         assert_eq!(serde_json::from_str::<LogicOperator>(r#""and""#).unwrap(), LogicOperator::And);
-        assert_eq!(r#""10""#, serde_json::to_string(&SingleVal(s("10"),None)).unwrap());
-        assert_eq!(serde_json::from_str::<SingleVal>(r#""10""#).unwrap(), SingleVal(s("10"),None));
-        assert_eq!(r#"["1","2","3"]"#, serde_json::to_string(&ListVal(vec![s("1"),s("2"),s("3")],None)).unwrap());
-        assert_eq!(serde_json::from_str::<ListVal>(r#"["1","2","3"]"#).unwrap(), ListVal(vec![s("1"),s("2"),s("3")],None));
+        assert_eq!(r#"["10",null]"#, serde_json::to_string(&SingleVal(s("10"),None)).unwrap());
+        assert_eq!(serde_json::from_str::<SingleVal>(r#"["10",null]"#).unwrap(), SingleVal(s("10"),None));
+        assert_eq!(r#"[["1","2","3"],null]"#, serde_json::to_string(&ListVal(vec![s("1"),s("2"),s("3")],None)).unwrap());
+        assert_eq!(serde_json::from_str::<ListVal>(r#"[["1","2","3"],null]"#).unwrap(), ListVal(vec![s("1"),s("2"),s("3")],None));
         assert_eq!(r#"{"name":"id"}"#, serde_json::to_string(&Field{name:s("id"), json_path:None}).unwrap());
         assert_eq!(serde_json::from_str::<Field>(r#"{"name":"id"}"#).unwrap(), Field{name:s("id"), json_path:None});
-        assert_eq!(r#"{"op":["eq","10"]}"#, serde_json::to_string(&Filter::Op(s("eq"), SingleVal(s("10"),None))).unwrap());
-        assert_eq!(serde_json::from_str::<Filter>(r#"{"op":["eq","10"]}"#).unwrap(), Filter::Op(s("eq"), SingleVal(s("10"),None)));
+        assert_eq!(r#"{"op":["eq",["10",null]]}"#, serde_json::to_string(&Filter::Op(s("eq"), SingleVal(s("10"),None))).unwrap());
+        assert_eq!(serde_json::from_str::<Filter>(r#"{"op":["eq",["10",null]]}"#).unwrap(), Filter::Op(s("eq"), SingleVal(s("10"),None)));
         assert_eq!(r#"{"name":"id","json_path":[{"->":"'id'"},{"->>":"0"}]}"#, serde_json::to_string(&Field{name:s("id"), json_path:Some(
             vec![
                 JsonOperation::JArrow(JsonOperand::JKey(s("id"))),
@@ -493,17 +493,17 @@ mod tests {
                 JsonOperation::J2Arrow(JsonOperand::JIdx(s("0")))
             ]
         )});
-        assert_eq!(r#"{"single":{"field":{"name":"id"},"filter":{"op":["eq","10"]}}}"#, serde_json::to_string(&Condition::Single{
+        assert_eq!(r#"{"single":{"field":{"name":"id"},"filter":{"op":["eq",["10",null]]}}}"#, serde_json::to_string(&Condition::Single{
             field: Field{name:s("id"), json_path:None},
             filter: Filter::Op(s("eq"), SingleVal(s("10"),None)),
             negate:false,
         }).unwrap());
-        assert_eq!(serde_json::from_str::<Condition>(r#"{"single":{"field":{"name":"id"},"filter":{"op":["eq","10"]}}}"#).unwrap(), Condition::Single{
+        assert_eq!(serde_json::from_str::<Condition>(r#"{"single":{"field":{"name":"id"},"filter":{"op":["eq",["10",null]]}}}"#).unwrap(), Condition::Single{
             field: Field{name:s("id"), json_path:None},
             filter: Filter::Op(s("eq"), SingleVal(s("10"),None)),
             negate:false,
         });
-        assert_eq!(serde_json::from_str::<Condition>(r#"{"group":[false,{"operator":"and","conditions":[{"single":{"field":{"name":"id"},"filter":{"op":["eq","10"]}}}]}]}"#).unwrap(), Condition::Group(
+        assert_eq!(serde_json::from_str::<Condition>(r#"{"group":[false,{"operator":"and","conditions":[{"single":{"field":{"name":"id"},"filter":{"op":["eq",["10",null]]}}}]}]}"#).unwrap(), Condition::Group(
             false,
             ConditionTree{
                 operator:LogicOperator::And,
@@ -516,7 +516,7 @@ mod tests {
                 ],
             }
         ));
-        assert_eq!(r#"{"group":[false,{"operator":"and","conditions":[{"single":{"field":{"name":"id"},"filter":{"op":["eq","10"]}}}]}]}"#, serde_json::to_string(&Condition::Group(
+        assert_eq!(r#"{"group":[false,{"operator":"and","conditions":[{"single":{"field":{"name":"id"},"filter":{"op":["eq",["10",null]]}}}]}]}"#, serde_json::to_string(&Condition::Group(
             false,
             ConditionTree{
                 operator:LogicOperator::And,

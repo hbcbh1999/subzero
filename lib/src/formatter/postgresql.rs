@@ -575,7 +575,7 @@ mod tests {
         let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
         assert_eq!(
             format!("{:?}", parameters),
-            "[SingleVal(\"50\"), ListVal([\"51\", \"52\"]), SingleVal(\"5\"), SingleVal(\"10\")]"
+            "[SingleVal(\"50\", None), ListVal([\"51\", \"52\"], None), SingleVal(\"5\", None), SingleVal(\"10\", None)]"
         );
         let re = Regex::new(r"\s+").unwrap();
         assert_eq!(
@@ -710,7 +710,7 @@ mod tests {
                 "{:?}",
                 generate(fmt_filter(&Fts(s("@@ to_tsquery"), Some(SingleVal(s("eng"),None)), SingleVal(s("2"),None))).unwrap())
             ),
-            r#"("@@ to_tsquery ($1,$2)", [SingleVal("eng"), SingleVal("2")], 3)"#.to_string()
+            r#"("@@ to_tsquery ($1,$2)", [SingleVal("eng", None), SingleVal("2", None)], 3)"#.to_string()
         );
         let p: Vec<&(dyn ToSql + Sync)> = vec![];
         assert_eq!(

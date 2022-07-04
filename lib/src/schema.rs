@@ -647,7 +647,7 @@ mod tests {
                                             vec![
                                                 Condition::Single{
                                                     field: Field{name:s("id"), json_path:None},
-                                                    filter: Filter::Op(s("eq"), SingleVal(s("10"),None)),
+                                                    filter: Filter::Op(s("eq"), SingleVal(s("10"),Some(s("int")))),
                                                     negate:false,
                                                 }
                                             ],
@@ -737,7 +737,7 @@ mod tests {
                                 "row_level_permissions": {
                                     "role": {
                                         "get": [
-                                            {"single":{"field":{"name":"id"},"filter":{"op":["eq","10"]}}}
+                                            {"single":{"field":{"name":"id"},"filter":{"op":["eq",["10","int"]]}}}
                                         ]
                                     }
                                 }

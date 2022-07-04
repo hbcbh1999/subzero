@@ -2206,7 +2206,7 @@ pub mod tests {
                                         name: s("id"),
                                         json_path: None
                                     },
-                                    filter: Filter::Op(s(">"), SingleVal(s("10"),None)),
+                                    filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
                                     negate: true,
                                 },
                                 Group(
@@ -2326,7 +2326,7 @@ pub mod tests {
                                                     name: s("id"),
                                                     json_path: None
                                                 },
-                                                filter: Filter::Op(s("<"), SingleVal(s("500"),None)),
+                                                filter: Filter::Op(s("<"), SingleVal(s("500"),Some(s("int")))),
                                                 negate: false,
                                             },
                                             Group(
@@ -2470,7 +2470,7 @@ pub mod tests {
                                     name: s("id"),
                                     json_path: None
                                 },
-                                filter: Filter::Op(s(">"), SingleVal(s("10"),None)),
+                                filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
                                 negate: false,
                             }]
                         },
@@ -2539,7 +2539,7 @@ pub mod tests {
                                     name: s("id"),
                                     json_path: None
                                 },
-                                filter: Filter::Op(s(">"), SingleVal(s("10"),None)),
+                                filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
                                 negate: false,
                             }]
                         },
@@ -2703,7 +2703,7 @@ pub mod tests {
                                     name: s("id"),
                                     json_path: None
                                 },
-                                filter: Filter::Op(s(">"), SingleVal(s("10"),None)),
+                                filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
                                 negate: false,
                             }]
                         },
@@ -2784,7 +2784,7 @@ pub mod tests {
                                                     name: s("id"),
                                                     json_path: None
                                                 },
-                                                filter: Filter::Op(s(">"), SingleVal(s("20"),None)),
+                                                filter: Filter::Op(s(">"), SingleVal(s("20"),Some(s("int")))),
                                                 negate: false,
                                             }
                                         ]
@@ -2880,7 +2880,7 @@ pub mod tests {
                                     name: s("id"),
                                     json_path: None
                                 },
-                                filter: Filter::Op(s(">"), SingleVal(s("10"),None)),
+                                filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
                                 negate: false,
                             }]
                         },
