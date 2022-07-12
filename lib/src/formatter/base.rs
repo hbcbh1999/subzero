@@ -1082,10 +1082,11 @@ macro_rules! fmt_as {
     () => {
         fn fmt_as(name: &String, json_path: &Option<Vec<JsonOperation>>, alias: &Option<String>) -> String {
             match (name, json_path, alias) {
-                (_, Some(_), None) => match fmt_select_name(name, json_path, alias) {
-                    Some(nn) => format!(" as {}", fmt_identity(&nn)),
-                    None => format!(""),
-                },
+                (_, Some(_), None) =>
+                    match fmt_select_name(name, json_path, alias) {
+                        Some(nn) => format!(" as {}", fmt_identity(&nn)),
+                        None => format!(""),
+                    },
                 (_, _, Some(aa)) => format!(" as {}", fmt_identity(aa)),
                 _ => format!(""),
             }

@@ -22,8 +22,8 @@ use crate::{
 //use log::{debug};
 use async_trait::async_trait;
 use http::Error as HttpError;
-
-use super::Backend;
+use log::{debug};
+use super::{Backend, include_files};
 
 // use core::slice::SlicePattern;
 use std::{fs};
@@ -76,7 +76,7 @@ async fn execute<'a>(
     let base_url = &o.1;
     let client = &o.2;
     let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, request)?);
-    println!("main_statement {}", main_statement);
+    debug!("main_statement {}", main_statement);
     let mut parameters = vec![("query".to_string(), main_statement)];
     for (k, v) in main_parameters.iter().enumerate() {
         let p = match v.to_param() {
@@ -86,7 +86,7 @@ async fn execute<'a>(
         };
         parameters.push((format!("param_p{}",k+1), p));
     }
-    println!("parameters {:?}", parameters);
+    debug!("parameters {:?}", parameters);
 
     let formdata = FormData {
         fields: parameters,
@@ -115,13 +115,25 @@ async fn execute<'a>(
         Err(e) => Err(Error::InternalError { message: e.to_string() }),
     }?;
     let (parts, body) = http_response.into_parts();
-    let _status = parts.status.as_u16();
-    let _headers = parts.headers;
+    let status = parts.status.as_u16();
+    let headers = parts.headers;
+    debug!("status {:?}", status);
+    debug!("headers {:?}", headers);
     let bytes = hyper::body::to_bytes(body).await.context(ProxyError)?;
     let body = String::from_utf8(bytes.to_vec()).unwrap_or("".to_string());
-
+    let page_total = match headers.get("x-clickhouse-summary") {
+        Some(s)=> match serde_json::from_str::<JsonValue>(s.to_str().unwrap_or("")) {
+            Ok(v) => {
+                debug!("read_rows {:?}", v["read_rows"].as_str());
+                v["read_rows"].as_str().unwrap_or("0").parse().unwrap_or(0)
+            },
+            Err(_) => 0,
+        },
+        None => 0,
+    };
+    debug!("page_total {:?}", page_total);
     let api_response = ApiResponse {
-        page_total: 1,
+        page_total,
         total_result_set: None,
         top_level_offset: 0,
         response_headers: None,
@@ -184,10 +196,12 @@ impl Backend for ClickhouseBackend {
                         let uri = &o.0;
                         let base_url = &o.1;
                         let client = &o.2;
+                        let query = include_files(q);
+                        //println!("query {}", query);
                         let formdata = FormData {
                             fields: vec![
                                 ("param_p1".to_owned(), format!("['{}']",config.db_schemas.join("','"))),
-                                ("query".to_owned(), q), 
+                                ("query".to_owned(), query), 
                             ],
                             files: vec![  ],
                         };
@@ -214,10 +228,12 @@ impl Backend for ClickhouseBackend {
                             Err(e) => Err(Error::InternalError { message: e.to_string() }),
                         }?;
                         let (parts, body) = http_response.into_parts();
+                        
                         let _status = parts.status.as_u16();
                         let _headers = parts.headers;
                         let bytes = hyper::body::to_bytes(body).await.context(ProxyError)?;
                         let s = String::from_utf8(bytes.to_vec()).unwrap_or("".to_string());
+                        //println!("clickhouse body {:?}", s);
                         serde_json::from_str::<DbSchema>(&s).context(JsonDeserialize)
                         
                     }
@@ -251,9 +267,9 @@ impl Backend for ClickhouseBackend {
 //     let max_retry_interval = 30;
 //     let mut client = db_pool.get().await;
 //     while let Err(e)  = client {
-//         println!("[{}] Failed to connect to PostgreSQL {:?}", vhost, e);
+//         debug!("[{}] Failed to connect to PostgreSQL {:?}", vhost, e);
 //         let time = Duration::from_secs(i);
-//         println!("[{}] Retrying the PostgreSQL connection in {:?} seconds..", vhost, time.as_secs());
+//         debug!("[{}] Retrying the PostgreSQL connection in {:?} seconds..", vhost, time.as_secs());
 //         sleep(time).await;
 //         client = db_pool.get().await;
 //         i *= 2;
@@ -263,7 +279,7 @@ impl Backend for ClickhouseBackend {
 //     };
 //     match client {
 //         Err(_) =>{},
-//         _ => println!("[{}] Connection to PostgreSQL successful", vhost)
+//         _ => debug!("[{}] Connection to PostgreSQL successful", vhost)
 //     }
 //     client
 // }

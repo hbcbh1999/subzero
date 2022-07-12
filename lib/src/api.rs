@@ -268,6 +268,24 @@ impl QueryNode {
             Self::Update { table, .. } => table,
         }
     }
+    pub fn select(&self) -> &Vec<SelectItem> {
+        match self {
+            Self::Select { select, .. } |
+            Self::Update { select, .. } |
+            Self::Insert { select, .. } |
+            Self::Delete { select, .. } | 
+            Self::FunctionCall { select, .. } => select,
+        }
+    }
+    pub fn where_(&self) -> &ConditionTree {
+        match self {
+            Self::Select { where_, .. } |
+            Self::Update { where_, .. } |
+            Self::Insert { where_, .. } |
+            Self::Delete { where_, .. } | 
+            Self::FunctionCall { where_, .. } => where_,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

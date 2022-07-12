@@ -7,6 +7,7 @@ autobenches = false
 [dependencies]
 log = "0.4.14"
 http = "0.2"
+regex = { version="1.6.0", features=["default", "pattern"]}
 url = { version = "2.2.2", optional = true }
 base64 = { version = "0.13.0", optional = true }
 formdata = { version = "0.13.0", optional = true }

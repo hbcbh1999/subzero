@@ -174,16 +174,20 @@ feature "basic"
 
   describe "select" $
     it "simple" $
-      get "/projects?select=id,name&id=in.(1,2)" shouldRespondWith
-        [json| r#"
-        [
-          {"id":1,"name":"Windows 7"},
-          {"id":2,"name":"Windows 10"}
-        ]
-        "#|]
-      { matchStatus = 200
-      , matchHeaders = ["Content-Type" <:> "application/json"]
-      }
+      get "/projects?select=id,name&id=in.(1,2)&order=id" shouldRespondWith
+      [json| r#"
+      [
+        {"id":1,"name":"Windows 7"},
+        {"id":2,"name":"Windows 10"}
+      ]
+      "#|]
+      { matchStatus = 200, matchHeaders = ["Content-Type" <:> "application/json", "Content-Range" <:> "0-1/*"] }
+
+      request methodGet "/projects?select=id,name&id=eq.1" [("Accept", "application/vnd.pgrst.object+json")] "" shouldRespondWith
+      [json| r#"
+        {"id":1,"name":"Windows 7"}
+      "#|]
+      { matchStatus = 200, matchHeaders = ["Content-Type" <:> "application/vnd.pgrst.object+json", "Content-Range" <:> "0-0/*"] }
       // get "/tbl1?select=one,two" shouldRespondWith
       //   [json| r#"
       //       [
@@ -206,41 +210,41 @@ feature "basic"
     //   , matchHeaders = ["Content-Type" <:> "application/json"]
     //   }
 
-  // describe "embeding" $
-  //   it "children" $
-  //     get "/projects?select=id,name,tasks(id,name)&id=in.(1,2)" shouldRespondWith
-  //       [json| r#"
-  //       [
-  //         {"id":1,"name":"Windows 7","tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]},
-  //         {"id":2,"name":"Windows 10","tasks":[{"id":3,"name":"Design w10"},{"id":4,"name":"Code w10"}]}
-  //       ]
-  //       "#|]
-  //     { matchStatus = 200
-  //     , matchHeaders = ["Content-Type" <:> "application/json"]
-  //     }
-  //   it "parent" $
-  //     get "/projects?select=id,name,client:clients(id,name)&id=in.(1,2,3)" shouldRespondWith
-  //       [json| r#"
-  //       [
-  //         {"id":1,"name":"Windows 7","client":{"id":1,"name":"Microsoft"}},
-  //         {"id":2,"name":"Windows 10","client":{"id":1,"name":"Microsoft"}},
-  //         {"id":3,"name":"IOS","client":{"id":2,"name":"Apple"}}
-  //       ]
-  //       "#|]
-  //     { matchStatus = 200
-  //     , matchHeaders = ["Content-Type" <:> "application/json"]
-  //     }
-  //   it "children and parent" $
-  //     get "/projects?select=id,name,client:clients(id,name),tasks(id,name)&id=in.(1,2)" shouldRespondWith
-  //       [json| r#"
-  //       [
-  //         {"id":1,"name":"Windows 7", "tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}],  "client":{"id":1,"name":"Microsoft"}},
-  //         {"id":2,"name":"Windows 10","tasks":[{"id":3,"name":"Design w10"},{"id":4,"name":"Code w10"}],"client":{"id":1,"name":"Microsoft"}}
-  //       ]
-  //       "#|]
-  //     { matchStatus = 200
-  //     , matchHeaders = ["Content-Type" <:> "application/json"]
-  //     }
+  describe "embeding" $
+    it "children" $
+      get "/projects?select=id,name,tasks(id,name)&id=in.(1,2)&order=id" shouldRespondWith
+        [json| r#"
+        [
+          {"id":1,"name":"Windows 7","tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}]},
+          {"id":2,"name":"Windows 10","tasks":[{"id":3,"name":"Design w10"},{"id":4,"name":"Code w10"}]}
+        ]
+        "#|]
+      { matchStatus = 200
+      , matchHeaders = ["Content-Type" <:> "application/json"]
+      }
+    it "parent" $
+      get "/projects?select=id,name,client:clients(id,name)&id=in.(1,2,3)&order=id" shouldRespondWith
+        [json| r#"
+        [
+          {"id":1,"name":"Windows 7","client":{"id":1,"name":"Microsoft"}},
+          {"id":2,"name":"Windows 10","client":{"id":1,"name":"Microsoft"}},
+          {"id":3,"name":"IOS","client":{"id":2,"name":"Apple"}}
+        ]
+        "#|]
+      { matchStatus = 200
+      , matchHeaders = ["Content-Type" <:> "application/json"]
+      }
+    it "children and parent" $
+      get "/projects?select=id,name,client:clients(id,name),tasks(id,name)&id=in.(1,2)&order=id" shouldRespondWith
+        [json| r#"
+        [
+          {"id":1,"name":"Windows 7", "tasks":[{"id":1,"name":"Design w7"},{"id":2,"name":"Code w7"}],  "client":{"id":1,"name":"Microsoft"}},
+          {"id":2,"name":"Windows 10","tasks":[{"id":3,"name":"Design w10"},{"id":4,"name":"Code w10"}],"client":{"id":1,"name":"Microsoft"}}
+        ]
+        "#|]
+      { matchStatus = 200
+      , matchHeaders = ["Content-Type" <:> "application/json"]
+      }
 
   //   it "many" $
   //     get "/tasks?select=id,name,users(id,name)&id=in.(1,5)" shouldRespondWith

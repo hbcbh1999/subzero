@@ -15,7 +15,7 @@ use crate::{
 };
 use async_trait::async_trait;
 
-use super::Backend;
+use super::{Backend, include_files};
 
 use std::{collections::HashMap, fs};
 use std::path::Path;
@@ -252,6 +252,7 @@ impl Backend for PostgreSQLBackend {
                 Ok(q) => match wait_for_pg_connection(&vhost, &pool).await {
                     Ok(mut client) => {
                         let authenticated = false;
+                        let query = include_files(q);
                         let transaction = client
                             .build_transaction()
                             .isolation_level(IsolationLevel::Serializable)
@@ -260,7 +261,7 @@ impl Backend for PostgreSQLBackend {
                             .await
                             .context(PgDbError { authenticated})?;
                         let _ = transaction.query("set local schema ''", &[]).await;
-                        match transaction.query(&q, &[&config.db_schemas]).await {
+                        match transaction.query(&query, &[&config.db_schemas]).await {
                             Ok(rows) => {
                                 transaction.commit().await.context(PgDbError { authenticated })?;
                                 serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize)

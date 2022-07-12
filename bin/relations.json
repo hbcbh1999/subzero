@@ -1,0 +1,20 @@
+[
+    {
+        "constraint_name": "tasks_project_id_fkey",
+        "table_schema": "default",
+        "table_name": "tasks",
+        "columns": ["project_id"],
+        "foreign_table_schema": "default",
+        "foreign_table_name": "projects",
+        "foreign_columns": ["id"]
+    },
+    {
+        "constraint_name": "projects_client_id_fkey",
+        "table_schema": "default",
+        "table_name": "projects",
+        "columns": ["client_id"],
+        "foreign_table_schema": "default",
+        "foreign_table_name": "clients",
+        "foreign_columns": ["id"]
+    }
+]

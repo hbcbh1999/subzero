@@ -22,7 +22,7 @@ use log::{debug};
 use async_trait::async_trait;
 use rusqlite::vtab::array;
 use std::{fs};
-use super::Backend;
+use super::{Backend, include_files};
 use tokio::task;
 
 generate_fn!();
@@ -203,7 +203,8 @@ impl Backend for SQLiteBackend {
                     Ok(conn) => {
                         task::block_in_place(|| {
                             let authenticated = false;
-                            let mut stmt = conn.prepare(q.as_str()).context(SqliteDbError { authenticated })?;
+                            let query = include_files(q);
+                            let mut stmt = conn.prepare(query.as_str()).context(SqliteDbError { authenticated })?;
                             let mut rows = stmt.query([]).context(SqliteDbError { authenticated })?;
                             match rows.next().context(SqliteDbError { authenticated })? {
                                 Some(r) => {
