@@ -149,6 +149,7 @@ fn fmt_query<'a>(
                 // get the table primary keys from subselect joins
                 .map(|s| match s {
                     SubSelect {join: Some(Child(ForeignKey{referenced_columns, ..})), ..} => Some(referenced_columns),
+                    SubSelect {join: Some(Parent(ForeignKey{referenced_columns, ..})), ..} => Some(referenced_columns),
                     _ => None,
                 })
                 .flatten()
