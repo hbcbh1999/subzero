@@ -90,6 +90,7 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
         }
         +
         "
+        join_use_nulls=1,
         output_format_json_named_tuples_as_objects=1
         "
     )
@@ -677,6 +678,7 @@ mod tests {
         settings 
         
         output_format_json_array_of_rows=1,
+        join_use_nulls=1,
         output_format_json_named_tuples_as_objects=1
         
         "#, expected_query_str);
