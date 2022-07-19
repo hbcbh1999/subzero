@@ -8,10 +8,10 @@ use rocket::local::asynchronous::Client;
 use serde_json::Value;
 use std::str::FromStr;
 use std::sync::Once;
-pub static INIT_CLIENT: Once = Once::new();
+static INIT_CLIENT: Once = Once::new();
 
 lazy_static! {
-  pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
+  static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
     //TODO!!!! checks for not updated are invalid since the tests are configured to rollback all actions
     Client::untracked(start().await.unwrap()).await.expect("valid client")
   });

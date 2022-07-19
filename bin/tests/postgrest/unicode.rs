@@ -9,10 +9,10 @@ use serde_json::Value;
 use std::env;
 use std::str::FromStr;
 use std::sync::Once;
-pub static INIT_CLIENT: Once = Once::new();
+static INIT_CLIENT: Once = Once::new();
 
 lazy_static! {
-    pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async {
+    static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async {
         env::set_var("SUBZERO_DB_SCHEMAS", "[تست]");
         Client::untracked(start().await.unwrap()).await.expect("valid client")
     });

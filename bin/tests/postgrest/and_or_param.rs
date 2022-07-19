@@ -10,10 +10,10 @@ use demonstrate::demonstrate;
 use async_once::AsyncOnce;
 use rocket::local::asynchronous::Client;
 use std::sync::Once;
-pub static INIT_CLIENT: Once = Once::new();
+static INIT_CLIENT: Once = Once::new();
 
 lazy_static! {
-    pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
+    static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
 }
 
 haskell_test! {
