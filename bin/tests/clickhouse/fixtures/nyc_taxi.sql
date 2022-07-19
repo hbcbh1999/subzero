@@ -69,7 +69,7 @@ ORDER BY pickup_datetime;
 
 INSERT INTO trips
     SELECT * FROM s3(
-        'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_{1..2}.gz',
+        'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_1.gz',
         'TabSeparatedWithNames'
     );
 

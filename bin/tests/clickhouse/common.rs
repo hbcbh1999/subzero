@@ -14,7 +14,7 @@ pub static INIT_DB: Once = Once::new();
 //static INIT_CLIENT: Once = Once::new();
 // lazy_static! {
 
-//     pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
+//     static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
 //       Client::untracked(start().await.unwrap()).await.expect("valid client")
 //     });
 
@@ -64,14 +64,27 @@ pub fn setup_db(init_db_once: &Once) {
             println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
             println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
-        // else {
-        //     println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-        // }
         assert!(output.status.success());
-        println!("db init ok");
+
+        let init_file_2 = project_dir.join("tests/clickhouse/fixtures/nyc_taxi.sql");
+        let output = Command::new("tests/bin/ch_run_sql.sh")
+            .arg(format!("{}",init_file_2.to_str().unwrap()))
+            .arg(db_uri.clone().into_owned())
+            .output()
+            .expect("failed to execute process");
+        
+        if !output.status.success() {
+            println!("status: {}", output.status);
+            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        }
+        assert!(output.status.success());
+
         env::set_var("SUBZERO_DB_URI", &*db_uri);
         env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../clickhouse_structure_query.sql}");
+        println!("db init ok clickhouse");
     });
+
 }
 
 pub fn setup_client<T>(init_client_once: &Once, client: &T)

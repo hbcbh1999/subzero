@@ -1013,7 +1013,7 @@ fn cast<Input>() -> impl Parser<Input, Output = String>
 where
     Input: Stream<Token = char>,
 {
-    string("::").and(many1(letter())).map(|(_, c)| c)
+    string("::").and(many1(choice((letter(),digit())))).map(|(_, c)| c)
 }
 
 fn dot<Input>() -> impl Parser<Input, Output = char>
@@ -1103,7 +1103,7 @@ where
             many::<String,_,_>(none_of("'".chars())),
         )
         .and(optional(cast()))
-        .map(|(v,c)| FunctionParam::Val(SingleVal(v,None),c))
+        .map(|(v,c)| FunctionParam::Val(SingleVal(v,c.clone()),c))
     )
 }
 
@@ -1201,7 +1201,7 @@ fn integer<Input>() -> impl Parser<Input, Output = SingleVal>
 where
     Input: Stream<Token = char>,
 {
-    many1(digit()).map(|v| SingleVal(v,None))
+    many1(digit()).map(|v| SingleVal(v,Some("integer".to_string())))
 }
 
 fn limit<Input>() -> impl Parser<Input, Output = SingleVal>

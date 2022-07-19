@@ -69,7 +69,7 @@ mod tests {
         //for split in splits {
         println!("{:?}", splits);
         //}
-        assert!(false)
+        // assert!(false)
     }
 
     #[test]
@@ -77,6 +77,6 @@ mod tests {
         let template = "this  in included =>{@include.html}<=".to_owned();
         let result = include_files(template);
         println!("{}", result);
-        assert!(false)
+        // assert!(false)
     }
 }

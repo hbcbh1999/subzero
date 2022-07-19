@@ -11,7 +11,10 @@ use deadpool::{managed,};
 use snafu::ResultExt;
 use tokio::time::{Duration, };
 use crate::{
-    api::{ApiRequest, ApiResponse, ContentType::*, SingleVal, Payload, ListVal},
+    api::{
+        ApiRequest, ApiResponse, 
+        //ContentType::*, 
+        SingleVal, Payload, ListVal},
     config::{VhostConfig,SchemaStructure::*},
     dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk},
     error::{Result, *},
@@ -141,13 +144,13 @@ async fn execute<'a>(
         body,
     };
 
-    if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
-        //transaction.rollback().await.context(PgDbError { authenticated })?;
-        return Err(Error::SingularityError {
-            count: api_response.page_total,
-            content_type: "application/vnd.pgrst.object+json".to_string(),
-        });
-    }
+    // if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
+    //     //transaction.rollback().await.context(PgDbError { authenticated })?;
+    //     return Err(Error::SingularityError {
+    //         count: api_response.page_total,
+    //         content_type: "application/vnd.pgrst.object+json".to_string(),
+    //     });
+    // }
 
     if request.method == Method::PUT && api_response.page_total != 1 {
         // Makes sure the querystring pk matches the payload pk

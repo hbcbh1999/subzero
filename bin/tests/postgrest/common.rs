@@ -14,7 +14,7 @@ pub static INIT_DB: Once = Once::new();
 //static INIT_CLIENT: Once = Once::new();
 // lazy_static! {
 
-//     pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
+//     static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
 //       Client::untracked(start().await.unwrap()).await.expect("valid client")
 //     });
 
@@ -74,6 +74,7 @@ where
         env::set_var("SUBZERO_CONFIG", &"inexistent_config.toml");
         env::set_var("SUBZERO_DB_ANON_ROLE", &"postgrest_test_anonymous");
         env::set_var("SUBZERO_DB_TX_ROLLBACK", &"true");
+        env::set_var("SUBZERO_DB_TYPE", &"postgresql");
         env::set_var("SUBZERO_DB_SCHEMAS", "[test]");
         env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");

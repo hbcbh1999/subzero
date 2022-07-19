@@ -6,7 +6,7 @@ use super::base::{
     cast_select_item_format, fmt_condition, fmt_field, fmt_field_format, fmt_filter,
     fmt_identity, fmt_json_operand, fmt_json_operation, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_offset,
     fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_select_item, fmt_select_name, return_representation,
-    simple_select_item_format, star_select_item_format, fmt_function_param, fmt_select_item_function,
+    simple_select_item_format, star_select_item_format, fmt_select_item_function,
 };
 use crate::api::{Condition::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *, ContentType::SingularJSON};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet};
@@ -275,7 +275,20 @@ fmt_filter!();
 fmt_select_name!();
 fmt_select_item!();
 fmt_select_item_function!();
-fmt_function_param!();
+//fmt_function_param!();
+fn fmt_function_param<'a>(qi: &Qi, p: &'a FunctionParam) -> Result<Snippet<'a>> {
+    Ok(match p {
+        FunctionParam::Val(v,c) => {
+            let vv: &SqlParam = v;
+            
+            match c {
+                Some(c) => "cast(" + param(vv) + format!(" as {}", c) + ")",
+                None => param(vv),
+            }
+        },
+        FunctionParam::Fld(f) => sql(fmt_field(qi, f)?),
+    })
+}
 //fmt_sub_select_item!();
 fn fmt_sub_select_item<'a>(schema: &String, qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
     match i {
