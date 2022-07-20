@@ -7,13 +7,14 @@ use snafu::ResultExt;
 #[cfg(feature = "sqlite")]
 use tokio::task;
 
-use crate::api::ApiResponse;
+use crate::api::{ApiResponse, FunctionParam};
 
 use crate::{
     api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*, SelectItem::*},
     error::{Result, *},
     parser::postgrest::parse,
     backend::Backend,
+    config::{VhostConfig},
 };
 
 use std::{
@@ -25,6 +26,24 @@ fn get_current_timestamp() -> u64 {
     //TODO!!! optimize this to run once per second
     let start = SystemTime::now();
     start.duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs()
+}
+
+fn validate_fn_param(config: &VhostConfig, p: &FunctionParam) -> Result<()> {
+    match p {
+        FunctionParam::Func { fn_name, parameters } => {
+            if !config.db_allowd_select_functions.contains(&fn_name) {
+                return Err(Error::ParseRequestError { 
+                    details: format!("calling: '{}' is not allowed", fn_name),
+                    message: "Unsafe functions called".to_string(),
+                });
+            }
+            for p in parameters {
+                validate_fn_param(config, p)?;
+            }
+            Ok(())
+        },
+        _ => {Ok(())}
+    }
 }
 
 #[allow(clippy::borrowed_box)]
@@ -124,6 +143,7 @@ pub async fn handle(
     // parse request and generate the query
     let request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, config.db_max_rows)?;
     // check only safe functions are used
+    
     for (p, n) in &request.query {
         match n {
             FunctionCall { select, .. } |
@@ -132,12 +152,15 @@ pub async fn handle(
             Update { select, .. } |
             Delete { select, ..} => {
                 for s in select {
-                    if let Func {fn_name, ..} = s {
+                    if let Func {fn_name, parameters, ..} = s {
                         if !config.db_allowd_select_functions.contains(fn_name) {
                             return Err(Error::ParseRequestError { 
                                 details: format!("calling: '{}' is not allowed", fn_name),
                                 message: "Unsafe functions called".to_string(),
                             });
+                        }
+                        for p in parameters {
+                            validate_fn_param(config, p)?;
                         }
                     }
                 }

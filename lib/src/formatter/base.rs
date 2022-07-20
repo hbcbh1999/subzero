@@ -3,7 +3,7 @@ use crate::api::{ApiRequest, Method, Preferences, QueryNode::*, Representation,}
 #[allow(unused_macros)]
 macro_rules! fmt_field_format {
     () => {
-        "to_jsonb({}.{}){}"
+        "to_jsonb({}{}{}){}"
     };
 }
 #[allow(unused_macros)]
@@ -789,13 +789,12 @@ macro_rules! fmt_filter {
     };
 }
 #[allow(unused_macros)]
-macro_rules! fmt_select_item_function {
+macro_rules! fmt_function_call {
     () => {
-        fn fmt_select_item_function<'a>(qi: &Qi, fn_name: &String,
-            parameters: &'a [FunctionParam],
-            partitions: &'a Vec<Field>,
-            orders: &'a Vec<OrderTerm>,
-            alias: &'a Option<String>,) -> Result<Snippet<'a>>
+        fn fmt_function_call<'a>(
+            qi: &Qi,
+            fn_name: &String,
+            parameters: &'a [FunctionParam]) -> Result<Snippet<'a>>
         {
 
             Ok(
@@ -806,7 +805,26 @@ macro_rules! fmt_select_item_function {
                     .map(|p| fmt_function_param(qi, p))
                     .collect::<Result<Vec<_>>>()?
                     .join(",") +
-                ")" + 
+                ")"
+            )
+        }
+    };   
+}
+
+#[allow(unused_macros)]
+macro_rules! fmt_select_item_function {
+    () => {
+        fn fmt_select_item_function<'a>(
+            qi: &Qi,
+            fn_name: &String,
+            parameters: &'a [FunctionParam],
+            partitions: &'a Vec<Field>,
+            orders: &'a Vec<OrderTerm>,
+            alias: &'a Option<String>,) -> Result<Snippet<'a>>
+        {
+
+            Ok(
+                fmt_function_call(qi, fn_name, parameters)? + 
                 if partitions.is_empty() && orders.is_empty() {
                     sql("")
                 } else {
@@ -960,6 +978,7 @@ macro_rules! fmt_qi {
             match (qi.0.as_str(), qi.1.as_str()) {
                 // (_,"subzero_source") |
                 // (_,"subzero_fn_call") |
+                ("", "")  => format!(""),
                 ("", _) | ("_sqlite_public_", _) => format!("{}", fmt_identity(&qi.1)),
                 _ => format!("{}.{}", fmt_identity(&qi.0), fmt_identity(&qi.1)),
             }
@@ -970,12 +989,17 @@ macro_rules! fmt_qi {
 macro_rules! fmt_field {
     () => {
         fn fmt_field(qi: &Qi, f: &Field) -> Result<String> {
+            let sep = match (qi.0.as_str(), qi.1.as_str()) {
+                ("", "") => "",
+                _ => ".",
+            };
+
             Ok(match f {
                 Field {
                     name,
                     json_path: json_path @ Some(_),
-                } => format!(fmt_field_format!(), fmt_qi(qi), fmt_identity(&name), fmt_json_path(&json_path)),
-                Field { name, json_path: None } => format!("{}.{}", fmt_qi(qi), fmt_identity(&name)),
+                } => format!(fmt_field_format!(), fmt_qi(qi), sep, fmt_identity(&name), fmt_json_path(&json_path)),
+                Field { name, json_path: None } => format!("{}{}{}", fmt_qi(qi), sep, fmt_identity(&name)),
             })
             //format!("{}{}", fmt_identity(&f.name), fmt_json_path(&f.json_path))
         }
@@ -994,6 +1018,7 @@ macro_rules! fmt_function_param {
                     }
                 },
                 FunctionParam::Fld(f) => sql(fmt_field(qi, f)?),
+                FunctionParam::Func {fn_name,parameters,} => fmt_function_call(qi, fn_name, parameters)?,
             })
         }
     };
@@ -1013,7 +1038,7 @@ macro_rules! fmt_order {
 #[allow(unused_macros)]
 macro_rules! fmt_order_term {
     () => {
-        fn fmt_order_term(qi: &Qi, t: &OrderTerm) -> Result<String> {
+        fn fmt_order_term(_qi: &Qi, t: &OrderTerm) -> Result<String> {
             let direction = match &t.direction {
                 None => "",
                 Some(d) => match d {
@@ -1028,7 +1053,7 @@ macro_rules! fmt_order_term {
                     OrderNulls::NullsLast => "nulls last",
                 },
             };
-            Ok(format!("{} {} {}", fmt_field(qi, &t.term)?, direction, nulls))
+            Ok(format!("{} {} {}", fmt_field(&Qi("".to_string(),"".to_string()), &t.term)?, direction, nulls))
         }
     };
 }
@@ -1047,8 +1072,9 @@ macro_rules! fmt_groupby {
 #[allow(unused_macros)]
 macro_rules! fmt_groupby_term {
     () => {
-        fn fmt_groupby_term(qi: &Qi, t: &GroupByTerm) -> Result<String> {
-            fmt_field(qi, &t.0)
+        fn fmt_groupby_term(_qi: &Qi, t: &GroupByTerm) -> Result<String> {
+            fmt_field(&Qi("".to_string(),"".to_string()), &t.0)
+            //Ok(fmt_identity(&t.0.name))
         }
     };
 }
@@ -1224,6 +1250,8 @@ pub(super) use fmt_groupby_term;
 pub(super) use fmt_qi;
 #[allow(unused_imports)]
 pub(super) use fmt_query;
+#[allow(unused_imports)]
+pub(super) use fmt_function_call;
 #[allow(unused_imports)]
 pub(super) use fmt_select_item_function;
 #[allow(unused_imports)]

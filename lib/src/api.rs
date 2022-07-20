@@ -342,6 +342,10 @@ pub enum SelectKind {
 pub enum FunctionParam {
     Fld(Field),
     Val(SingleVal,Option<String>),
+    Func {
+        fn_name: String,
+        parameters: Vec<FunctionParam>,
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]

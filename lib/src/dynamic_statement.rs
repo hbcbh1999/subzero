@@ -150,8 +150,9 @@ macro_rules! generate_fn {
     (@get_data_type $pp:ident false) => { &None };
     (@get_data_type $pp:ident true) => { $pp.to_data_type() };
 
-    (@generate $use_data_type:tt) => {
+    (@generate $use_data_type:tt $default_data_type:tt) => {
         pub fn generate<T: ?Sized +ToSql>(s: SqlSnippet<T>) -> (String, Vec<&T>, u32) {
+            let default = $default_data_type.to_string();
             match s {
                 SqlSnippet(c) => c.iter().fold((String::new(), vec![], 1), |acc, v| {
                     let (mut sql, mut params, pos) = acc;
@@ -162,7 +163,7 @@ macro_rules! generate_fn {
                         }
                         SqlSnippetChunk::Param(p) => {
                             let data_type:&Option<String> = generate_fn!(@get_data_type p $use_data_type);
-                            sql.push_str(format!(param_placeholder_format!(), pos=pos, data_type=data_type.clone().unwrap_or_default()).as_str());
+                            sql.push_str(format!(param_placeholder_format!(), pos=pos, data_type=data_type.clone().unwrap_or(default.clone())).as_str());
                             params.push(p);
                             (sql, params, pos + 1)
                         }
@@ -171,11 +172,14 @@ macro_rules! generate_fn {
             }
         }
     };
+    (true, $default_data_type:tt) => {
+        generate_fn!(@generate true $default_data_type);
+    };
     ($use_data_type:tt) => {
-        generate_fn!(@generate $use_data_type);
+        generate_fn!(@generate $use_data_type "");
     };
     () => {
-        generate_fn!(@generate false);
+        generate_fn!(@generate false "");
     };
 
 }

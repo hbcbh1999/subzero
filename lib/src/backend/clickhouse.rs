@@ -68,7 +68,7 @@ impl managed::Manager for Manager {
 type Pool = managed::Pool<Manager>;
 
 macro_rules! param_placeholder_format {() => {"{{p{pos}:{data_type}}}"};}
-generate_fn!(true);
+generate_fn!(true, "String");
 
 async fn execute<'a>(
     pool: &'a Pool, _authenticated: bool, request: &ApiRequest, _role: Option<&String>,

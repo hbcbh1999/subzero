@@ -11,7 +11,7 @@ use combine::{
     look_ahead,
     parser::{
         char::{char, digit, letter, spaces, string},
-        choice::{choice, optional, or},
+        choice::{choice, optional,},
         combinator::{attempt, not_followed_by},
         repeat::many,
         repeat::{many1, sep_by, sep_by1},
@@ -1095,7 +1095,8 @@ fn function_param<Input>() -> impl Parser<Input, Output = FunctionParam>
 where
     Input: Stream<Token = char>,
 {
-    or(
+    choice!(
+        function_call().map(|(fn_name, parameters)| FunctionParam::Func {fn_name, parameters}),
         field().map(FunctionParam::Fld),
         between(
             char('\''), 
@@ -1107,9 +1108,29 @@ where
     )
 }
 
+// We need to use `parser!` to break the recursive use of `function_call` to prevent the returned parser from containing itself
+fn function_call<Input>() -> impl Parser<Input, Output = (String,Vec<FunctionParam>)>
+where
+    Input: Stream<Token = char>,
+{
+    function_call_()
+}
+parser! {
+    #[inline]
+    fn function_call_[Input]()(Input) -> (String,Vec<FunctionParam>)
+    where [Input: Stream<Token = char>]
+    {
+        (
+            char('$'),
+            function_name(),
+            between(lex(char('(')), lex(char(')')),  sep_by(function_param(), lex(char(',')))),
+        )
+        .map(|(_, fn_name, parameters)| (fn_name,parameters))
+    }
+}
 
-// We need to use `parser!` to break the recursive use of `select_item` to prevent the returned parser
-// from containing itself
+
+// We need to use `parser!` to break the recursive use of `select_item` to prevent the returned parser from containing itself
 #[inline]
 fn select_item<Input>() -> impl Parser<Input, Output = SelectKind>
 where
@@ -1117,6 +1138,8 @@ where
 {
     select_item_()
 }
+
+
 
 
 parser! {
@@ -1132,9 +1155,7 @@ parser! {
             .map(|((alias, field), cast)| Item(Simple {field, alias, cast}));
         let function = (
             optional(attempt(alias())),
-            char('$'),
-            function_name(),
-            between(lex(char('(')), lex(char(')')),  sep_by(function_param(), lex(char(',')))),
+            function_call(),
             optional(
                 attempt(string("-p")
                 .and(between(lex(char('(')), lex(char(')')),  sep_by(field(), lex(char(','))))))
@@ -1144,7 +1165,7 @@ parser! {
                 .and(between(lex(char('(')), lex(char(')')),  sep_by(order_term(), lex(char(','))))))
             )
         )
-        .map(|(alias, _, fn_name, parameters, partitions, orders)| 
+        .map(|(alias, (fn_name, parameters), partitions, orders)| 
             Item(Func{
                 alias, fn_name, parameters, 
                 partitions: match partitions { None => vec![], Some((_,p))=>p},

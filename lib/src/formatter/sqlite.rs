@@ -30,6 +30,7 @@ use super::base::{
 
     star_select_item_format,
     //fmt_select_item_function,
+    fmt_function_call,
 };
 pub use super::base::return_representation;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
@@ -593,6 +594,7 @@ macro_rules! fmt_in_filter {
 }
 fmt_filter!();
 fmt_select_name!();
+fmt_function_call!();
 //fmt_select_item_function!();
 fn fmt_select_item_function<'a>(qi: &Qi, fn_name: &String,
     parameters: &'a [FunctionParam],
@@ -698,14 +700,14 @@ fmt_logic_operator!();
 fmt_identity!();
 //fmt_qi!();
 fn fmt_qi(qi: &Qi) -> String {
-    // match (qi.0.as_str(), qi.1.as_str()) {
-    //     _ => format!("{}", fmt_identity(&qi.1)),
-    // }
-    fmt_identity(&qi.1)
+    match (qi.0.as_str(), qi.1.as_str()) {
+        ("", "")  => format!(""),
+        _ => fmt_identity(&qi.1),
+    }
 }
 macro_rules! fmt_field_format {
     () => {
-        "json_extract({}.{}, '${}')"
+        "json_extract({}{}{}, '${}')"
     };
 }
 fmt_field!();
