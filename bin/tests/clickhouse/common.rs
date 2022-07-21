@@ -28,14 +28,14 @@ pub fn setup_db(init_db_once: &Once) {
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let tmp_ch_cmd = project_dir.join("tests/bin/clickhouse_tmp.sh");
-        let init_file = project_dir.join("tests/clickhouse/fixtures/load.sql");
-
+        let fixtures_dir = project_dir.join("tests/clickhouse/fixtures/");
+        let init_file = fixtures_dir.join("load.sql");
         let output = Command::new(tmp_ch_cmd)
             .arg("-t")
             // .arg("-u")
             // .arg("postgrest_test_authenticator")
-            .arg("-w")
-            .arg("300")
+            .arg("-w").arg("300")
+            .arg("-o").arg(format!("--user_files_path={}", fixtures_dir.to_str().unwrap()))
             .output()
             .expect("failed to start temporary ch process");
         if !output.status.success() {
@@ -66,18 +66,19 @@ pub fn setup_db(init_db_once: &Once) {
         }
         assert!(output.status.success());
 
-        let init_file_2 = project_dir.join("tests/clickhouse/fixtures/nyc_taxi.sql");
+        //let init_file_2 = project_dir.join("tests/clickhouse/fixtures/nyc_taxi.sql");
+        let init_file_2 = fixtures_dir.join("nyc_taxi.sql");
         let output = Command::new("tests/bin/ch_run_sql.sh")
             .arg(format!("{}",init_file_2.to_str().unwrap()))
             .arg(db_uri.clone().into_owned())
             .output()
             .expect("failed to execute process");
         
-        if !output.status.success() {
+        //if !output.status.success() {
             println!("status: {}", output.status);
             println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
             println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-        }
+        //}
         assert!(output.status.success());
 
         env::set_var("SUBZERO_DB_URI", &*db_uri);

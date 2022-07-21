@@ -8,10 +8,8 @@ CREATE DICTIONARY taxi_zone_dictionary (
     service_zone String
 )
 PRIMARY KEY LocationID
-SOURCE(HTTP(
-    url 'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/taxi_zone_lookup.csv'
-    format 'CSVWithNames'
-))
+--SOURCE(HTTP(url 'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/taxi_zone_lookup.csv' format 'CSVWithNames'))
+SOURCE(FILE(path 'taxi_zone_lookup.csv' format 'CSVWithNames'))
 LIFETIME(0)
 LAYOUT(HASHED());
 
@@ -68,8 +66,8 @@ ORDER BY pickup_datetime;
 
 
 INSERT INTO trips
-    SELECT * FROM s3(
-        'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_1.gz',
-        'TabSeparatedWithNames'
-    );
+SELECT * FROM
+--s3('https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_1.gz','TabSeparatedWithNames')
+file('trips_1.gz','TabSeparatedWithNames')
+;
 
