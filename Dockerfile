@@ -20,5 +20,7 @@ RUN apt-get update && \
 COPY --from=builder /usr/src/subzero/target/release/subzero /usr/local/bin/subzero
 COPY --from=builder /usr/src/subzero/postgresql_structure_query.sql /postgresql_structure_query.sql
 COPY --from=builder /usr/src/subzero/sqlite_structure_query.sql /sqlite_structure_query.sql
+COPY --from=builder /usr/src/subzero/clickhouse_structure_query.sql /sqlite_structure_query.sql
+COPY --from=builder /usr/src/subzero/relations.json /relations.json
 EXPOSE 8000
 CMD ["subzero"]

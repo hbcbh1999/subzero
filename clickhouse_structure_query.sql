@@ -34,7 +34,7 @@ columns as (
     database not in ('system', 'information_schema', 'INFORMATION_SCHEMA')
     and database in {p1:Array(String)}
 ),
-relations as (
+custom_relations as (
   select
     tupleElement(row,'constraint_name') as constraint_name,
     tupleElement(row,'table_schema') as table_schema,
@@ -63,6 +63,17 @@ relations as (
           )
       ) as row
   )
+),
+relations as (
+  select
+    constraint_name,
+    table_schema,
+    table_name,
+    columns,
+    foreign_table_schema,
+    foreign_table_name,
+    foreign_columns
+  from custom_relations
 ),
 json_schema as (
   select schemas_agg.array_agg as schemas

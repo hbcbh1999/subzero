@@ -36,3 +36,4 @@ mod unicode;
 mod update;
 mod upsert;
 mod aggregates;
+mod custom_relations;

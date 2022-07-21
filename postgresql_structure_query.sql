@@ -490,6 +490,20 @@ view_view_relations as (
     --and left_view.foreign_table_oid = right_view.table_oid
 ),
 
+custom_relations as (
+  select
+  constraint_name,
+  table_schema,
+  table_name,
+  0 as table_oid,
+  columns,
+  foreign_table_schema,
+  foreign_table_name,
+  0 as foreign_table_oid,
+  foreign_columns   
+  from json_to_recordset('{@relations.json}'::json) as x(constraint_name text, table_schema text, table_name text, columns text[], foreign_table_schema text, foreign_table_name text, foreign_columns text[])
+),
+
 relations as (
     select * from table_table_relations
     union all
@@ -498,6 +512,8 @@ relations as (
     select * from table_view_relations
     union all
     select * from view_view_relations
+    union all
+    select * from custom_relations
 ),
 
 json_schema as (
@@ -539,7 +555,8 @@ json_schema as (
                                 r.foreign_columns as referenced_columns
                             from relations r
                             where 
-                            r.table_oid= t.table_oid
+                            r.table_schema= t.table_schema
+                            and r.table_name= t.table_name
                             and r.table_schema = any($1)
                             and r.foreign_table_schema = any($1)
                         ) as foreign_keys), '[]')

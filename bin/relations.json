@@ -34,5 +34,14 @@
         "foreign_table_schema": "default",
         "foreign_table_name": "taxi_zone_dictionary",
         "foreign_columns": ["LocationID"]
+    },
+    {
+        "constraint_name": "no_fk_projects_client_id_fkey",
+        "table_schema":"test", 
+        "table_name":"no_fk_projects", 
+        "columns":["client_id"],
+        "foreign_table_schema":"test", 
+        "foreign_table_name":"clients", 
+        "foreign_columns":["id"]
     }
 ]

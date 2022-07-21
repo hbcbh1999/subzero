@@ -1,0 +1,11 @@
+[
+    {
+        "constraint_name": "tblA_fk_col_fkey",
+        "table_schema": "public",
+        "table_name": "tblA",
+        "columns": ["fk_col"],
+        "foreign_table_schema": "public",
+        "foreign_table_name": "tblB",
+        "foreign_columns": ["id"]
+    }
+]
