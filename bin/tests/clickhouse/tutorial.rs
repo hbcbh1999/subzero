@@ -68,4 +68,40 @@ feature "tutorial"
       ]
       "#|]
       { matchStatus = 200, matchHeaders = ["Content-Type" <:> "application/json"] }
+    it "pickups in each neighborhood" $
+      get "/trips?select=pickup_ntaname,pickup_hour:$toHour(pickup_datetime),pickups:$sum('1'::UInt8)&pickup_ntaname=not.eq.&groupby=pickup_ntaname,pickup_hour&order=pickup_ntaname,pickup_hour&limit=3"
+      shouldRespondWith
+      [json| r#"
+      [
+        {"pickup_ntaname":"Airport","pickup_hour":0,"pickups":"1796"},
+        {"pickup_ntaname":"Airport","pickup_hour":1,"pickups":"558"},
+        {"pickup_ntaname":"Airport","pickup_hour":2,"pickups":"196"}
+      ]
+      "#|]
+      { matchStatus = 200, matchHeaders = ["Content-Type" <:> "application/json"] }
+  describe "dictionary" $
+    it "dictGet function to retrieve a borough" $
+      get "/trips?select=total:$count('1'::UInt8),borough_name:$dictGetOrDefault('taxi_zone_dictionary'::String,'Borough'::String,$toUInt64(pickup_nyct2010_gid),'Unknown'::String)&or=(dropoff_nyct2010_gid.eq.132,dropoff_nyct2010_gid.eq.138)&groupby=borough_name&order=total.desc&limit=3"
+      shouldRespondWith
+      [json| r#"
+      [
+        {"total":"11747","borough_name":"Unknown"},
+        {"total":"3559","borough_name":"Manhattan"},
+        {"total":"3412","borough_name":"Brooklyn"}
+      ]
+      "#|]
+      { matchStatus = 200, matchHeaders = ["Content-Type" <:> "application/json"] }
+  describe "join" $
+    it "join the taxi_zone_dictionary with your trips" $
+      get "/trips?select=total:$count('1'::UInt8),borough:taxi_zone_dictionary!dropoff_fkey(name:Borough)&or=(dropoff_nyct2010_gid.eq.132,dropoff_nyct2010_gid.eq.138)&groupby=dropoff_nyct2010_gid&order=total.desc&limit=3"
+      shouldRespondWith
+      [json| r#"
+      [
+        {"total":"13826","borough":{"name":"Queens"}},
+        {"total":"8800","borough":{"name":"Queens"}}
+      ]
+      "#|]
+      { matchStatus = 200, matchHeaders = ["Content-Type" <:> "application/json"] }
+
+
 }

@@ -3,10 +3,10 @@
 use std::collections::HashSet;
 
 use super::base::{
-    cast_select_item_format, fmt_condition, fmt_field, fmt_field_format, fmt_filter,
-    fmt_identity, fmt_json_operand, fmt_json_operation, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_offset,
+    cast_select_item_format, fmt_condition, fmt_field, fmt_filter,
+    fmt_identity, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_offset,
     fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_select_item, fmt_select_name, return_representation,
-    simple_select_item_format, star_select_item_format, fmt_select_item_function,fmt_function_call, fmt_function_param,
+    simple_select_item_format, star_select_item_format, fmt_select_item_function,fmt_function_call,
 };
 use crate::api::{Condition::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *, ContentType::SingularJSON};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet};
@@ -57,6 +57,11 @@ impl ToSql for Payload {
 }
 
 
+macro_rules! fmt_field_format {
+    () => {
+        "JSON_VALUE({}{}{}, '${}')"
+    };
+}
 
 
 //fmt_main_query!();
@@ -129,23 +134,53 @@ fn fmt_query<'a>(
                 ),
             };
 
-            let join_cols = match join {
-                Some(Child(ForeignKey { columns, ..})) => {
-                    columns.into_iter()
-                    .map(|name| 
-                        Ok(sql(format!(
-                            simple_select_item_format!(),
-                            field=fmt_field(&qi, &Field { name: name.clone(), json_path: None })?,
-                            as=fmt_as(name, &None, &None),
-                            select_name=fmt_select_name(name, &None, &None).unwrap_or("".to_string())
-                        )))
-                    )
-                    .collect::<Result<Vec<_>>>()
-                }
-                _ => Ok(vec![])
-            }?;
+            
             
 
+            
+
+            // get the columns needed for joins
+            let empty = vec![];
+            let join_cols = match join {
+                Some(Child(ForeignKey { columns, ..})) => columns,
+                Some(Parent(ForeignKey { referenced_columns, ..})) => referenced_columns,
+                _ => &empty
+            };
+            // add simple items to the select snippets
+            let mut select_snippets = select.iter()
+                // do not add the columns needed for joins to the select snippets, we'll do that later
+                .filter(|s| match s {
+                    Simple {alias: None, cast: None, field: Field { name, json_path: None, .. }} => {
+                        !join_cols.contains(&name)
+                    }
+                    _ => true,
+                })
+                .map(|s| fmt_select_item(&qi, s)).collect::<Result<Vec<_>>>()?;
+
+            // add subselects
+            let (sub_selects, joins): (Vec<_>, Vec<_>) = q
+                .sub_selects
+                .iter()
+                .map(|s| fmt_sub_select_item(schema, &qi, s))
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .unzip();
+            select_snippets.extend(sub_selects.into_iter());
+
+            // add columns needed for joins
+            let join_cols_snippets = join_cols
+            .into_iter()
+            .map(|name| 
+                Ok(sql(format!(
+                    simple_select_item_format!(),
+                    field=fmt_field(&qi, &Field { name: name.clone(), json_path: None })?,
+                    as=fmt_as(name, &None, &None),
+                    select_name=fmt_select_name(name, &None, &None).unwrap_or("".to_string())
+                )))
+            )
+            .collect::<Result<Vec<_>>>()?;
+            select_snippets.extend(join_cols_snippets.into_iter());
+            
             let groupby_for_join = q.sub_selects.iter()
                 // get the table primary keys from subselect joins
                 .map(|s| match s {
@@ -173,20 +208,7 @@ fn fmt_query<'a>(
                     //filter only qunique
                     terms.retain(|GroupByTerm(Field { name, .. })| uniques.insert(name.clone()));
                     terms
-             });
-
-            let mut select_snippets = select.iter().map(|s| fmt_select_item(&qi, s)).collect::<Result<Vec<_>>>()?;
-            let (sub_selects, joins): (Vec<_>, Vec<_>) = q
-                .sub_selects
-                .iter()
-                .map(|s| fmt_sub_select_item(schema, &qi, s))
-                .collect::<Result<Vec<_>>>()?
-                .into_iter()
-                .unzip();
-            select_snippets.extend(sub_selects.into_iter());
-            select_snippets.extend(join_cols.into_iter());
-            
-            
+            });
             
             (
                 None,
@@ -218,6 +240,7 @@ fn fmt_query<'a>(
                     }
                     + " "
                     + (fmt_groupby(&qi, if groupby.len() > 0 { groupby } else { &groupby_for_join }  )?)
+                    + " "
                     + (fmt_order(&qi, order)?)
                     + " "
                     + fmt_limit(limit)
@@ -276,20 +299,21 @@ fmt_select_name!();
 fmt_select_item!();
 fmt_function_call!();
 fmt_select_item_function!();
-fmt_function_param!();
-// fn fmt_function_param<'a>(qi: &Qi, p: &'a FunctionParam) -> Result<Snippet<'a>> {
-//     Ok(match p {
-//         FunctionParam::Val(v,c) => {
-//             let vv: &SqlParam = v;
-            
-//             match c {
-//                 Some(c) => "cast(" + param(vv) + format!(" as {}", c) + ")",
-//                 None => param(vv),
-//             }
-//         },
-//         FunctionParam::Fld(f) => sql(fmt_field(qi, f)?),
-//     })
-// }
+//fmt_function_param!();
+fn fmt_function_param<'a>(qi: &Qi, p: &'a FunctionParam) -> Result<Snippet<'a>> {
+    Ok(match p {
+        FunctionParam::Val(v,_c) => {
+            let vv: &SqlParam = v;
+            param(vv)
+            // match c {
+            //     Some(c) => "cast(" + param(vv) + format!(" as {}", c) + ")",
+            //     None => param(vv),
+            // }
+        },
+        FunctionParam::Fld(f) => sql(fmt_field(qi, f)?),
+        FunctionParam::Func {fn_name,parameters,} => fmt_function_call(qi, fn_name, parameters)?,
+    })
+}
 //fmt_sub_select_item!();
 fn fmt_sub_select_item<'a>(schema: &String, qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
     match i {
@@ -422,8 +446,20 @@ fn fmt_as(name: &String, json_path: &Option<Vec<JsonOperation>>, alias: &Option<
 fmt_limit!();
 fmt_offset!();
 fmt_json_path!();
-fmt_json_operation!();
-fmt_json_operand!();
+//fmt_json_operation!();
+fn fmt_json_operation(j: &JsonOperation) -> String {
+    match j {
+        JArrow(o) => format!(".{}", fmt_json_operand(o)),
+        J2Arrow(o) => format!(".{}", fmt_json_operand(o)),
+    }
+}
+//fmt_json_operand!();
+fn fmt_json_operand(o: &JsonOperand) -> String {
+    match o {
+        JKey(k) => k.clone(),
+        JIdx(i) => format!("[{}]", i),
+    }
+}
 
 
 #[cfg(test)]
@@ -640,8 +676,8 @@ mod tests {
             from "default"."projects"
             left join (
                 select 
-                    "default"."clients"."id" as "id", 
-                    "default"."clients"."name" as "name"
+                    "default"."clients"."name" as "name",
+                    "default"."clients"."id" as "id"
                     from "default"."clients"
             ) as "projects_client" on "projects_client"."id" = "default"."projects"."client_id"
             left join (

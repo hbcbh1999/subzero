@@ -98,7 +98,7 @@ fn db_allowd_select_functions() -> Vec<String>{
         "row_number", "rank", " dense_rank", "cume_dist", "percent_rank", "first_value", "last_value", "nth_value",
         "lower", "trim", "upper", "concat", "concat_ws", "format", "substr", "ceil", "truncate",
         "date_diff",
-        "toHour",
+        "toHour", "dictGet", "dictHas", "dictGetOrDefault", "toUInt64"
         ].iter().map(|s| s.to_string()).collect()
 }
 //#[cfg(feature = "postgresql")]

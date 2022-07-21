@@ -18,7 +18,7 @@
         "foreign_columns": ["id"]
     },
     {
-        "constraint_name": "trips_pickup_nyct2010_gid_fkey",
+        "constraint_name": "pickup_fkey",
         "table_schema": "default",
         "table_name": "trips",
         "columns": ["pickup_nyct2010_gid"],
@@ -27,7 +27,7 @@
         "foreign_columns": ["LocationID"]
     },
     {
-        "constraint_name": "trips_dropoff_nyct2010_gid_fkey",
+        "constraint_name": "dropoff_fkey",
         "table_schema": "default",
         "table_name": "trips",
         "columns": ["dropoff_nyct2010_gid"],

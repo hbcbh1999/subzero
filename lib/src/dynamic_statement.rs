@@ -1,12 +1,12 @@
 use std::ops::Add;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SqlSnippetChunk<'a, T: ?Sized> {
     Sql(String),
     Param(&'a T),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SqlSnippet<'a, T: ?Sized>(pub Vec<SqlSnippetChunk<'a, T>>);
 
 impl<'a, T: ?Sized> SqlSnippet<'a, T> {

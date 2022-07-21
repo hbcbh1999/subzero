@@ -8,10 +8,13 @@ CREATE DICTIONARY taxi_zone_dictionary (
     service_zone String
 )
 PRIMARY KEY LocationID
---SOURCE(HTTP(url 'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/taxi_zone_lookup.csv' format 'CSVWithNames'))
-SOURCE(FILE(path 'taxi_zone_lookup.csv' format 'CSVWithNames'))
+SOURCE(HTTP(url 'https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/taxi_zone_lookup.csv' format 'CSVWithNames'))
+--SOURCE(FILE(path 'taxi_zone_lookup.csv' format 'CSVWithNames'))
 LIFETIME(0)
 LAYOUT(HASHED());
+
+-- force dict load
+SELECT dictGet('taxi_zone_dictionary', 'Borough', 132);
 
 create table trips (
     `trip_id` UInt32,
