@@ -2,18 +2,21 @@
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::{params_from_iter, ToSql};
-use crate::{
-    formatter::sqlite::{fmt_main_query, return_representation},
+use subzero_core::{
+    //formatter::sqlite::{fmt_main_query, return_representation},
+    formatter::{Param, Param::*, sqlite::{fmt_main_query, generate,return_representation}, ToParam,},
     api::{
-        Condition, Field, SelectItem, Filter, ListVal,
+        Condition, Field, SelectItem, Filter, ListVal, SingleVal, Payload,
         ApiRequest, ApiResponse, ContentType::*, Query, QueryNode::*, Preferences, Count
     },
     config::{VhostConfig,SchemaStructure::*},
-    dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk,param_placeholder_format},
-    error::{Result, *},
+    //dynamic_statement::{ SqlSnippet, SqlSnippetChunk, },
+    //error::{Result, *},
+    error::{JsonSerialize,JsonDeserialize,ReadFile},
+    error::{Error::{SingularityError, PutMatchingPkError}},
     schema::DbSchema,
 };
+use crate::error::{Result, *};
 use std::path::Path;
 use serde_json::{Value as JsonValue, json};
 use http::Method;
@@ -24,8 +27,62 @@ use rusqlite::vtab::array;
 use std::{fs};
 use super::{Backend, include_files};
 use tokio::task;
+use rusqlite::{
+    params_from_iter,
+    types::{ToSqlOutput, Value, Value::*, ValueRef},
+    Result as SqliteResult, ToSql,
+};
+use std::rc::Rc;
 
-generate_fn!();
+#[derive(Debug)]
+struct WrapParam<'a>(Param<'a>);
+impl ToSql for WrapParam<'_> {
+    fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
+        match self {
+            WrapParam(LV(ListVal(v, ..))) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
+            WrapParam(SV(SingleVal(v, ..))) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
+            WrapParam(PL(Payload(v, ..))) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
+        }
+    }
+}
+
+// fn to_sqlite_param<'a>(p: &'a (dyn ToParam + Sync)) -> &'a (dyn ToSql + Sync) {
+//     &WrapParam(p.to_param()) as &(dyn ToSql + Sync)
+// }
+fn wrap_param<'a>(p: &'a (dyn ToParam + Sync)) -> WrapParam<'a> {
+    WrapParam(p.to_param())
+}
+// fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
+//     p as &(dyn ToSql + Sync)
+// }
+// fn to_sqlite_param<'a>(p: &'a (dyn ToParam + Sync)) -> &'a (dyn ToSql + Sync) {
+//      cast_param(wrap_param(p))
+// }
+// impl ToSql for ListVal {
+//     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
+//         match self {
+//             ListVal(v, ..) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
+//         }
+//     }
+// }
+
+// impl ToSql for SingleVal {
+//     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
+//         match self {
+//             SingleVal(v, ..) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
+//         }
+//     }
+// }
+
+// impl ToSql for Payload {
+//     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
+//         match self {
+//             Payload(v, ..) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
+//         }
+//     }
+// }
+
+//generate_fn!();
 fn execute(
     pool: &Pool<SqliteConnectionManager>, authenticated: bool, request: &ApiRequest,
     _role: Option<&String>, _jwt_claims: &Option<JsonValue>, config: &VhostConfig,
@@ -59,10 +116,11 @@ fn execute(
                 _ => {}
             }
             
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, &mutate_request)?);
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, &mutate_request).context(CoreError)?);
             debug!("pre_statement: {}", main_statement);
             let mut mutate_stmt = conn.prepare(main_statement.as_str()).context(SqliteDbError { authenticated })?;
-            let mut rows = mutate_stmt.query(params_from_iter(main_parameters.iter())).context(SqliteDbError { authenticated })?;
+            let mutate_params = params_from_iter(main_parameters.into_iter().map(wrap_param));
+            let mut rows = mutate_stmt.query(mutate_params).context(SqliteDbError { authenticated })?;
             let mut ids:Vec<i64> = vec![];
             while let Some(r) = rows.next().context(SqliteDbError { authenticated })? {
                 ids.push(r.get(0).context(SqliteDbError { authenticated })?)
@@ -96,7 +154,7 @@ fn execute(
                         body: if return_representation {
                             serde_json::to_string(&ids.iter().map(|i| 
                                 json!({primary_key_column:i})
-                            ).collect::<Vec<_>>()).context(JsonSerialize)? 
+                            ).collect::<Vec<_>>()).context(JsonSerialize).context(CoreError)? 
                         } else {"".to_string()},
                         response_headers: None,
                         response_status: None
@@ -126,15 +184,15 @@ fn execute(
         None => request
     };
     
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, final_request).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, final_request).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
     debug!("main_statement: {}", main_statement);
     let mut main_stm = conn
         .prepare_cached(main_statement.as_str())
         .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
         .context(SqliteDbError { authenticated })?;
-
+    let parameters = params_from_iter(main_parameters.into_iter().map(wrap_param));
     let mut rows = main_stm
-        .query(params_from_iter(main_parameters.iter()))
+        .query(parameters)
         .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
         .context(SqliteDbError { authenticated })?;
 
@@ -153,10 +211,10 @@ fn execute(
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
         conn.execute_batch("ROLLBACK").context(SqliteDbError { authenticated })?;
-        return Err(Error::SingularityError {
+        return Err(to_core_error(SingularityError {
             count: api_response.page_total,
             content_type: "application/vnd.pgrst.object+json".to_string(),
-        });
+        }));
     }
 
     if request.method == Method::PUT && api_response.page_total != 1 {
@@ -165,7 +223,7 @@ fn execute(
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
         conn.execute_batch("ROLLBACK").context(SqliteDbError { authenticated })?;
-        return Err(Error::PutMatchingPkError);
+        return Err(to_core_error(PutMatchingPkError));
     }
 
     if config.db_tx_rollback {
@@ -208,7 +266,7 @@ impl Backend for SQLiteBackend {
                             let mut rows = stmt.query([]).context(SqliteDbError { authenticated })?;
                             match rows.next().context(SqliteDbError { authenticated })? {
                                 Some(r) => {
-                                    serde_json::from_str::<DbSchema>(r.get::<usize,String>(0).context(SqliteDbError { authenticated })?.as_str()).context(JsonDeserialize)
+                                    serde_json::from_str::<DbSchema>(r.get::<usize,String>(0).context(SqliteDbError { authenticated })?.as_str()).context(JsonDeserialize).context(CoreError)
                                 },
                                 None => Err(Error::InternalError { message: "sqlite structure query did not return any rows".to_string() }),
                             }
@@ -216,13 +274,13 @@ impl Backend for SQLiteBackend {
                     }
                     Err(e) => Err(e).context(SqliteDbPoolError),
                 },
-                Err(e) => Err(e).context(ReadFile { path: f }),
+                Err(e) => Err(e).context(ReadFile { path: f }).context(CoreError),
             },
             JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
-                Err(e) => Err(e).context(ReadFile { path: f }),
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
+                Err(e) => Err(e).context(ReadFile { path: f }).context(CoreError),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
+            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
         }?;
 
         Ok(SQLiteBackend {config, pool, db_schema})

@@ -7,10 +7,10 @@ use rocket::{
 };
 use rocket::response::{self};
 use std::io::Cursor;
-use subzero::error::Error;
+use crate::error::Error;
 use std::ops::Deref;
-use hyper::{http::HeaderMap as HyperHeaderMap};
-use bytes::{Bytes};
+//use hyper::{http::HeaderMap as HyperHeaderMap};
+//use bytes::{Bytes};
 //use hyper_reverse_proxy;
 //use hyper::{Client, client::HttpConnector};
 
@@ -61,24 +61,24 @@ impl<'r> Responder<'r, 'static> for ApiResponse {
     }
 }
 
-#[derive(Debug)]
-pub struct ProxyResponse {
-    pub status: u16,
-    pub headers: HyperHeaderMap,
-    pub body: Bytes,
-}
+// #[derive(Debug)]
+// pub struct ProxyResponse {
+//     pub status: u16,
+//     pub headers: HyperHeaderMap,
+//     pub body: Bytes,
+// }
 
-impl<'r> Responder<'r, 'static> for ProxyResponse {
-    fn respond_to(self, _req: &'r Request<'_>) -> Result<'static> {
-        let mut response = Response::new();
-        response.set_status(Status::from_code(self.status).unwrap_or_default());
-        for (n,v) in self.headers {
-            response.set_header(Header::new(n.unwrap().as_str().to_owned(), v.to_str().unwrap_or("").to_owned()));
-        }
-        response.set_sized_body(self.body.len(), Cursor::new(self.body));
-        Ok(response)
-    }
-}
+// impl<'r> Responder<'r, 'static> for ProxyResponse {
+//     fn respond_to(self, _req: &'r Request<'_>) -> Result<'static> {
+//         let mut response = Response::new();
+//         response.set_status(Status::from_code(self.status).unwrap_or_default());
+//         for (n,v) in self.headers {
+//             response.set_header(Header::new(n.unwrap().as_str().to_owned(), v.to_str().unwrap_or("").to_owned()));
+//         }
+//         response.set_sized_body(self.body.len(), Cursor::new(self.body));
+//         Ok(response)
+//     }
+// }
 
 // #[derive(Debug)]
 // pub struct DenoProxyResponse {

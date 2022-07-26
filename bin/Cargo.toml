@@ -6,22 +6,46 @@ autobins = false
 autobenches = false
 
 [dependencies]
+log = "0.4.14"
 bytes = "1.1.0"
 rocket = "0.5.0-rc.1"
-subzero = { version = "0.1.0", path = "../lib" }
+subzero-core = { version = "0.1.0", path = "../subzero-core" }
 http = "0.2"
+regex = { version="1.6.0", features=["default", "pattern"]}
+async-trait = "0.1.52"
 lazy_static = "1.4.0"
 snafu = "0.6.10"
 figment = { version = "0.10.6", features = ["toml", "env"] }
 hyper = { version = "0.14", features = ["full"] }
+jsonwebtoken = "7.2.0"
+jsonpath_lib = "0.3.0"
+serde_json = "1.0.68"
+tokio = { version = "1.6.1", features=[ "rt-multi-thread","process"] }
 # hyper-reverse-proxy = "0.5"
+url = { version = "2.2.2", optional = true }
+postgres-types = { version = "0.2.2", optional = true }
+tokio-postgres = { version = "0.7.4", optional = true }
+postgres-openssl = { version = "0.5.0", optional = true }
+deadpool-postgres = { version = "0.10.0", optional = true }
+deadpool = { version = "0.9.2", optional = true }
+
+rusqlite = { version = "0.26.3", features = ["array","bundled","window","series"], optional = true }
+r2d2 = { version = "0.8.9", optional = true }
+r2d2_sqlite = { version = "0.19.0", optional = true }
+base64 = { version = "0.13.0", optional = true }
+formdata = { version = "0.13.0", optional = true }
+openssl = { version="0.10", optional = true }
 
 [features]
 default = ["all"]
 all = ["postgresql", "sqlite", "clickhouse"]
-postgresql = ["subzero/postgresql"]
-sqlite = ["subzero/sqlite"]
-clickhouse = ["subzero/clickhouse"]
+# postgresql = ["subzero-core/postgresql"]
+# sqlite = ["subzero-core/sqlite"]
+# clickhouse = ["subzero-core/clickhouse"]
+postgresql = ["subzero-core/postgresql","postgres-types", "tokio-postgres", "deadpool-postgres", "postgres-openssl", "openssl"]
+clickhouse = ["subzero-core/clickhouse","subzero-core/sqlite","deadpool", "url", "formdata", "base64"]
+sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
+
 
 [[bin]]
 name = "subzero"

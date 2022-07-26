@@ -5,81 +5,86 @@ use super::base::{
     simple_select_item_format, star_select_item_format, fmt_function_param, fmt_select_item_function,fmt_function_call
 };
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
-use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet};
+use crate::dynamic_statement::{
+    param, sql, JoinIterator, SqlSnippet,  SqlSnippetChunk,
+    generate_fn, param_placeholder_format,
+};
 use crate::error::Result;
-use bytes::{BufMut, BytesMut};
-use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
-use std::error::Error;
+//use bytes::{BufMut, BytesMut};
+//use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
+//use std::error::Error;
 
-impl ToSql for ListVal {
-    fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
-        match self {
-            ListVal(v, ..) => {
-                if !v.is_empty() {
-                    out.put_slice(
-                        format!(
-                            "{{\"{}\"}}",
-                            v.iter()
-                                .map(|e| e.replace('\\', "\\\\").replace('\"', "\\\""))
-                                .collect::<Vec<_>>()
-                                .join("\",\"")
-                        )
-                        .as_str()
-                        .as_bytes(),
-                    );
-                } else {
-                    out.put_slice(r#"{}"#.as_bytes());
-                }
+use super::{ToParam, Snippet, SqlParam};
+generate_fn!();
+// impl ToSql for ListVal {
+//     fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+//         match self {
+//             ListVal(v, ..) => {
+//                 if !v.is_empty() {
+//                     out.put_slice(
+//                         format!(
+//                             "{{\"{}\"}}",
+//                             v.iter()
+//                                 .map(|e| e.replace('\\', "\\\\").replace('\"', "\\\""))
+//                                 .collect::<Vec<_>>()
+//                                 .join("\",\"")
+//                         )
+//                         .as_str()
+//                         .as_bytes(),
+//                     );
+//                 } else {
+//                     out.put_slice(r#"{}"#.as_bytes());
+//                 }
 
-                Ok(IsNull::No)
-            }
-        }
-    }
+//                 Ok(IsNull::No)
+//             }
+//         }
+//     }
 
-    fn accepts(_ty: &Type) -> bool { true }
+//     fn accepts(_ty: &Type) -> bool { true }
 
-    fn encode_format(&self) -> Format { Format::Text }
+//     fn encode_format(&self) -> Format { Format::Text }
 
-    to_sql_checked!();
-}
+//     to_sql_checked!();
+// }
 
-impl ToSql for SingleVal {
-    fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
-        match self {
-            SingleVal(v, ..) => {
-                out.put_slice(v.as_str().as_bytes());
-                Ok(IsNull::No)
-            }
-        }
-    }
+// impl ToSql for SingleVal {
+//     fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+//         match self {
+//             SingleVal(v, ..) => {
+//                 out.put_slice(v.as_str().as_bytes());
+//                 Ok(IsNull::No)
+//             }
+//         }
+//     }
 
-    fn accepts(_ty: &Type) -> bool { true }
+//     fn accepts(_ty: &Type) -> bool { true }
 
-    fn encode_format(&self) -> Format { Format::Text }
+//     fn encode_format(&self) -> Format { Format::Text }
 
-    to_sql_checked!();
-}
+//     to_sql_checked!();
+// }
 
-impl ToSql for Payload {
-    fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
-        match self {
-            Payload(v, ..) => {
-                out.put_slice(v.as_str().as_bytes());
-                Ok(IsNull::No)
-            }
-        }
-    }
+// impl ToSql for Payload {
+//     fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+//         match self {
+//             Payload(v, ..) => {
+//                 out.put_slice(v.as_str().as_bytes());
+//                 Ok(IsNull::No)
+//             }
+//         }
+//     }
 
-    fn accepts(_ty: &Type) -> bool { true }
+//     fn accepts(_ty: &Type) -> bool { true }
 
-    fn encode_format(&self) -> Format { Format::Text }
+//     fn encode_format(&self) -> Format { Format::Text }
 
-    to_sql_checked!();
-}
+//     to_sql_checked!();
+// }
 
-// helper type aliases
-type SqlParam<'a> = (dyn ToSql + Sync + 'a);
-type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
+// // helper type aliases
+// type SqlParam<'a> = (dyn ToSql + Sync + 'a);
+// type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
 
 fmt_main_query!();
 fmt_query!();
@@ -160,7 +165,7 @@ mod tests {
 
         let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
         let p = Payload(payload,None);
-        let pp: Vec<&(dyn ToSql + Sync)> = vec![&p];
+        let pp: Vec<&SqlParam> = vec![&p];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
         let re = Regex::new(r"\s+").unwrap();
         assert_eq!(
@@ -344,10 +349,10 @@ mod tests {
         };
 
         let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
-        let p0: &(dyn ToSql + Sync) = &ListVal(vec![s("51"), s("52")],None);
-        let p1: &(dyn ToSql + Sync) = &SingleVal(s("50"),None);
+        let p0: &SqlParam = &ListVal(vec![s("51"), s("52")],None);
+        let p1: &SqlParam = &SingleVal(s("50"),None);
         let p = Payload(payload,None);
-        let pp: Vec<&(dyn ToSql + Sync)> = vec![&p, p1, p0];
+        let pp: Vec<&SqlParam> = vec![&p, p1, p0];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
         let re = Regex::new(r"\s+").unwrap();
         assert_eq!(
@@ -713,7 +718,7 @@ mod tests {
             ),
             r#"("@@ to_tsquery ($1,$2)", [SingleVal("eng", None), SingleVal("2", None)], 3)"#.to_string()
         );
-        let p: Vec<&(dyn ToSql + Sync)> = vec![];
+        let p: Vec<&SqlParam> = vec![];
         assert_eq!(
             format!(
                 "{:?}",

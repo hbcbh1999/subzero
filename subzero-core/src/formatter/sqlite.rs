@@ -34,14 +34,16 @@ use super::base::{
 };
 pub use super::base::return_representation;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
-use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet};
+use crate::dynamic_statement::{param, sql, JoinIterator, 
+    SqlSnippet,SqlSnippetChunk,generate_fn, param_placeholder_format,};
 use crate::error::{Result,Error};
-use rusqlite::{
-    types::{ToSqlOutput, Value, Value::*, ValueRef},
-    Result as SqliteResult, ToSql,
-};
-use std::rc::Rc;
-
+use super::{ToParam, Snippet, SqlParam};
+// use rusqlite::{
+//     types::{ToSqlOutput, Value, Value::*, ValueRef},
+//     Result as SqliteResult, ToSql,
+// };
+// use std::rc::Rc;
+generate_fn!();
 macro_rules! simple_select_item_format {
     () => {
         "'{select_name}', {field}{as:.0}"
@@ -52,33 +54,33 @@ macro_rules! cast_select_item_format {
         "'{select_name}', cast({field} as {cast}){as:.0}"
     };
 }
-impl ToSql for ListVal {
-    fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
-        match self {
-            ListVal(v, ..) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
-        }
-    }
-}
+// impl ToSql for ListVal {
+//     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
+//         match self {
+//             ListVal(v, ..) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
+//         }
+//     }
+// }
 
-impl ToSql for SingleVal {
-    fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
-        match self {
-            SingleVal(v, ..) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
-        }
-    }
-}
+// impl ToSql for SingleVal {
+//     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
+//         match self {
+//             SingleVal(v, ..) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
+//         }
+//     }
+// }
 
-impl ToSql for Payload {
-    fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
-        match self {
-            Payload(v, ..) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
-        }
-    }
-}
+// impl ToSql for Payload {
+//     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
+//         match self {
+//             Payload(v, ..) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
+//         }
+//     }
+// }
 
-// helper type aliases
-type SqlParam<'a> = (dyn ToSql + Sync + 'a);
-type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
+// // helper type aliases
+// type SqlParam<'a> = (dyn ToSql + Sync + 'a);
+// type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
 
 //fmt_main_query!();
 pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Snippet<'a>> {
@@ -570,7 +572,7 @@ fmt_count_query!();
 //fmt_body!();
 #[rustfmt::skip]
 fn fmt_body<'a>(payload: &'a Payload, columns: &'a [String]) -> Snippet<'a> {
-    let payload_param: &(dyn ToSql + Sync) = payload;
+    let payload_param: &SqlParam = payload;
     " subzero_payload as ( select " + param(payload_param) + " as json_data ),"
     + " subzero_body as ("
     + " select "

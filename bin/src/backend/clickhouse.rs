@@ -10,17 +10,18 @@ use formdata::{FormData, generate_boundary, write_formdata};
 use deadpool::{managed,};
 use snafu::ResultExt;
 use tokio::time::{Duration, };
-use crate::{
+use crate::error::{Result, *};
+use subzero_core::{
     api::{
         ApiRequest, ApiResponse, 
         //ContentType::*, 
         SingleVal, Payload, ListVal},
     config::{VhostConfig,SchemaStructure::*},
-    dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk},
-    error::{Result, *},
+    //dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk},
+    error::{Error, JsonDeserialize, ReadFile},
     schema::{DbSchema},
     //dynamic_statement::{param, JoinIterator, SqlSnippet},
-    formatter::clickhouse::{fmt_main_query, Param::*, ToSql, },
+    formatter::{Param::*,clickhouse::{fmt_main_query, generate},}
 };
 //use log::{debug};
 use async_trait::async_trait;
@@ -67,8 +68,7 @@ impl managed::Manager for Manager {
 
 type Pool = managed::Pool<Manager>;
 
-macro_rules! param_placeholder_format {() => {"{{p{pos}:{data_type}}}"};}
-generate_fn!(true, "String");
+
 
 async fn execute<'a>(
     pool: &'a Pool, _authenticated: bool, request: &ApiRequest, _role: Option<&String>,
@@ -78,7 +78,7 @@ async fn execute<'a>(
     let uri = &o.0;
     let base_url = &o.1;
     let client = &o.2;
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, request)?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, request).context(CoreError)?);
     debug!("main_statement {}", main_statement);
     let mut parameters = vec![("query".to_string(), main_statement)];
     for (k, v) in main_parameters.iter().enumerate() {
@@ -116,13 +116,13 @@ async fn execute<'a>(
     let http_response = match client.request(http_req).await {
         Ok(r) => Ok(r),
         Err(e) => Err(Error::InternalError { message: e.to_string() }),
-    }?;
+    }.context(CoreError)?;
     let (parts, body) = http_response.into_parts();
     let status = parts.status.as_u16();
     let headers = parts.headers;
     debug!("status {:?}", status);
     debug!("headers {:?}", headers);
-    let bytes = hyper::body::to_bytes(body).await.context(ProxyError)?;
+    let bytes = hyper::body::to_bytes(body).await.context(HyperError)?;
     let body = String::from_utf8(bytes.to_vec()).unwrap_or("".to_string());
     let page_total = match headers.get("x-clickhouse-summary") {
         Some(s)=> match serde_json::from_str::<JsonValue>(s.to_str().unwrap_or("")) {
@@ -158,7 +158,7 @@ async fn execute<'a>(
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
         //transaction.rollback().await.context(PgDbError { authenticated })?;
-        return Err(Error::PutMatchingPkError);
+        return Err(to_core_error(Error::PutMatchingPkError));
     }
 
     // if config.db_tx_rollback {
@@ -229,26 +229,26 @@ impl Backend for ClickhouseBackend {
                         let http_response = match client.request(http_req).await {
                             Ok(r) => Ok(r),
                             Err(e) => Err(Error::InternalError { message: e.to_string() }),
-                        }?;
+                        }.context(CoreError)?;
                         let (parts, body) = http_response.into_parts();
                         
                         let _status = parts.status.as_u16();
                         let _headers = parts.headers;
-                        let bytes = hyper::body::to_bytes(body).await.context(ProxyError)?;
+                        let bytes = hyper::body::to_bytes(body).await.context(HyperError)?;
                         let s = String::from_utf8(bytes.to_vec()).unwrap_or("".to_string());
                         //println!("clickhouse body {:?}", s);
-                        serde_json::from_str::<DbSchema>(&s).context(JsonDeserialize)
+                        serde_json::from_str::<DbSchema>(&s).context(JsonDeserialize).context(CoreError)
                         
                     }
                     Err(e) => Err(e).context(ClickhouseDbPoolError),
                 },
-                Err(e) => Err(e).context(ReadFile { path: f }),
+                Err(e) => Err(e).context(ReadFile { path: f }).context(CoreError),
             },
             JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
-                Err(e) => Err(e).context(ReadFile { path: f }),
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
+                Err(e) => Err(e).context(ReadFile { path: f }).context(CoreError),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
+            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
         }?;
 
         Ok(ClickhouseBackend {config, pool, db_schema})

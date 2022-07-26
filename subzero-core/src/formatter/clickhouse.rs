@@ -9,52 +9,57 @@ use super::base::{
     simple_select_item_format, star_select_item_format, fmt_select_item_function,fmt_function_call,
 };
 use crate::api::{Condition::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *, ContentType::SingularJSON};
-use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet};
+use crate::dynamic_statement::{
+    param, sql, JoinIterator, SqlSnippet,  SqlSnippetChunk,
+    generate_fn,
+};
 use crate::error::{Result, *};
+
+use super::{ToParam, Snippet, SqlParam};
 //use clickhouse::{Client,sql::Bind};
 //use bytes::{BufMut, BytesMut};
 //use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
 // use postgres_types::{ToSql};
 //use std::error::Error;
-#[derive(Debug)]
-pub enum Param<'a> {
-    LV(&'a ListVal),
-    SV(&'a SingleVal),
-    PL(&'a Payload),
-}
-// helper type aliases
-pub trait ToSql {
-    fn to_param(&self) -> Param;
-    fn to_data_type(&self) -> &Option<String>;
-}
+// #[derive(Debug)]
+// pub enum Param<'a> {
+//     LV(&'a ListVal),
+//     SV(&'a SingleVal),
+//     PL(&'a Payload),
+// }
+// // helper type aliases
+// pub trait ToSql {
+//     fn to_param(&self) -> Param;
+//     fn to_data_type(&self) -> &Option<String>;
+// }
 
-pub type SqlParam<'a> = (dyn ToSql + Sync + 'a);
-pub type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
+// pub type SqlParam<'a> = (dyn ToSql + Sync + 'a);
+// pub type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
 
 
-impl ToSql for ListVal {
-    fn to_param(&self) -> Param {Param::LV(self)}
-    fn to_data_type(&self) -> &Option<String> {
-        //println!("to_data_type {:?}", &self);
-        &self.1
-    }
-}
+// impl ToSql for ListVal {
+//     fn to_param(&self) -> Param {Param::LV(self)}
+//     fn to_data_type(&self) -> &Option<String> {
+//         //println!("to_data_type {:?}", &self);
+//         &self.1
+//     }
+// }
 
-impl ToSql for SingleVal {
-    fn to_param(&self) -> Param {Param::SV(self)}
-    fn to_data_type(&self) -> &Option<String> {
-        //println!("to_data_type {:?}", &self);
-        &self.1
-    }
-}
+// impl ToSql for SingleVal {
+//     fn to_param(&self) -> Param {Param::SV(self)}
+//     fn to_data_type(&self) -> &Option<String> {
+//         //println!("to_data_type {:?}", &self);
+//         &self.1
+//     }
+// }
 
-impl ToSql for Payload {
-    fn to_param(&self) -> Param {Param::PL(self)}
-    fn to_data_type(&self) -> &Option<String> {
-        //println!("to_data_type {:?}", &self);
-        &self.1
-    }
-}
+// impl ToSql for Payload {
+//     fn to_param(&self) -> Param {Param::PL(self)}
+//     fn to_data_type(&self) -> &Option<String> {
+//         //println!("to_data_type {:?}", &self);
+//         &self.1
+//     }
+// }
 
 
 macro_rules! fmt_field_format {
@@ -62,6 +67,9 @@ macro_rules! fmt_field_format {
         "JSON_VALUE({}{}{}, '${}')"
     };
 }
+
+macro_rules! param_placeholder_format {() => {"{{p{pos}:{data_type}}}"};}
+generate_fn!(true, "String");
 
 
 //fmt_main_query!();

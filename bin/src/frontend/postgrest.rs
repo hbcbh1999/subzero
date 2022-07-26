@@ -7,15 +7,18 @@ use snafu::ResultExt;
 #[cfg(feature = "sqlite")]
 use tokio::task;
 
-use crate::api::{ApiResponse, FunctionParam};
+use subzero_core::api::{ApiResponse, FunctionParam};
 
-use crate::{
+use crate::backend::Backend;
+use subzero_core::{
     api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*, SelectItem::*},
-    error::{Result, *},
+    error::{*},
     parser::postgrest::parse,
-    backend::Backend,
+    //backend::Backend,
     config::{VhostConfig},
 };
+
+use crate::error::{Result, CoreError, to_core_error};
 
 use std::{
     collections::HashMap,
@@ -32,10 +35,10 @@ fn validate_fn_param(config: &VhostConfig, p: &FunctionParam) -> Result<()> {
     match p {
         FunctionParam::Func { fn_name, parameters } => {
             if !config.db_allowd_select_functions.contains(&fn_name) {
-                return Err(Error::ParseRequestError { 
+                return Err(to_core_error(Error::ParseRequestError { 
                     details: format!("calling: '{}' is not allowed", fn_name),
                     message: "Unsafe functions called".to_string(),
-                });
+                }));
             }
             for p in parameters {
                 validate_fn_param(config, p)?;
@@ -82,7 +85,7 @@ pub async fn handle(
             }
         }
         _ => Ok(config.db_schemas.get(0).unwrap().clone()),
-    }?);
+    }.context(CoreError)?);
 
     if config.db_schemas.len() > 1 {
         response_headers.push(("Content-Profile".to_string(), schema_name.clone()));
@@ -102,10 +105,10 @@ pub async fn handle(
                         match decode::<JsonValue>(t, &DecodingKey::from_secret(key.as_bytes()), &validation) {
                             Ok(c) => {
                                 if let Some(exp) = c.claims.get("exp") {
-                                    if from_value::<u64>(exp.clone()).context(JsonSerialize)? < get_current_timestamp() - 1 {
-                                        return Err(Error::JwtTokenInvalid {
+                                    if from_value::<u64>(exp.clone()).context(JsonSerialize).context(CoreError)? < get_current_timestamp() - 1 {
+                                        return Err(to_core_error(Error::JwtTokenInvalid {
                                             message: "JWT expired".to_string(),
-                                        });
+                                        }));
                                     }
                                 }
                                 Ok(Some(c.claims))
@@ -122,7 +125,7 @@ pub async fn handle(
             None => Ok(None),
         },
         None => Ok(None),
-    }?;
+    }.context(CoreError)?;
 
     let (role, authenticated) = match &jwt_claims {
         Some(claims) => match select(claims, format!("${}", config.role_claim_key).as_str()) {
@@ -133,15 +136,15 @@ pub async fn handle(
             Err(e) => Err(Error::JwtTokenInvalid { message: format!("{}", e) }),
         },
         None => Ok((config.db_anon_role.as_ref(), false)),
-    }?;
+    }.context(CoreError)?;
 
     // do not allow unauthenticated requests when there is no anonymous role setup
     if let (None, false) = (role, authenticated) {
-        return Err(Error::JwtTokenInvalid {message: "unauthenticated requests not allowed".to_string()})
+        return Err(to_core_error(Error::JwtTokenInvalid {message: "unauthenticated requests not allowed".to_string()}))
     }
 
     // parse request and generate the query
-    let request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, config.db_max_rows)?;
+    let request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, config.db_max_rows).context(CoreError)?;
     // check only safe functions are used
     
     for (p, n) in &request.query {
@@ -154,10 +157,10 @@ pub async fn handle(
                 for s in select {
                     if let Func {fn_name, parameters, ..} = s {
                         if !config.db_allowd_select_functions.contains(fn_name) {
-                            return Err(Error::ParseRequestError { 
+                            return Err(to_core_error(Error::ParseRequestError { 
                                 details: format!("calling: '{}' is not allowed", fn_name),
                                 message: "Unsafe functions called".to_string(),
-                            });
+                            }));
                         }
                         for p in parameters {
                             validate_fn_param(config, p)?;
@@ -219,17 +222,17 @@ pub async fn handle(
                                         Ok(())
                                     }
                                     _ => Err(Error::GucHeadersError),
-                                }?
+                                }.context(CoreError)?
                             }
                             Ok(())
                         }
                         _ => Err(Error::GucHeadersError),
-                    }?
+                    }.context(CoreError)?
                 }
                 Ok(())
             }
             _ => Err(Error::GucHeadersError),
-        }?
+        }.context(CoreError)?
     }
 
     #[rustfmt::skip]
@@ -257,7 +260,7 @@ pub async fn handle(
 
     let response_status: Option<String> = response.response_status;
     if let Some(response_status_str) = response_status {
-        status = response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError)?;
+        status = response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError).context(CoreError)?;
     }
 
     Ok((status, content_type, response_headers, response.body))

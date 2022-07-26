@@ -1,18 +1,23 @@
-use tokio_postgres::{types::ToSql, IsolationLevel};
+use tokio_postgres::{IsolationLevel};
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts, Object, PoolError};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use postgres_openssl::{MakeTlsConnector};
 use snafu::ResultExt;
 use tokio::time::{Duration, sleep};
-use crate::{
-    api::{ApiRequest, ApiResponse, ContentType::*, },
+use subzero_core::{
+    api::{ApiRequest, ApiResponse, ContentType::*, SingleVal,ListVal,Payload},
     config::{VhostConfig,SchemaStructure::*},
-    dynamic_statement::{ generate_fn, SqlSnippet, SqlSnippetChunk},
-    error::{Result, *},
+    dynamic_statement::{ SqlSnippet, },
+    //error::{Result, *},
+    error::{Error::{SingularityError, PutMatchingPkError}},
     schema::{DbSchema},
-    dynamic_statement::{param, JoinIterator, param_placeholder_format},
-    formatter::postgresql::fmt_main_query,
+    dynamic_statement::{param, JoinIterator, },
+    
+    formatter::{SqlParam, Param, Param::*, postgresql::{fmt_main_query, generate}, ToParam,},
+    error::{JsonDeserialize, ReadFile}
 };
+use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
+use crate::error::{Result, *};
 use async_trait::async_trait;
 
 use super::{Backend, include_files};
@@ -21,9 +26,53 @@ use std::{collections::HashMap, fs};
 use std::path::Path;
 use serde_json::{Value as JsonValue};
 use http::Method;
-
-generate_fn!();
+use bytes::{BufMut, BytesMut};
+use std::error::Error;
+// generate_fn!();
 // use futures::future;
+#[derive(Debug)]
+struct WrapParam<'a>(Param<'a>);
+
+impl ToSql for WrapParam<'_> {
+    fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
+        match self {
+            WrapParam(SV(SingleVal(v, ..))) => {
+                out.put_slice(v.as_str().as_bytes());
+                Ok(IsNull::No)
+            }
+            WrapParam(PL(Payload(v, ..))) => {
+                out.put_slice(v.as_str().as_bytes());
+                Ok(IsNull::No)
+            }
+            WrapParam(LV(ListVal(v, ..))) => {
+                if !v.is_empty() {
+                    out.put_slice(
+                        format!(
+                            "{{\"{}\"}}",
+                            v.iter()
+                                .map(|e| e.replace('\\', "\\\\").replace('\"', "\\\""))
+                                .collect::<Vec<_>>()
+                                .join("\",\"")
+                        )
+                        .as_str()
+                        .as_bytes(),
+                    );
+                } else {
+                    out.put_slice(r#"{}"#.as_bytes());
+                }
+
+                Ok(IsNull::No)
+            }
+        }
+    }
+
+    fn accepts(_ty: &Type) -> bool { true }
+
+    fn encode_format(&self) -> Format { Format::Text }
+
+    to_sql_checked!();
+}
+
 
 fn get_postgrest_env(role: Option<&String>, search_path: &[String], request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
     let mut env = HashMap::new();
@@ -103,14 +152,33 @@ fn get_postgrest_env(role: Option<&String>, search_path: &[String], request: &Ap
     env
 }
 
-fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+// fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
+//     "select "
+//         + env
+//             .iter()
+//             .map(|(k, v)| "set_config(" + param(k as &(dyn ToSql + Sync + 'a)) + ", " + param(v as &(dyn ToSql + Sync + 'a)) + ", true)")
+//             .join(",")
+// }
+
+fn get_postgrest_env_query<'a>(env: Vec<(&'a SqlParam, &'a SqlParam)>) -> SqlSnippet<'a, SqlParam<'a>> {
     "select "
         + env
-            .iter()
-            .map(|(k, v)| "set_config(" + param(k as &(dyn ToSql + Sync + 'a)) + ", " + param(v as &(dyn ToSql + Sync + 'a)) + ", true)")
+            .into_iter()
+            .map(|(k, v)| "set_config(" + param(k) + ", " + param(v) + ", true)")
             .join(",")
 }
 
+fn wrap_param<'a>(p: &'a (dyn ToParam + Sync)) -> WrapParam<'a> {
+    WrapParam(p.to_param())
+}
+fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
+    p as &(dyn ToSql + Sync)
+}
+
+// fn to_pg_param<'a>(p: &'a (dyn ToParam + Sync)) -> &'a (dyn ToSql + Sync) {
+//     let v = p.to_param();
+//     &WrapParam(p.to_param()) as &(dyn ToSql + Sync)
+// }
 async fn execute<'a>(
     pool: &'a Pool, authenticated: bool, request: &ApiRequest, role: Option<&String>,
     jwt_claims: &Option<JsonValue>, config: &VhostConfig
@@ -118,9 +186,17 @@ async fn execute<'a>(
     let mut client = pool.get().await.context(PgDbPoolError)?;
 
     
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, request)?);
-    let env = get_postgrest_env(role, &[request.schema_name.clone()], request, jwt_claims, config.db_use_legacy_gucs);
-    let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(&env));
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, request).context(CoreError)?);
+    let env = get_postgrest_env(role, &[request.schema_name.clone()], request, jwt_claims, config.db_use_legacy_gucs)
+        .into_iter()
+        .map(|(k, v)| (SingleVal(k, Some("text".to_string())), SingleVal(v, Some("text".to_string()))))
+        .collect::<Vec<_>>();
+    let env = env.iter()
+        .map(|(k, v)| (k as &SqlParam, v as &SqlParam))
+        .collect::<Vec<_>>();
+
+    let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(env));
+    //let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(vec![]));
     //println!("{}\n{}\n{:?}", main_statement, env_statement, env_parameters);
     let transaction = client
         .build_transaction()
@@ -147,7 +223,8 @@ async fn execute<'a>(
         .await
         .context(PgDbError { authenticated })?;
     let _ = transaction
-        .query(&env_stm, env_parameters.as_slice())
+        .query(&env_stm, env_parameters.into_iter().map(wrap_param).collect::<Vec<_>>().iter().map(cast_param).collect::<Vec<_>>().as_slice())
+        //.query(&env_stm, env_parameters.as_slice())
         .await
         .context(PgDbError { authenticated })?;
 
@@ -171,7 +248,7 @@ async fn execute<'a>(
         .context(PgDbError { authenticated })?;
 
     let rows = transaction
-        .query(&main_stm, main_parameters.as_slice())
+        .query(&main_stm, main_parameters.into_iter().map(wrap_param).collect::<Vec<_>>().iter().map(cast_param).collect::<Vec<_>>().as_slice())
         .await
         .context(PgDbError { authenticated })?;
 
@@ -187,10 +264,10 @@ async fn execute<'a>(
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
         transaction.rollback().await.context(PgDbError { authenticated })?;
-        return Err(Error::SingularityError {
+        return Err(to_core_error(SingularityError {
             count: api_response.page_total,
             content_type: "application/vnd.pgrst.object+json".to_string(),
-        });
+        }));
     }
 
     if request.method == Method::PUT && api_response.page_total != 1 {
@@ -199,7 +276,7 @@ async fn execute<'a>(
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
         transaction.rollback().await.context(PgDbError { authenticated })?;
-        return Err(Error::PutMatchingPkError);
+        return Err(to_core_error(PutMatchingPkError));
     }
 
     if config.db_tx_rollback {
@@ -264,7 +341,7 @@ impl Backend for PostgreSQLBackend {
                         match transaction.query(&query, &[&config.db_schemas]).await {
                             Ok(rows) => {
                                 transaction.commit().await.context(PgDbError { authenticated })?;
-                                serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize)
+                                serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize).context(CoreError)
                             }
                             Err(e) => {
                                 transaction.rollback().await.context(PgDbError { authenticated })?;
@@ -274,13 +351,13 @@ impl Backend for PostgreSQLBackend {
                     }
                     Err(e) => Err(e).context(PgDbPoolError),
                 },
-                Err(e) => Err(e).context(ReadFile { path: f }),
+                Err(e) => Err(e).context(ReadFile { path: f }).context(CoreError),
             },
             JsonFile(f) => match fs::read_to_string(f) {
                 Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
                 Err(e) => Err(e).context(ReadFile { path: f }),
-            },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
+            }.context(CoreError),
+            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
         }?;
 
         Ok(PostgreSQLBackend {config, pool, db_schema})

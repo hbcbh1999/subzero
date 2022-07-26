@@ -1,0 +1,40 @@
+[package]
+name = "subzero-core"
+version = "0.1.0"
+edition = "2018"
+autobenches = false
+
+[dependencies]
+log = "0.4.14"
+http = "0.2"
+
+
+
+hyper = { version = "0.14", features = ["full"] }
+
+combine = "=4.6.1"
+lazy_static = "1.4.0"
+serde = "1.0.130"
+serde_json = "1.0.68"
+csv = "1.1.6"
+snafu = "0.6.10"
+
+
+
+bytes = "1.1.0"
+futures = "0.3.17"
+
+
+
+[features]
+default = []
+postgresql = []
+clickhouse = []
+sqlite = []
+# postgresql = ["postgres-types", "tokio-postgres", "deadpool-postgres", "postgres-openssl", "openssl"]
+# clickhouse = ["deadpool", "url", "formdata", "base64"]
+# sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
+
+[dev-dependencies]
+pretty_assertions = "1.0.0"
+regex = "1.4.6"
