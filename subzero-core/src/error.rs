@@ -13,7 +13,7 @@ use serde_json::{json, Value as JsonValue};
 // use rocket::http::Status;
 // use rocket::request::Request;
 // use rocket::response::{self, Responder, Response};
-use std::{io, path::PathBuf};
+//use std::{io, path::PathBuf};
 // #[cfg(feature = "postgresql")]
 // use tokio_postgres::{Error as PgError};
 
@@ -88,8 +88,8 @@ pub enum Error {
 
     // #[snafu(display("PgError {} {} {} {}", code, message, details, hint))]
     // PgError {code: String, message: String, details: String, hint: String},
-    #[snafu(display("Unable to read from {}: {}", path.display(), source))]
-    ReadFile { source: io::Error, path: PathBuf },
+    // #[snafu(display("Unable to read from {}: {}", path.display(), source))]
+    // ReadFile { source: io::Error, path: PathBuf },
 
     #[snafu(display("Failed to deserialize json: {}", source))]
     JsonDeserialize { source: serde_json::Error },
@@ -149,8 +149,8 @@ pub enum Error {
     // #[snafu(display("ThreadError: {}", source))]
     // ThreadError { source: JoinError },
     
-    #[snafu(display("IoError: {}", source))]
-    IoError { source: io::Error },
+    // #[snafu(display("IoError: {}", source))]
+    // IoError { source: io::Error },
     
     // #[snafu(display("ProxyError: {}", source))]
     // ProxyError { source: HyperError },
@@ -185,7 +185,7 @@ impl Error {
         match self {
             // Error::HttpRequestError { .. } => 500,
             // Error::ProxyError {..} => 500,
-            Error::IoError { ..} => 500,
+            // Error::IoError { ..} => 500,
             // #[cfg(feature = "sqlite")]
             // Error::ThreadError { .. } => 500,
             Error::UnsupportedFeature { .. } => 400,
@@ -206,7 +206,7 @@ impl Error {
             Error::NotFound { .. } => 404,
             Error::NoRpc { .. } => 404,
             Error::UnsupportedVerb { .. } => 405,
-            Error::ReadFile { .. } => 500,
+            // Error::ReadFile { .. } => 500,
             Error::JsonDeserialize { .. } => 400,
             Error::LimitOffsetNotAllowedError => 400,
             Error::CsvDeserialize { .. } => 400,
@@ -284,7 +284,7 @@ impl Error {
         match self {
             // Error::HttpRequestError { source } => {json!({ "message": format!("Proxy error {}", source) })},
             // Error::ProxyError { source } => {json!({ "message": format!("Proxy error {}", source) })}
-            Error::IoError { source } => {json!({ "message": format!("IO error {}", source) })}
+            //Error::IoError { source } => {json!({ "message": format!("IO error {}", source) })}
             Error::UnsupportedFeature {message} => json!({ "message": message }),
             // #[cfg(feature = "sqlite")]
             // Error::ThreadError { .. } => json!({"message":"internal thread error"}),
@@ -361,9 +361,9 @@ impl Error {
                     "message": format!("Could not find the {}.{}{} in the schema cache", schema, proc_name, msg_part)
                 })
             }
-            Error::ReadFile { source, path } => {
-                json!({ "message": format!("Failed to read file {} ({})", path.to_str().unwrap(), source) })
-            }
+            // Error::ReadFile { source, path } => {
+            //     json!({ "message": format!("Failed to read file {} ({})", path.to_str().unwrap(), source) })
+            // }
             Error::JsonDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::CsvDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::JsonSerialize { .. } => json!({ "message": format!("{}", self) }),

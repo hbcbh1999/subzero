@@ -11,14 +11,15 @@ use deadpool::{managed,};
 use snafu::ResultExt;
 use tokio::time::{Duration, };
 use crate::error::{Result, *};
+use crate::config::{VhostConfig,SchemaStructure::*};
 use subzero_core::{
     api::{
         ApiRequest, ApiResponse, 
         //ContentType::*, 
         SingleVal, Payload, ListVal},
-    config::{VhostConfig,SchemaStructure::*},
+    //config::{VhostConfig,SchemaStructure::*},
     //dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk},
-    error::{Error, JsonDeserialize, ReadFile},
+    error::{Error, JsonDeserialize,},
     schema::{DbSchema},
     //dynamic_statement::{param, JoinIterator, SqlSnippet},
     formatter::{Param::*,clickhouse::{fmt_main_query, generate},}
@@ -242,11 +243,11 @@ impl Backend for ClickhouseBackend {
                     }
                     Err(e) => Err(e).context(ClickhouseDbPoolError),
                 },
-                Err(e) => Err(e).context(ReadFile { path: f }).context(CoreError),
+                Err(e) => Err(e).context(ReadFile { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(f) {
                 Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
-                Err(e) => Err(e).context(ReadFile { path: f }).context(CoreError),
+                Err(e) => Err(e).context(ReadFile { path: f }),
             },
             JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
         }?;

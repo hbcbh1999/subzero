@@ -4,9 +4,10 @@ use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use postgres_openssl::{MakeTlsConnector};
 use snafu::ResultExt;
 use tokio::time::{Duration, sleep};
+use crate::config::{VhostConfig,SchemaStructure::*};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, ContentType::*, SingleVal,ListVal,Payload},
-    config::{VhostConfig,SchemaStructure::*},
+    //config::{VhostConfig,SchemaStructure::*},
     dynamic_statement::{ SqlSnippet, },
     //error::{Result, *},
     error::{Error::{SingularityError, PutMatchingPkError}},
@@ -14,7 +15,7 @@ use subzero_core::{
     dynamic_statement::{param, JoinIterator, },
     
     formatter::{SqlParam, Param, Param::*, postgresql::{fmt_main_query, generate}, ToParam,},
-    error::{JsonDeserialize, ReadFile}
+    error::{JsonDeserialize,}
 };
 use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
 use crate::error::{Result, *};
@@ -351,12 +352,12 @@ impl Backend for PostgreSQLBackend {
                     }
                     Err(e) => Err(e).context(PgDbPoolError),
                 },
-                Err(e) => Err(e).context(ReadFile { path: f }).context(CoreError),
+                Err(e) => Err(e).context(ReadFile { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize),
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
                 Err(e) => Err(e).context(ReadFile { path: f }),
-            }.context(CoreError),
+            },
             JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
         }?;
 

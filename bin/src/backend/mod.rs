@@ -1,5 +1,6 @@
-use subzero_core::{config::VhostConfig, api::{ApiRequest,ApiResponse}, schema::DbSchema};
+use subzero_core::{api::{ApiRequest,ApiResponse}, schema::DbSchema};
 use crate::error::Result;
+use crate::config::{VhostConfig,};
 use serde_json::{Value};
 use async_trait::async_trait;
 use regex::Regex;

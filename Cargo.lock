@@ -2128,6 +2128,7 @@ dependencies = [
  "regex",
  "rocket",
  "rusqlite",
+ "serde",
  "serde_json",
  "snafu",
  "speculate",

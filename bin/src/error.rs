@@ -4,6 +4,8 @@ use serde_json::{json, Value as JsonValue};
 //use hyper::Error as HyperError;
 
 
+use std::{io, path::PathBuf};
+
 use subzero_core::error::Error as SubzeroCoreError;
 
 #[cfg(feature = "postgresql")]
@@ -33,6 +35,10 @@ use hyper::Error as SourceHyperError;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
+
+    #[snafu(display("Unable to read from {}: {}", path.display(), source))]
+    ReadFile { source: io::Error, path: PathBuf },
+
     #[cfg(feature = "postgresql")]
     #[snafu(display("DbPoolError {}", source))]
     PgDbPoolError { source: PgPoolError },
@@ -94,6 +100,8 @@ impl Error {
 
     pub fn status_code(&self) -> u16 {
         match self {
+            Error::ReadFile { .. } => 500,
+
             #[cfg(feature = "clickhouse")]
             Error::HyperError {..} => 500,
             Error::InternalError { .. } => 500,
@@ -171,6 +179,9 @@ impl Error {
 
     pub fn json_body(&self) -> JsonValue {
         match self {
+            Error::ReadFile { source, path } => {
+                json!({ "message": format!("Failed to read file {} ({})", path.to_str().unwrap(), source) })
+            }
             Error::InternalError { message } => json!({ "message": message }),
             #[cfg(feature = "clickhouse")]
             Error::HttpRequestError { source } => {json!({ "message": format!("{}", source) })},

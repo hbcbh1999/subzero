@@ -2,6 +2,7 @@
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
+use crate::config::{VhostConfig,SchemaStructure::*};
 use subzero_core::{
     //formatter::sqlite::{fmt_main_query, return_representation},
     formatter::{Param, Param::*, sqlite::{fmt_main_query, generate,return_representation}, ToParam,},
@@ -9,10 +10,10 @@ use subzero_core::{
         Condition, Field, SelectItem, Filter, ListVal, SingleVal, Payload,
         ApiRequest, ApiResponse, ContentType::*, Query, QueryNode::*, Preferences, Count
     },
-    config::{VhostConfig,SchemaStructure::*},
+    //config::{VhostConfig,SchemaStructure::*},
     //dynamic_statement::{ SqlSnippet, SqlSnippetChunk, },
     //error::{Result, *},
-    error::{JsonSerialize,JsonDeserialize,ReadFile},
+    error::{JsonSerialize,JsonDeserialize,},
     error::{Error::{SingularityError, PutMatchingPkError}},
     schema::DbSchema,
 };
@@ -274,11 +275,11 @@ impl Backend for SQLiteBackend {
                     }
                     Err(e) => Err(e).context(SqliteDbPoolError),
                 },
-                Err(e) => Err(e).context(ReadFile { path: f }).context(CoreError),
+                Err(e) => Err(e).context(ReadFile { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(f) {
                 Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
-                Err(e) => Err(e).context(ReadFile { path: f }).context(CoreError),
+                Err(e) => Err(e).context(ReadFile { path: f }),
             },
             JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
         }?;
