@@ -2089,7 +2089,6 @@ dependencies = [
  "csv",
  "futures",
  "http",
- "hyper 0.14.18",
  "lazy_static",
  "log 0.4.16",
  "pretty_assertions",
