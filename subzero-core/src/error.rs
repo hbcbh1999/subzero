@@ -3,7 +3,7 @@ use snafu::Snafu;
 // use combine::easy::Error as ParseError;
 //use combine::error::StringStreamError;
 //use combine;
-use serde_json::{json, Value as JsonValue};
+use serde_json::{json, Value as JsonValue, Error as SerdeError};
 // use std::io::Cursor;
 //use hyper::Error as HyperError;
 //use http::Error as HttpError;
@@ -36,6 +36,9 @@ use serde_json::{json, Value as JsonValue};
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
+    #[snafu(display("{}", source))]
+    Serde{source: SerdeError},
+
     #[snafu(display("ActionInappropriate"))]
     ActionInappropriate,
 
@@ -183,6 +186,7 @@ impl Error {
 
     pub fn status_code(&self) -> u16 {
         match self {
+            Error::Serde { .. } => 400,
             // Error::HttpRequestError { .. } => 500,
             // Error::ProxyError {..} => 500,
             // Error::IoError { ..} => 500,
@@ -282,6 +286,7 @@ impl Error {
 
     pub fn json_body(&self) -> JsonValue {
         match self {
+            Error::Serde { source } => {json!({ "message": format!("{}", source) })},
             // Error::HttpRequestError { source } => {json!({ "message": format!("Proxy error {}", source) })},
             // Error::ProxyError { source } => {json!({ "message": format!("Proxy error {}", source) })}
             //Error::IoError { source } => {json!({ "message": format!("IO error {}", source) })}

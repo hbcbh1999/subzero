@@ -1,0 +1,22 @@
+services:
+
+  db:
+    image: postgres:14
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: app
+    volumes:
+      - "./schema.sql:/docker-entrypoint-initdb.d/schema.sql"
+  web:
+    image: node
+    ports:
+      - "3000:3000"
+    environment:
+      DB_URI: postgres://admin:secret@db:5432/app
+    volumes:
+      - "./:/src"
+      - "../pkg/:/pkg"
+    command: node /src/server.js
