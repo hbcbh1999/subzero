@@ -18,9 +18,6 @@ default = []
 postgresql = []
 clickhouse = []
 sqlite = []
-# postgresql = ["postgres-types", "tokio-postgres", "deadpool-postgres", "postgres-openssl", "openssl"]
-# clickhouse = ["deadpool", "url", "formdata", "base64"]
-# sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
 
 [dev-dependencies]
 pretty_assertions = "1.0.0"

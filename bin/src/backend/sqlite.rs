@@ -4,15 +4,11 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use crate::config::{VhostConfig,SchemaStructure::*};
 use subzero_core::{
-    //formatter::sqlite::{fmt_main_query, return_representation},
     formatter::{Param, Param::*, sqlite::{fmt_main_query, generate,return_representation}, ToParam,},
     api::{
         Condition, Field, SelectItem, Filter, ListVal, SingleVal, Payload,
         ApiRequest, ApiResponse, ContentType::*, Query, QueryNode::*, Preferences, Count
     },
-    //config::{VhostConfig,SchemaStructure::*},
-    //dynamic_statement::{ SqlSnippet, SqlSnippetChunk, },
-    //error::{Result, *},
     error::{JsonSerialize,JsonDeserialize,},
     error::{Error::{SingularityError, PutMatchingPkError}},
     schema::DbSchema,
@@ -47,41 +43,9 @@ impl ToSql for WrapParam<'_> {
     }
 }
 
-// fn to_sqlite_param<'a>(p: &'a (dyn ToParam + Sync)) -> &'a (dyn ToSql + Sync) {
-//     &WrapParam(p.to_param()) as &(dyn ToSql + Sync)
-// }
 fn wrap_param<'a>(p: &'a (dyn ToParam + Sync)) -> WrapParam<'a> {
     WrapParam(p.to_param())
 }
-// fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
-//     p as &(dyn ToSql + Sync)
-// }
-// fn to_sqlite_param<'a>(p: &'a (dyn ToParam + Sync)) -> &'a (dyn ToSql + Sync) {
-//      cast_param(wrap_param(p))
-// }
-// impl ToSql for ListVal {
-//     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
-//         match self {
-//             ListVal(v, ..) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
-//         }
-//     }
-// }
-
-// impl ToSql for SingleVal {
-//     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
-//         match self {
-//             SingleVal(v, ..) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
-//         }
-//     }
-// }
-
-// impl ToSql for Payload {
-//     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
-//         match self {
-//             Payload(v, ..) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
-//         }
-//     }
-// }
 
 //generate_fn!();
 fn execute(

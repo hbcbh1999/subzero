@@ -127,10 +127,6 @@ impl<'a, T: ?Sized> Add<String> for SqlSnippet<'a, T> {
     fn add(self, s: String) -> SqlSnippet<'a, T> {
         match self {
             SqlSnippet(mut l) => {
-                // let mut n = vec![];
-                // n.extend(l.into_iter());
-                // n.push(SqlSnippetChunk::Sql(s));
-                // SqlSnippet(n)
                 l.push(SqlSnippetChunk::Sql(s));
                 SqlSnippet(l)
             }

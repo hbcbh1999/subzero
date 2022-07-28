@@ -1,4 +1,3 @@
-// pub use http::Method;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
@@ -13,24 +12,18 @@ pub enum Representation {
     None,
     HeadersOnly,
 }
-// #[derive(Debug, PartialEq)]
-// pub enum Parameters {SingleObject, MultipleObjects}
 #[derive(Debug, PartialEq, Clone)]
 pub enum Count {
     ExactCount,
     PlannedCount,
     EstimatedCount,
 }
-// #[derive(Debug, PartialEq)]
-// pub enum Transaction {Commit, Rollback}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Preferences {
     pub resolution: Option<Resolution>,
     pub representation: Option<Representation>,
-    // pub parameters: Option<Parameters>,
     pub count: Option<Count>,
-    //pub transaction: Option<Transaction>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -98,9 +91,7 @@ impl<'a> Iterator for Iter<&'a Query> {
             (Some(current_path), Some(Query { node, sub_selects, .. })) => {
                 stack.extend(sub_selects.iter().map(|SubSelect { query, .. }| query));
                 path.extend(sub_selects.iter().map(
-                    |SubSelect {
-                         query: Query { node, .. }, ..
-                     }| {
+                    |SubSelect {query: Query { node, .. }, ..}| {
                         let mut p = current_path.clone();
                         p.push(node.name().clone());
                         p
@@ -121,9 +112,7 @@ impl<'a> Iterator for Iter<&'a mut Query> {
         match (path.pop_front(), stack.pop_front()) {
             (Some(current_path), Some(Query { node, sub_selects, .. })) => {
                 path.extend(sub_selects.iter().map(
-                    |SubSelect {
-                         query: Query { node, .. }, ..
-                     }| {
+                    |SubSelect {query: Query { node, .. }, ..}| {
                         let mut p = current_path.clone();
                         p.push(node.name().clone());
                         p
@@ -144,9 +133,7 @@ impl Iterator for Iter<Query> {
         match (path.pop_front(), stack.pop_front()) {
             (Some(current_path), Some(Query { node, sub_selects, .. })) => {
                 path.extend(sub_selects.iter().map(
-                    |SubSelect {
-                         query: Query { node, .. }, ..
-                     }| {
+                    |SubSelect {query: Query { node, .. }, ..}| {
                         let mut p = current_path.clone();
                         p.push(node.name().clone());
                         p
@@ -189,9 +176,7 @@ where
             (Some(current_path), Some(query)) => {
                 let r = (f)(current_path.clone(), query);
                 path.extend(query.sub_selects.iter().map(
-                    |SubSelect {
-                         query: Query { node, .. }, ..
-                     }| {
+                    |SubSelect {query: Query { node, .. }, ..}| {
                         let mut p = current_path.clone();
                         p.push(node.name().clone());
                         p

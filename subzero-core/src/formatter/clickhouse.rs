@@ -14,53 +14,7 @@ use crate::dynamic_statement::{
     generate_fn,
 };
 use crate::error::{Result, *};
-
 use super::{ToParam, Snippet, SqlParam};
-//use clickhouse::{Client,sql::Bind};
-//use bytes::{BufMut, BytesMut};
-//use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
-// use postgres_types::{ToSql};
-//use std::error::Error;
-// #[derive(Debug)]
-// pub enum Param<'a> {
-//     LV(&'a ListVal),
-//     SV(&'a SingleVal),
-//     PL(&'a Payload),
-// }
-// // helper type aliases
-// pub trait ToSql {
-//     fn to_param(&self) -> Param;
-//     fn to_data_type(&self) -> &Option<String>;
-// }
-
-// pub type SqlParam<'a> = (dyn ToSql + Sync + 'a);
-// pub type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
-
-
-// impl ToSql for ListVal {
-//     fn to_param(&self) -> Param {Param::LV(self)}
-//     fn to_data_type(&self) -> &Option<String> {
-//         //println!("to_data_type {:?}", &self);
-//         &self.1
-//     }
-// }
-
-// impl ToSql for SingleVal {
-//     fn to_param(&self) -> Param {Param::SV(self)}
-//     fn to_data_type(&self) -> &Option<String> {
-//         //println!("to_data_type {:?}", &self);
-//         &self.1
-//     }
-// }
-
-// impl ToSql for Payload {
-//     fn to_param(&self) -> Param {Param::PL(self)}
-//     fn to_data_type(&self) -> &Option<String> {
-//         //println!("to_data_type {:?}", &self);
-//         &self.1
-//     }
-// }
-
 
 macro_rules! fmt_field_format {
     () => {
@@ -70,7 +24,6 @@ macro_rules! fmt_field_format {
 
 macro_rules! param_placeholder_format {() => {"{{p{pos}:{data_type}}}"};}
 generate_fn!(true, "String");
-
 
 //fmt_main_query!();
 pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest) -> Result<Snippet<'a>> {
@@ -118,7 +71,7 @@ fn fmt_query<'a>(
     join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
     let (cte_snippet, query_snippet) = match &q.node {
-           Select {
+        Select {
             select,
             from: (table, table_alias),
             join_tables,
@@ -142,11 +95,6 @@ fn fmt_query<'a>(
                     fmt_qi(&Qi(schema.clone(), table.clone())),
                 ),
             };
-
-            
-            
-
-            
 
             // get the columns needed for joins
             let empty = vec![];
@@ -479,23 +427,10 @@ mod tests {
     use pretty_assertions::assert_eq;
     use regex::Regex;
     use crate::api::{ContentType::*};
-    //use crate::api::LogicOperator::*;
-    //use crate::api::{Condition::*, Filter::*};
-    // use combine::stream::PointerOffset;
-    // use combine::easy::{Error, Errors};
-    // //use combine::error::StringStreamError;
-    // use crate::error::Error as AppError;
-    // use combine::EasyParser;
     use super::*;
-    //use crate::parser::subzero::tests::{JSON_SCHEMA};
     macro_rules! param_placeholder_format {() => {"{{p{pos}:{data_type}}}"};}
     generate_fn!(true);
     fn s(s: &str) -> String { s.to_string() }
-    // fn vs(v: Vec<(&str, &str)>) -> Vec<(String, String)> {
-    //     v.into_iter().map(|(s, s2)| (s.to_string(), s2.to_string())).collect()
-    // }
-    
-
     #[test]
     fn test_fmt_select_query() {
         let q = Query {
@@ -714,13 +649,7 @@ mod tests {
         //dummy api struct with valid query
         let api_request = ApiRequest {
             schema_name: "default",
-            get: vec![
-                // ("select", "id,name,clients(id),tasks(id)"),
-                // ("id", "not.gt.10"),
-                // ("tasks.id", "lt.500"),
-                // ("not.or", "(id.eq.11,id.eq.12)"),
-                // ("tasks.or", "(id.eq.11,id.eq.12)"),
-            ],
+            get: vec![],
             preferences: None,
             path: "dummy",
             method: "GET",

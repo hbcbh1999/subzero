@@ -15,8 +15,6 @@ use subzero_core::{
     api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*, SelectItem::*},
     error::{*},
     parser::postgrest::parse,
-    //backend::Backend,
-    //config::{VhostConfig},
 };
 
 use crate::error::{Result, CoreError, to_core_error};

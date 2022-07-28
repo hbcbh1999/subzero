@@ -29,8 +29,6 @@ use serde_json::{Value as JsonValue};
 use http::Method;
 use bytes::{BufMut, BytesMut};
 use std::error::Error;
-// generate_fn!();
-// use futures::future;
 #[derive(Debug)]
 struct WrapParam<'a>(Param<'a>);
 
@@ -153,14 +151,6 @@ fn get_postgrest_env(role: Option<&String>, search_path: &[String], request: &Ap
     env
 }
 
-// fn get_postgrest_env_query<'a>(env: &'a HashMap<String, String>) -> SqlSnippet<'a, (dyn ToSql + Sync + 'a)> {
-//     "select "
-//         + env
-//             .iter()
-//             .map(|(k, v)| "set_config(" + param(k as &(dyn ToSql + Sync + 'a)) + ", " + param(v as &(dyn ToSql + Sync + 'a)) + ", true)")
-//             .join(",")
-// }
-
 fn get_postgrest_env_query<'a>(env: Vec<(&'a SqlParam, &'a SqlParam)>) -> SqlSnippet<'a, SqlParam<'a>> {
     "select "
         + env
@@ -176,10 +166,6 @@ fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
     p as &(dyn ToSql + Sync)
 }
 
-// fn to_pg_param<'a>(p: &'a (dyn ToParam + Sync)) -> &'a (dyn ToSql + Sync) {
-//     let v = p.to_param();
-//     &WrapParam(p.to_param()) as &(dyn ToSql + Sync)
-// }
 async fn execute<'a>(
     pool: &'a Pool, authenticated: bool, request: &ApiRequest<'a>, role: Option<&String>,
     jwt_claims: &Option<JsonValue>, config: &VhostConfig
