@@ -15,13 +15,13 @@ use std::ops::Deref;
 //use hyper::{Client, client::HttpConnector};
 
 #[derive(Debug)]
-pub struct QueryString(pub Vec<(String, String)>);
+pub struct QueryString<'a>(pub Vec<(&'a str, &'a str)>);
 
 #[rocket::async_trait]
-impl<'v> FromForm<'v> for QueryString {
-    type Context = Vec<(String, String)>;
+impl<'v> FromForm<'v> for QueryString<'v> {
+    type Context = Vec<(&'v str, &'v str)>;
     fn init(_opts: Options) -> Self::Context { vec![] }
-    fn push_value(ctxt: &mut Self::Context, field: ValueField) { ctxt.push((field.name.source().to_string(), field.value.to_string())); }
+    fn push_value(ctxt: &mut Self::Context, field: ValueField<'v>) { ctxt.push((field.name.source(), field.value)); }
     async fn push_data(_ctxt: &mut Self::Context, _field: DataField<'v, '_>) {}
     fn finalize(this: Self::Context) -> FormResult<'v, Self> { Ok(QueryString(this)) }
 }

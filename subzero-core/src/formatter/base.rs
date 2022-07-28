@@ -26,7 +26,8 @@ macro_rules! cast_select_item_format {
 }
 #[allow(unused_macros)]
 macro_rules! fmt_main_query { () => {
-pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Snippet<'a>> {
+pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest) -> Result<Snippet<'a>> {
+    let schema = String::from(schema_str);
     let count = match &request.preferences {
         Some(Preferences {
             count: Some(Count::ExactCount),
@@ -107,14 +108,14 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
 
     Ok(
     fmt_query(
-        schema,
+        &schema,
         return_representation,
         Some("_subzero_query"),
         &request.query,
         &None,
     )? + " , "
         + if count {
-            fmt_count_query(schema, Some("_subzero_count_query"), &request.query)?
+            fmt_count_query(&schema, Some("_subzero_count_query"), &request.query)?
         } else {
             sql("_subzero_count_query AS (select 1)")
         }

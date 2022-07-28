@@ -181,14 +181,14 @@ fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
 //     &WrapParam(p.to_param()) as &(dyn ToSql + Sync)
 // }
 async fn execute<'a>(
-    pool: &'a Pool, authenticated: bool, request: &ApiRequest, role: Option<&String>,
+    pool: &'a Pool, authenticated: bool, request: &ApiRequest<'a>, role: Option<&String>,
     jwt_claims: &Option<JsonValue>, config: &VhostConfig
 ) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(PgDbPoolError)?;
 
     
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, request).context(CoreError)?);
-    let env = get_postgrest_env(role, &[request.schema_name.clone()], request, jwt_claims, config.db_use_legacy_gucs)
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request).context(CoreError)?);
+    let env = get_postgrest_env(role, &[String::from(request.schema_name)], request, jwt_claims, config.db_use_legacy_gucs)
         .into_iter()
         .map(|(k, v)| (SingleVal(k, Some("text".to_string())), SingleVal(v, Some("text".to_string()))))
         .collect::<Vec<_>>();
@@ -231,8 +231,8 @@ async fn execute<'a>(
 
     if let Some((s, f)) = &config.db_pre_request {
         let fn_schema = match s.as_str() {
-            "" => &request.schema_name,
-            _ => s,
+            "" => request.schema_name,
+            _ => s.as_str(),
         };
 
         let pre_request_statement = format!(r#"select "{}"."{}"()"#, fn_schema, f);

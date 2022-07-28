@@ -73,7 +73,8 @@ generate_fn!(true, "String");
 
 
 //fmt_main_query!();
-pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Snippet<'a>> {
+pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest) -> Result<Snippet<'a>> {
+    let schema = String::from(schema_str);
     let _count = match &request.preferences {
         Some(Preferences {
             count: Some(Count::ExactCount),
@@ -86,7 +87,7 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
 
     Ok(
         fmt_query(
-            schema,
+            &schema,
             return_representation,
             None, //Some("_subzero_query"),
             &request.query,
@@ -490,9 +491,9 @@ mod tests {
     macro_rules! param_placeholder_format {() => {"{{p{pos}:{data_type}}}"};}
     generate_fn!(true);
     fn s(s: &str) -> String { s.to_string() }
-    fn vs(v: Vec<(&str, &str)>) -> Vec<(String, String)> {
-        v.into_iter().map(|(s, s2)| (s.to_string(), s2.to_string())).collect()
-    }
+    // fn vs(v: Vec<(&str, &str)>) -> Vec<(String, String)> {
+    //     v.into_iter().map(|(s, s2)| (s.to_string(), s2.to_string())).collect()
+    // }
     
 
     #[test]
@@ -712,16 +713,16 @@ mod tests {
 
         //dummy api struct with valid query
         let api_request = ApiRequest {
-            schema_name: s("default"),
-            get: vs(vec![
+            schema_name: "default",
+            get: vec![
                 // ("select", "id,name,clients(id),tasks(id)"),
                 // ("id", "not.gt.10"),
                 // ("tasks.id", "lt.500"),
                 // ("not.or", "(id.eq.11,id.eq.12)"),
                 // ("tasks.or", "(id.eq.11,id.eq.12)"),
-            ]),
+            ],
             preferences: None,
-            path: s("dummy"),
+            path: "dummy",
             method: Method::GET,
             read_only: true,
             accept_content_type: ApplicationJSON,

@@ -34,17 +34,17 @@ pub struct Preferences {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct ApiRequest {
+pub struct ApiRequest<'a> {
     pub method: Method,
-    pub path: String,
-    pub schema_name: String,
+    pub path: &'a str,
+    pub schema_name: &'a str,
     pub read_only: bool,
     pub accept_content_type: ContentType,
     pub query: Query,
     pub preferences: Option<Preferences>,
-    pub headers: HashMap<String, String>,
-    pub cookies: HashMap<String, String>,
-    pub get: Vec<(String, String)>,
+    pub headers: HashMap<&'a str, &'a str>,
+    pub cookies: HashMap<&'a str, &'a str>,
+    pub get: Vec<(&'a str, &'a str)>,
 }
 
 #[derive(Debug)]

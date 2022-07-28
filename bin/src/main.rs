@@ -6,7 +6,7 @@ extern crate rocket;
 use http::{Method, };
 // use lazy_static::__Deref;
 use snafu::{OptionExt, ResultExt};
-// use std::collections::HashMap;
+use std::collections::HashMap;
 // use std::convert::TryInto;
 // use std::net::IpAddr;
 
@@ -59,14 +59,14 @@ lazy_static! {
 
 #[get("/<table>?<parameters..>")]
 async fn get<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, db_backend: &State<DbBackend>,
+    table: &'a str, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
     handle_request(&Method::GET, &table, origin, parameters, None, cookies, headers, db_backend).await
 }
 
 #[post("/<table>?<parameters..>", data = "<body>")]
 async fn post<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    table: &'a str, origin: &Origin<'_>, parameters: QueryString<'a>, body: &'a str, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
     handle_request(&Method::POST, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
@@ -74,7 +74,7 @@ async fn post<'a>(
 
 #[delete("/<table>?<parameters..>", data = "<body>")]
 async fn delete<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    table: &'a str, origin: &Origin<'_>, parameters: QueryString<'a>, body: &'a str, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
     handle_request(&Method::DELETE, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
@@ -82,7 +82,7 @@ async fn delete<'a>(
 
 #[patch("/<table>?<parameters..>", data = "<body>")]
 async fn patch<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    table: &'a str, origin: &Origin<'_>, parameters: QueryString<'a>, body: &'a str, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
     handle_request(&Method::PATCH, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
@@ -90,7 +90,7 @@ async fn patch<'a>(
 
 #[put("/<table>?<parameters..>", data = "<body>")]
 async fn put<'a>(
-    table: String, origin: &Origin<'_>, parameters: QueryString, body: String, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
+    table: &'a str, origin: &Origin<'_>, parameters: QueryString<'a>, body: &'a str, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
     handle_request(&Method::PUT, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
@@ -102,22 +102,22 @@ async fn put<'a>(
 // }
 
 // #[post("/<_..>", data = "<body>")]
-// async fn proxy_post<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: String, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
+// async fn proxy_post<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: &'a str, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
 //     proxy_deno(&Method::POST, origin, headers, Some(body), client_ip, proxy).await
 // }
 
 // #[patch("/<_..>", data = "<body>")]
-// async fn proxy_patch<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: String, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
+// async fn proxy_patch<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: &'a str, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
 //     proxy_deno(&Method::PATCH, origin, headers, Some(body), client_ip, proxy).await
 // }
 
 // #[delete("/<_..>", data = "<body>")]
-// async fn proxy_delete<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: String, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
+// async fn proxy_delete<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: &'a str, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
 //     proxy_deno(&Method::DELETE, origin, headers, Some(body), client_ip, proxy).await
 // }
 
 // #[put("/<_..>", data = "<body>")]
-// async fn proxy_put<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: String, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
+// async fn proxy_put<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: &'a str, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
 //     proxy_deno(&Method::PUT, origin, headers, Some(body), client_ip, proxy).await
 // }
 
@@ -129,17 +129,18 @@ async fn put<'a>(
 // this is mostly to align types between rocket and subzero functions
 #[allow(clippy::too_many_arguments)]
 async fn handle_request(
-    method: &Method, table: &String, origin: &Origin<'_>, parameters: QueryString, body: Option<String>, cookies: &CookieJar<'_>,
+    method: &Method, table: &str, origin: &Origin<'_>, parameters: QueryString<'_>, body: Option<&str>, cookies: &CookieJar<'_>,
     headers: AllHeaders<'_>, db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
+    let headers_str = headers.iter().map(|h| (h.name().as_str().to_lowercase(), h.value().to_string())).collect::<HashMap<_,_>>();
     let (status, response_content_type, response_headers, response_body) = postgrest::handle(
         table,
         method,
-        origin.path().to_string(),
+        origin.path().to_string().as_str(),
         parameters.0,
         body,
-        headers.iter().map(|h| (h.name().as_str().to_lowercase(), h.value().to_string())).collect(),
-        cookies.iter().map(|c| (c.name().to_string(), c.value().to_string())).collect(),
+        headers_str.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect(),
+        cookies.iter().map(|c| (c.name(), c.value())).collect(),
         db_backend,
     )
     .await

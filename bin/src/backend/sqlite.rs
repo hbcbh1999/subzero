@@ -117,7 +117,7 @@ fn execute(
                 _ => {}
             }
             
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, &mutate_request).context(CoreError)?);
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, &mutate_request).context(CoreError)?);
             debug!("pre_statement: {}", main_statement);
             let mut mutate_stmt = conn.prepare(main_statement.as_str()).context(SqliteDbError { authenticated })?;
             let mutate_params = params_from_iter(main_parameters.into_iter().map(wrap_param));
@@ -185,7 +185,7 @@ fn execute(
         None => request
     };
     
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, final_request).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, final_request).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
     debug!("main_statement: {}", main_statement);
     let mut main_stm = conn
         .prepare_cached(main_statement.as_str())

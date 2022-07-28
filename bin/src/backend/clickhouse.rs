@@ -72,14 +72,14 @@ type Pool = managed::Pool<Manager>;
 
 
 async fn execute<'a>(
-    pool: &'a Pool, _authenticated: bool, request: &ApiRequest, _role: Option<&String>,
+    pool: &'a Pool, _authenticated: bool, request: &ApiRequest<'a>, _role: Option<&String>,
     _jwt_claims: &Option<JsonValue>, _config: &VhostConfig
 ) -> Result<ApiResponse> {
     let o = pool.get().await.unwrap();//.context(ClickhouseDbPoolError)?;
     let uri = &o.0;
     let base_url = &o.1;
     let client = &o.2;
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(&request.schema_name, request).context(CoreError)?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request).context(CoreError)?);
     debug!("main_statement {}", main_statement);
     let mut parameters = vec![("query".to_string(), main_statement)];
     for (k, v) in main_parameters.iter().enumerate() {

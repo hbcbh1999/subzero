@@ -83,7 +83,8 @@ macro_rules! cast_select_item_format {
 // type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
 
 //fmt_main_query!();
-pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Snippet<'a>> {
+pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest) -> Result<Snippet<'a>> {
+    let schema = String::from(schema_str);
     let count = matches!(&request.preferences, Some(Preferences {count: Some(Count::ExactCount),..}));
 
     let return_representation = return_representation(request);
@@ -142,7 +143,7 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
 
     let run_unwrapped_query = matches!(request.query.node, Insert {..} | Update {..} | Delete {..});
     let wrap_cte_name = if run_unwrapped_query {None} else {Some("_subzero_query")};
-    let source_query = fmt_query(schema, return_representation, wrap_cte_name, &request.query, &None)?;
+    let source_query = fmt_query(&schema, return_representation, wrap_cte_name, &request.query, &None)?;
     let main_query = if run_unwrapped_query {
         source_query
     }
@@ -150,7 +151,7 @@ pub fn fmt_main_query<'a>(schema: &String, request: &'a ApiRequest) -> Result<Sn
         source_query
         + " , "
         + if count {
-            fmt_count_query(schema, Some("_subzero_count_query"), &request.query)?
+            fmt_count_query(&schema, Some("_subzero_count_query"), &request.query)?
         } else {
             sql("_subzero_count_query as (select 1)")
         }

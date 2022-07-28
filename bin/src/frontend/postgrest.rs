@@ -52,9 +52,9 @@ fn validate_fn_param(config: &VhostConfig, p: &FunctionParam) -> Result<()> {
 
 #[allow(clippy::borrowed_box)]
 #[allow(clippy::too_many_arguments)]
-pub async fn handle(
-    root: &String, method: &Method, path: String, get: Vec<(String, String)>, 
-    body: Option<String>, headers: HashMap<String, String>, cookies: HashMap<String, String>,
+pub async fn handle<'a>(
+    root: &'a str, method: &Method, path: &'a str, get: Vec<(&'a str, &'a str)>, 
+    body: Option<&'a str>, headers: HashMap<&'a str, &'a str>, cookies: HashMap<&'a str, &'a str>,
     backend: &Box<dyn Backend + Send + Sync>
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
     #![allow(unused_variables)]
@@ -68,7 +68,7 @@ pub async fn handle(
         | (_, &Method::POST, _, Some(content_profile))
         | (_, &Method::PATCH, _, Some(content_profile))
         | (_, &Method::PUT, _, Some(content_profile)) => {
-            if config.db_schemas.contains(content_profile) {
+            if config.db_schemas.contains(&String::from(*content_profile)) {
                 Ok(content_profile.to_string())
             } else {
                 Err(Error::UnacceptableSchema {
@@ -77,7 +77,7 @@ pub async fn handle(
             }
         }
         (_, _, Some(accept_profile), _) => {
-            if config.db_schemas.contains(accept_profile) {
+            if config.db_schemas.contains(&String::from(*accept_profile)) {
                 Ok(accept_profile.to_string())
             } else {
                 Err(Error::UnacceptableSchema {
