@@ -1,6 +1,6 @@
 // ESM
 const Fastify = require('fastify')
-const {Backend} = require('subzero')
+const {Backend} = require('subzero-core-wasm')
 const {Pool} = require('pg')
 
 const schema = {
@@ -83,7 +83,7 @@ const db_pool = new Pool({connectionString: DB_URI})
 
 const backend = Backend.init(JSON.stringify(schema))
 
-const fastify = Fastify({logger: true})
+const fastify = Fastify({logger: false})
 
 fastify.get('/', async (request, reply) => {
   let query = null

@@ -11,6 +11,6 @@
   "dependencies": {
     "fastify": "^4.3.0",
     "pg": "^8.7.3",
-    "subzero": "file:../pkg"
+    "subzero-core-wasm": "file:../pkg"
   }
 }
