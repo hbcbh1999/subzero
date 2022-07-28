@@ -88,7 +88,7 @@ const fastify = Fastify({logger: true})
 fastify.get('/', async (request, reply) => {
   let query = null
   try {
-    query = backend.get_query("public", "tasks", "get", "/tasks", [["select","id"]], null, {}, {})
+    query = backend.get_query("public", "tasks", "get", "/tasks", [["select","id"]], "", {}, {}, "postgresql")
   } catch (err) {
     fastify.log.error(err)
     return { error: err }

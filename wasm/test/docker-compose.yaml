@@ -19,4 +19,4 @@ services:
     volumes:
       - "./:/src"
       - "../pkg/:/pkg"
-    command: node /src/server.js
+    command: npm --prefix /src start
