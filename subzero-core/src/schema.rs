@@ -24,7 +24,6 @@ pub struct Schema {
 
 impl DbSchema {
     pub fn get_join(&self, current_schema: &String, origin: &String, target: &String, hint: &Option<String>) -> Result<Join> {
-        ;
         let schema = self.schemas.get(current_schema).context(UnacceptableSchema {
             schemas: vec![current_schema.to_owned()],
         })?;
