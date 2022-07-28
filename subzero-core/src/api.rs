@@ -1,4 +1,4 @@
-pub use http::Method;
+// pub use http::Method;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 
@@ -35,7 +35,7 @@ pub struct Preferences {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ApiRequest<'a> {
-    pub method: Method,
+    pub method: &'a str,
     pub path: &'a str,
     pub schema_name: &'a str,
     pub read_only: bool,

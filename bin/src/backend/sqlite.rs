@@ -129,7 +129,7 @@ fn execute(
             let mut select_request = request.clone();
             let mut select_where = where_.to_owned();
             select_where.conditions.insert(0, Condition::Single {field: primary_key_field, filter: Filter::In(ListVal(ids.iter().map(|i| i.to_string()).collect(),None)), negate: false});
-            select_request.method = Method::GET;
+            select_request.method = "GET";
             select_request.query = Query {
                 node: Select {
                     from: (table.to_owned(), None),

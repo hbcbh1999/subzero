@@ -1,4 +1,4 @@
-use crate::api::{ApiRequest, Method, Preferences, QueryNode::*, Representation,};
+use crate::api::{ApiRequest, Preferences, QueryNode::*, Representation,};
 
 #[allow(unused_macros)]
 macro_rules! fmt_field_format {
@@ -1185,19 +1185,18 @@ macro_rules! fmt_json_operand {
 #[allow(unused)]
 pub fn return_representation(request: &ApiRequest) -> bool {
     !matches!(
-        (&request.method, &request.query.node, &request.preferences),
-        
-        (&Method::POST, Insert { .. }, None) |
-        (&Method::POST, Insert { .. }, Some(Preferences {representation: Some(Representation::None),..})) |
-        (&Method::POST, Insert { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
-        (&Method::PATCH, Update { .. }, None)|
-        (&Method::PATCH, Update { .. }, Some(Preferences {representation: Some(Representation::None),..}))|
-        (&Method::PATCH, Update { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
-        (&Method::PUT, Insert { .. }, None)|
-        (&Method::PUT, Insert { .. }, Some(Preferences {representation: Some(Representation::None),..}))|
-        (&Method::PUT, Insert { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
-        (&Method::DELETE, Delete { .. }, None)|
-        (&Method::DELETE, Delete { .. }, Some(Preferences {representation: Some(Representation::None),..}))
+        (request.method, &request.query.node, &request.preferences),       
+        ("POST",   Insert { .. }, None) |
+        ("POST",   Insert { .. }, Some(Preferences {representation: Some(Representation::None),..})) |
+        ("POST",   Insert { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
+        ("PATCH",  Update { .. }, None)|
+        ("PATCH",  Update { .. }, Some(Preferences {representation: Some(Representation::None),..}))|
+        ("PATCH",  Update { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
+        ("PUT",    Insert { .. }, None)|
+        ("PUT",    Insert { .. }, Some(Preferences {representation: Some(Representation::None),..}))|
+        ("PUT",    Insert { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
+        ("DELETE", Delete { .. }, None)|
+        ("DELETE", Delete { .. }, Some(Preferences {representation: Some(Representation::None),..}))
     )
 }
 

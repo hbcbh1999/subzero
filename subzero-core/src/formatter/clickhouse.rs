@@ -723,7 +723,7 @@ mod tests {
             ],
             preferences: None,
             path: "dummy",
-            method: Method::GET,
+            method: "GET",
             read_only: true,
             accept_content_type: ApplicationJSON,
             headers: emtpy_hashmap.clone(),

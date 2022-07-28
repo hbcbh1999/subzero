@@ -145,7 +145,7 @@ pub async fn handle<'a>(
     }
 
     // parse request and generate the query
-    let request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, config.db_max_rows).context(CoreError)?;
+    let request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(CoreError)?;
     // check only safe functions are used
     
     for (p, n) in &request.query {

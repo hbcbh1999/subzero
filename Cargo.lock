@@ -2073,11 +2073,8 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 name = "subzero-core"
 version = "0.1.0"
 dependencies = [
- "bytes",
  "combine",
  "csv",
- "futures",
- "http",
  "lazy_static",
  "log 0.4.16",
  "pretty_assertions",
@@ -2092,7 +2089,6 @@ name = "subzero-core-wasm"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
- "http",
  "js-sys",
  "serde_json",
  "subzero-core",

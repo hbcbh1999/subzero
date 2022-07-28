@@ -64,7 +64,7 @@ lazy_static! {
 
 #[allow(clippy::too_many_arguments)]
 pub fn parse<'a>(
-    schema: &'a str, root: &'a str, db_schema: &DbSchema, method: &Method, path: &'a str, get: Vec<(&'a str, &'a str)>, body: Option<&'a str>,
+    schema: &'a str, root: &'a str, db_schema: &DbSchema, method: &'a str, path: &'a str, get: Vec<(&'a str, &'a str)>, body: Option<&'a str>,
     headers: HashMap<&'a str, &'a str>, cookies: HashMap<&'a str, &'a str>, max_rows: Option<u32>,
 ) -> Result<ApiRequest<'a>> {
     let body = body.map(|b| b.to_string());
@@ -244,54 +244,54 @@ pub fn parse<'a>(
     let is_function_call = matches!(&root_obj.kind, Function { .. });
     if !is_function_call {
         match (method, &preferences) {
-            (&Method::POST, None)
+            ("POST", None)
             | (
-                &Method::POST,
+                "POST",
                 Some(Preferences {
                     representation: Some(Representation::None),
                     ..
                 }),
             )
             | (
-                &Method::POST,
+                "POST",
                 Some(Preferences {
                     representation: Some(Representation::HeadersOnly),
                     ..
                 }),
             )
-            | (&Method::PATCH, None)
+            | ("PATCH", None)
             | (
-                &Method::PATCH,
+                "PATCH",
                 Some(Preferences {
                     representation: Some(Representation::None),
                     ..
                 }),
             )
             | (
-                &Method::PATCH,
+                "PATCH",
                 Some(Preferences {
                     representation: Some(Representation::HeadersOnly),
                     ..
                 }),
             )
-            | (&Method::PUT, None)
+            | ("PUT", None)
             | (
-                &Method::PUT,
+                "PUT",
                 Some(Preferences {
                     representation: Some(Representation::None),
                     ..
                 }),
             )
             | (
-                &Method::PUT,
+                "PUT",
                 Some(Preferences {
                     representation: Some(Representation::HeadersOnly),
                     ..
                 }),
             )
-            | (&Method::DELETE, None)
+            | ("DELETE", None)
             | (
-                &Method::DELETE,
+                "DELETE",
                 Some(Preferences {
                     representation: Some(Representation::None),
                     ..
@@ -307,8 +307,8 @@ pub fn parse<'a>(
             let parameters_map = parameters.iter().map(|p| (p.name.as_str(), p)).collect::<HashMap<_, _>>();
             let required_params: HashSet<String> = HashSet::from_iter(parameters.iter().filter(|p| p.required).map(|p| p.name.clone()));
             let all_params: HashSet<String> = HashSet::from_iter(parameters.iter().map(|p| p.name.clone()));
-            let (payload, params) = match *method {
-                Method::GET => {
+            let (payload, params) = match method {
+                "GET" => {
                     let mut args: HashMap<&str, JsonValue> = HashMap::new();
                     for (n, v) in fn_arguments {
                         if let Some(p) = parameters_map.get(*n) {
@@ -357,7 +357,7 @@ pub fn parse<'a>(
 
                     Ok((payload, params))
                 }
-                Method::POST => {
+                "POST" => {
                     let payload = body.context(InvalidBody {
                         message: "body not available".to_string(),
                     })?;
@@ -447,7 +447,7 @@ pub fn parse<'a>(
             }
             Ok(q)
         }
-        (&Method::GET, _) => {
+        ("GET", _) => {
             let mut q = Query {
                 node: Select {
                     select: node_select,
@@ -467,7 +467,7 @@ pub fn parse<'a>(
             add_join_info(&mut q, schema, db_schema, 0)?;
             Ok(q)
         }
-        (&Method::POST, _) => {
+        ("POST", _) => {
             let _body = body.context(InvalidBody {
                 message: "body not available".to_string(),
             })?;
@@ -582,7 +582,7 @@ pub fn parse<'a>(
             }
             Ok(q)
         }
-        (&Method::DELETE, _) => {
+        ("DELETE", _) => {
             let mut q = Query {
                 node: Delete {
                     from: root.to_string(),
@@ -610,7 +610,7 @@ pub fn parse<'a>(
             }
             Ok(q)
         }
-        (&Method::PATCH, _) => {
+        ("PATCH", _) => {
             let _body = body.context(InvalidBody {
                 message: "body not available".to_string(),
             })?;
@@ -707,7 +707,7 @@ pub fn parse<'a>(
             }
             Ok(q)
         }
-        (&Method::PUT, _) => {
+        ("PUT", _) => {
             let _body = body.context(InvalidBody {
                 message: "body not available".to_string(),
             })?;
@@ -905,7 +905,7 @@ pub fn parse<'a>(
 
     Ok(ApiRequest {
         schema_name: schema,
-        read_only: matches!(method, &Method::GET),
+        read_only: matches!(method, "GET"),
         preferences,
         method: method.clone(),
         path,
@@ -1967,7 +1967,7 @@ pub mod tests {
             get:vec![("id", "10")],
             preferences: None,
             path: "dummy",
-            method: Method::GET,
+            method: "GET",
             read_only: true,
             headers: emtpy_hashmap.clone(),
             accept_content_type: ApplicationJSON,
@@ -2003,7 +2003,7 @@ pub mod tests {
             "api",
             "myfunction",
             &db_schema,
-            &Method::GET,
+            "GET",
             "dummy",
             vec![("id", "10")],
             None,
@@ -2014,7 +2014,7 @@ pub mod tests {
 
         assert_eq!(a.unwrap(), api_request);
 
-        api_request.method = Method::POST;
+        api_request.method = "POST";
         api_request.get = vec![];
         api_request.read_only = false;
 
@@ -2023,7 +2023,7 @@ pub mod tests {
             "api",
             "myfunction",
             &db_schema,
-            &Method::POST,
+            "POST",
             "dummy",
             vec![],
             Some(body),
@@ -2160,7 +2160,7 @@ pub mod tests {
             "api",
             "projects",
             &db_schema,
-            &Method::GET,
+            "GET",
             "dummy",
             vec![
                 ("select", "id,name,clients(id),tasks(id)"),
@@ -2188,7 +2188,7 @@ pub mod tests {
                 ],
                 preferences: None,
                 path: "dummy",
-                method: Method::GET,
+                method: "GET",
                 read_only: true,
                 accept_content_type: ApplicationJSON,
                 headers: emtpy_hashmap.clone(),
@@ -2399,7 +2399,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::GET,
+                "GET",
                 "dummy",
                 vec![("select", "id,name,unknown(id)")],
                 None,
@@ -2420,7 +2420,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::GET,
+                "GET",
                 "dummy",
                 vec![("select", "id-,na$me")],
                 None,
@@ -2448,7 +2448,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::POST,
+                "POST",
                 "dummy",
                 vec![("select", "id"), ("id", "gt.10"),],
                 Some(payload),
@@ -2466,7 +2466,7 @@ pub mod tests {
                     count: None
                 }),
                 path: "dummy",
-                method: Method::POST,
+                method: "POST",
                 read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers: headers.clone(),
@@ -2507,7 +2507,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::POST,
+                "POST",
                 "dummy",
                 vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),],
                 Some(payload),
@@ -2525,7 +2525,7 @@ pub mod tests {
                     count: None
                 }),
                 path: "dummy",
-                method: Method::POST,
+                method: "POST",
                 read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers: headers.clone(),
@@ -2577,7 +2577,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::POST,
+                "POST",
                 "dummy",
                 vec![("select", "id"), ("id", "gt.10"), ("columns", "id,1$name"),],
                 Some(r#"{"id":10, "name":"john", "phone":"123"}"#),
@@ -2598,7 +2598,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::POST,
+                "POST",
                 "dummy",
                 vec![("select", "id"), ("id", "gt.10"),],
                 Some(r#"{"id":10, "name""#),
@@ -2618,7 +2618,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::POST,
+                "POST",
                 "dummy",
                 vec![("select", "id"), ("id", "gt.10"),],
                 Some(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#),
@@ -2638,7 +2638,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::GET,
+                "GET",
                 "dummy",
                 vec![("select", "id,name,unknown(id)")],
                 None,
@@ -2659,7 +2659,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::GET,
+                "GET",
                 "dummy",
                 vec![("select", "id-,na$me")],
                 None,
@@ -2680,7 +2680,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::POST,
+                "POST",
                 "dummy",
                 vec![("select", "id"), ("id", "gt.10"),],
                 Some(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),
@@ -2698,7 +2698,7 @@ pub mod tests {
                     count: None
                 }),
                 path: "dummy",
-                method: Method::POST,
+                method: "POST",
                 read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers: headers.clone(),
@@ -2740,7 +2740,7 @@ pub mod tests {
                 "api",
                 &s("projects"),
                 &db_schema,
-                &Method::POST,
+                "POST",
                 "dummy",
                 vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),],
                 Some(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),
@@ -2758,7 +2758,7 @@ pub mod tests {
                     count: None
                 }),
                 path: "dummy",
-                method: Method::POST,
+                method: "POST",
                 read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers,
