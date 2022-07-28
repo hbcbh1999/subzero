@@ -4,12 +4,8 @@ extern crate lazy_static;
 #[macro_use]
 extern crate rocket;
 use http::{Method, };
-// use lazy_static::__Deref;
 use snafu::{OptionExt, ResultExt};
 use std::collections::HashMap;
-// use std::convert::TryInto;
-// use std::net::IpAddr;
-
 use figment::{
     providers::{Env, Format, Toml},
     Figment, Profile,
@@ -25,22 +21,21 @@ use frontend::postgrest;
 mod config;
 use config::VhostConfig;
 use subzero_core::{
-    //config::VhostConfig,
     error::{GucStatusError},
-    
     api::ContentType::{SingularJSON, TextCSV, ApplicationJSON},
-    // backend::{Backend},
-    // deno::{DenoProxy}
 };
 mod error;
 use error::{Error, CoreError};
-mod backend;
 
+mod backend;
 use backend::{Backend};
+
 #[cfg(feature = "postgresql")]
 use backend::postgresql::PostgreSQLBackend;
+
 #[cfg(feature = "clickhouse")]
 use backend::clickhouse::ClickhouseBackend;
+
 #[cfg(feature = "sqlite")]
 use backend::sqlite::SQLiteBackend;
 
@@ -96,35 +91,6 @@ async fn put<'a>(
     handle_request(&Method::PUT, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
 }
 
-// #[get("/<_..>")]
-// async fn proxy_get<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
-//     proxy_deno(&Method::GET, origin, headers, None, client_ip, proxy).await
-// }
-
-// #[post("/<_..>", data = "<body>")]
-// async fn proxy_post<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: &'a str, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
-//     proxy_deno(&Method::POST, origin, headers, Some(body), client_ip, proxy).await
-// }
-
-// #[patch("/<_..>", data = "<body>")]
-// async fn proxy_patch<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: &'a str, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
-//     proxy_deno(&Method::PATCH, origin, headers, Some(body), client_ip, proxy).await
-// }
-
-// #[delete("/<_..>", data = "<body>")]
-// async fn proxy_delete<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: &'a str, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
-//     proxy_deno(&Method::DELETE, origin, headers, Some(body), client_ip, proxy).await
-// }
-
-// #[put("/<_..>", data = "<body>")]
-// async fn proxy_put<'a>( origin: &Origin<'a>, headers: AllHeaders<'a>, body: &'a str, client_ip: IpAddr, proxy: &State<DenoProxy>) -> Result<ProxyResponse, RocketError>{
-//     proxy_deno(&Method::PUT, origin, headers, Some(body), client_ip, proxy).await
-// }
-
-
-
-
-
 // main request handler
 // this is mostly to align types between rocket and subzero functions
 #[allow(clippy::too_many_arguments)]
@@ -160,28 +126,6 @@ async fn handle_request(
         headers: response_headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
     })
 }
-
-// // proxy request to deno
-// async fn proxy_deno<'a>(
-//     method: &Method, origin: &Origin<'a>, headers: AllHeaders<'a>, body: Option<String>, client_ip: IpAddr, proxy: &DenoProxy
-// ) -> Result<ProxyResponse, RocketError>{
-//     let url = origin.to_string();
-//     let hdrs = headers.iter().map(|h| (h.name().as_str().to_string(), h.value().to_string())).collect::<HashMap<_,_>>();
-//     let hdrs2: HeaderMap = (&hdrs).try_into().unwrap_or_default();
-//     let ip = client_ip.to_string();
-//     match proxy.forward(method, url.as_str(), hdrs2, body, ip.as_str() ).await {
-//         Ok(response) => {
-//             let (parts, body) = response.into_parts();
-//             let status = parts.status.as_u16();
-//             let headers = parts.headers;
-//             let body = hyper::body::to_bytes(body).await.context(ProxyError).map_err(RocketError)?;
-//             Ok(ProxyResponse { status, headers, body})
-//         },
-//         Err(e) => {
-//             Err(RocketError(Error::InternalError { message: e.to_string() }))
-//         }
-//     }
-// }
 
 // main function where we read the configuration and initialize the rocket webserver
 #[allow(unreachable_code)]
@@ -225,13 +169,6 @@ async fn start() -> Result<Rocket<Build>, Error> {
         .mount(&url_prefix, routes![get, post, delete, patch, put])
         .mount(format!("{}/rpc", &url_prefix), routes![get, post]);
 
-    // if let Some(deno_config) = &vhost_config.deno {
-    //     let deno_proxy = DenoProxy::new(deno_config).await?;
-    //     server = server.manage(deno_proxy);
-    //     for p in &deno_config.paths {
-    //         server = server.mount(p, routes![proxy_get, proxy_post, proxy_delete, proxy_patch, proxy_put]);
-    //     }
-    // }
     if let Some(static_dir) = &vhost_config.static_files_dir {
         let options = Options::Index;
         server = server.mount("/", FileServer::new(static_dir, options).rank(-100));

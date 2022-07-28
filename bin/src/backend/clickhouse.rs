@@ -1,11 +1,5 @@
-// use tokio_postgres::{types::ToSql, IsolationLevel};
-// use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts, Object, PoolError};
-// use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
-// use postgres_openssl::{MakeTlsConnector};
-//use clickhouse::{Client, query::Query, error::Error as ClickhouseErr};
 use hyper::{Client, client::HttpConnector, Body, Uri, };
 use url::{Url,};
-// use form_urlencoded::Serializer;
 use formdata::{FormData, generate_boundary, write_formdata};
 use deadpool::{managed,};
 use snafu::ResultExt;
@@ -15,31 +9,25 @@ use crate::config::{VhostConfig,SchemaStructure::*};
 use subzero_core::{
     api::{
         ApiRequest, ApiResponse, 
-        //ContentType::*, 
-        SingleVal, Payload, ListVal},
-    //config::{VhostConfig,SchemaStructure::*},
-    //dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk},
+        SingleVal, Payload, ListVal
+    },
     error::{Error, JsonDeserialize,},
     schema::{DbSchema},
-    //dynamic_statement::{param, JoinIterator, SqlSnippet},
     formatter::{Param::*,clickhouse::{fmt_main_query, generate},}
 };
-//use log::{debug};
 use async_trait::async_trait;
 use http::Error as HttpError;
 use log::{debug};
 use super::{Backend, include_files};
 
-// use core::slice::SlicePattern;
 use std::{fs};
 use std::path::Path;
 use serde_json::{Value as JsonValue};
 use http::Method;
 
 type HttpClient = (Url, Uri, Client<HttpConnector>);
-struct Manager {
-    uri: String,
-}
+type Pool = managed::Pool<Manager>;
+struct Manager {uri: String}
 const TCP_KEEPALIVE: Duration = Duration::from_secs(60);
 
 // ClickHouse uses 3s by default.
@@ -66,10 +54,6 @@ impl managed::Manager for Manager {
         Ok(())
     }
 }
-
-type Pool = managed::Pool<Manager>;
-
-
 
 async fn execute<'a>(
     pool: &'a Pool, _authenticated: bool, request: &ApiRequest<'a>, _role: Option<&String>,
@@ -172,7 +156,6 @@ async fn execute<'a>(
 }
 
 pub struct ClickhouseBackend {
-    //vhost: String,
     config: VhostConfig,
     pool: Pool,
     db_schema: DbSchema,
@@ -182,8 +165,6 @@ pub struct ClickhouseBackend {
 impl Backend for ClickhouseBackend {
     async fn init(_vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
-        //let _ch_uri = config.db_uri.parse::<Uri>().unwrap();
-        
         let mgr = Manager {uri: config.db_uri.clone()};
         let pool = Pool::builder(mgr)
             .max_size(config.db_pool)
@@ -262,28 +243,3 @@ impl Backend for ClickhouseBackend {
     fn db_schema(&self) -> &DbSchema { &self.db_schema }
     fn config(&self) -> &VhostConfig { &self.config }
 }
-
-// async fn wait_for_pg_connection(vhost: &String, db_pool: &Pool) -> Result<Object, PoolError> {
-
-//     let mut i = 1;
-//     let mut time_since_start = 0;
-//     let max_delay_interval = 10;
-//     let max_retry_interval = 30;
-//     let mut client = db_pool.get().await;
-//     while let Err(e)  = client {
-//         debug!("[{}] Failed to connect to PostgreSQL {:?}", vhost, e);
-//         let time = Duration::from_secs(i);
-//         debug!("[{}] Retrying the PostgreSQL connection in {:?} seconds..", vhost, time.as_secs());
-//         sleep(time).await;
-//         client = db_pool.get().await;
-//         i *= 2;
-//         if i > max_delay_interval { i = max_delay_interval };
-//         time_since_start += i;
-//         if time_since_start > max_retry_interval { break }
-//     };
-//     match client {
-//         Err(_) =>{},
-//         _ => debug!("[{}] Connection to PostgreSQL successful", vhost)
-//     }
-//     client
-// }

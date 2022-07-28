@@ -1,37 +1,8 @@
 use crate::api::{ContentType, ContentType::*, Join, Join::*};
 use snafu::Snafu;
-// use combine::easy::Error as ParseError;
-//use combine::error::StringStreamError;
-//use combine;
 use serde_json::{json, Value as JsonValue, Error as SerdeError};
-// use std::io::Cursor;
-//use hyper::Error as HyperError;
-//use http::Error as HttpError;
 
-// #[cfg(feature = "postgresql")]
-// use deadpool_postgres::PoolError as PgPoolError;
-// use rocket::http::Status;
-// use rocket::request::Request;
-// use rocket::response::{self, Responder, Response};
-//use std::{io, path::PathBuf};
-// #[cfg(feature = "postgresql")]
-// use tokio_postgres::{Error as PgError};
-
-// #[cfg(feature = "sqlite")]
-// use rusqlite::Error as SqliteError;
-
-// #[cfg(feature = "sqlite")]
-// use r2d2::Error as SqlitePoolError;
-
-// #[cfg(feature = "sqlite")]
-// use tokio::task::JoinError;
-//use combine::stream::easy::ParseError;
-// use serde_json;
-
-// #[cfg(feature = "clickhouse")]
-// use deadpool::managed::PoolError as ClickhousePoolError;
-
-
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -89,11 +60,6 @@ pub enum Error {
     #[snafu(display("Failed to deserialize json: {}", message))]
     UnsupportedFeature { message: String },
 
-    // #[snafu(display("PgError {} {} {} {}", code, message, details, hint))]
-    // PgError {code: String, message: String, details: String, hint: String},
-    // #[snafu(display("Unable to read from {}: {}", path.display(), source))]
-    // ReadFile { source: io::Error, path: PathBuf },
-
     #[snafu(display("Failed to deserialize json: {}", source))]
     JsonDeserialize { source: serde_json::Error },
 
@@ -102,30 +68,6 @@ pub enum Error {
 
     #[snafu(display("Failed to serialize json: {}", source))]
     JsonSerialize { source: serde_json::Error },
-
-    // #[cfg(feature = "postgresql")]
-    // #[snafu(display("DbPoolError {}", source))]
-    // PgDbPoolError { source: PgPoolError },
-
-    // #[cfg(feature = "clickhouse")]
-    // #[snafu(display("DbPoolError {}", source))]
-    // ClickhouseDbPoolError { source: ClickhousePoolError<HttpError> },
-
-    // #[cfg(feature = "sqlite")]
-    // #[snafu(display("DbPoolError {}", source))]
-    // SqliteDbPoolError { source: SqlitePoolError },
-
-    // #[cfg(feature = "postgresql")]
-    // #[snafu(display("DbError {}", source))]
-    // PgDbError { source: PgError, authenticated: bool },
-
-    // #[cfg(feature = "sqlite")]
-    // #[snafu(display("DbError {}", source))]
-    // SqliteDbError { source: SqliteError, authenticated: bool },
-
-    // #[cfg(feature = "clickhouse")]
-    // #[snafu(display("DbError {}", source))]
-    // ClickhouseDbError { source: HttpError, authenticated: bool },
 
     #[snafu(display("JwtTokenInvalid {}", message))]
     JwtTokenInvalid { message: String },
@@ -147,32 +89,11 @@ pub enum Error {
 
     #[snafu(display("PutMatchingPkError"))]
     PutMatchingPkError,
-
-    // #[cfg(feature = "sqlite")]
-    // #[snafu(display("ThreadError: {}", source))]
-    // ThreadError { source: JoinError },
-    
-    // #[snafu(display("IoError: {}", source))]
-    // IoError { source: io::Error },
-    
-    // #[snafu(display("ProxyError: {}", source))]
-    // ProxyError { source: HyperError },
-
-    // #[snafu(display("HttpRequestError: {}", source))]
-    // HttpRequestError { source: HttpError },
 }
 
 impl Error {
     pub fn headers(&self) -> Vec<(String, String)> {
         match self {
-            // #[cfg(feature = "postgresql")]
-            // Error::PgDbError { .. } => match self.status_code() {
-            //     401 => vec![
-            //         ("Content-Type".into(), "application/json".into()),
-            //         ("WWW-Authenticate".into(), "Bearer".into()),
-            //     ],
-            //     _ => vec![("Content-Type".into(), "application/json".into())],
-            // },
             Error::JwtTokenInvalid { message } => vec![
                 ("Content-Type".into(), "application/json".into()),
                 (
@@ -187,11 +108,6 @@ impl Error {
     pub fn status_code(&self) -> u16 {
         match self {
             Error::Serde { .. } => 400,
-            // Error::HttpRequestError { .. } => 500,
-            // Error::ProxyError {..} => 500,
-            // Error::IoError { ..} => 500,
-            // #[cfg(feature = "sqlite")]
-            // Error::ThreadError { .. } => 500,
             Error::UnsupportedFeature { .. } => 400,
             Error::ContentTypeError { .. } => 415,
             Error::GucHeadersError => 500,
@@ -217,82 +133,13 @@ impl Error {
             Error::PutMatchingPkError => 400,
             Error::JsonSerialize { .. } => 500,
             Error::SingularityError { .. } => 406,
-            // #[cfg(feature = "sqlite")]
-            // Error::SqliteDbPoolError { .. } => 503,
-
-            // #[cfg(feature = "postgresql")]
-            // Error::PgDbPoolError { .. } => 503,
-
-            // #[cfg(feature = "clickhouse")]
-            // Error::ClickhouseDbPoolError { .. } => 503,
-
-            // #[cfg(feature = "clickhouse")]
-            // Error::ClickhouseDbError { .. } => 503,
-            
-            // #[cfg(feature = "sqlite")]
-            // Error::SqliteDbError {
-            //     ..
-            //     // source,
-            //     // authenticated,
-            // } => 500,
-            // #[cfg(feature = "postgresql")]
-            // Error::PgDbError {
-            //     source,
-            //     authenticated,
-            // } => match source.code() {
-            //     Some(c) => match c.code().chars().collect::<Vec<char>>()[..] {
-            //         ['0', '8', ..] => 503,            // pg connection err
-            //         ['0', '9', ..] => 500,            // triggered action exception
-            //         ['0', 'L', ..] => 403,            // invalid grantor
-            //         ['0', 'P', ..] => 403,            // invalid role specification
-            //         ['2', '3', '5', '0', '3'] => 409, // foreign_key_violation
-            //         ['2', '3', '5', '0', '5'] => 409, // unique_violation
-            //         ['2', '5', '0', '0', '6'] => 405, // read_only_sql_transaction
-            //         ['2', '5', ..] => 500,            // invalid tx state
-            //         ['2', '8', ..] => 403,            // invalid auth specification
-            //         ['2', 'D', ..] => 500,            // invalid tx termination
-            //         ['3', '8', ..] => 500,            // external routine exception
-            //         ['3', '9', ..] => 500,            // external routine invocation
-            //         ['3', 'B', ..] => 500,            // savepoint exception
-            //         ['4', '0', ..] => 500,            // tx rollback
-            //         ['5', '3', ..] => 503,            // insufficient resources
-            //         ['5', '4', ..] => 413,            // too complex
-            //         ['5', '5', ..] => 500,            // obj not on prereq state
-            //         ['5', '7', ..] => 500,            // operator intervention
-            //         ['5', '8', ..] => 500,            // system error
-            //         ['F', '0', ..] => 500,            // conf file error
-            //         ['H', 'V', ..] => 500,            // foreign data wrapper error
-            //         ['P', '0', '0', '0', '1'] => 400, // default code for "raise"
-            //         ['P', '0', ..] => 500,            // PL/pgSQL Error
-            //         ['X', 'X', ..] => 500,            // internal Error
-            //         ['4', '2', '8', '8', '3'] => 404, // undefined function
-            //         ['4', '2', 'P', '0', '1'] => 404, // undefined table
-            //         ['4', '2', '5', '0', '1'] => {
-            //             if *authenticated {
-            //                 403
-            //             } else {
-            //                 401
-            //             }
-            //         }
-            //         ['P', 'T', a, b, c] => {
-            //             [a, b, c].iter().collect::<String>().parse::<u16>().unwrap_or(500)
-            //         }
-            //         _ => 400,
-            //     },
-            //     None => 500,
-            // },
         }
     }
 
     pub fn json_body(&self) -> JsonValue {
         match self {
             Error::Serde { source } => {json!({ "message": format!("{}", source) })},
-            // Error::HttpRequestError { source } => {json!({ "message": format!("Proxy error {}", source) })},
-            // Error::ProxyError { source } => {json!({ "message": format!("Proxy error {}", source) })}
-            //Error::IoError { source } => {json!({ "message": format!("IO error {}", source) })}
             Error::UnsupportedFeature {message} => json!({ "message": message }),
-            // #[cfg(feature = "sqlite")]
-            // Error::ThreadError { .. } => json!({"message":"internal thread error"}),
             Error::ContentTypeError { message } => json!({ "message": message }),
             Error::GucHeadersError => {
                 json!({"message": "response.headers guc must be a JSON array composed of objects with a single key and a string value"})
@@ -311,11 +158,6 @@ impl Error {
             Error::LimitOffsetNotAllowedError => {
                 json!({"message": "Range header and limit/offset querystring parameters are not allowed for PUT"})
             }
-            // Error::NoRelBetween {origin, target}  => json!({
-            //     "hint":"If a new foreign key between these entities was created in the database, try reloading the schema cache.",
-            //     "hint"    .= ("Verify that '" <> parent <> "' and '" <> child <> "' exist in the schema '" <> schema <> "' and that there is a foreign key relationship between them. If a new relationship was created, try reloading the schema cache." :: Text),
-            //     "message": format!("Could not find a relationship between {} and {} in the schema cache", origin, target)
-            // }),
             Error::NoRelBetween { origin, target } => json!({
                 "message":
                     format!(
@@ -366,53 +208,13 @@ impl Error {
                     "message": format!("Could not find the {}.{}{} in the schema cache", schema, proc_name, msg_part)
                 })
             }
-            // Error::ReadFile { source, path } => {
-            //     json!({ "message": format!("Failed to read file {} ({})", path.to_str().unwrap(), source) })
-            // }
             Error::JsonDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::CsvDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::JsonSerialize { .. } => json!({ "message": format!("{}", self) }),
-            // #[cfg(feature = "postgresql")]
-            // Error::PgDbPoolError { source } => {
-            //     json!({ "message": format!("Db pool error {}", source) })
-            // }
-            // #[cfg(feature = "clickhouse")]
-            // Error::ClickhouseDbPoolError { source } => {
-            //     json!({ "message": format!("Db pool error {}", source) })
-            // }
-            // #[cfg(feature = "sqlite")]
-            // Error::SqliteDbPoolError { source } => {
-            //     json!({ "message": format!("Db pool error {}", source) })
-            // }
-            // #[cfg(feature = "clickhouse")]
-            // Error::ClickhouseDbError { source, .. } => {
-            //     json!({ "message": format!("Unhandled db error: {}", source) })
-            // }
             Error::SingularityError { count, content_type } => json!({
                 "message": "JSON object requested, multiple (or no) rows returned",
                 "details": format!("Results contain {} rows, {} requires 1 row", count, content_type)
             }),
-            // #[cfg(feature = "postgresql")]
-            // Error::PgDbError { source, .. } => match source.as_db_error() {
-            //     Some(db_err) => match db_err.code().code().chars().collect::<Vec<char>>()[..] {
-            //         ['P', 'T', ..] => json!({
-            //             "details": match db_err.detail() {Some(v) => v.into(), None => JsonValue::Null},
-            //             "hint": match db_err.hint() {Some(v) => v.into(), None => JsonValue::Null}
-            //         }),
-            //         _ => json!({
-            //             "code": db_err.code().code(),
-            //             "message": db_err.message(),
-            //             "details": match db_err.detail() {Some(v) => v.into(), None => JsonValue::Null},
-            //             "hint": match db_err.hint() {Some(v) => v.into(), None => JsonValue::Null}
-            //         }),
-            //     },
-            //     None => json!({ "message": format!("Unhandled db error {}", source) }),
-            // },
-
-            // #[cfg(feature = "sqlite")]
-            // Error::SqliteDbError { source, .. } => {
-            //     json!({ "message": format!("Unhandled db error: {}", source) })
-            // }
         }
     }
 }
@@ -449,26 +251,3 @@ fn compressed_rel(join: &Join) -> JsonValue {
     }
 }
 
-// compressedRel :: Relationship -> JSON.Value
-// compressedRel Relationship{..} =
-//   let
-//     fmtTbl Table{..} = tableSchema <> "." <> tableName
-//     fmtEls els = "[" <> T.intercalate ", " els <> "]"
-//   in
-//   JSON.object $
-//     ("embedding" .= (tableName relTable <> " with " <> tableName relForeignTable :: Text))
-//     : case relCardinality of
-//         M2M Junction{..} -> [
-//             "cardinality" .= ("many-to-many" :: Text)
-//           , "relationship" .= (fmtTbl junTable <> fmtEls [junConstraint1] <> fmtEls [junConstraint2])
-//           ]
-//         M2O cons -> [
-//             "cardinality" .= ("many-to-one" :: Text)
-//           , "relationship" .= (cons <> fmtEls (colName <$> relColumns) <> fmtEls (colName <$> relForeignColumns))
-//           ]
-//         O2M cons -> [
-//             "cardinality" .= ("one-to-many" :: Text)
-//           , "relationship" .= (cons <> fmtEls (colName <$> relColumns) <> fmtEls (colName <$> relForeignColumns))
-//           ]
-
-pub type Result<T, E = Error> = std::result::Result<T, E>;

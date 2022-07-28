@@ -4,10 +4,6 @@ use serde::{Deserialize, Deserializer};
 use snafu::OptionExt;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
-//use serde_json::{Value as JsonValue};
-
-
-
 type HttpMethod = String;
 type Permissions<T> = HashMap<(Role, HttpMethod), Vec<T>>;
 
@@ -28,11 +24,7 @@ pub struct Schema {
 
 impl DbSchema {
     pub fn get_join(&self, current_schema: &String, origin: &String, target: &String, hint: &Option<String>) -> Result<Join> {
-        // let match_fk = | s: &String, t:&String, n:&String | {
-        //     | fk: &&ForeignKey |{
-        //         &fk.name == n && &fk.referenced_table.0 == s
-        //     }
-        // };
+        ;
         let schema = self.schemas.get(current_schema).context(UnacceptableSchema {
             schemas: vec![current_schema.to_owned()],
         })?;

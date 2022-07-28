@@ -80,15 +80,7 @@ pub struct VhostConfig {
     pub jwt_aud: Option<String>,
     #[serde(default = "role_claim_key")]
     pub role_claim_key: String,
-    //pub deno: Option<DenoConfig>,
 }
-// #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-// pub struct DenoConfig {
-//     pub base_url: String,
-//     pub parameters: String,
-//     pub paths: Vec<String>,
-//     pub script: String,
-// }
 
 fn db_allowd_select_functions() -> Vec<String>{
     vec![
@@ -101,14 +93,8 @@ fn db_allowd_select_functions() -> Vec<String>{
         "toHour", "dictGet", "dictHas", "dictGetOrDefault", "toUInt64"
         ].iter().map(|s| s.to_string()).collect()
 }
-//#[cfg(feature = "postgresql")]
 fn db_type() -> String { "postgresql".to_string() }
 fn db_schemas() -> Vec<String> { vec!["public".to_string()] }
-// #[cfg(feature = "sqlite")]
-// fn db_schemas() -> Vec<String> { vec!["_sqlite_public_".to_string()] }
-// #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
-// fn db_schemas() -> Vec<String> { vec![] }
-
 fn role_claim_key() -> String { ".role".to_string() }
 fn db_pool() -> usize { 10 }
 fn to_tuple<'de, D>(deserializer: D) -> Result<Option<(String, String)>, D::Error>
@@ -141,7 +127,6 @@ mod test {
             vhosts: HashMap::from([(
                 "domain.com".to_string(),
                 VhostConfig {
-                    //deno: None,
                     url_prefix: None,
                     static_files_dir: None,
                     db_type: "postgresql".to_string(),

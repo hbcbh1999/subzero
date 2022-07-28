@@ -10,81 +10,8 @@ use crate::dynamic_statement::{
     generate_fn, param_placeholder_format,
 };
 use crate::error::Result;
-//use bytes::{BufMut, BytesMut};
-//use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
-//use std::error::Error;
-
 use super::{ToParam, Snippet, SqlParam};
 generate_fn!();
-// impl ToSql for ListVal {
-//     fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
-//         match self {
-//             ListVal(v, ..) => {
-//                 if !v.is_empty() {
-//                     out.put_slice(
-//                         format!(
-//                             "{{\"{}\"}}",
-//                             v.iter()
-//                                 .map(|e| e.replace('\\', "\\\\").replace('\"', "\\\""))
-//                                 .collect::<Vec<_>>()
-//                                 .join("\",\"")
-//                         )
-//                         .as_str()
-//                         .as_bytes(),
-//                     );
-//                 } else {
-//                     out.put_slice(r#"{}"#.as_bytes());
-//                 }
-
-//                 Ok(IsNull::No)
-//             }
-//         }
-//     }
-
-//     fn accepts(_ty: &Type) -> bool { true }
-
-//     fn encode_format(&self) -> Format { Format::Text }
-
-//     to_sql_checked!();
-// }
-
-// impl ToSql for SingleVal {
-//     fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
-//         match self {
-//             SingleVal(v, ..) => {
-//                 out.put_slice(v.as_str().as_bytes());
-//                 Ok(IsNull::No)
-//             }
-//         }
-//     }
-
-//     fn accepts(_ty: &Type) -> bool { true }
-
-//     fn encode_format(&self) -> Format { Format::Text }
-
-//     to_sql_checked!();
-// }
-
-// impl ToSql for Payload {
-//     fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
-//         match self {
-//             Payload(v, ..) => {
-//                 out.put_slice(v.as_str().as_bytes());
-//                 Ok(IsNull::No)
-//             }
-//         }
-//     }
-
-//     fn accepts(_ty: &Type) -> bool { true }
-
-//     fn encode_format(&self) -> Format { Format::Text }
-
-//     to_sql_checked!();
-// }
-
-// // helper type aliases
-// type SqlParam<'a> = (dyn ToSql + Sync + 'a);
-// type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
 
 fmt_main_query!();
 fmt_query!();
@@ -120,16 +47,7 @@ mod tests {
     use crate::dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk, param_placeholder_format};
     use pretty_assertions::assert_eq;
     use regex::Regex;
-    //use crate::api::{SelectItem::*};
-    //use crate::api::LogicOperator::*;
-    //use crate::api::{Condition::*, Filter::*};
-    // use combine::stream::PointerOffset;
-    // use combine::easy::{Error, Errors};
-    // //use combine::error::StringStreamError;
-    // use crate::error::Error as AppError;
-    // use combine::EasyParser;
     use super::*;
-    //use crate::parser::subzero::tests::{JSON_SCHEMA};
     generate_fn!();
     fn s(s: &str) -> String { s.to_string() }
 
