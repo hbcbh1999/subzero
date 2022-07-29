@@ -1,0 +1,44 @@
+{
+  "name": "subzero",
+  "version": "0.0.1",
+  "description": "Automated REST and GraphQL api for your database",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib/**/*",
+    "instrospection_queries/**/*"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "jest --config jestconfig.json",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "lint": "tslint -p tsconfig.json",
+    "prepare" : "npm run build",
+    "prepublishOnly" : "npm test && npm run lint",
+    "preversion" : "npm run lint",
+    "version" : "npm run format && git add -A src",
+    "postversion" : "git push && git push --tags"
+  },
+  "keywords": [
+    "rest",
+    "graphql",
+    "postgrest",
+    "postgresql",
+    "sqlite",
+    "clickhouse"
+  ],
+  "author": "Ruslan Talpa",
+  "license": "ISC",
+  "dependencies": {
+    "subzero-core-wasm": "file:../subzero-core-wasm/pkg"
+  },
+  "devDependencies": {
+    "@types/jest": "^28.1.6",
+    "jest": "^28.1.3",
+    "prettier": "^2.7.1",
+    "ts-jest": "^28.0.7",
+    "tslint": "^6.1.3",
+    "tslint-config-prettier": "^1.18.0",
+    "typescript": "^4.7.4"
+  }
+}

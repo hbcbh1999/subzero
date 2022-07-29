@@ -1,8 +1,10 @@
 [package]
 name = "subzero-core-wasm"
-version = "0.1.0"
+version = "0.0.1"
 authors = ["Ruslan Talpa <ruslan.talpa@gmail.com>"]
 edition = "2018"
+license = "LICENSE.txt"
+description = "subzero core module"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

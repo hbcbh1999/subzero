@@ -6,15 +6,14 @@ use std::collections::HashMap;
 use utils::{
     set_panic_hook, 
     cast_core_err, cast_serde_err,
-    //console_log, log,
+    // console_log, log,
 };
 //use subzero_core::schema::DbSchema;
 use subzero_core::{
-    // api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*, SelectItem::*},
-    //error::{Error, },
     parser::postgrest::parse,
     schema::DbSchema,
-    
+    formatter::Param::*,
+    api::{SingleVal, ListVal, Payload}
 };
 #[cfg(feature = "postgresql")]
 use subzero_core::formatter::postgresql;
@@ -22,14 +21,9 @@ use subzero_core::formatter::postgresql;
 use subzero_core::formatter::clickhouse;
 #[cfg(feature = "sqlite")]
 use subzero_core::formatter::sqlite;
-
-// use snafu::Snafu;
-// use std::fmt;
 use wasm_bindgen::{prelude::*, };
-use js_sys::{Error as JsError, Array as JsArray, Map as JsMap, JsString};
+use js_sys::{Error as JsError, Array as JsArray, Map as JsMap};
 use serde_json;
-//use std::{collections::HashMap, };
-
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -63,9 +57,9 @@ impl Backend {
         //db_type: Option<JsString>,
         db_type: &str,
     )
-    -> Result<JsString, JsError> {
+    -> Result<Vec<JsValue>, JsError> {
         
-        if ["GET","POST","PUT","DELETE","PATCH"].contains(&method) {
+        if !["GET","POST","PUT","DELETE","PATCH"].contains(&method) {
             return Err(JsError::new("invalid method"));
         }
         //let body = body.into();
@@ -87,7 +81,7 @@ impl Backend {
         let request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, max_rows).map_err(cast_core_err)?;
 
         //let db_type = db_type.unwrap_or(JsString::from(""));
-        let (main_statement, _main_parameters, _) = match db_type {
+        let (main_statement, main_parameters, _) = match db_type {
             "postgresql" => {
                 let query = postgresql::fmt_main_query(request.schema_name, &request).map_err(cast_core_err)?;
                 Ok(postgresql::generate(query))
@@ -102,8 +96,16 @@ impl Backend {
             },
             _ => Err(JsError::new("unsupported database type")),
         }?;
-
-        Ok(JsString::from(main_statement))
+        let parameters = JsArray::new_with_length(main_parameters.len() as u32);
+        for (i, p) in main_parameters.into_iter().enumerate() {
+            let v = match p.to_param() {
+                LV(ListVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
+                SV(SingleVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
+                PL(Payload(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
+            };
+            parameters.set(i as u32, v);
+        }
+        Ok(vec![JsValue::from(main_statement), JsValue::from(parameters)])
     }
 }
 

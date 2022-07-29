@@ -2086,7 +2086,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-core-wasm"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
