@@ -1,7 +1,7 @@
 use subzero_core::{api::{ApiRequest,ApiResponse}, schema::DbSchema};
+use std::collections::HashMap;
 use crate::error::Result;
 use crate::config::{VhostConfig,};
-use serde_json::{Value};
 use async_trait::async_trait;
 use regex::Regex;
 use std::{fs};
@@ -55,7 +55,7 @@ pub fn include_files(template: String) -> String {
 #[async_trait]
 pub trait Backend{
     async fn init(vhost: String, config: VhostConfig) -> Result<Self> where Self: Sized;
-    async fn execute(&self, authenticated: bool, request: &ApiRequest, role: Option<&String>, jwt_claims: &Option<Value>) -> Result<ApiResponse>;
+    async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse>;
     fn db_schema(&self) -> &DbSchema;
     fn config(&self) -> &VhostConfig;
 }

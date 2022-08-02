@@ -2,8 +2,9 @@ use super::base::{
     cast_select_item_format, fmt_as, fmt_body, fmt_condition, fmt_condition_tree, fmt_count_query, fmt_field, fmt_field_format, fmt_filter,
     fmt_identity, fmt_in_filter, fmt_json_operand, fmt_json_operation, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_main_query, fmt_offset,
     fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_query, fmt_select_item, fmt_select_name, fmt_sub_select_item, return_representation,
-    simple_select_item_format, star_select_item_format, fmt_function_param, fmt_select_item_function,fmt_function_call
+    simple_select_item_format, star_select_item_format, fmt_function_param, fmt_select_item_function,fmt_function_call, fmt_env_query
 };
+use std::collections::HashMap;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{
     param, sql, JoinIterator, SqlSnippet,  SqlSnippetChunk,
@@ -15,6 +16,7 @@ generate_fn!();
 
 fmt_main_query!();
 fmt_query!();
+fmt_env_query!();
 fmt_count_query!();
 fmt_body!();
 fmt_condition_tree!();
@@ -90,7 +92,7 @@ mod tests {
             re.replace_all(query_str.as_str(), " "),
             re.replace_all(
                 r#"
-                with
+                
                     subzero_payload as ( select $1::json as json_data ),
                     subzero_body as (
                         select 
@@ -105,7 +107,7 @@ mod tests {
                         from json_to_recordset((select val from subzero_body)) as _("id" integer)
                     ),
                     subzero_source as (
-                            select "api"."myfunction"( "id" := (select "id" from subzero_args limit 1)) as subzero_scalar
+                            select "api"."myfunction"( "id" := (select "id" from subzero_args limit 1)) as subzero_scalar from env
                     )
                 select "subzero_source".* from "subzero_source"
                 "#,
@@ -277,7 +279,6 @@ mod tests {
             re.replace_all(query_str.as_str(), " "),
             re.replace_all(
                 r#"
-        with 
         subzero_payload as ( select $1::json as json_data ),
         subzero_body as (
             select

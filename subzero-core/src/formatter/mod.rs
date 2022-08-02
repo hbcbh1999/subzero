@@ -16,6 +16,7 @@ pub enum Param<'a> {
     LV(&'a ListVal),
     SV(&'a SingleVal),
     PL(&'a Payload),
+    TV(&'a str),
 }
 // helper type aliases
 pub trait ToParam: fmt::Debug {
@@ -39,6 +40,13 @@ impl ToParam for SingleVal {
     fn to_data_type(&self) -> &Option<String> {
         //println!("to_data_type {:?}", &self);
         &self.1
+    }
+}
+
+impl<'a> ToParam for &'a str {
+    fn to_param(&self) -> Param {Param::TV(&self)}
+    fn to_data_type(&self) -> &Option<String> {
+        &None
     }
 }
 

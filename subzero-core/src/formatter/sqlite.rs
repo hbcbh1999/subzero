@@ -32,6 +32,7 @@ use super::base::{
     //fmt_select_item_function,
     fmt_function_call,
 };
+use std::collections::HashMap;
 pub use super::base::return_representation;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, 
@@ -51,7 +52,7 @@ macro_rules! cast_select_item_format {
 }
 
 //fmt_main_query!();
-pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest) -> Result<Snippet<'a>> {
+pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
     let schema = String::from(schema_str);
     let count = matches!(&request.preferences, Some(Preferences {count: Some(Count::ExactCount),..}));
 

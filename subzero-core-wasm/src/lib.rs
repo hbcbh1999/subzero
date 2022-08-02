@@ -54,6 +54,7 @@ impl Backend {
         body: &str,
         headers: &JsMap,
         cookies: &JsMap,
+        env: &JsMap,
         //db_type: Option<JsString>,
         db_type: &str,
     )
@@ -69,6 +70,8 @@ impl Backend {
         let headers = headers.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
         let cookies = cookies.into_serde::<HashMap<String,String>>().map_err(cast_serde_err)?;
         let cookies = cookies.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
+        let env = env.into_serde::<HashMap<String,String>>().map_err(cast_serde_err)?;
+        let env = env.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
         let db_schema = &self.db_schema;
         
         let body = if body.is_empty() {
@@ -83,15 +86,15 @@ impl Backend {
         //let db_type = db_type.unwrap_or(JsString::from(""));
         let (main_statement, main_parameters, _) = match db_type {
             "postgresql" => {
-                let query = postgresql::fmt_main_query(request.schema_name, &request).map_err(cast_core_err)?;
+                let query = postgresql::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?;
                 Ok(postgresql::generate(query))
             },
             "clickhouse" => {
-                let query = clickhouse::fmt_main_query(request.schema_name, &request).map_err(cast_core_err)?;
+                let query = clickhouse::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?;
                 Ok(clickhouse::generate(query))
             },
             "sqlite" => {
-                let query = sqlite::fmt_main_query(request.schema_name, &request).map_err(cast_core_err)?;
+                let query = sqlite::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
             },
             _ => Err(JsError::new("unsupported database type")),
@@ -102,6 +105,7 @@ impl Backend {
                 LV(ListVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
                 SV(SingleVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
                 PL(Payload(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
+                TV(v) => JsValue::from_serde(v).unwrap_or_default(),
             };
             parameters.set(i as u32, v);
         }

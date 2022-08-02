@@ -12,7 +12,7 @@ use subzero_core::api::{ApiResponse, FunctionParam};
 use crate::backend::Backend;
 use crate::config::{VhostConfig,};
 use subzero_core::{
-    api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*, SelectItem::*},
+    api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*, SelectItem::*, ApiRequest},
     error::{*},
     parser::postgrest::parse,
 };
@@ -46,6 +46,85 @@ fn validate_fn_param(config: &VhostConfig, p: &FunctionParam) -> Result<()> {
         },
         _ => {Ok(())}
     }
+}
+
+fn get_env(role: Option<&String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
+    let mut env = HashMap::new();
+    let search_path = &[String::from(request.schema_name)];
+    if let Some(r) = role {
+        env.insert("role".to_string(), r.clone());
+        
+    }
+    
+    env.insert("request.method".to_string(), format!("{}", request.method));
+    env.insert("request.path".to_string(), request.path.to_string());
+    //pathSql = setConfigLocal mempty ("request.path", iPath req)
+    
+    env.insert("search_path".to_string(), search_path.join(", "));
+    if use_legacy_gucs {
+        if let Some(r) = role {
+            env.insert("request.jwt.claim.role".to_string(), r.clone());
+        }
+        
+        env.extend(request.headers.iter().map(|(k, v)| (format!("request.header.{}", k.to_lowercase()), v.to_string())));
+        env.extend(request.cookies.iter().map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())));
+        env.extend(request.get.iter().map(|(k, v)| (format!("request.get.{}", k), v.to_string())));
+        match jwt_claims {
+            Some(v) => match v.as_object() {
+                Some(claims) => {
+                    env.extend(claims.iter().map(|(k, v)| (
+                        format!("request.jwt.claim.{}", k),
+                        match v {
+                            JsonValue::String(s) => s.clone(),
+                            _ => format!("{}", v),
+                        }
+                    )));
+                }
+                None => {}
+            },
+            None => {}
+        }
+    }
+    else {
+        env.insert("request.headers".to_string(), 
+            serde_json::to_string(
+                &request
+                .headers
+                .iter()
+                .map(|(k, v)| (k.to_lowercase(), v.to_string()))
+                .collect::<Vec<_>>()
+            ).unwrap()
+        );
+        env.insert("request.cookies".to_string(), 
+            serde_json::to_string(
+                &request
+                .cookies
+                .iter()
+                .map(|(k, v)| (k, v.to_string()))
+                .collect::<Vec<_>>()
+            ).unwrap()
+        );
+        env.insert("request.get".to_string(), 
+            serde_json::to_string(
+                &request
+                .get
+                .iter()
+                .map(|(k, v)| (k, v.to_string()))
+                .collect::<Vec<_>>()
+            ).unwrap()
+        );
+        match jwt_claims {
+            Some(v) => match v.as_object() {
+                Some(claims) => {
+                    env.insert("request.jwt.claims".to_string(), serde_json::to_string(&claims).unwrap());                    
+                }
+                None => {}
+            },
+            None => {}
+        }
+    }
+    
+    env
 }
 
 #[allow(clippy::borrowed_box)]
@@ -137,6 +216,7 @@ pub async fn handle<'a>(
         None => Ok((config.db_anon_role.as_ref(), false)),
     }.context(CoreError)?;
 
+    debug!("role: {:?}, jwt_claims: {:?}", role, jwt_claims);
     // do not allow unauthenticated requests when there is no anonymous role setup
     if let (None, false) = (role, authenticated) {
         return Err(to_core_error(Error::JwtTokenInvalid {message: "unauthenticated requests not allowed".to_string()}))
@@ -146,6 +226,9 @@ pub async fn handle<'a>(
     let request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(CoreError)?;
     // check only safe functions are used
     
+    let _env = get_env(role, &request, &jwt_claims, config.db_use_legacy_gucs);
+    let env = _env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_,_>>();
+
     for (p, n) in &request.query {
         match n {
             FunctionCall { select, .. } |
@@ -172,13 +255,13 @@ pub async fn handle<'a>(
     
     let response:ApiResponse = match config.db_type.as_str() {
         #[cfg(feature = "postgresql")]
-        "postgresql" => backend.execute(authenticated, &request, role, &jwt_claims).await?,
+        "postgresql" => backend.execute(authenticated, &request, &env).await?,
 
         #[cfg(feature = "clickhouse")]
-        "clickhouse" => backend.execute(authenticated, &request, role, &jwt_claims).await?,
+        "clickhouse" => backend.execute(authenticated, &request, &env).await?,
         
         #[cfg(feature = "sqlite")]
-        "sqlite" => task::block_in_place(|| backend.execute(authenticated, &request, role, &jwt_claims)).await?,
+        "sqlite" => task::block_in_place(|| backend.execute(authenticated, &request, &env)).await?,
 
         t => panic!("unsuported database type: {}", t),
     };

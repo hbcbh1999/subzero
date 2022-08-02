@@ -15,6 +15,7 @@ use subzero_core::{
     schema::{DbSchema},
     formatter::{Param::*,clickhouse::{fmt_main_query, generate},}
 };
+use std::collections::HashMap;
 use async_trait::async_trait;
 use http::Error as HttpError;
 use log::{debug};
@@ -56,14 +57,13 @@ impl managed::Manager for Manager {
 }
 
 async fn execute<'a>(
-    pool: &'a Pool, _authenticated: bool, request: &ApiRequest<'a>, _role: Option<&String>,
-    _jwt_claims: &Option<JsonValue>, _config: &VhostConfig
+    pool: &'a Pool, _authenticated: bool, request: &ApiRequest<'a>, env: &'a HashMap<&str, &str>, _config: &VhostConfig
 ) -> Result<ApiResponse> {
     let o = pool.get().await.unwrap();//.context(ClickhouseDbPoolError)?;
     let uri = &o.0;
     let base_url = &o.1;
     let client = &o.2;
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request).context(CoreError)?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreError)?);
     debug!("main_statement {}", main_statement);
     let mut parameters = vec![("query".to_string(), main_statement)];
     for (k, v) in main_parameters.iter().enumerate() {
@@ -71,6 +71,7 @@ async fn execute<'a>(
             SV(SingleVal(v, _)) => v.to_string(),
             LV(ListVal(v, _)) => format!("[{}]",v.join(",")),
             PL(Payload(v, _)) => v.to_string(),
+            TV(v) => v.to_string(),
         };
         parameters.push((format!("param_p{}",k+1), p));
     }
@@ -235,10 +236,8 @@ impl Backend for ClickhouseBackend {
 
         Ok(ClickhouseBackend {config, pool, db_schema})
     }
-    async fn execute(
-        &self, authenticated: bool, request: &ApiRequest, role: Option<&String>, jwt_claims: &Option<JsonValue>
-    ) -> Result<ApiResponse> {
-        execute(&self.pool, authenticated, request, role, jwt_claims, &self.config).await
+    async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
+        execute(&self.pool, authenticated, request, env, &self.config).await
     }
     fn db_schema(&self) -> &DbSchema { &self.db_schema }
     fn config(&self) -> &VhostConfig { &self.config }

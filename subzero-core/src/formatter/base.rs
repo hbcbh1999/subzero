@@ -1,5 +1,6 @@
 use crate::api::{ApiRequest, Preferences, QueryNode::*, Representation,};
 
+
 #[allow(unused_macros)]
 macro_rules! fmt_field_format {
     () => {
@@ -26,7 +27,7 @@ macro_rules! cast_select_item_format {
 }
 #[allow(unused_macros)]
 macro_rules! fmt_main_query { () => {
-pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest) -> Result<Snippet<'a>> {
+pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
     let schema = String::from(schema_str);
     let count = match &request.preferences {
         Some(Preferences {
@@ -106,14 +107,19 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest) -> Resul
         }
     };
 
+    //let env = env_map.iter().map(|(k,v)| (k.to_string(), v.to_string())).collect::<HashMap<_,_>>();
     Ok(
-    fmt_query(
-        &schema,
-        return_representation,
-        Some("_subzero_query"),
-        &request.query,
-        &None,
-    )? + " , "
+        sql("with")
+        + " env as materialized (" + fmt_env_query(&env)+ ")"
+        + " , "
+        + fmt_query(
+            &schema,
+            return_representation,
+            Some("_subzero_query"),
+            &request.query,
+            &None,
+        )?  + " , "
+        
         + if count {
             fmt_count_query(&schema, Some("_subzero_count_query"), &request.query)?
         } else {
@@ -135,6 +141,24 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest) -> Resul
     )
 }
 }}
+
+
+#[allow(unused_macros)]
+macro_rules! fmt_env_query { () => {
+pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
+    "select "
+    + env
+        .iter()
+        .map(|(k, v)| {
+            "set_config(" + param(k as &SqlParam) + ", " + param(v as &SqlParam) + ", true)"
+        })
+        .join(",")
+}
+}}
+#[allow(unused_imports)]
+pub(super) use fmt_env_query;
+
+
 #[allow(unused_macros)]
 macro_rules! fmt_query { () => {
 fn fmt_query<'a>(
@@ -144,6 +168,10 @@ fn fmt_query<'a>(
     q: &'a Query,
     _join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
+    let add_env_tbl_to_from = match wrapin_cte {
+        Some(_) => true,
+        _ => false,
+    };
     let (cte_snippet, query_snippet) = match &q.node {
         FunctionCall {
             fn_name,
@@ -192,7 +220,7 @@ fn fmt_query<'a>(
                         .join(", ")),
                 ),
             };
-            let call_it = fmt_qi(fn_name) + "(" + arg_frag + ")";
+            let call_it = fmt_qi(fn_name) + "(" + arg_frag + ") ";
             let returned_columns = if returning.len() == 0 {
                 "*".to_string()
             } else {
@@ -200,7 +228,7 @@ fn fmt_query<'a>(
                     .iter()
                     .map(|r| {
                         if r.as_str() == "*" {
-                            format!("*")
+                            format!("{}.*", fmt_identity(&fn_name.1))
                         } else {
                             format!("{}.{}", fmt_identity(&fn_name.1), fmt_identity(r))
                         }
@@ -211,19 +239,19 @@ fn fmt_query<'a>(
 
             let args_body = if *is_multiple_call {
                 if *is_scalar {
-                    "select " + call_it + "subzero_scalar from subzero_args"
+                    "select " + call_it + " subzero_scalar from subzero_args, env"
                 } else {
                     format!(
                         "select subzero_lat_args.* from subzero_args, lateral ( select {} from ",
                         returned_columns
-                    ) + call_it
+                    ) + call_it + ", env"
                         + " ) subzero_lat_args"
                 }
             } else {
                 if *is_scalar {
-                    "select " + call_it + " as subzero_scalar"
+                    "select " + call_it + " as subzero_scalar from env"
                 } else {
-                    format!("select {} from ", returned_columns) + call_it
+                    format!("select {} from ", returned_columns) + call_it + " , env"
                 }
             };
 
@@ -302,7 +330,7 @@ fn fmt_query<'a>(
                     + select.join(", ")
                     + " from "
                     + from_snippet
-                    + " "
+                    + if add_env_tbl_to_from { ", env " } else { "" }
                     + if join_tables.len() > 0 {
                         format!(
                             ", {}",
@@ -618,12 +646,12 @@ fn fmt_query<'a>(
     match wrapin_cte {
         Some(cte_name) => match cte_snippet {
             Some(cte) => {
-                " with " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )"
+                " " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )"
             }
-            None => format!(" with {} as ( ", cte_name) + query_snippet + " )",
+            None => format!(" {} as ( ", cte_name) + query_snippet + " )",
         },
         None => match cte_snippet {
-            Some(cte) => " with " + cte + query_snippet,
+            Some(cte) => " " + cte + query_snippet,
             None => query_snippet,
         },
     }

@@ -15,12 +15,13 @@ use subzero_core::{
 };
 use crate::error::{Result, *};
 use std::path::Path;
-use serde_json::{Value as JsonValue, json};
+use serde_json::{json};
 use http::Method;
 use snafu::ResultExt;
 use log::{debug};
 use async_trait::async_trait;
 use rusqlite::vtab::array;
+use std::collections::HashMap;
 use std::{fs};
 use super::{Backend, include_files};
 use tokio::task;
@@ -38,6 +39,7 @@ impl ToSql for WrapParam<'_> {
         match self {
             WrapParam(LV(ListVal(v, ..))) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
             WrapParam(SV(SingleVal(v, ..))) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
+            WrapParam(TV(v)) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
             WrapParam(PL(Payload(v, ..))) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
         }
     }
@@ -49,8 +51,7 @@ fn wrap_param<'a>(p: &'a (dyn ToParam + Sync)) -> WrapParam<'a> {
 
 //generate_fn!();
 fn execute(
-    pool: &Pool<SqliteConnectionManager>, authenticated: bool, request: &ApiRequest,
-    _role: Option<&String>, _jwt_claims: &Option<JsonValue>, config: &VhostConfig,
+    pool: &Pool<SqliteConnectionManager>, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>, config: &VhostConfig,
 ) -> Result<ApiResponse> {
     let conn = pool.get().unwrap();
 
@@ -80,8 +81,8 @@ fn execute(
                 }
                 _ => {}
             }
-            
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, &mutate_request).context(CoreError)?);
+            let env1 = env.clone();
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, &mutate_request, &env1).context(CoreError)?);
             debug!("pre_statement: {}", main_statement);
             let mut mutate_stmt = conn.prepare(main_statement.as_str()).context(SqliteDbError { authenticated })?;
             let mutate_params = params_from_iter(main_parameters.into_iter().map(wrap_param));
@@ -149,7 +150,7 @@ fn execute(
         None => request
     };
     
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, final_request).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, final_request, env).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
     debug!("main_statement: {}", main_statement);
     let mut main_stm = conn
         .prepare_cached(main_statement.as_str())
@@ -250,10 +251,8 @@ impl Backend for SQLiteBackend {
 
         Ok(SQLiteBackend {config, pool, db_schema})
     }
-    async fn execute(
-        &self, authenticated: bool, request: &ApiRequest, role: Option<&String>, jwt_claims: &Option<JsonValue>
-    ) -> Result<ApiResponse> {
-        execute(&self.pool, authenticated, request, role, jwt_claims, &self.config)
+    async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
+        execute(&self.pool, authenticated, request, env, &self.config)
     }
     fn db_schema(&self) -> &DbSchema { &self.db_schema }
     fn config(&self) -> &VhostConfig { &self.config }

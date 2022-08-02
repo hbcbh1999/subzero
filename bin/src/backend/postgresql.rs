@@ -7,14 +7,9 @@ use tokio::time::{Duration, sleep};
 use crate::config::{VhostConfig,SchemaStructure::*};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, ContentType::*, SingleVal,ListVal,Payload},
-    //config::{VhostConfig,SchemaStructure::*},
-    dynamic_statement::{ SqlSnippet, },
-    //error::{Result, *},
     error::{Error::{SingularityError, PutMatchingPkError}},
     schema::{DbSchema},
-    dynamic_statement::{param, JoinIterator, },
-    
-    formatter::{SqlParam, Param, Param::*, postgresql::{fmt_main_query, generate}, ToParam,},
+    formatter::{Param, Param::*, postgresql::{fmt_main_query, generate, fmt_env_query}, ToParam,},
     error::{JsonDeserialize,}
 };
 use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
@@ -25,7 +20,6 @@ use super::{Backend, include_files};
 
 use std::{collections::HashMap, fs};
 use std::path::Path;
-use serde_json::{Value as JsonValue};
 use http::Method;
 use bytes::{BufMut, BytesMut};
 use std::error::Error;
@@ -37,6 +31,10 @@ impl ToSql for WrapParam<'_> {
         match self {
             WrapParam(SV(SingleVal(v, ..))) => {
                 out.put_slice(v.as_str().as_bytes());
+                Ok(IsNull::No)
+            }
+            WrapParam(TV(v)) => {
+                out.put_slice(v.as_bytes());
                 Ok(IsNull::No)
             }
             WrapParam(PL(Payload(v, ..))) => {
@@ -72,93 +70,6 @@ impl ToSql for WrapParam<'_> {
     to_sql_checked!();
 }
 
-
-fn get_postgrest_env(role: Option<&String>, search_path: &[String], request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
-    let mut env = HashMap::new();
-    if let Some(r) = role {
-        env.insert("role".to_string(), r.clone());
-        
-    }
-    
-    env.insert("request.method".to_string(), format!("{}", request.method));
-    env.insert("request.path".to_string(), request.path.to_string());
-    //pathSql = setConfigLocal mempty ("request.path", iPath req)
-    
-    env.insert("search_path".to_string(), search_path.join(", "));
-    if use_legacy_gucs {
-        if let Some(r) = role {
-            env.insert("request.jwt.claim.role".to_string(), r.clone());
-        }
-        
-        env.extend(request.headers.iter().map(|(k, v)| (format!("request.header.{}", k.to_lowercase()), v.to_string())));
-        env.extend(request.cookies.iter().map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())));
-        env.extend(request.get.iter().map(|(k, v)| (format!("request.get.{}", k), v.to_string())));
-        match jwt_claims {
-            Some(v) => match v.as_object() {
-                Some(claims) => {
-                    env.extend(claims.iter().map(|(k, v)| (
-                        format!("request.jwt.claim.{}", k),
-                        match v {
-                            JsonValue::String(s) => s.clone(),
-                            _ => format!("{}", v),
-                        }
-                    )));
-                }
-                None => {}
-            },
-            None => {}
-        }
-    }
-    else {
-        env.insert("request.headers".to_string(), 
-            serde_json::to_string(
-                &request
-                .headers
-                .iter()
-                .map(|(k, v)| (k.to_lowercase(), v.to_string()))
-                .collect::<Vec<_>>()
-            ).unwrap()
-        );
-        env.insert("request.cookies".to_string(), 
-            serde_json::to_string(
-                &request
-                .cookies
-                .iter()
-                .map(|(k, v)| (k, v.to_string()))
-                .collect::<Vec<_>>()
-            ).unwrap()
-        );
-        env.insert("request.get".to_string(), 
-            serde_json::to_string(
-                &request
-                .get
-                .iter()
-                .map(|(k, v)| (k, v.to_string()))
-                .collect::<Vec<_>>()
-            ).unwrap()
-        );
-        match jwt_claims {
-            Some(v) => match v.as_object() {
-                Some(claims) => {
-                    env.insert("request.jwt.claims".to_string(), serde_json::to_string(&claims).unwrap());                    
-                }
-                None => {}
-            },
-            None => {}
-        }
-    }
-    
-    env
-}
-
-fn get_postgrest_env_query<'a>(env: Vec<(&'a SqlParam, &'a SqlParam)>) -> SqlSnippet<'a, SqlParam<'a>> {
-    "select "
-        + env
-            .into_iter()
-            .map(|(k, v)| "set_config(" + param(k) + ", " + param(v) + ", true)")
-            .join(",")
-}
-
 fn wrap_param<'a>(p: &'a (dyn ToParam + Sync)) -> WrapParam<'a> {
     WrapParam(p.to_param())
 }
@@ -166,25 +77,11 @@ fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
     p as &(dyn ToSql + Sync)
 }
 
-async fn execute<'a>(
-    pool: &'a Pool, authenticated: bool, request: &ApiRequest<'a>, role: Option<&String>,
-    jwt_claims: &Option<JsonValue>, config: &VhostConfig
-) -> Result<ApiResponse> {
+async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'a>, env: &'a HashMap<&'a str, &'a str>, config: &VhostConfig) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(PgDbPoolError)?;
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, &env).context(CoreError)?);
+    debug!("{}\n{:?}", main_statement, main_parameters);
 
-    
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request).context(CoreError)?);
-    let env = get_postgrest_env(role, &[String::from(request.schema_name)], request, jwt_claims, config.db_use_legacy_gucs)
-        .into_iter()
-        .map(|(k, v)| (SingleVal(k, Some("text".to_string())), SingleVal(v, Some("text".to_string()))))
-        .collect::<Vec<_>>();
-    let env = env.iter()
-        .map(|(k, v)| (k as &SqlParam, v as &SqlParam))
-        .collect::<Vec<_>>();
-
-    let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(env));
-    //let (env_statement, env_parameters, _) = generate(get_postgrest_env_query(vec![]));
-    //println!("{}\n{}\n{:?}", main_statement, env_statement, env_parameters);
     let transaction = client
         .build_transaction()
         .isolation_level(IsolationLevel::ReadCommitted)
@@ -193,40 +90,23 @@ async fn execute<'a>(
         .await
         .context(PgDbError { authenticated })?;
 
-    //paralel
-    // let (env_stm, main_stm) = future::try_join(
-    //         transaction.prepare_cached(env_statement.as_str()),
-    //         transaction.prepare_cached(main_statement.as_str())
-    //     ).await.context(PgDbError { authenticated })?;
-    
-    // let (_, rows) = future::try_join(
-    //     transaction.query(&env_stm, env_parameters.as_slice()),
-    //     transaction.query(&main_stm, main_parameters.as_slice())
-    // ).await.context(PgDbError { authenticated })?;
-
-    
-    let env_stm = transaction
-        .prepare_cached(env_statement.as_str())
-        .await
-        .context(PgDbError { authenticated })?;
-    let _ = transaction
-        .query(&env_stm, env_parameters.into_iter().map(wrap_param).collect::<Vec<_>>().iter().map(cast_param).collect::<Vec<_>>().as_slice())
-        //.query(&env_stm, env_parameters.as_slice())
-        .await
-        .context(PgDbError { authenticated })?;
-
     if let Some((s, f)) = &config.db_pre_request {
         let fn_schema = match s.as_str() {
             "" => request.schema_name,
             _ => s.as_str(),
         };
+        let (env_query, env_parameters, _) = generate(fmt_env_query(&env));
 
-        let pre_request_statement = format!(r#"select "{}"."{}"()"#, fn_schema, f);
+        let pre_request_statement = format!(r#"
+            with env as materialized({})
+            select "{}".* from "{}"."{}"(), env"#, 
+            env_query, f, fn_schema, f
+        );
         let pre_request_stm = transaction
             .prepare_cached(pre_request_statement.as_str())
             .await
             .context(PgDbError { authenticated })?;
-        transaction.query(&pre_request_stm, &[]).await.context(PgDbError { authenticated })?;
+        transaction.query(&pre_request_stm, env_parameters.into_iter().map(wrap_param).collect::<Vec<_>>().iter().map(cast_param).collect::<Vec<_>>().as_slice()).await.context(PgDbError { authenticated })?;
     }
 
     let main_stm = transaction
@@ -349,10 +229,8 @@ impl Backend for PostgreSQLBackend {
 
         Ok(PostgreSQLBackend {config, pool, db_schema})
     }
-    async fn execute(
-        &self, authenticated: bool, request: &ApiRequest, role: Option<&String>, jwt_claims: &Option<JsonValue>
-    ) -> Result<ApiResponse> {
-        execute(&self.pool, authenticated, request, role, jwt_claims, &self.config).await
+    async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
+        execute(&self.pool, authenticated, request, env, &self.config).await
     }
     fn db_schema(&self) -> &DbSchema { &self.db_schema }
     fn config(&self) -> &VhostConfig { &self.config }

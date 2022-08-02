@@ -602,9 +602,11 @@ feature "query"
       it "can embed a view that has group by" $
         get "/projects_count_grouped_by?select=number_of_projects,client:clients(name)&order=number_of_projects" shouldRespondWith
           [json|r#"
-            [{"number_of_projects":1,"client":null},
-             {"number_of_projects":2,"client":{"name":"Microsoft"}},
-             {"number_of_projects":2,"client":{"name":"Apple"}}] "#|]
+            [
+            {"number_of_projects":1,"client":null},
+            {"number_of_projects":2,"client":{"name":"Apple"}},
+            {"number_of_projects":2,"client":{"name":"Microsoft"}}
+            ] "#|]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
 
       it "can embed a view that has a subselect containing a select in a where" $

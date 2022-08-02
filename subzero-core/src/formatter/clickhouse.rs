@@ -1,6 +1,7 @@
 //use core::fmt;
 
 use std::collections::HashSet;
+use std::collections::HashMap;
 
 use super::base::{
     cast_select_item_format, fmt_condition, fmt_field, fmt_filter,
@@ -26,7 +27,7 @@ macro_rules! param_placeholder_format {() => {"{{p{pos}:{data_type}}}"};}
 generate_fn!(true, "String");
 
 //fmt_main_query!();
-pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest) -> Result<Snippet<'a>> {
+pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
     let schema = String::from(schema_str);
     let _count = match &request.preferences {
         Some(Preferences {
@@ -671,7 +672,7 @@ mod tests {
         
         "#, expected_query_str);
 
-        let (main_query_str, _parameters, _) = generate(fmt_main_query(&s("default"), &api_request).unwrap());
+        let (main_query_str, _parameters, _) = generate(fmt_main_query(&s("default"), &api_request, &HashMap::new()).unwrap());
         assert_eq!(
             re.replace_all(main_query_str.as_str(), " "),
             re.replace_all(expected_main_query_str.as_str()," ")
