@@ -197,7 +197,8 @@ fn fmt_query<'a>(
                         + "select * from json_to_recordset((select val from subzero_body)) as _("
                         + prms
                             .iter()
-                            .map(|p| format!("{} {}", fmt_identity(&p.name), p.type_))
+                            //.map(|p| format!("{} {}", fmt_identity(&p.name), p.type_))
+                            .map(|p| vec![fmt_identity(&p.name), p.type_.clone()].join(" "))
                             .collect::<Vec<_>>()
                             .join(", ")
                         + ")"
@@ -208,12 +209,14 @@ fn fmt_query<'a>(
                             let variadic = if p.variadic { "variadic" } else { "" };
                             let ident = fmt_identity(&p.name);
                             if *is_multiple_call {
-                                format!("{} {} := subzero_args.{}", variadic, ident, ident)
+                                //format!("{} {} := subzero_args.{}", variadic, ident, ident)
+                                vec![variadic, ident.as_str(), ":= subzero_args.", ident.as_str()].join(" ")
                             } else {
-                                format!(
-                                    "{} {}  := (select {} from subzero_args limit 1)",
-                                    variadic, ident, ident
-                                )
+                                // format!(
+                                //     "{} {}  := (select {} from subzero_args limit 1)",
+                                //     variadic, ident, ident
+                                // )
+                                vec![variadic, ident.as_str(), ":= (select", ident.as_str(), "from subzero_args limit 1)"].join(" ")
                             }
                         })
                         .collect::<Vec<_>>()
@@ -228,9 +231,11 @@ fn fmt_query<'a>(
                     .iter()
                     .map(|r| {
                         if r.as_str() == "*" {
-                            format!("{}.*", fmt_identity(&fn_name.1))
+                            //format!("{}.*", fmt_identity(&fn_name.1))
+                            vec![fmt_identity(&fn_name.1).as_str(), ".*"].join("")
                         } else {
-                            format!("{}.{}", fmt_identity(&fn_name.1), fmt_identity(r))
+                            //format!("{}.{}", fmt_identity(&fn_name.1), fmt_identity(r))
+                            vec![fmt_identity(&fn_name.1), fmt_identity(r)].join(".")
                         }
                     })
                     .collect::<Vec<_>>()
@@ -303,11 +308,12 @@ fn fmt_query<'a>(
             let (qi, from_snippet) = match table_alias {
                 Some(a) => (
                     Qi("".to_string(), a.clone()),
-                    format!(
-                        "{} as {}",
-                        fmt_qi(&Qi(schema.clone(), table.clone())),
-                        fmt_identity(&a)
-                    ),
+                    // format!(
+                    //     "{} as {}",
+                    //     fmt_qi(&Qi(schema.clone(), table.clone())),
+                    //     fmt_identity(&a)
+                    // ),
+                    vec![fmt_qi(&Qi(schema.clone(), table.clone())), fmt_identity(&a)].join(" as "),
                 ),
                 None => (
                     Qi(schema.clone(), table.clone()),
@@ -332,16 +338,23 @@ fn fmt_query<'a>(
                     + from_snippet
                     + if add_env_tbl_to_from { ", env " } else { "" }
                     + if join_tables.len() > 0 {
-                        format!(
-                            ", {}",
-                            join_tables
+                        // format!(
+                        //     ", {}",
+                        //     join_tables
+                        //         .iter()
+                        //         .map(|f| fmt_qi(&Qi(schema.clone(), f.clone())))
+                        //         .collect::<Vec<_>>()
+                        //         .join(", ")
+                        // )
+                        String::from(", ") +
+                        join_tables
                                 .iter()
                                 .map(|f| fmt_qi(&Qi(schema.clone(), f.clone())))
                                 .collect::<Vec<_>>()
-                                .join(", ")
-                        )
+                                .join(", ").as_str()
                     } else {
-                        format!("")
+                        //String::new()
+                        String::new()
                     }
                     + " "
                     + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
@@ -390,7 +403,8 @@ fn fmt_query<'a>(
                     .iter()
                     .map(|r| {
                         if r.as_str() == "*" {
-                            format!("*")
+                            //format!("*")
+                            String::from("*")
                         } else {
                             fmt_identity(r)
                         }
@@ -400,16 +414,24 @@ fn fmt_query<'a>(
             };
 
             let into_columns = if columns.len() > 0 {
-                format!(
-                    "({})",
-                    columns
+                // format!(
+                //     "({})",
+                //     columns
+                //         .iter()
+                //         .map(fmt_identity)
+                //         .collect::<Vec<_>>()
+                //         .join(",")
+                // )
+                String::from("(")
+                + columns
                         .iter()
                         .map(fmt_identity)
                         .collect::<Vec<_>>()
-                        .join(",")
-                )
+                        .join(",").as_str()
+                + ")"
             } else {
-                format!("")
+                //String::new()
+                String::new()
             };
             let select_columns = columns
                 .iter()
@@ -439,7 +461,7 @@ fn fmt_query<'a>(
                             };
                             format!("{} {}", on_c, on_do)
                         },
-                        _ => format!("")
+                        _ => String::new()
                     } +
                     " returning " + returned_columns +
                     " )",
@@ -733,12 +755,13 @@ macro_rules! fmt_condition_tree {
         fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> Result<Snippet<'a>> {
             match t {
                 ConditionTree { operator, conditions } => {
-                    let sep = format!(" {} ", fmt_logic_operator(operator));
+                    //let sep = format!(" {} ", fmt_logic_operator(operator));
+                    //let sep = String::from(" ") + fmt_logic_operator(operator) + " ";
                     Ok(conditions
                         .iter()
                         .map(|c| fmt_condition(qi, c))
                         .collect::<Result<Vec<_>>>()?
-                        .join(sep.as_str()))
+                        .join(fmt_logic_operator(operator)))
                 }
             }
         }
@@ -750,7 +773,8 @@ macro_rules! fmt_condition {
         fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> Result<Snippet<'a>> {
             Ok(match c {
                 Single { field, filter, negate } => {
-                    let fld = sql(format!("{} ", fmt_field(qi, field)?));
+                    //let fld = sql(format!("{} ", fmt_field(qi, field)?));
+                    let fld = sql(fmt_field(qi, field)? + " ");
 
                     if *negate {
                         "not(" + fld + fmt_filter(filter)? + ")"
@@ -761,7 +785,8 @@ macro_rules! fmt_condition {
                 Foreign {
                     left: (l_qi, l_fld),
                     right: (r_qi, r_fld),
-                } => sql(format!("{} = {}", fmt_field(l_qi, l_fld)?, fmt_field(r_qi, r_fld)?)),
+                } => //sql(format!("{} = {}", fmt_field(l_qi, l_fld)?, fmt_field(r_qi, r_fld)?)),
+                    sql(fmt_field(l_qi, l_fld)? + " = " + fmt_field(r_qi, r_fld)?.as_str()),
 
                 Group(negate, tree) => {
                     if *negate {
@@ -800,7 +825,8 @@ macro_rules! fmt_filter {
                         TrileanVal::TriNull => "null",
                         TrileanVal::TriUnknown => "unknown",
                     };
-                    sql(format!("is {}", vv))
+                    //sql(format!("is {}", vv))
+                    sql(String::from("is ") + vv)
                 }
                 Fts(o, lng, v) => {
                     let vv: &SqlParam = v;
@@ -980,16 +1006,17 @@ macro_rules! fmt_sub_select_item {
 #[allow(unused_macros)]
 macro_rules! fmt_operator {
     () => {
-        fn fmt_operator(o: &Operator) -> Result<String> { Ok(format!("{} ", o)) }
+        //fn fmt_operator(o: &Operator) -> Result<String> { Ok(format!("{} ", o)) }
+        fn fmt_operator(o: &Operator) -> Result<String> { Ok(String::new() + o.as_str() + " ") }
     };
 }
 #[allow(unused_macros)]
 macro_rules! fmt_logic_operator {
     () => {
-        fn fmt_logic_operator(o: &LogicOperator) -> String {
+        fn fmt_logic_operator(o: &LogicOperator) -> &str {
             match o {
-                And => format!("and"),
-                Or => format!("or"),
+                And => " and ",
+                Or => " or ",
             }
         }
     };
@@ -997,7 +1024,8 @@ macro_rules! fmt_logic_operator {
 #[allow(unused_macros)]
 macro_rules! fmt_identity {
     () => {
-        fn fmt_identity(i: &String) -> String { format!("\"{}\"", i) }
+        //fn fmt_identity(i: &String) -> String { format!("\"{}\"", i) }
+        fn fmt_identity(i: &String) -> String { String::from("\"") + i.as_str() + "\"" }
     };
 }
 #[allow(unused_macros)]
@@ -1007,9 +1035,10 @@ macro_rules! fmt_qi {
             match (qi.0.as_str(), qi.1.as_str()) {
                 // (_,"subzero_source") |
                 // (_,"subzero_fn_call") |
-                ("", "")  => format!(""),
-                ("", _) | ("_sqlite_public_", _) => format!("{}", fmt_identity(&qi.1)),
-                _ => format!("{}.{}", fmt_identity(&qi.0), fmt_identity(&qi.1)),
+                ("", "")  => String::new(),
+                ("", _) | ("_sqlite_public_", _) => fmt_identity(&qi.1),
+                //_ => format!("{}.{}", fmt_identity(&qi.0), fmt_identity(&qi.1)),
+                _ => vec![fmt_identity(&qi.0), fmt_identity(&qi.1)].join("."),
             }
         }
     };
@@ -1057,9 +1086,10 @@ macro_rules! fmt_order {
     () => {
         fn fmt_order(qi: &Qi, o: &Vec<OrderTerm>) -> Result<String> {
             Ok(if o.len() > 0 {
-                format!("order by {}", o.iter().map(|t| fmt_order_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", "))
+                //format!("order by {}", o.iter().map(|t| fmt_order_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", "))
+                String::from("order by ") + o.iter().map(|t| fmt_order_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", ").as_str()
             } else {
-                format!("")
+                String::new()
             })
         }
     };
@@ -1082,7 +1112,8 @@ macro_rules! fmt_order_term {
                     OrderNulls::NullsLast => "nulls last",
                 },
             };
-            Ok(format!("{} {} {}", fmt_field(&Qi("".to_string(),"".to_string()), &t.term)?, direction, nulls))
+            //Ok(format!("{} {} {}", fmt_field(&Qi("".to_string(),"".to_string()), &t.term)?, direction, nulls))
+            Ok(vec![fmt_field(&Qi("".to_string(),"".to_string()), &t.term)?.as_str(), direction, nulls].join(" "))
         }
     };
 }
@@ -1093,7 +1124,8 @@ macro_rules! fmt_groupby {
             Ok(if o.len() > 0 {
                 format!("group by {}", o.iter().map(|t| fmt_groupby_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", "))
             } else {
-                format!("")
+                //String::new()
+                String::new()
             })
         }
     };
@@ -1113,9 +1145,8 @@ macro_rules! fmt_select_name {
         fn fmt_select_name(name: &String, json_path: &Option<Vec<JsonOperation>>, alias: &Option<String>) -> Option<String> {
             match (name, json_path, alias) {
                 (n, Some(jp), None) => match jp.last() {
-                    Some(JArrow(JKey(k))) | Some(J2Arrow(JKey(k))) => Some(format!("{}", &k)),
-                    Some(JArrow(JIdx(_))) | Some(J2Arrow(JIdx(_))) => Some(format!(
-                        "{}",
+                    Some(JArrow(JKey(k))) | Some(J2Arrow(JKey(k))) => Some(k.clone()),
+                    Some(JArrow(JIdx(_))) | Some(J2Arrow(JIdx(_))) => Some(
                         jp.iter()
                             .rev()
                             .find_map(|i| match i {
@@ -1123,11 +1154,11 @@ macro_rules! fmt_select_name {
                                 _ => None,
                             })
                             .unwrap_or(n)
-                    )),
+                            .clone()),
                     None => None,
                 },
-                (_, _, Some(aa)) => Some(format!("{}", aa)),
-                (n, None, None) => Some(format!("{}", n)),
+                (_, _, Some(aa)) => Some(aa.clone()),
+                (n, None, None) => Some(n.clone()),
             }
         }
     };
@@ -1139,11 +1170,11 @@ macro_rules! fmt_as {
             match (name, json_path, alias) {
                 (_, Some(_), None) =>
                     match fmt_select_name(name, json_path, alias) {
-                        Some(nn) => format!(" as {}", fmt_identity(&nn)),
-                        None => format!(""),
+                        Some(nn) => String::from(" as ") + fmt_identity(&nn).as_str(), //format!(" as {}", fmt_identity(&nn)),
+                        None => String::new(),
                     },
-                (_, _, Some(aa)) => format!(" as {}", fmt_identity(aa)),
-                _ => format!(""),
+                (_, _, Some(aa)) => String::from(" as ") + fmt_identity(aa).as_str(),//format!(" as {}", fmt_identity(aa)),
+                _ => String::new(),
             }
         }
     };
@@ -1181,8 +1212,8 @@ macro_rules! fmt_json_path {
     () => {
         fn fmt_json_path(p: &Option<Vec<JsonOperation>>) -> String {
             match p {
-                Some(j) => format!("{}", j.iter().map(fmt_json_operation).collect::<Vec<_>>().join("")),
-                None => format!(""),
+                Some(j) => j.iter().map(fmt_json_operation).collect::<Vec<_>>().join(""),
+                None => String::new(),
             }
         }
     };
@@ -1192,8 +1223,8 @@ macro_rules! fmt_json_operation {
     () => {
         fn fmt_json_operation(j: &JsonOperation) -> String {
             match j {
-                JArrow(o) => format!("->{}", fmt_json_operand(o)),
-                J2Arrow(o) => format!("->>{}", fmt_json_operand(o)),
+                JArrow(o) => String::from("->") + fmt_json_operand(o).as_str(),
+                J2Arrow(o) => String::from("->>") + fmt_json_operand(o).as_str(),
             }
         }
     };
@@ -1203,8 +1234,8 @@ macro_rules! fmt_json_operand {
     () => {
         fn fmt_json_operand(o: &JsonOperand) -> String {
             match o {
-                JKey(k) => format!("'{}'", k),
-                JIdx(i) => format!("{}", i),
+                JKey(k) => String::from("'") + k.as_str() + "'",  //format!("'{}'", k),
+                JIdx(i) => i.clone(),
             }
         }
     };
