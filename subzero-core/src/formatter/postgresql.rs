@@ -553,7 +553,7 @@ mod tests {
                             filter: Op (s(">"), SingleVal(s("2"),None)),
                             negate: false
                         },
-                        Group (false, ConditionTree {
+                        Group {negate: false,  tree:ConditionTree {
                             operator: And,
                             conditions: vec![
                                 Single {
@@ -567,7 +567,7 @@ mod tests {
                                     negate: false
                                 }
                             ]
-                        })
+                        }}
                     ]
                 }
             ).unwrap())),

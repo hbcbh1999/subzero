@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct, ser::SerializeSeq};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -361,16 +361,23 @@ pub struct SubSelect {
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize, )]
 pub struct ConditionTree {
+    #[serde(rename = "logic_op")]
     pub operator: LogicOperator,
     pub conditions: Vec<Condition>,
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", untagged)]
 pub enum Condition {
-    Group(Negate, ConditionTree),
-    Single { 
-        field: Field, 
+    Group {
+        #[serde(default, skip_serializing_if = "is_default")]
+        negate: Negate,
+        tree: ConditionTree
+    },
+    Single {
+        #[serde(flatten)]
+        field: Field,
+        #[serde(flatten)]
         filter: Filter,
         #[serde(default, skip_serializing_if = "is_default")]
         negate: Negate
@@ -378,7 +385,7 @@ pub enum Condition {
     Foreign { left: (Qi, Field), right: (Qi, Field) },
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
+#[derive(Debug, PartialEq, Clone, Deserialize,)]
 pub enum TrileanVal {
     TriTrue,
     TriFalse,
@@ -386,18 +393,96 @@ pub enum TrileanVal {
     TriUnknown,
 }
 
+impl Serialize for TrileanVal {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            TrileanVal::TriTrue => serializer.serialize_bool(true),
+            TrileanVal::TriFalse => serializer.serialize_bool(false),
+            TrileanVal::TriNull => serializer.serialize_none(),
+            TrileanVal::TriUnknown => serializer.serialize_str("unknown"),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
-#[serde(rename_all = "snake_case")]
+pub struct EnvVar {
+    #[serde(rename = "env")]
+    pub var: String,
+    #[serde(rename = "env_part")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub part: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize,)]
+// #[serde(rename_all = "snake_case")]
 pub enum Filter {
     Op(Operator, SingleVal),
     In(ListVal),
     Is(TrileanVal),
     Fts(Operator, Option<Language>, SingleVal),
     Col(Qi, Field),
+    Env(Operator, EnvVar),
+}
+
+impl Serialize for Filter {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self { 
+            Filter::Op(operator, value) => FilterHelper::Op{operator: operator.clone(), value: value.clone()},
+            Filter::In(value) => FilterHelper::In{value: value.clone()},
+            Filter::Is(value) => FilterHelper::Is{value: value.clone()},
+            Filter::Fts(operator, language, value) => FilterHelper::Fts{operator: operator.clone(), language: language.clone(), value: value.clone()},
+            Filter::Col(qi, field) => FilterHelper::Col{qi: qi.clone(), field: field.clone()},
+            Filter::Env(operator, var) => FilterHelper::Env{operator: operator.clone(), var: var.clone()},
+        }.serialize(serializer)
+    }
+}
+
+// private
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", untagged)]
+enum FilterHelper {
+    Op{
+        #[serde(rename = "op")]
+        operator: Operator,
+        #[serde(rename = "val")]
+        value: SingleVal
+    },
+    In{
+        #[serde(rename = "in")]
+        value: ListVal
+    },
+    Is{
+        #[serde(rename = "is")]
+        value: TrileanVal
+    },
+    Fts{
+        #[serde(rename = "fts_op")]
+        operator: Operator,
+        #[serde(default, skip_serializing_if = "is_default")]
+        language: Option<Language>,
+        #[serde(rename = "val")]
+        value: SingleVal
+    },
+
+    Env{
+        #[serde(rename = "op")]
+        operator: Operator,
+        #[serde(flatten)]
+        var: EnvVar
+    },
+    Col{qi: Qi, field: Field},
 }
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
 pub struct Field {
+    #[serde(rename = "column")]
     pub name: ColumnName,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
@@ -450,11 +535,59 @@ pub type ColumnName = String;
 #[derive(Debug, PartialEq, Clone)]
 pub struct Payload(pub String, pub Option<String>);
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
-pub struct SingleVal(pub String, pub Option<String>);
+#[derive(Debug, PartialEq, Clone, Deserialize,)]
+pub struct SingleVal(
+    #[serde(rename = "value")]
+    pub String,
+    #[serde(rename = "type", default, skip_serializing_if = "is_default")]
+    pub Option<String>
+);
+impl Serialize for SingleVal {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            SingleVal(v, Some(t)) => {
+                let mut rgb = serializer.serialize_struct("SingleVal", 2)?;
+                rgb.serialize_field("v", v)?;
+                rgb.serialize_field("t", t)?;
+                rgb.end()
+            },
+            SingleVal(v, None) => serializer.serialize_str(v),
+        }
+    }
+}
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
-pub struct ListVal(pub Vec<String>, pub Option<String>);
+#[derive(Debug, PartialEq, Clone, Deserialize,)]
+pub struct ListVal(
+    pub Vec<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub Option<String>
+);
+
+impl Serialize for ListVal {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            ListVal(v, Some(t)) => {
+                let mut rgb = serializer.serialize_struct("ListVal", 2)?;
+                rgb.serialize_field("v", v)?;
+                rgb.serialize_field("t", t)?;
+                rgb.end()
+            },
+            ListVal(v, None) => {
+                let mut seq = serializer.serialize_seq(Some(v.len()))?;
+                for element in v {
+                    seq.serialize_element(element)?;
+                }
+                seq.end()
+            },
+        }
+    }
+}
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize, )]
 #[serde(rename_all = "snake_case")]
@@ -510,9 +643,9 @@ mod tests {
             filter: Filter::Op(s("eq"), SingleVal(s("10"),None)),
             negate:false,
         });
-        assert_eq!(serde_json::from_str::<Condition>(r#"{"group":[false,{"operator":"and","conditions":[{"single":{"field":{"name":"id"},"filter":{"op":["eq",["10",null]]}}}]}]}"#).unwrap(), Condition::Group(
-            false,
-            ConditionTree{
+        assert_eq!(serde_json::from_str::<Condition>(r#"{"group":[false,{"operator":"and","conditions":[{"single":{"field":{"name":"id"},"filter":{"op":["eq",["10",null]]}}}]}]}"#).unwrap(), Condition::Group{
+            negate: false,
+            tree: ConditionTree{
                 operator:LogicOperator::And,
                 conditions:vec![
                     Condition::Single{
@@ -522,10 +655,10 @@ mod tests {
                     },
                 ],
             }
-        ));
-        assert_eq!(r#"{"group":[false,{"operator":"and","conditions":[{"single":{"field":{"name":"id"},"filter":{"op":["eq",["10",null]]}}}]}]}"#, serde_json::to_string(&Condition::Group(
-            false,
-            ConditionTree{
+        });
+        assert_eq!(r#"{"group":[false,{"operator":"and","conditions":[{"single":{"field":{"name":"id"},"filter":{"op":["eq",["10",null]]}}}]}]}"#, serde_json::to_string(&Condition::Group{
+            negate: false,
+            tree: ConditionTree{
                 operator:LogicOperator::And,
                 conditions:vec![
                     Condition::Single{
@@ -535,6 +668,6 @@ mod tests {
                     },
                 ],
             }
-        )).unwrap());
+        }).unwrap());
     }
 }

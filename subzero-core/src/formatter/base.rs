@@ -788,7 +788,7 @@ macro_rules! fmt_condition {
                 } => //sql(format!("{} = {}", fmt_field(l_qi, l_fld)?, fmt_field(r_qi, r_fld)?)),
                     sql(fmt_field(l_qi, l_fld)? + " = " + fmt_field(r_qi, r_fld)?.as_str()),
 
-                Group(negate, tree) => {
+                Group{negate, tree} => {
                     if *negate {
                         "not(" + fmt_condition_tree(qi, tree)? + ")"
                     } else {
@@ -839,6 +839,8 @@ macro_rules! fmt_filter {
                     }
                 }
                 Col(qi, fld) => sql(format!("= {}", fmt_field(qi, fld)?)),
+                Env(o, EnvVar{var, part:None}) => sql(format!("{} env.\"{}\"",fmt_operator(o)?, var)),
+                Env(o, EnvVar{var, part:Some(part)}) => sql(format!("{} env.\"{}\"->'{}'",fmt_operator(o)?, var, part)),
             })
         }
     };

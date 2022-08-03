@@ -267,7 +267,7 @@ pub struct Object {
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 struct ObjectDef {
-    //common files
+    //common fields
     pub kind: String,
     pub name: String,
     #[serde(deserialize_with = "deserialize_columns", default)]
@@ -530,7 +530,7 @@ fn pg_catalog() -> String { "pg_catalog".to_string() }
 mod tests {
     //use std::collections::HashSet;
     use super::*;
-    use crate::api::{Field, Filter, SingleVal};
+    use crate::api::{Field, Filter, EnvVar, Filter::*, SingleVal, ListVal, LogicOperator::*, ConditionTree, Condition, Condition::*, TrileanVal::*};
     use super::{ObjectType::*, ProcParam, };
     use crate::error::Error as AppError;
     use pretty_assertions::assert_eq;
@@ -774,10 +774,33 @@ mod tests {
         assert!(deserialized_result.is_ok());
     }
 
-    // #[test]
-    // fn hashset(){
-    //     assert_eq!(HashSet::from([&"Einar", &"Olaf", &"Harald"]), HashSet::from([&"Olaf", &"Einar",  &"Harald"]));
-    // }
+    #[test]
+    fn serialize_conditions(){
+        let field = Field { name: s("id"), json_path: None};
+        let negate = false;
+        let conditions = vec![
+            
+            Single { field: field.clone(), negate, filter: Env(s("eq"), EnvVar { var: s("role"), part: None})},
+            Single { field: field.clone(), negate, filter: Env(s("eq"), EnvVar { var: s("request.jwt.claim"), part: Some(s("user_id"))})},
+            Single { field: field.clone(), negate, filter: Op(s("eq"), SingleVal(s("hello"), None))},
+            Single { field: field.clone(), negate, filter: Op(s("eq"), SingleVal(s("hello"), Some(s("text"))))},
+            Single { field: field.clone(), negate, filter: In(ListVal(vec![s("1"), s("2"), s("3")], None))},
+            Single { field: field.clone(), negate, filter: Is(TriTrue)},
+            Single { field: field.clone(), negate: true, filter: Fts(s("eq"), None, SingleVal(s("hello"), None))},
+            Group{ negate: false, tree: ConditionTree {
+                operator: And,
+                conditions: vec![
+                    Single { field: field.clone(), negate, filter: Op(s("eq"), SingleVal(s("hello"), None))},
+                    Single { field: field.clone(), negate, filter: In(ListVal(vec![s("1"), s("2"), s("3")], None))},
+                ]
+            }},
+            //Single { field, filter: Col(Qi, field)},
+        ];
+
+        let serialized_result = serde_json::to_string(&conditions).unwrap();
+        println!("serialized_result = {}", serialized_result);
+        assert!(false);
+    }
 
     #[test]
     fn test_get_join_conditions() {

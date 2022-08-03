@@ -1493,7 +1493,7 @@ parser! {
                 .and(between(lex(char('(')),lex(char(')')),sep_by1(logic_condition(), lex(char(',')))))
             )
             .map(|(negate, (operator, conditions))|{
-                Condition::Group(negate.is_some(), ConditionTree { operator, conditions,})
+                Condition::Group{ negate: negate.is_some(), tree: ConditionTree { operator, conditions,}}
             });
 
         attempt(single).or(group)
@@ -2231,9 +2231,9 @@ pub mod tests {
                                     filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
                                     negate: true,
                                 },
-                                Group(
-                                    true,
-                                    ConditionTree {
+                                Group{
+                                    negate: true,
+                                    tree: ConditionTree {
                                         operator: Or,
                                         conditions: vec![
                                             Single {
@@ -2254,7 +2254,7 @@ pub mod tests {
                                             }
                                         ]
                                     }
-                                )
+                                }
                             ]
                         }
                     },
@@ -2351,9 +2351,9 @@ pub mod tests {
                                                 filter: Filter::Op(s("<"), SingleVal(s("500"),Some(s("int")))),
                                                 negate: false,
                                             },
-                                            Group(
-                                                false,
-                                                ConditionTree {
+                                            Group{
+                                                negate: false,
+                                                tree: ConditionTree {
                                                     operator: Or,
                                                     conditions: vec![
                                                         Single {
@@ -2374,7 +2374,7 @@ pub mod tests {
                                                         }
                                                     ]
                                                 }
-                                            )
+                                            }
                                         ]
                                     }
                                 }
@@ -3118,9 +3118,9 @@ pub mod tests {
         assert_eq!(
             logic_condition().easy_parse("not.or(id.gte.5, id.lte.10)"),
             Ok((
-                Condition::Group(
-                    true,
-                    ConditionTree {
+                Condition::Group{
+                    negate: true,
+                    tree: ConditionTree {
                         operator: Or,
                         conditions: vec![
                             Single {
@@ -3135,16 +3135,16 @@ pub mod tests {
                             }
                         ]
                     }
-                ),
+                },
                 ""
             ))
         );
         assert_eq!(
             logic_condition().easy_parse("not.or(id.gte.5, id.lte.10, and(id.gte.2, id.lte.4))"),
             Ok((
-                Condition::Group(
-                    true,
-                    ConditionTree {
+                Condition::Group{
+                    negate: true,
+                    tree: ConditionTree {
                         operator: Or,
                         conditions: vec![
                             Single {
@@ -3157,9 +3157,9 @@ pub mod tests {
                                 field: field.clone(),
                                 negate: false
                             },
-                            Condition::Group(
-                                false,
-                                ConditionTree {
+                            Condition::Group{
+                                negate: false,
+                                tree: ConditionTree {
                                     operator: And,
                                     conditions: vec![
                                         Single {
@@ -3174,10 +3174,10 @@ pub mod tests {
                                         }
                                     ]
                                 }
-                            )
+                            }
                         ]
                     }
-                ),
+                },
                 ""
             ))
         );
