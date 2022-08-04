@@ -528,11 +528,11 @@ fn pg_catalog() -> String { "pg_catalog".to_string() }
 
 #[cfg(test)]
 mod tests {
-    //use std::collections::HashSet;
     use super::*;
     use crate::api::{Field, Filter, EnvVar, Filter::*, SingleVal, ListVal, LogicOperator::*, ConditionTree, Condition, Condition::*, TrileanVal::*};
     use super::{ObjectType::*, ProcParam, };
     use crate::error::Error as AppError;
+    use serde_json::Value as JsonValue;
     use pretty_assertions::assert_eq;
     fn s(s: &str) -> String { s.to_string() }
     fn t<T>((k, v): (&str, T)) -> (String, T) { (k.to_string(), v) }
@@ -728,7 +728,7 @@ mod tests {
                                 "row_level_permissions": {
                                     "role": {
                                         "get": [
-                                            {"single":{"field":{"name":"id"},"filter":{"op":["eq",["10","int"]]}}}
+                                            {"column":"id","op":"eq","val":{"v":"10","t":"int"}}
                                         ]
                                     }
                                 }
@@ -796,10 +796,33 @@ mod tests {
             }},
             //Single { field, filter: Col(Qi, field)},
         ];
+        let conditions_json = r#"
+        [
+            {"column":"id","op":"eq","env":"role"},
+            {"column":"id","op":"eq","env":"request.jwt.claim","env_part":"user_id"},
+            {"column":"id","op":"eq","val":"hello"},
+            {"column":"id","op":"eq","val":{"v":"hello","t":"text"}},
+            {"column":"id","in":["1","2","3"]},
+            {"column":"id","is":true},
+            {"column":"id","fts_op":"eq","val":"hello","negate":true},
+            {"tree":{
+                "logic_op":"and",
+                "conditions":[
+                    {"column":"id","op":"eq","val":"hello"},
+                    {"column":"id","in":["1","2","3"]}
+                ]
+            }}
+        ]
+        "#;
 
         let serialized_result = serde_json::to_string(&conditions).unwrap();
         println!("serialized_result = {}", serialized_result);
-        assert!(false);
+        assert_eq!(serde_json::from_str::<JsonValue>(conditions_json).unwrap(), serde_json::from_str::<JsonValue>(&serialized_result).unwrap());
+
+        let deserialized_result = serde_json::from_str::<Vec<Condition>>(conditions_json);
+        println!("deserialized_result = {:?}", deserialized_result);
+        assert_eq!(deserialized_result.unwrap(), conditions);
+
     }
 
     #[test]

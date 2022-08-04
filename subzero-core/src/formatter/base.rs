@@ -1,6 +1,5 @@
 use crate::api::{ApiRequest, Preferences, QueryNode::*, Representation,};
 
-
 #[allow(unused_macros)]
 macro_rules! fmt_field_format {
     () => {
@@ -150,7 +149,8 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
     + env
         .iter()
         .map(|(k, v)| {
-            "set_config(" + param(k as &SqlParam) + ", " + param(v as &SqlParam) + ", true)"
+            "set_config(" + param(k as &SqlParam) + ", " + param(v as &SqlParam) + ", true), " +
+            param(v as &SqlParam) + " as " + fmt_identity(&String::from(*k))
         })
         .join(",")
 }
@@ -1027,7 +1027,11 @@ macro_rules! fmt_logic_operator {
 macro_rules! fmt_identity {
     () => {
         //fn fmt_identity(i: &String) -> String { format!("\"{}\"", i) }
-        fn fmt_identity(i: &String) -> String { String::from("\"") + i.as_str() + "\"" }
+        fn fmt_identity(i: &String) -> String { 
+            String::from("\"") + 
+            i.chars().take_while(|x| x != &'\0').collect::<String>().replace("\"","\"\"").as_str() + 
+            "\"" 
+        }
     };
 }
 #[allow(unused_macros)]

@@ -663,8 +663,8 @@ mod tests {
 
     #[test]
     fn test_fmt_logic_operator() {
-        assert_eq!(fmt_logic_operator(&And), s("and"));
-        assert_eq!(fmt_logic_operator(&Or), s("or"));
+        assert_eq!(fmt_logic_operator(&And), s(" and "));
+        assert_eq!(fmt_logic_operator(&Or), s(" or "));
     }
 
     #[test]
