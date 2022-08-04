@@ -232,6 +232,7 @@ impl Backend for SQLiteBackend {
                             let mut rows = stmt.query([]).context(SqliteDbError { authenticated })?;
                             match rows.next().context(SqliteDbError { authenticated })? {
                                 Some(r) => {
+                                    println!("json db_schema: {}", r.get::<usize,String>(0).context(SqliteDbError { authenticated })?.as_str());
                                     serde_json::from_str::<DbSchema>(r.get::<usize,String>(0).context(SqliteDbError { authenticated })?.as_str()).context(JsonDeserialize).context(CoreError)
                                 },
                                 None => Err(Error::InternalError { message: "sqlite structure query did not return any rows".to_string() }),

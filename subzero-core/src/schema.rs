@@ -4,8 +4,18 @@ use serde::{Deserialize, Deserializer};
 use snafu::OptionExt;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
-type HttpMethod = String;
-type Permissions<T> = HashMap<(Role, HttpMethod), Vec<T>>;
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Action {Select,Insert,Update,Delete,All}
+type Permissions<T> = HashMap<(Role, Action), Vec<T>>;
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub struct Policy {
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub using: Option<Vec<Condition>>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub check: Option<Vec<Condition>>,
+}
 
 #[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct DbSchema {
@@ -261,8 +271,8 @@ pub struct Object {
     pub name: String,
     pub columns: HashMap<String, Column>,
     pub foreign_keys: Vec<ForeignKey>,
-    pub column_level_permissions: Option<HashMap<(Role, HttpMethod), Vec<ColumnName>>>,
-    pub row_level_permissions: Option<HashMap<(Role, HttpMethod), Vec<Condition>>>,
+    pub grants: Option<Permissions<ColumnName>>,
+    pub policies: Option<Permissions<Policy>>,
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
@@ -274,10 +284,10 @@ struct ObjectDef {
     pub columns: HashMap<String, Column>,
     #[serde(deserialize_with = "deserialize_foreign_keys", default)]
     pub foreign_keys: Vec<ForeignKey>,
-    #[serde(deserialize_with = "deserialize_column_level_permissions", default)]
-    pub column_level_permissions: Option<HashMap<(Role, HttpMethod), Vec<ColumnName>>>,
-    #[serde(deserialize_with = "deserialize_row_level_permissions", default)]
-    pub row_level_permissions: Option<HashMap<(Role, HttpMethod), Vec<Condition>>>,
+    #[serde(deserialize_with = "deserialize_grants", default)]
+    pub grants: Option<Permissions<ColumnName>>,
+    #[serde(deserialize_with = "deserialize_policies", default)]
+    pub policies: Option<Permissions<Policy>>,
 
     //fields for functions
     #[serde(default)]
@@ -360,11 +370,11 @@ pub struct Column {
 }
 
 
-fn deserialize_column_level_permissions<'de, D>(deserializer: D) -> Result<Option<Permissions<ColumnName>>, D::Error>
+fn deserialize_grants<'de, D>(deserializer: D) -> Result<Option<Permissions<ColumnName>>, D::Error>
 where D: Deserializer<'de>,
 {
     let mut map = HashMap::new();
-    let map_in = HashMap::<Role,HashMap::<HttpMethod,Vec::<ColumnName>>>::deserialize(deserializer);
+    let map_in = HashMap::<Role,HashMap::<Action,Vec::<ColumnName>>>::deserialize(deserializer);
     for (role, rules) in map_in? {
         for (method, columns) in rules {
             map.insert((role.clone(), method), columns);
@@ -373,11 +383,11 @@ where D: Deserializer<'de>,
     Ok(Some(map))
 }
 
-fn deserialize_row_level_permissions<'de, D>(deserializer: D) -> Result<Option<Permissions<Condition>>, D::Error>
+fn deserialize_policies<'de, D>(deserializer: D) -> Result<Option<Permissions<Policy>>, D::Error>
 where D: Deserializer<'de>,
 {
     let mut map = HashMap::new();
-    let map_in = HashMap::<Role,HashMap::<HttpMethod,Vec::<Condition>>>::deserialize(deserializer);
+    let map_in = HashMap::<Role,HashMap::<Action,Vec::<Policy>>>::deserialize(deserializer);
     for (role, rules) in map_in? {
         for (method, conditions) in rules {
             map.insert((role.clone(), method), conditions);
@@ -462,8 +472,8 @@ where D: Deserializer<'de>,
                         name: o.name,
                         columns: o.columns,
                         foreign_keys: o.foreign_keys,
-                        column_level_permissions: o.column_level_permissions,
-                        row_level_permissions: None,
+                        grants: o.grants,
+                        policies: None,
                         //join_for,
                     }
                 }
@@ -473,8 +483,8 @@ where D: Deserializer<'de>,
                         name: o.name,
                         columns: o.columns,
                         foreign_keys: o.foreign_keys,
-                        column_level_permissions: o.column_level_permissions,
-                        row_level_permissions: None,
+                        grants: o.grants,
+                        policies: None,
                     }
                 }
                 _ => {
@@ -483,8 +493,8 @@ where D: Deserializer<'de>,
                         name: o.name,
                         columns: o.columns,
                         foreign_keys: o.foreign_keys,
-                        column_level_permissions: o.column_level_permissions,
-                        row_level_permissions: o.row_level_permissions,
+                        grants: o.grants,
+                        policies: o.policies,
                     }
                 }
             },
@@ -529,6 +539,7 @@ fn pg_catalog() -> String { "pg_catalog".to_string() }
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::Action::*;
     use crate::api::{Field, Filter, EnvVar, Filter::*, SingleVal, ListVal, LogicOperator::*, ConditionTree, Condition, Condition::*, TrileanVal::*};
     use super::{ObjectType::*, ProcParam, };
     use crate::error::Error as AppError;
@@ -560,8 +571,8 @@ mod tests {
                                 name: s("myfunction"),
                                 columns: [].iter().cloned().map(t).collect(),
                                 foreign_keys: [].to_vec(),
-                                column_level_permissions: None,
-                                row_level_permissions: None,
+                                grants: None,
+                                policies: None,
                             },
                         ),
                         (
@@ -598,8 +609,8 @@ mod tests {
                                     referenced_table: Qi(s("api"), s("projects")),
                                     referenced_columns: vec![s("id")],
                                 }].to_vec(),
-                                column_level_permissions: None,
-                                row_level_permissions: None,
+                                grants: None,
+                                policies: None,
                             },
                         ),
                         (
@@ -620,27 +631,33 @@ mod tests {
                                 .map(t)
                                 .collect(),
                                 foreign_keys: [].to_vec(),
-                                column_level_permissions: Some(
+                                grants: Some(
                                     vec![
                                         (
-                                            (s("role"), s("get")),
+                                            (s("role"), Select),
                                             vec![s("id"),s("name"),
                                             ],
                                         ),
                                     ]
                                     .iter().cloned().collect(),
                                 ),
-                                //row_level_permissions: None,
-                                row_level_permissions: Some(
+                                //policies: None,
+                                policies: Some(
                                     vec![
                                         (
-                                            (s("role"), s("get")),
+                                            (s("role"), Select),
                                             vec![
-                                                Condition::Single{
-                                                    field: Field{name:s("id"), json_path:None},
-                                                    filter: Filter::Op(s("eq"), SingleVal(s("10"),Some(s("int")))),
-                                                    negate:false,
+                                                Policy {
+                                                    using: Some(vec![
+                                                        Condition::Single{
+                                                            field: Field{name:s("id"), json_path:None},
+                                                            filter: Filter::Op(s("eq"), SingleVal(s("10"),Some(s("int")))),
+                                                            negate:false,
+                                                        }
+                                                    ]),
+                                                    check: None
                                                 }
+                                                
                                             ],
                                         ),
                                     ]
@@ -720,15 +737,19 @@ mod tests {
                                     }
                                 ],
                                 "foreign_keys":[],
-                                "column_level_permissions":{
+                                "grants":{
                                     "role": {
-                                        "get": ["id","name"]
+                                        "select": ["id","name"]
                                     }
                                 },
-                                "row_level_permissions": {
+                                "policies": {
                                     "role": {
-                                        "get": [
-                                            {"column":"id","op":"eq","val":{"v":"10","t":"int"}}
+                                        "select": [
+                                            {
+                                                "using": [
+                                                    {"column":"id","op":"eq","val":{"v":"10","t":"int"}}
+                                                ]
+                                            }
                                         ]
                                     }
                                 }

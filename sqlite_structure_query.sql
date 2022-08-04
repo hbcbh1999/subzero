@@ -34,6 +34,33 @@ schemas as (
       tables t
       left outer join pragma_foreign_key_list((t.table_name)) f on t.table_name <> f."table"
     where f.id not null
+),
+custom_relations as (
+    select
+        json_extract(value, '$.constraint_name') as constraint_name,
+        json_extract(value, '$.table_schema') as table_schema,
+        json_extract(value, '$.table_name') as table_name,
+        json_extract(value, '$.columns') as columns,
+        json_extract(value, '$.foreign_table_schema') as foreign_table_schema,
+        json_extract(value, '$.foreign_table_name') as foreign_table_name,
+        json_extract(value, '$.foreign_columns') as foreign_columns
+    from json_each('{@relations.json}')
+),
+
+relations as (
+    select
+        constraint_name,
+        table_schema,
+        table_name,
+        json(columns) as columns,
+        foreign_table_schema,
+        foreign_table_name,
+        json(foreign_columns) as foreign_columns
+    from (
+        select * from foreign_keys
+        union all
+        select * from custom_relations
+    )
 )
 
 select json_object('schemas',json_group_array(s.row)) from (
@@ -62,7 +89,7 @@ select json_object('schemas',json_group_array(s.row)) from (
                                 'columns', ff.columns,
                                 'referenced_table', json_array(ff.foreign_table_schema,ff.foreign_table_name),
                                 'referenced_columns', ff.foreign_columns
-                            ) as row from foreign_keys ff
+                            ) as row from relations ff
                             where t.table_schema = ff.table_schema and t.table_name = ff.table_name
                         ) f
                     )
