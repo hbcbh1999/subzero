@@ -36,6 +36,18 @@ schemas as (
     where f.id not null
 ),
 custom_relations as (
+    -- we expect a json file with the following structure
+    -- '[
+    --     {
+    --         "constraint_name": "constraint_name",
+    --         "table_schema": "default",
+    --         "table_name": "tasks",
+    --         "columns": ["project_id"],
+    --         "foreign_table_schema": "default",
+    --         "foreign_table_name": "projects",
+    --         "foreign_columns": ["id"]
+    --     }
+    -- ]'
     select
         json_extract(value, '$.constraint_name') as constraint_name,
         json_extract(value, '$.table_schema') as table_schema,
@@ -61,7 +73,21 @@ relations as (
         union all
         select * from custom_relations
     )
+),
+
+permissions as (
+    select
+        json_extract(value, '$.table_schema') as table_schema,
+        json_extract(value, '$.table_name') as table_name,
+        json_extract(value, '$.role') as role,
+        json_extract(value, '$.grant') as grant,
+        json_extract(value, '$.columns') as columns,
+        json_extract(value, '$.policy_for') as policy_for,
+        json_extract(value, '$.check') as "check",
+        json_extract(value, '$.using') as "using"
+    from json_each('{@permissions.json}')
 )
+
 
 select json_object('schemas',json_group_array(s.row)) from (
     select json_object(
@@ -92,6 +118,19 @@ select json_object('schemas',json_group_array(s.row)) from (
                             ) as row from relations ff
                             where t.table_schema = ff.table_schema and t.table_name = ff.table_name
                         ) f
+                    ),
+                    'permissions', (
+                        select json_group_array(p.row) from (
+                            select json_object(
+                                'role', pp.role,
+                                'policy_for', pp.policy_for,
+                                'check', pp."check",
+                                'using', pp."using",
+                                'grant', pp.grant,
+                                'columns', pp.columns
+                            ) as row from permissions pp
+                            where t.table_schema = pp.table_schema and t.table_name = pp.table_name
+                        ) p
                     )
                 ) as row from tables t
                 where t.table_schema = schema_name

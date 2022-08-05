@@ -85,14 +85,17 @@ impl Backend {
 
         //let db_type = db_type.unwrap_or(JsString::from(""));
         let (main_statement, main_parameters, _) = match db_type {
+            #[cfg(feature = "postgresql")]
             "postgresql" => {
                 let query = postgresql::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?;
                 Ok(postgresql::generate(query))
             },
+            #[cfg(feature = "clickhouse")]
             "clickhouse" => {
                 let query = clickhouse::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?;
                 Ok(clickhouse::generate(query))
             },
+            #[cfg(feature = "sqlite")]
             "sqlite" => {
                 let query = sqlite::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))

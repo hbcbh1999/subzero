@@ -12,6 +12,12 @@ create table tbl1 (
     one varchar(10), two smallint
 );
 
+create table permissions_check (
+    id int primary key,
+    value text,
+    hidden text
+);
+
 create table clients (
     id integer primary key,
     name text NOT NULL
@@ -88,3 +94,9 @@ insert into users_tasks values (3, 5);
 insert into complex_items values (1, 'One', '{"foo":{"int":1,"bar":"baz"}}');
 insert into complex_items values (2, 'Two', '{"foo":{"int":1,"bar":"baz"}}');
 insert into complex_items values (3, 'Three', '{"foo":{"int":1,"bar":"baz"}}');
+
+insert into permissions_check values (1, 'One', 'Hidden');
+insert into permissions_check values (2, 'Two', 'Hidden');
+insert into permissions_check values (3, 'Three', 'Hidden');
+insert into permissions_check values (10, 'Ten', 'Hidden');
+insert into permissions_check values (20, 'Twenty', 'Hidden');

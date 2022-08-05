@@ -1,0 +1,38 @@
+[
+    {
+        "table_schema": "public",
+        "table_name": "permissions_check",
+        "role": "public",
+        "grant": ["select","insert"],
+        "columns": ["id", "name"]
+    },
+    {
+        "table_schema": "public",
+        "table_name": "permissions_check",
+        "role": "public",
+        "grant": ["select"],
+        "columns": ["private"]
+    },
+    {
+        "table_schema": "public",
+        "table_name": "permissions_check",
+        "role": "public",
+        "policy_for": ["select"],
+        "check": [{"column":"id","op":"eq","val":"1"}]
+    },
+    {
+        "table_schema": "public",
+        "table_name": "permissions_check",
+        "role": "public",
+        "policy_for": ["select","insert"],
+        "check": [{"column":"id","op":"eq","val":"2"}]
+    },
+    {
+        "table_schema": "public",
+        "table_name": "permissions_check",
+        "role": "public",
+        "policy_for": ["insert"],
+        "check": [{"column":"id","op":"eq","val":"3"}],
+        "using": [{"column":"id","op":"eq","val":"4"}]
+    }
+]

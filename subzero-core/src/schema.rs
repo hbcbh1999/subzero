@@ -17,6 +17,23 @@ pub struct Policy {
     pub check: Option<Vec<Condition>>,
 }
 
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub struct Permission {
+    pub role: Role,
+
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub policy_for: Option<Vec<Action>>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub check: Option<Vec<Condition>>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub using: Option<Vec<Condition>>,
+
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub grant: Option<Vec<Action>>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub columns: Option<Vec<ColumnName>>,
+}
+
 #[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct DbSchema {
     #[serde(deserialize_with = "deserialize_schemas")]
@@ -271,8 +288,7 @@ pub struct Object {
     pub name: String,
     pub columns: HashMap<String, Column>,
     pub foreign_keys: Vec<ForeignKey>,
-    pub grants: Option<Permissions<ColumnName>>,
-    pub policies: Option<Permissions<Policy>>,
+    pub permissions: (Option<Permissions<ColumnName>>, Option<Permissions<Policy>>),
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
@@ -284,10 +300,13 @@ struct ObjectDef {
     pub columns: HashMap<String, Column>,
     #[serde(deserialize_with = "deserialize_foreign_keys", default)]
     pub foreign_keys: Vec<ForeignKey>,
-    #[serde(deserialize_with = "deserialize_grants", default)]
-    pub grants: Option<Permissions<ColumnName>>,
-    #[serde(deserialize_with = "deserialize_policies", default)]
-    pub policies: Option<Permissions<Policy>>,
+
+    #[serde(deserialize_with = "deserialize_permissions", default)]
+    pub permissions: (Option<Permissions<ColumnName>>, Option<Permissions<Policy>>),
+    // #[serde(deserialize_with = "deserialize_grants", default)]
+    // pub grants: Option<Permissions<ColumnName>>,
+    // #[serde(deserialize_with = "deserialize_policies", default)]
+    // pub policies: Option<Permissions<Policy>>,
 
     //fields for functions
     #[serde(default)]
@@ -369,32 +388,65 @@ pub struct Column {
     pub primary_key: bool,
 }
 
-
-fn deserialize_grants<'de, D>(deserializer: D) -> Result<Option<Permissions<ColumnName>>, D::Error>
+fn deserialize_permissions<'de, D>(deserializer: D) -> Result<(Option<Permissions<ColumnName>>,Option<Permissions<Policy>>), D::Error>
 where D: Deserializer<'de>,
 {
-    let mut map = HashMap::new();
-    let map_in = HashMap::<Role,HashMap::<Action,Vec::<ColumnName>>>::deserialize(deserializer);
-    for (role, rules) in map_in? {
-        for (method, columns) in rules {
-            map.insert((role.clone(), method), columns);
+    let permissions = Option::<Vec<Permission>>::deserialize(deserializer)?;
+    match permissions {
+        Some(permissions) => {
+            let mut grants = HashMap::new();
+            let mut policies = HashMap::new();
+            for p in permissions {
+                if let (Some(actions), Some(columns)) = (p.grant, p.columns) {
+                    for action in actions {
+                        let cols = grants.entry((p.role.clone(), action)).or_insert(Vec::new());
+                        cols.extend(columns.iter().cloned());
+                    }
+                }
+                if let (Some(actions), check, using) = (p.policy_for, p.check, p.using) {
+                    for action in actions {
+                        let pols = policies.entry((p.role.clone(), action)).or_insert(Vec::new());
+                        pols.push(Policy {check: check.clone(), using: using.clone()});
+                    }
+                }
+            }
+            Ok((Some(grants), Some(policies)))
         }
+        None => Ok((None, None)),
     }
-    Ok(Some(map))
 }
 
-fn deserialize_policies<'de, D>(deserializer: D) -> Result<Option<Permissions<Policy>>, D::Error>
-where D: Deserializer<'de>,
-{
-    let mut map = HashMap::new();
-    let map_in = HashMap::<Role,HashMap::<Action,Vec::<Policy>>>::deserialize(deserializer);
-    for (role, rules) in map_in? {
-        for (method, conditions) in rules {
-            map.insert((role.clone(), method), conditions);
-        }
-    }
-    Ok(Some(map))
-}
+// fn deserialize_grants<'de, D>(deserializer: D) -> Result<Option<Permissions<ColumnName>>, D::Error>
+// where D: Deserializer<'de>,
+// {
+//     let mut map = HashMap::new();
+//     let map_in = HashMap::<Role,HashMap::<Action,Vec::<ColumnName>>>::deserialize(deserializer);
+//     for (role, rules) in map_in? {
+//         for (method, columns) in rules {
+//             map.insert((role.clone(), method), columns);
+//         }
+//     }
+//     Ok(Some(map))
+// }
+
+// fn deserialize_policies<'de, D>(deserializer: D) -> Result<Option<Permissions<Policy>>, D::Error>
+// where D: Deserializer<'de>,
+// {
+//     let mut map = HashMap::new();
+//     let policies = Option::<HashMap::<Role,HashMap::<Action,Vec::<Policy>>>>::deserialize(deserializer)?;
+//     match policies {
+//         Some(map_in) => {
+//             for (role, rules) in map_in {
+//                 for (method, conditions) in rules {
+//                     map.insert((role.clone(), method), conditions);
+//                 }
+//             }
+//             Ok(Some(map))  
+//         },
+//         None => return Ok(None),
+//     }
+    
+// }
 
 fn deserialize_vec_procparam<'de, D>(deserializer: D) -> Result<Vec<ProcParam>, D::Error>
 where D: Deserializer<'de>,
@@ -472,9 +524,7 @@ where D: Deserializer<'de>,
                         name: o.name,
                         columns: o.columns,
                         foreign_keys: o.foreign_keys,
-                        grants: o.grants,
-                        policies: None,
-                        //join_for,
+                        permissions: o.permissions,
                     }
                 }
                 "view" => {
@@ -483,8 +533,7 @@ where D: Deserializer<'de>,
                         name: o.name,
                         columns: o.columns,
                         foreign_keys: o.foreign_keys,
-                        grants: o.grants,
-                        policies: None,
+                        permissions: o.permissions,
                     }
                 }
                 _ => {
@@ -493,8 +542,7 @@ where D: Deserializer<'de>,
                         name: o.name,
                         columns: o.columns,
                         foreign_keys: o.foreign_keys,
-                        grants: o.grants,
-                        policies: o.policies,
+                        permissions: o.permissions,
                     }
                 }
             },
@@ -571,8 +619,7 @@ mod tests {
                                 name: s("myfunction"),
                                 columns: [].iter().cloned().map(t).collect(),
                                 foreign_keys: [].to_vec(),
-                                grants: None,
-                                policies: None,
+                                permissions: (None,None),
                             },
                         ),
                         (
@@ -609,8 +656,7 @@ mod tests {
                                     referenced_table: Qi(s("api"), s("projects")),
                                     referenced_columns: vec![s("id")],
                                 }].to_vec(),
-                                grants: None,
-                                policies: None,
+                                permissions: (None,None),
                             },
                         ),
                         (
@@ -631,38 +677,40 @@ mod tests {
                                 .map(t)
                                 .collect(),
                                 foreign_keys: [].to_vec(),
-                                grants: Some(
-                                    vec![
-                                        (
-                                            (s("role"), Select),
-                                            vec![s("id"),s("name"),
-                                            ],
-                                        ),
-                                    ]
-                                    .iter().cloned().collect(),
-                                ),
-                                //policies: None,
-                                policies: Some(
-                                    vec![
-                                        (
-                                            (s("role"), Select),
-                                            vec![
-                                                Policy {
-                                                    using: Some(vec![
-                                                        Condition::Single{
-                                                            field: Field{name:s("id"), json_path:None},
-                                                            filter: Filter::Op(s("eq"), SingleVal(s("10"),Some(s("int")))),
-                                                            negate:false,
-                                                        }
-                                                    ]),
-                                                    check: None
-                                                }
-                                                
-                                            ],
-                                        ),
-                                    ]
-                                    .iter().cloned().collect(),
-                                ),
+                                permissions: (
+                                    Some(
+                                        vec![
+                                            (
+                                                (s("role"), Select),
+                                                vec![s("id"),s("name"),
+                                                ],
+                                            ),
+                                        ]
+                                        .iter().cloned().collect(),
+                                    ),
+                                    //policies: None,
+                                    Some(
+                                        vec![
+                                            (
+                                                (s("role"), Select),
+                                                vec![
+                                                    Policy {
+                                                        using: Some(vec![
+                                                            Condition::Single{
+                                                                field: Field{name:s("id"), json_path:None},
+                                                                filter: Filter::Op(s("eq"), SingleVal(s("10"),Some(s("int")))),
+                                                                negate:false,
+                                                            }
+                                                        ]),
+                                                        check: None
+                                                    }
+                                                    
+                                                ],
+                                            ),
+                                        ]
+                                        .iter().cloned().collect(),
+                                    ),
+                                )
                             },
                         ),
                     ]
@@ -737,22 +785,20 @@ mod tests {
                                     }
                                 ],
                                 "foreign_keys":[],
-                                "grants":{
-                                    "role": {
-                                        "select": ["id","name"]
-                                    }
-                                },
-                                "policies": {
-                                    "role": {
-                                        "select": [
-                                            {
-                                                "using": [
-                                                    {"column":"id","op":"eq","val":{"v":"10","t":"int"}}
-                                                ]
-                                            }
+                                "permissions":[
+                                    {
+                                        "role":"role",
+                                        "grant":["select"],
+                                        "columns":["id","name"]
+                                    },
+                                    {
+                                        "role":"role",
+                                        "policy_for":["select"],
+                                        "using":[
+                                            {"column":"id","op":"eq","val":{"v":"10","t":"int"}}
                                         ]
                                     }
-                                }
+                                ]
                             }
                         ]
                     }
