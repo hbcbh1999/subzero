@@ -400,7 +400,7 @@ feature "insert"
             {"id": 204, "body": "yyy"},
             {"id": 205, "body": "zzz"}]"#|]
           shouldRespondWith
-          [json| r#"{"message":"\"failed to parse columns parameter ()\" (line 1, column 1)","details":"Unexpected `end of input` Expected `\"`, `letter`, `digit`, `_` or ` `"}"# |]
+          [json| r#"{"message":"\"failed to parse columns parameter ()\" (line 1, column 1)","details":"Unexpected end of input Expected `\"`, letter, digit, `_` or ` `"}"# |]
           { matchStatus  = 400
           , matchHeaders = []
           }

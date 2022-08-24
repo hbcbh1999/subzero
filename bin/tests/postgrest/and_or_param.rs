@@ -206,7 +206,7 @@ feature "and or param"
           //   "details": "unexpected \")\" expecting field name (* or [a..z0..9_]), negation operator (not) or logic operator (and, or)",
           //   "message": "\"failed to parse logic tree (())\" (line 1, column 4)"
           // }"#|]
-          [json|r#"{"details":"Unexpected `)` Expected `\"`, `letter`, `digit`, `_`, ` `, `not`, `.`, `and`, `or` or `whitespace`","message":"\"failed to parse logic tree (or())\" (line 1, column 4)"}"#|]
+          [json|r#"{"details":"Unexpected `)` Expected `\"`, letter, digit, `_`, ` `, not, `.`, and, or or whitespace","message":"\"failed to parse logic tree (or())\" (line 1, column 4)"}"#|]
           { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
 
       it "can have a single condition" $ do
@@ -263,7 +263,7 @@ feature "and or param"
       //   "details": "unexpected \"1\" expecting \"(\"",
       //   "message": "\"failed to parse logic tree ((id.in.1,2,id.eq.3))\" (line 1, column 10)"
       // }"#|]
-      [json|r#"{"details":"Unexpected `i` Expected `not`, `.`, `and`, `or` or `whitespace`","message":"\" (or(id.in.1,2,id.eq.3))\" (line 1, column 7)"}"#|]
+      [json|r#"{"details":"Unexpected `i` Expected not, `.`, and, or or whitespace","message":"\" (or(id.in.1,2,id.eq.3))\" (line 1, column 7)"}"#|]
       { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "fails on malformed query params and provides meaningful error message" $ do
@@ -272,20 +272,20 @@ feature "and or param"
         //   "details": "unexpected \")\" expecting \"(\"",
         //   "message": "\"failed to parse logic tree ()()\" (line 1, column 3)"
         // }"#|]
-        [json|r#"{"details":"Unexpected `)` Expected `whitespace` or `(`","message":"\"failed to parse logic tree (or)()\" (line 1, column 3)"}"#|]
+        [json|r#"{"details":"Unexpected `)` Expected whitespace or `(`","message":"\"failed to parse logic tree (or)()\" (line 1, column 3)"}"#|]
         { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
       get "/entities?and=(ord(id.eq.1,id.eq.1),id.eq.2)" shouldRespondWith
         // [json|r#"{
         //   "details": "unexpected \"d\" expecting \"(\"",
         //   "message": "\"failed to parse logic tree ((ord(id.eq.1,id.eq.1),id.eq.2))\" (line 1, column 7)"
         // }"#|]
-        [json|r#"{"details":"Unexpected `d` Expected `whitespace` or `(`","message":"\"failed to parse logic tree (and(ord(id.eq.1,id.eq.1),id.eq.2))\" (line 1, column 7)"}"#|]
+        [json|r#"{"details":"Unexpected `d` Expected whitespace or `(`","message":"\"failed to parse logic tree (and(ord(id.eq.1,id.eq.1),id.eq.2))\" (line 1, column 7)"}"#|]
         { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
       get "/entities?or=(id.eq.1,not.xor(id.eq.2,id.eq.3))" shouldRespondWith
         // [json|r#"{
         //   "details": "unexpected \"x\" expecting logic operator (and, or)",
         //   "message": "\"failed to parse logic tree ((id.eq.1,not.xor(id.eq.2,id.eq.3)))\" (line 1, column 16)"
         // }"#|]
-        [json|r#"{"details":"Unexpected `x` Expected `and` or `or`","message":"\"failed to parse logic tree (or(id.eq.1,not.xor(id.eq.2,id.eq.3)))\" (line 1, column 16)"}"#|]
+        [json|r#"{"details":"Unexpected `x` Expected and or or","message":"\"failed to parse logic tree (or(id.eq.1,not.xor(id.eq.2,id.eq.3)))\" (line 1, column 16)"}"#|]
         { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
 }

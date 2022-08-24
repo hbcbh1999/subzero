@@ -769,12 +769,12 @@ feature "query"
     describe "order syntax errors" $ do
       it "gives meaningful error messages when asc/desc/nulls{first,last} are misspelled" $ do
         get "/items?order=id.ac" shouldRespondWith
-          [json|r#"{"details":"Unexpected `a` Expected `nullsfirst` or `nullslast`","message":"\"failed to parse order (id.ac)\" (line 1, column 4)"}"#|]
+          [json|r#"{"details":"Unexpected `a` Expected nullsfirst or nullslast","message":"\"failed to parse order (id.ac)\" (line 1, column 4)"}"#|]
           { matchStatus  = 400
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
         get "/items?order=id.descc" shouldRespondWith
-          [json|r#"{"details":"Unexpected `c` Expected `,`, `whitespaces` or `end of input`","message":"\"failed to parse order (id.descc)\" (line 1, column 8)"}"#|]
+          [json|r#"{"details":"Unexpected `c` Expected `,`, whitespaces or end of input","message":"\"failed to parse order (id.descc)\" (line 1, column 8)"}"#|]
           { matchStatus  = 400
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
@@ -784,12 +784,12 @@ feature "query"
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
         get "/items?order=id.nullslasttt" shouldRespondWith
-          [json|r#"{"details":"Unexpected `t` Expected `,`, `whitespaces` or `end of input`","message":"\"failed to parse order (id.nullslasttt)\" (line 1, column 13)"}"#|]
+          [json|r#"{"details":"Unexpected `t` Expected `,`, whitespaces or end of input","message":"\"failed to parse order (id.nullslasttt)\" (line 1, column 13)"}"#|]
           { matchStatus  = 400
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
         get "/items?order=id.smth34" shouldRespondWith
-          [json|r#"{"details":"Unexpected `s` Expected `nullsfirst` or `nullslast`","message":"\"failed to parse order (id.smth34)\" (line 1, column 4)"}"#|]
+          [json|r#"{"details":"Unexpected `s` Expected nullsfirst or nullslast","message":"\"failed to parse order (id.smth34)\" (line 1, column 4)"}"#|]
           { matchStatus  = 400
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
@@ -801,12 +801,12 @@ feature "query"
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
         get "/items?order=id.asc.nullslasttt" shouldRespondWith
-          [json|r#"{"details":"Unexpected `t` Expected `,`, `whitespaces` or `end of input`","message":"\"failed to parse order (id.asc.nullslasttt)\" (line 1, column 17)"}"#|]
+          [json|r#"{"details":"Unexpected `t` Expected `,`, whitespaces or end of input","message":"\"failed to parse order (id.asc.nullslasttt)\" (line 1, column 17)"}"#|]
           { matchStatus  = 400
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
         get "/items?order=id.asc.smth34" shouldRespondWith
-          [json|r#"{"details":"Unexpected `s` Expected `nullsfirst` or `nullslast`","message":"\"failed to parse order (id.asc.smth34)\" (line 1, column 8)"}"#|]
+          [json|r#"{"details":"Unexpected `s` Expected nullsfirst or nullslast","message":"\"failed to parse order (id.asc.smth34)\" (line 1, column 8)"}"#|]
           { matchStatus  = 400
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
@@ -885,7 +885,7 @@ feature "query"
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "fails if an operator is not given" $
-      get "/ghostBusters?id=0" shouldRespondWith [json|r#" {"details":"Unexpected `0` Expected `letter`, `in`, `not` or `.`","message":"\"failed to parse filter (0)\" (line 1, column 1)"} "#|]
+      get "/ghostBusters?id=0" shouldRespondWith [json|r#" {"details":"Unexpected `0` Expected letter, in, not or `.`","message":"\"failed to parse filter (0)\" (line 1, column 1)"} "#|]
         { matchStatus  = 400
         , matchHeaders = ["Content-Type" <:> "application/json"]
         }
