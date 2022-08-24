@@ -236,7 +236,7 @@ pub enum QueryNode {
 
     Update {
         table: String,
-        columns: Vec<String>,
+        columns: Vec<ColumnName>,
         payload: Payload,
         where_: ConditionTree,
         returning: Vec<String>,

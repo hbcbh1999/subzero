@@ -7,14 +7,15 @@ use snafu::ResultExt;
 #[cfg(feature = "sqlite")]
 use tokio::task;
 
-use subzero_core::api::{ApiResponse, FunctionParam};
+use subzero_core::api::{ApiResponse, };
 
 use crate::backend::Backend;
-use crate::config::{VhostConfig,};
+
 use subzero_core::{
-    api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*, SelectItem::*, ApiRequest},
+    api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*,  ApiRequest},
     error::{*},
     parser::postgrest::parse,
+    permissions::{check_safe_functions, check_privileges},
 };
 
 use crate::error::{Result, CoreError, to_core_error};
@@ -30,23 +31,23 @@ fn get_current_timestamp() -> u64 {
     start.duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs()
 }
 
-fn validate_fn_param(config: &VhostConfig, p: &FunctionParam) -> Result<()> {
-    match p {
-        FunctionParam::Func { fn_name, parameters } => {
-            if !config.db_allowd_select_functions.contains(&fn_name) {
-                return Err(to_core_error(Error::ParseRequestError { 
-                    details: format!("calling: '{}' is not allowed", fn_name),
-                    message: "Unsafe functions called".to_string(),
-                }));
-            }
-            for p in parameters {
-                validate_fn_param(config, p)?;
-            }
-            Ok(())
-        },
-        _ => {Ok(())}
-    }
-}
+// fn validate_fn_param(config: &VhostConfig, p: &FunctionParam) -> Result<()> {
+//     match p {
+//         FunctionParam::Func { fn_name, parameters } => {
+//             if !config.db_allowd_select_functions.contains(&fn_name) {
+//                 return Err(to_core_error(Error::ParseRequestError { 
+//                     details: format!("calling: '{}' is not allowed", fn_name),
+//                     message: "Unsafe functions called".to_string(),
+//                 }));
+//             }
+//             for p in parameters {
+//                 validate_fn_param(config, p)?;
+//             }
+//             Ok(())
+//         },
+//         _ => {Ok(())}
+//     }
+// }
 
 fn get_env(role: Option<&String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
     let mut env = HashMap::new();
@@ -217,6 +218,7 @@ pub async fn handle<'a>(
     }.context(CoreError)?;
 
     debug!("role: {:?}, jwt_claims: {:?}", role, jwt_claims);
+    
     // do not allow unauthenticated requests when there is no anonymous role setup
     if let (None, false) = (role, authenticated) {
         return Err(to_core_error(Error::JwtTokenInvalid {message: "unauthenticated requests not allowed".to_string()}))
@@ -224,34 +226,14 @@ pub async fn handle<'a>(
 
     // parse request and generate the query
     let request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(CoreError)?;
-    // check only safe functions are used
+    // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
+    // of the "authenticator" role unless the DbSchema has internal privileges set
+    check_privileges(db_schema, schema_name, role.unwrap_or(&String::default()), &request).map_err(to_core_error)?; 
+    check_safe_functions(&request, &config.db_allowd_select_functions).map_err(to_core_error)?;
     
+
     let _env = get_env(role, &request, &jwt_claims, config.db_use_legacy_gucs);
     let env = _env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_,_>>();
-
-    for (p, n) in &request.query {
-        match n {
-            FunctionCall { select, .. } |
-            Select { select, .. } |
-            Insert { select, .. } |
-            Update { select, .. } |
-            Delete { select, ..} => {
-                for s in select {
-                    if let Func {fn_name, parameters, ..} = s {
-                        if !config.db_allowd_select_functions.contains(fn_name) {
-                            return Err(to_core_error(Error::ParseRequestError { 
-                                details: format!("calling: '{}' is not allowed", fn_name),
-                                message: "Unsafe functions called".to_string(),
-                            }));
-                        }
-                        for p in parameters {
-                            validate_fn_param(config, p)?;
-                        }
-                    }
-                }
-            }
-        }
-    }
     
     let response:ApiResponse = match config.db_type.as_str() {
         #[cfg(feature = "postgresql")]

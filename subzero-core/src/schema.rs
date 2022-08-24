@@ -5,9 +5,10 @@ use snafu::OptionExt;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
 
+pub type Role = String;
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Action {Select,Insert,Update,Delete,All}
+pub enum Action {Execute,Select,Insert,Update,Delete,All}
 type Permissions<T> = HashMap<(Role, Action), Vec<T>>;
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 pub struct Policy {
@@ -18,7 +19,7 @@ pub struct Policy {
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
-pub struct Permission {
+struct PermissionDef {
     pub role: Role,
 
     #[serde(default, skip_serializing_if = "is_default")]
@@ -278,9 +279,57 @@ impl DbSchema {
             }
         }
     }
+    
+    pub fn has_select_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &Vec<ColumnName>) -> Result<()>{
+        self.has_privileges(role, &Action::Select, current_schema, origin, columns)
+    }
+    pub fn has_insert_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &Vec<ColumnName>) -> Result<()>{
+        self.has_privileges(role, &Action::Insert, current_schema, origin,columns)
+    }
+    pub fn has_update_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &Vec<ColumnName>) -> Result<()>{
+        self.has_privileges(role, &Action::Update, current_schema, origin, columns)
+    }
+    pub fn has_delete_privileges(&self, role: &Role, current_schema: &String, origin: &String) -> Result<()>{
+        self.has_privileges(role, &Action::Delete, current_schema, origin, &vec![])
+    }
+    pub fn has_execute_privileges(&self, role: &Role, current_schema: &String, origin: &String) -> Result<()>{
+        self.has_privileges(role, &Action::Execute, current_schema, origin, &vec![])
+    }
+
+    fn has_privileges(&self, role: &Role, action: &Action, current_schema: &String, origin: &String, columns: &Vec<ColumnName>) -> Result<()>{
+        let schema = self.schemas.get(current_schema).context(UnacceptableSchema {
+            schemas: vec![current_schema.to_owned()],
+        })?;
+        let origin_table = schema.objects.get(origin).context(UnknownRelation { relation: origin.to_owned() })?;
+        if let (Some(grants), _) = &origin_table.permissions {
+            match grants.get(&(role.clone(), action.clone())) {
+                None => Err(Error::ParseRequestError { 
+                    details: format!("no {:?} privileges for '{}.{}' table", &action, current_schema, origin),
+                    message: "Permission denied".to_string(),
+                }),
+                Some(allowd_columns) => {
+                    // check if columns vector is contained in allowd_columns except for Delete/execute action
+                    if ![Action::Delete, Action::Execute].contains(action) {
+                        for c in columns {
+                            if !allowd_columns.contains(c) {
+                                return Err(Error::ParseRequestError { 
+                                    details: format!("no {:?} privileges for '{}' column", &action, c),
+                                    message: "Permission denied".to_string(),
+                                });
+                            }
+                        }
+                    }
+                    Ok(())
+                }
+            }
+        }
+        else {
+            Ok(())
+        }
+    }
 }
 
-type Role = String;
+
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Object {
@@ -391,7 +440,7 @@ pub struct Column {
 fn deserialize_permissions<'de, D>(deserializer: D) -> Result<(Option<Permissions<ColumnName>>,Option<Permissions<Policy>>), D::Error>
 where D: Deserializer<'de>,
 {
-    let permissions = Option::<Vec<Permission>>::deserialize(deserializer)?;
+    let permissions = Option::<Vec<PermissionDef>>::deserialize(deserializer)?;
     match permissions {
         Some(permissions) => {
             let mut grants = HashMap::new();

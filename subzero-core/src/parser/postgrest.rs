@@ -2431,7 +2431,7 @@ pub mod tests {
             .map_err(|e| format!("{}", e)),
             Err(AppError::ParseRequestError {
                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
-                details: s("Unexpected `,` Unexpected `i` Expected `letter`, `digit`, `_` or ` `")
+                details: s("Unexpected `,` Unexpected `i` Expected letter, digit, `_` or ` `")
             })
             .map_err(|e| format!("{}", e))
         );
@@ -2588,7 +2588,7 @@ pub mod tests {
             .map_err(|e| format!("{}", e)),
             Err(AppError::ParseRequestError {
                 message: s("\"failed to parse columns parameter (id,1$name)\" (line 1, column 5)"),
-                details: s("Unexpected `$` Expected `,`, `whitespaces` or `end of input`"),
+                details: s("Unexpected `$` Expected `,`, whitespaces or end of input"),
             })
             .map_err(|e| format!("{}", e))
         );
@@ -2670,7 +2670,7 @@ pub mod tests {
             .map_err(|e| format!("{}", e)),
             Err(AppError::ParseRequestError {
                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
-                details: s("Unexpected `,` Unexpected `i` Expected `letter`, `digit`, `_` or ` `")
+                details: s("Unexpected `,` Unexpected `i` Expected letter, digit, `_` or ` `")
             })
             .map_err(|e| format!("{}", e))
         );

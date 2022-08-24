@@ -3,36 +3,30 @@
         "table_schema": "public",
         "table_name": "permissions_check",
         "role": "public",
-        "grant": ["select","insert"],
+        "grant": ["select"],
         "columns": ["id", "name"]
     },
     {
         "table_schema": "public",
         "table_name": "permissions_check",
         "role": "public",
-        "grant": ["select"],
-        "columns": ["private"]
+        "policy_for": ["all"],
+        "check": [{"column":"id","op":"gt","val":"1"}],
+        "using": [{"column":"value","op":"eq","val":"allowed"}]
     },
     {
         "table_schema": "public",
         "table_name": "permissions_check",
-        "role": "public",
-        "policy_for": ["select"],
-        "check": [{"column":"id","op":"eq","val":"1"}]
+        "role": "admin",
+        "grant": ["select", "insert", "update", "delete"],
+        "columns": []
     },
     {
         "table_schema": "public",
         "table_name": "permissions_check",
-        "role": "public",
-        "policy_for": ["select","insert"],
-        "check": [{"column":"id","op":"eq","val":"2"}]
-    },
-    {
-        "table_schema": "public",
-        "table_name": "permissions_check",
-        "role": "public",
-        "policy_for": ["insert"],
-        "check": [{"column":"id","op":"eq","val":"3"}],
-        "using": [{"column":"id","op":"eq","val":"4"}]
+        "role": "admin",
+        "policy_for": ["select", "insert", "update", "delete"],
+        "check": [],
+        "using": []
     }
 ]
