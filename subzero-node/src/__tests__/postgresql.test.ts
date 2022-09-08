@@ -81,15 +81,29 @@ function normalize_statement(p: [query: string, parameters: any]) {
 }
 
 const subzero = new Subzero('postgresql', schema);
-test('basic', () => {
+test('main query', () => {
     expect(
-        normalize_statement(subzero.get_main_query("GET", "public", "tasks", "/tasks", [["id", "eq.1"]], undefined, new Map(), new Map()))
+        normalize_statement(
+            subzero.get_main_query(
+                "GET", // method
+                "public", // schema
+                "tasks", // entity
+                "/tasks", // path
+                [["id", "eq.1"]], // get query parameters
+                undefined, // body
+                [["accept", "application/json"]], // headers
+                [["acookie","cookieval"]], // cookies
+                [["role", "admin"],["request", '{"method":"GET"}']] // env
+            )
+        )
     )
     .toStrictEqual(
         normalize_statement([
             `
-            with _subzero_query as (
-                select "public"."tasks".* from "public"."tasks"   where "public"."tasks"."id" = $1
+            with 
+            env as materialized (select set_config($1, $2, true), $3 as "request",set_config($4, $5, true), $6 as "role")
+            , _subzero_query as (
+                select "public"."tasks".* from "public"."tasks", env where "public"."tasks"."id" = $7
             )
             , _subzero_count_query AS (select 1)
             select
@@ -100,6 +114,35 @@ test('basic', () => {
                 nullif(current_setting('response.status', true), '') as response_status
             from ( select * from _subzero_query ) _subzero_t
             `,
+            ["request"
+            ,'{"method":"GET"}'
+            ,'{"method":"GET"}'
+            ,'role'
+            ,'admin'
+            ,'admin'
+            , "1"
+            ]
+        ])
+    );
+});
+
+test('core query', () => {
+    expect(
+        normalize_statement(
+            subzero.get_core_query(
+                "GET", // method
+                "public", // schema
+                "tasks", // entity
+                "/tasks", // path
+                [["id", "eq.1"]], // get query parameters
+                undefined, // body
+                [["accept", "application/json"]] // headers
+            )
+        )
+    )
+    .toStrictEqual(
+        normalize_statement([
+            `select "public"."tasks".* from "public"."tasks" where "public"."tasks"."id" = $1`,
             ["1"]
         ])
     );

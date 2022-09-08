@@ -145,14 +145,17 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
 #[allow(unused_macros)]
 macro_rules! fmt_env_query { () => {
 pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
-    "select "
-    + env
+    "select " +
+    if env.is_empty() {sql("null")} 
+    else {
+        env
         .iter()
         .map(|(k, v)| {
             "set_config(" + param(k as &SqlParam) + ", " + param(v as &SqlParam) + ", true), " +
             param(v as &SqlParam) + " as " + fmt_identity(&String::from(*k))
         })
         .join(",")
+    }
 }
 }}
 #[allow(unused_imports)]
@@ -161,7 +164,7 @@ pub(super) use fmt_env_query;
 
 #[allow(unused_macros)]
 macro_rules! fmt_query { () => {
-fn fmt_query<'a>(
+pub fn fmt_query<'a>(
     schema: &String,
     return_representation: bool,
     wrapin_cte: Option<&'static str>,

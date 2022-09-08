@@ -2116,21 +2116,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "subzero-core-wasm"
-version = "0.0.1"
-dependencies = [
- "console_error_panic_hook",
- "js-sys",
- "serde_json",
- "subzero-core",
- "wasm-bindgen",
- "wasm-bindgen-test",
- "wee_alloc",
-]
-
-[[package]]
 name = "subzero-rocket"
-version = "0.1.1"
+version = "0.1.0"
 dependencies = [
  "async-trait",
  "async_once",
@@ -2164,6 +2151,19 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "url 2.2.2",
+]
+
+[[package]]
+name = "subzero-wasm"
+version = "0.0.1"
+dependencies = [
+ "console_error_panic_hook",
+ "js-sys",
+ "serde_json",
+ "subzero-core",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+ "wee_alloc",
 ]
 
 [[package]]

@@ -64,7 +64,7 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'
     )
 }
 //fmt_query!();
-fn fmt_query<'a>(
+pub fn fmt_query<'a>(
     schema: &String,
     _return_representation: bool,
     wrapin_cte: Option<&'static str>,

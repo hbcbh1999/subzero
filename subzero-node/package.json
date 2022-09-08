@@ -30,7 +30,7 @@
   "author": "Ruslan Talpa",
   "license": "ISC",
   "dependencies": {
-    "subzero-core-wasm": "file:../subzero-core-wasm/pkg"
+    "subzero-wasm": "file:../subzero-wasm/pkg"
   },
   "devDependencies": {
     "@types/jest": "^28.1.6",

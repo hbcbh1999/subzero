@@ -91,7 +91,7 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
         .await
         .context(PgDbError { authenticated })?;
 
-    if let Some((s, f)) = &config.db_pre_request {
+    if let Some((s, f)) = &config.db_pre_request {  
         let fn_schema = match s.as_str() {
             "" => request.schema_name,
             _ => s.as_str(),

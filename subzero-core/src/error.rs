@@ -176,6 +176,7 @@ impl Error {
             Error::PutMatchingPkError => {
                 json!({"message":"Payload values do not match URL in primary key column(s)"})
             }
+            //TODO!!! message i wrong, the error contains the name of the "unfound" schema
             Error::UnacceptableSchema { schemas } => json!({ "message": format!("The schema must be one of the following: {}", schemas.join(", ")) }),
             Error::UnknownRelation { relation } => {
                 json!({ "message": format!("Unknown relation '{}'", relation) })

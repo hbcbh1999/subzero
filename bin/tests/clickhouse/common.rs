@@ -48,11 +48,6 @@ pub fn setup_db(init_db_once: &Once) {
 
         let db_uri = String::from_utf8_lossy(&output.stdout);
 
-        // curl -X POST \
-        // -F 'query=<clickhouse_structure_query.sql' \
-        // -F "param_p1=['default']" \
-        // 'http://default:clickhouse@localhost:8123/'
-
         let output = Command::new("tests/bin/ch_run_sql.sh")
             .arg(format!("{}",init_file.to_str().unwrap()))
             .arg(db_uri.clone().into_owned())
@@ -82,7 +77,7 @@ pub fn setup_db(init_db_once: &Once) {
         assert!(output.status.success());
 
         env::set_var("SUBZERO_DB_URI", &*db_uri);
-        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../clickhouse_structure_query.sql}");
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/clickhouse_introspection_query.sql}");
         debug!("db init ok clickhouse");
     });
 

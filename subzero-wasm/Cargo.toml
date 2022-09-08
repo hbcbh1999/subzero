@@ -1,5 +1,5 @@
 [package]
-name = "subzero-core-wasm"
+name = "subzero-wasm"
 version = "0.0.1"
 authors = ["Ruslan Talpa <ruslan.talpa@gmail.com>"]
 edition = "2018"

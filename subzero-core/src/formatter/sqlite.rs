@@ -138,7 +138,7 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'
     Ok(main_query)
 }
 //fmt_query!();
-fn fmt_query<'a>(
+pub fn fmt_query<'a>(
     schema: &String, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
     let (cte_snippet, query_snippet) = match &q.node {

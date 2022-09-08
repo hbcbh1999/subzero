@@ -1,12 +1,11 @@
 // #![no_std]
 
 mod utils;
-use std::collections::HashMap;
 
 use utils::{
     set_panic_hook, 
     cast_core_err, cast_serde_err,
-    // console_log, log,
+    //console_log, log,
 };
 //use subzero_core::schema::DbSchema;
 use subzero_core::{
@@ -22,7 +21,7 @@ use subzero_core::formatter::clickhouse;
 #[cfg(feature = "sqlite")]
 use subzero_core::formatter::sqlite;
 use wasm_bindgen::{prelude::*, };
-use js_sys::{Error as JsError, Array as JsArray, Map as JsMap};
+use js_sys::{Error as JsError, Array as JsArray, };
 use serde_json;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -52,28 +51,28 @@ impl Backend {
         get: &JsArray, 
         //body: Option<JsString>,
         body: &str,
-        headers: &JsMap,
-        cookies: &JsMap,
-        env: &JsMap,
+        headers: &JsArray,
+        cookies: &JsArray,
+        env: &JsArray,
         //db_type: Option<JsString>,
         db_type: &str,
+        return_core_query: bool,
     )
     -> Result<Vec<JsValue>, JsError> {
         
         if !["GET","POST","PUT","DELETE","PATCH"].contains(&method) {
             return Err(JsError::new("invalid method"));
         }
-        //let body = body.into();
+        
         let get = get.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
         let get = get.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
-        let headers = headers.into_serde::<HashMap<String,String>>().map_err(cast_serde_err)?;
+        let headers = headers.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
         let headers = headers.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
-        let cookies = cookies.into_serde::<HashMap<String,String>>().map_err(cast_serde_err)?;
+        let cookies = cookies.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
         let cookies = cookies.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
-        let env = env.into_serde::<HashMap<String,String>>().map_err(cast_serde_err)?;
+        let env = env.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
         let env = env.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
         let db_schema = &self.db_schema;
-        
         let body = if body.is_empty() {
             None
         } else {
@@ -83,21 +82,29 @@ impl Backend {
 
         let request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, max_rows).map_err(cast_core_err)?;
 
-        //let db_type = db_type.unwrap_or(JsString::from(""));
         let (main_statement, main_parameters, _) = match db_type {
             #[cfg(feature = "postgresql")]
             "postgresql" => {
-                let query = postgresql::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?;
+                let query = if !return_core_query
+                            {postgresql::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?}
+                            else
+                            {postgresql::fmt_query(&request.schema_name.to_string(), false, None, &request.query,&None).map_err(cast_core_err)?};
                 Ok(postgresql::generate(query))
             },
             #[cfg(feature = "clickhouse")]
             "clickhouse" => {
-                let query = clickhouse::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?;
+                let query = if !return_core_query
+                            {clickhouse::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?}
+                            else
+                            {clickhouse::fmt_query(&request.schema_name.to_string(), false, None, &request.query,&None).map_err(cast_core_err)?};
                 Ok(clickhouse::generate(query))
             },
             #[cfg(feature = "sqlite")]
             "sqlite" => {
-                let query = sqlite::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?;
+                let query = if !return_core_query
+                            {sqlite::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?}
+                            else
+                            {sqlite::fmt_query(&request.schema_name.to_string(), false, None, &request.query,&None).map_err(cast_core_err)?};
                 Ok(sqlite::generate(query))
             },
             _ => Err(JsError::new("unsupported database type")),
