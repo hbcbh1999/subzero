@@ -18,7 +18,7 @@ use subzero_core::{
 use std::collections::HashMap;
 use async_trait::async_trait;
 use http::Error as HttpError;
-use log::{debug};
+// use log::{debug};
 use super::{Backend, include_files};
 
 use std::{fs};

@@ -37,9 +37,9 @@ pub fn setup_db(init_db_once: &Once) {
             .output()
             .expect("failed to start temporary pg process");
         if !output.status.success() {
-            println!("status: {}", output.status);
-            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+            debug!("status: {}", output.status);
+            debug!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            debug!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
         
         assert!(output.status.success());
@@ -54,9 +54,9 @@ pub fn setup_db(init_db_once: &Once) {
             .expect("failed to execute process");
         
         if !output.status.success() {
-            println!("status: {}", output.status);
-            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+            debug!("status: {}", output.status);
+            debug!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            debug!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
         assert!(output.status.success());
 

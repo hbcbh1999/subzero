@@ -29,15 +29,15 @@ pub fn setup_db(init_db_once: &Once) {
 
         let file = File::create(&db).unwrap();
         drop(file);
-        println!("created db file: {:?}", init_file);
+        debug!("created db file: {:?}", init_file);
         let output = Command::new("sqlite3")
             .arg(db.to_str().unwrap())
             .arg(format!(r#".read {}"#, init_file.to_str().unwrap()))
             .output()
             .expect("failed to setup sqlite db");
-        println!("status: {}", output.status);
-        println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-        println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        debug!("status: {}", output.status);
+        debug!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+        debug!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         assert!(output.status.success());
 
         let db_uri = db.to_str().unwrap();
@@ -60,11 +60,11 @@ where
 {
     init_client_once.call_once(|| {
         env::set_var("SUBZERO_CONFIG", &"inexistent_config.toml");
-        env::set_var("SUBZERO_DB_ANON_ROLE", &"postgrest_test_anonymous");
+        env::set_var("SUBZERO_DB_ANON_ROLE", &"anonymous");
         env::set_var("SUBZERO_DB_TX_ROLLBACK", &"true");
         env::set_var("SUBZERO_DB_TYPE", &"sqlite");
         env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
-        env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
+        // env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
         env::set_var("SUBZERO_URL_PREFIX", "/rest");
         lazy_static::initialize(client);

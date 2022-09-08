@@ -150,6 +150,12 @@ async fn start() -> Result<Rocket<Build>, Error> {
     let default_prefix = "/".to_string();
     #[allow(unused_variables)]
     let url_prefix = vhost_config.url_prefix.clone().unwrap_or(default_prefix);
+
+    // initialize the web server
+    let mut server = rocket::custom(config)
+        .mount(&url_prefix, routes![get, post, delete, patch, put])
+        .mount(format!("{}/rpc", &url_prefix), routes![get, post]);
+
     //initialize the backend
     #[allow(unused_variables)]
     let backend: Box<dyn Backend + Send + Sync> = match vhost_config.db_type.as_str() {
@@ -162,12 +168,7 @@ async fn start() -> Result<Rocket<Build>, Error> {
         t => panic!("unsupported database type: {}", t),
     };
 
-    
-    // initialize the web server
-    let mut server = rocket::custom(config)
-        .manage(backend)
-        .mount(&url_prefix, routes![get, post, delete, patch, put])
-        .mount(format!("{}/rpc", &url_prefix), routes![get, post]);
+    server = server.manage(backend);
 
     if let Some(static_dir) = &vhost_config.static_files_dir {
         let options = Options::Index;

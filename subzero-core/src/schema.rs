@@ -4,12 +4,29 @@ use serde::{Deserialize, Deserializer};
 use snafu::OptionExt;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
+use log::debug;
+use ColumnPermissions::*;
 
 pub type Role = String;
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Action {Execute,Select,Insert,Update,Delete,All}
-type Permissions<T> = HashMap<(Role, Action), Vec<T>>;
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ColumnPermissions {
+    All,
+    Specific(Vec<ColumnName>),
+}
+impl Default for ColumnPermissions {
+    fn default() -> Self { ColumnPermissions::All }
+}
+
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct Permissions {
+    pub grants: HashMap<(Role, Action), ColumnPermissions>, 
+    pub policies: HashMap<(Role, Action), Vec<Policy>>
+}
+
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 pub struct Policy {
     #[serde(default, skip_serializing_if = "is_default")]
@@ -37,17 +54,10 @@ struct PermissionDef {
 
 #[derive(Debug, PartialEq, Deserialize, Clone)]
 pub struct DbSchema {
+    #[serde(default, deserialize_with = "deserialize_bool_from_anything")]
+    pub use_internal_permissions: bool,
     #[serde(deserialize_with = "deserialize_schemas")]
     pub schemas: HashMap<String, Schema>,
-}
-
-#[derive(Debug, PartialEq, Clone, Deserialize)]
-pub struct Schema {
-    pub name: String,
-    #[serde(deserialize_with = "deserialize_objects")]
-    pub objects: BTreeMap<String, Object>,
-    #[serde(default)]
-    join_tables: BTreeMap<(String, String), BTreeSet<String>>,
 }
 
 impl DbSchema {
@@ -280,56 +290,80 @@ impl DbSchema {
         }
     }
     
-    pub fn has_select_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &Vec<ColumnName>) -> Result<()>{
+    pub fn has_select_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()>{
         self.has_privileges(role, &Action::Select, current_schema, origin, columns)
     }
-    pub fn has_insert_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &Vec<ColumnName>) -> Result<()>{
+    pub fn has_insert_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()>{
         self.has_privileges(role, &Action::Insert, current_schema, origin,columns)
     }
-    pub fn has_update_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &Vec<ColumnName>) -> Result<()>{
+    pub fn has_update_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()>{
         self.has_privileges(role, &Action::Update, current_schema, origin, columns)
     }
     pub fn has_delete_privileges(&self, role: &Role, current_schema: &String, origin: &String) -> Result<()>{
-        self.has_privileges(role, &Action::Delete, current_schema, origin, &vec![])
+        self.has_privileges(role, &Action::Delete, current_schema, origin, &All)
     }
     pub fn has_execute_privileges(&self, role: &Role, current_schema: &String, origin: &String) -> Result<()>{
-        self.has_privileges(role, &Action::Execute, current_schema, origin, &vec![])
+        self.has_privileges(role, &Action::Execute, current_schema, origin, &All)
     }
 
-    fn has_privileges(&self, role: &Role, action: &Action, current_schema: &String, origin: &String, columns: &Vec<ColumnName>) -> Result<()>{
+    fn has_privileges(&self, role: &Role, action: &Action, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()>{
+        debug!("has_privileges: {:?} {:?} {:?} {:?} {:?}", role, action, current_schema, origin, columns);
         let schema = self.schemas.get(current_schema).context(UnacceptableSchema {
             schemas: vec![current_schema.to_owned()],
         })?;
         let origin_table = schema.objects.get(origin).context(UnknownRelation { relation: origin.to_owned() })?;
-        if let (Some(grants), _) = &origin_table.permissions {
-            match grants.get(&(role.clone(), action.clone())) {
-                None => Err(Error::ParseRequestError { 
-                    details: format!("no {:?} privileges for '{}.{}' table", &action, current_schema, origin),
-                    message: "Permission denied".to_string(),
-                }),
-                Some(allowd_columns) => {
-                    // check if columns vector is contained in allowd_columns except for Delete/execute action
-                    if ![Action::Delete, Action::Execute].contains(action) {
-                        for c in columns {
-                            if !allowd_columns.contains(c) {
-                                return Err(Error::ParseRequestError { 
-                                    details: format!("no {:?} privileges for '{}' column", &action, c),
-                                    message: "Permission denied".to_string(),
-                                });
+        let grants = &origin_table.permissions.grants;
+        let all_privileges = [
+            grants.get(&(role.clone(), action.clone())),
+            grants.get(&("public".to_string(), action.clone())),
+        ];
+        let column_permissions = match all_privileges {
+            [Some(Specific(a)), Some(Specific(b))] => Ok(Specific(a.iter().chain(b.iter()).cloned().collect::<Vec<_>>())),
+            [Some(All), _] | [_, Some(All)] => Ok(All),
+            [Some(Specific(a)), None] | [None, Some(Specific(a))] => Ok(Specific(a.clone())),
+            [None, None] => Err(Error::ParseRequestError { 
+                details: format!("no {:?} privileges for '{}.{}' table", &action, current_schema, origin),
+                message: "Permission denied".to_string(),
+            }),
+        }?;
+        
+        // check if columns vector is contained in allowd_columns except for Delete/Execute action
+        match column_permissions {
+            All => Ok(()),
+            Specific(allowed_columns) => {
+                match columns {
+                    All => Err(Error::ParseRequestError { 
+                        details: format!("no {:?} privileges for '{}.{}(*)'", &action, current_schema, origin),
+                        message: "Permission denied".to_string(),
+                    }),
+                    Specific(accessed_columns) => {
+                        if ![Action::Delete, Action::Execute].contains(action) {
+                            for c in accessed_columns {
+                                if !allowed_columns.contains(&c) {
+                                    return Err(Error::ParseRequestError { 
+                                        details: format!("no {:?} privileges for '{}.{}({})'", &action, current_schema, origin, c),
+                                        message: "Permission denied".to_string(),
+                                    });
+                                }
                             }
                         }
+                        Ok(())
                     }
-                    Ok(())
                 }
+                
             }
-        }
-        else {
-            Ok(())
         }
     }
 }
 
-
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+pub struct Schema {
+    pub name: String,
+    #[serde(deserialize_with = "deserialize_objects")]
+    pub objects: BTreeMap<String, Object>,
+    #[serde(default)]
+    join_tables: BTreeMap<(String, String), BTreeSet<String>>,
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Object {
@@ -337,7 +371,7 @@ pub struct Object {
     pub name: String,
     pub columns: HashMap<String, Column>,
     pub foreign_keys: Vec<ForeignKey>,
-    pub permissions: (Option<Permissions<ColumnName>>, Option<Permissions<Policy>>),
+    pub permissions: Permissions,
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
@@ -351,7 +385,7 @@ struct ObjectDef {
     pub foreign_keys: Vec<ForeignKey>,
 
     #[serde(deserialize_with = "deserialize_permissions", default)]
-    pub permissions: (Option<Permissions<ColumnName>>, Option<Permissions<Policy>>),
+    pub permissions: Permissions,
     // #[serde(deserialize_with = "deserialize_grants", default)]
     // pub grants: Option<Permissions<ColumnName>>,
     // #[serde(deserialize_with = "deserialize_policies", default)]
@@ -437,7 +471,19 @@ pub struct Column {
     pub primary_key: bool,
 }
 
-fn deserialize_permissions<'de, D>(deserializer: D) -> Result<(Option<Permissions<ColumnName>>,Option<Permissions<Policy>>), D::Error>
+//replace Action::All with specific actions
+fn normalize_actions(actions: &Vec<Action>) -> Vec<Action> {
+    actions.iter().fold(vec![], |mut acc, a| {
+        match a {
+            Action::All => {
+                acc.extend(vec![Action::Select, Action::Insert, Action::Update, Action::Delete]);
+            },
+            _ => acc.push(a.clone()),
+        }
+        acc
+    })
+}
+fn deserialize_permissions<'de, D>(deserializer: D) -> Result<Permissions, D::Error>
 where D: Deserializer<'de>,
 {
     let permissions = Option::<Vec<PermissionDef>>::deserialize(deserializer)?;
@@ -446,22 +492,43 @@ where D: Deserializer<'de>,
             let mut grants = HashMap::new();
             let mut policies = HashMap::new();
             for p in permissions {
-                if let (Some(actions), Some(columns)) = (p.grant, p.columns) {
-                    for action in actions {
-                        let cols = grants.entry((p.role.clone(), action)).or_insert(Vec::new());
-                        cols.extend(columns.iter().cloned());
+                match (p.grant, p.columns) {
+                    (Some(actions), Some(columns)) => {
+                        let actions_ = normalize_actions(&actions);
+                        for a in actions_ {
+                            let cols = grants.entry((p.role.clone(), a)).or_insert(Specific(Vec::new()));
+                            match cols {
+                                Specific(cols) => cols.extend(columns.iter().cloned()),
+                                _ => (),
+                            }
+                        }
                     }
+                    (Some(actions), None) => {
+                        let actions_ = normalize_actions(&actions);
+                        for a in actions_ {
+                            grants.insert((p.role.clone(), a), All);
+                        }
+                    }
+                    _ => (),
                 }
-                if let (Some(actions), check, using) = (p.policy_for, p.check, p.using) {
-                    for action in actions {
-                        let pols = policies.entry((p.role.clone(), action)).or_insert(Vec::new());
-                        pols.push(Policy {check: check.clone(), using: using.clone()});
-                    }
+                match (p.policy_for, p.check, p.using){
+                    (actions@_,check@Some(_),using@_) | (actions@_,check@_,using@Some(_)) => {
+                        let actions_ = match actions {
+                            Some(actions) => normalize_actions(&actions),
+                            None => vec![Action::Select, Action::Insert, Action::Update, Action::Delete],
+                        };
+                        
+                        for a in actions_ {
+                            let pols = policies.entry((p.role.clone(), a)).or_insert(Vec::new());
+                            pols.push(Policy {check: check.clone(), using: using.clone()});
+                        }
+                    },
+                    _ => {},
                 }
             }
-            Ok((Some(grants), Some(policies)))
+            Ok(Permissions{grants, policies})
         }
-        None => Ok((None, None)),
+        None => Ok(Permissions::default()),
     }
 }
 
@@ -626,6 +693,66 @@ where D: Deserializer<'de>,
     Ok(map)
 }
 
+fn deserialize_bool_from_anything<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where D: Deserializer<'de>,
+{
+    use std::f64::EPSILON;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum AnythingOrBool {
+        String(String),
+        Int(i64),
+        Float(f64),
+        Boolean(bool),
+    }
+
+    match AnythingOrBool::deserialize(deserializer)? {
+        AnythingOrBool::Boolean(b) => Ok(b),
+        AnythingOrBool::Int(i) => match i {
+            1 => Ok(true),
+            0 => Ok(false),
+            _ => Err(serde::de::Error::custom("The number is neither 1 nor 0")),
+        },
+        AnythingOrBool::Float(f) => {
+            if (f - 1.0f64).abs() < EPSILON {
+                Ok(true)
+            } else if f == 0.0f64 {
+                Ok(false)
+            } else {
+                Err(serde::de::Error::custom(
+                    "The number is neither 1.0 nor 0.0",
+                ))
+            }
+        }
+        AnythingOrBool::String(string) => {
+            if let Ok(b) = string.parse::<bool>() {
+                Ok(b)
+            } else if let Ok(i) = string.parse::<i64>() {
+                match i {
+                    1 => Ok(true),
+                    0 => Ok(false),
+                    _ => Err(serde::de::Error::custom("The number is neither 1 nor 0")),
+                }
+            } else if let Ok(f) = string.parse::<f64>() {
+                if (f - 1.0f64).abs() < EPSILON {
+                    Ok(true)
+                } else if f == 0.0f64 {
+                    Ok(false)
+                } else {
+                    Err(serde::de::Error::custom(
+                        "The number is neither 1.0 nor 0.0",
+                    ))
+                }
+            } else {
+                Err(serde::de::Error::custom(format!(
+                    "Could not parse boolean from a string: {}",
+                    string
+                )))
+            }
+        }
+    }
+}
 
 // fn is_default<T: Default + PartialEq>(t: &T) -> bool {
 //     t == &T::default()
@@ -647,6 +774,7 @@ mod tests {
     #[test]
     fn deserialize_db_schema() {
         let db_schema = DbSchema {
+            use_internal_permissions: false,
             schemas: [(
                 "api",
                 Schema {
@@ -668,7 +796,7 @@ mod tests {
                                 name: s("myfunction"),
                                 columns: [].iter().cloned().map(t).collect(),
                                 foreign_keys: [].to_vec(),
-                                permissions: (None,None),
+                                permissions: Permissions::default(),
                             },
                         ),
                         (
@@ -705,7 +833,7 @@ mod tests {
                                     referenced_table: Qi(s("api"), s("projects")),
                                     referenced_columns: vec![s("id")],
                                 }].to_vec(),
-                                permissions: (None,None),
+                                permissions: Permissions::default(),
                             },
                         ),
                         (
@@ -726,20 +854,15 @@ mod tests {
                                 .map(t)
                                 .collect(),
                                 foreign_keys: [].to_vec(),
-                                permissions: (
-                                    Some(
-                                        vec![
+                                permissions: Permissions {
+                                        grants: vec![
                                             (
                                                 (s("role"), Select),
-                                                vec![s("id"),s("name"),
-                                                ],
+                                                Specific(vec![s("id"),s("name")]),
                                             ),
                                         ]
                                         .iter().cloned().collect(),
-                                    ),
-                                    //policies: None,
-                                    Some(
-                                        vec![
+                                        policies: vec![
                                             (
                                                 (s("role"), Select),
                                                 vec![
@@ -758,8 +881,8 @@ mod tests {
                                             ),
                                         ]
                                         .iter().cloned().collect(),
-                                    ),
-                                )
+                                    
+                                }
                             },
                         ),
                     ]
@@ -859,7 +982,7 @@ mod tests {
 
         println!("deserialized_result = {:?}", deserialized_result);
 
-        let deserialized = deserialized_result.unwrap_or(DbSchema { schemas: HashMap::new() });
+        let deserialized = deserialized_result.unwrap_or(DbSchema { use_internal_permissions:false, schemas: HashMap::new() });
 
         assert_eq!(deserialized, db_schema);
 

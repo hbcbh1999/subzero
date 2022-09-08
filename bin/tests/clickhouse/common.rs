@@ -39,9 +39,9 @@ pub fn setup_db(init_db_once: &Once) {
             .output()
             .expect("failed to start temporary ch process");
         if !output.status.success() {
-            println!("status: {}", output.status);
-            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+            debug!("status: {}", output.status);
+            debug!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            debug!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
         
         assert!(output.status.success());
@@ -60,9 +60,9 @@ pub fn setup_db(init_db_once: &Once) {
             .expect("failed to execute process");
         
         if !output.status.success() {
-            println!("status: {}", output.status);
-            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+            debug!("status: {}", output.status);
+            debug!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            debug!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
         assert!(output.status.success());
 
@@ -75,15 +75,15 @@ pub fn setup_db(init_db_once: &Once) {
             .expect("failed to execute process");
         
         //if !output.status.success() {
-            println!("status: {}", output.status);
-            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+            debug!("status: {}", output.status);
+            debug!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            debug!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         //}
         assert!(output.status.success());
 
         env::set_var("SUBZERO_DB_URI", &*db_uri);
         env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../clickhouse_structure_query.sql}");
-        println!("db init ok clickhouse");
+        debug!("db init ok clickhouse");
     });
 
 }

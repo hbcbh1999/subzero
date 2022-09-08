@@ -15,7 +15,7 @@ use subzero_core::{
     api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*,  ApiRequest},
     error::{*},
     parser::postgrest::parse,
-    permissions::{check_safe_functions, check_privileges},
+    permissions::{check_safe_functions, check_privileges,insert_policy_conditions},
 };
 
 use crate::error::{Result, CoreError, to_core_error};
@@ -225,11 +225,12 @@ pub async fn handle<'a>(
     }
 
     // parse request and generate the query
-    let request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(CoreError)?;
+    let mut request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(CoreError)?;
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
     check_privileges(db_schema, schema_name, role.unwrap_or(&String::default()), &request).map_err(to_core_error)?; 
     check_safe_functions(&request, &config.db_allowd_select_functions).map_err(to_core_error)?;
+    insert_policy_conditions(db_schema, schema_name, role.unwrap_or(&String::default()), &mut request.query).map_err(to_core_error)?;
     
 
     let _env = get_env(role, &request, &jwt_claims, config.db_use_legacy_gucs);

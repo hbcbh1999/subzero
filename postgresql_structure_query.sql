@@ -501,7 +501,7 @@ custom_relations as (
   foreign_table_name,
   0 as foreign_table_oid,
   foreign_columns   
-  from json_to_recordset('{@relations.json}'::json) as x(constraint_name text, table_schema text, table_name text, columns text[], foreign_table_schema text, foreign_table_name text, foreign_columns text[])
+  from json_to_recordset('{@relations.json#[]}'::json) as x(constraint_name text, table_schema text, table_name text, columns text[], foreign_table_schema text, foreign_table_name text, foreign_columns text[])
 ),
 
 relations as (

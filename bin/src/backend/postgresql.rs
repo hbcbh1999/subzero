@@ -5,6 +5,7 @@ use postgres_openssl::{MakeTlsConnector};
 use snafu::ResultExt;
 use tokio::time::{Duration, sleep};
 use crate::config::{VhostConfig,SchemaStructure::*};
+// use log::{debug};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, ContentType::*, SingleVal,ListVal,Payload},
     error::{Error::{SingularityError, PutMatchingPkError}},

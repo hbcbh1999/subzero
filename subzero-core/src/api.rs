@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize, Deserializer, Serializer, ser::SerializeStruct, ser::SerializeSeq};
 use std::collections::{HashMap, VecDeque};
 use serde_json::Value as JsonValue;
+use crate::error::Result;
+use QueryNode::*;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Resolution {
@@ -80,6 +82,45 @@ pub struct Query {
 pub struct Iter<T>(VecDeque<Vec<String>>, VecDeque<T>);
 pub struct Visitor<'a, F>(VecDeque<Vec<String>>, VecDeque<&'a mut Query>, F);
 impl Query {
+    pub fn insert_conditions(&mut self, conditions: Vec<(Vec<String>, Condition)>) -> Result<()> {
+        self.insert_properties(conditions, |q, p| {
+            let query_conditions: &mut Vec<Condition> = match &mut q.node {
+                Select { where_, .. } => where_.conditions.as_mut(),
+                Insert { where_, .. } => where_.conditions.as_mut(),
+                Update { where_, .. } => where_.conditions.as_mut(),
+                Delete { where_, .. } => where_.conditions.as_mut(),
+                FunctionCall { where_, .. } => where_.conditions.as_mut(),
+            };
+            p.into_iter().for_each(|c| query_conditions.push(c));
+            Ok(())
+        })
+    }
+    pub fn insert_properties<T>(&mut self, mut properties: Vec<(Vec<String>, T)>, f: fn(&mut Query, Vec<T>) -> Result<()>) -> Result<()> {
+        let node_properties = properties.drain_filter(|(path, _)| path.is_empty()).map(|(_, c)| c).collect::<Vec<_>>();
+        if !node_properties.is_empty() {
+            f(self, node_properties)?
+        };
+    
+        for SubSelect { query: q, alias, .. } in self.sub_selects.iter_mut() {
+            if let QueryNode::Select { from: (table, _), .. } = &mut q.node {
+                let node_properties = properties
+                    .drain_filter(|(path, _)| match path.get(0) {
+                        Some(p) => {
+                            if p == table || Some(p) == alias.as_ref() {
+                                path.remove(0);
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        None => false,
+                    })
+                    .collect::<Vec<_>>();
+                q.insert_properties(node_properties, f)?;
+            }
+        }
+        Ok(())
+    }
     pub fn visit<R, F: FnMut(Vec<String>, &mut Self) -> R>(&mut self, f: F) -> Visitor<F> {
         Visitor(VecDeque::from([vec![self.node.name().clone()]]), VecDeque::from([self]), f)
     }
@@ -384,6 +425,9 @@ pub enum Condition {
         negate: Negate
     },
     Foreign { left: (Qi, Field), right: (Qi, Field) },
+    Raw {
+        sql: String
+    },
 }
 
 #[derive(Debug, PartialEq, Clone,)]
@@ -740,5 +784,6 @@ mod tests {
                 ],
             }
         }).unwrap());
+        assert_eq!(serde_json::from_str::<Condition>(r#"{"sql":"false"}"#).unwrap(), Condition::Raw{sql:s("false")});
     }
 }

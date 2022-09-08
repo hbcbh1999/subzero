@@ -795,6 +795,8 @@ macro_rules! fmt_condition {
                         "(" + fmt_condition_tree(qi, tree)? + ")"
                     }
                 }
+
+                Raw{sql:s} => sql(s.as_str()),
             })
         }
     };

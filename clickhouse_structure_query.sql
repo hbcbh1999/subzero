@@ -58,7 +58,7 @@ custom_relations as (
               --         "foreign_columns": ["id"]
               --     }
               -- ]'
-              '{@relations.json}'
+              '{@relations.json#[]}'
               , 'Array(Tuple(constraint_name String, table_schema String, table_name String, columns Array(String), foreign_table_schema String, foreign_table_name String, foreign_columns Array(String)))'
           )
       ) as row

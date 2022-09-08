@@ -13,12 +13,12 @@ use subzero_core::{
     error::{Error::{SingularityError, PutMatchingPkError}},
     schema::DbSchema,
 };
+//use rocket::log::private::debug;
 use crate::error::{Result, *};
 use std::path::Path;
 use serde_json::{json};
 use http::Method;
 use snafu::ResultExt;
-use log::{debug};
 use async_trait::async_trait;
 use rusqlite::vtab::array;
 use std::collections::HashMap;
@@ -151,7 +151,7 @@ fn execute(
     };
     
     let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, final_request, env).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
-    debug!("main_statement: {}", main_statement);
+    debug!("main_statement: {}\n,main_parameters: {:?}", main_statement, main_parameters);
     let mut main_stm = conn
         .prepare_cached(main_statement.as_str())
         .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
@@ -228,11 +228,12 @@ impl Backend for SQLiteBackend {
                         task::block_in_place(|| {
                             let authenticated = false;
                             let query = include_files(q);
+                            //debug!("schema query: {}", query);
                             let mut stmt = conn.prepare(query.as_str()).context(SqliteDbError { authenticated })?;
                             let mut rows = stmt.query([]).context(SqliteDbError { authenticated })?;
                             match rows.next().context(SqliteDbError { authenticated })? {
                                 Some(r) => {
-                                    println!("json db_schema: {}", r.get::<usize,String>(0).context(SqliteDbError { authenticated })?.as_str());
+                                    debug!("json db_schema: {}", r.get::<usize,String>(0).context(SqliteDbError { authenticated })?.as_str());
                                     serde_json::from_str::<DbSchema>(r.get::<usize,String>(0).context(SqliteDbError { authenticated })?.as_str()).context(JsonDeserialize).context(CoreError)
                                 },
                                 None => Err(Error::InternalError { message: "sqlite structure query did not return any rows".to_string() }),
@@ -249,7 +250,7 @@ impl Backend for SQLiteBackend {
             },
             JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
         }?;
-
+        debug!("db_schema: {:?}", db_schema);
         Ok(SQLiteBackend {config, pool, db_schema})
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {

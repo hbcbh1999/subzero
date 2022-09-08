@@ -4,29 +4,36 @@
         "table_name": "permissions_check",
         "role": "public",
         "grant": ["select"],
-        "columns": ["id", "name"]
+        "columns": ["id", "value"]
     },
     {
         "table_schema": "public",
         "table_name": "permissions_check",
         "role": "public",
         "policy_for": ["all"],
-        "check": [{"column":"id","op":"gt","val":"1"}],
-        "using": [{"column":"value","op":"eq","val":"allowed"}]
+        "check": [{"column":"id","op":">","val":"1"}],
+        "using": [{"column":"value","op":"=","val":"allowed"}]
     },
     {
         "table_schema": "public",
         "table_name": "permissions_check",
         "role": "admin",
-        "grant": ["select", "insert", "update", "delete"],
-        "columns": []
+        "grant": ["select", "insert", "update", "delete"]
     },
     {
         "table_schema": "public",
         "table_name": "permissions_check",
         "role": "admin",
         "policy_for": ["select", "insert", "update", "delete"],
-        "check": [],
+        "check": [{"sql":"true"}],
         "using": []
-    }
+    },
+
+    { "table_schema": "public", "table_name": "tbl1", "role": "public", "grant": ["all"], "check": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "users_tasks", "role": "public", "grant": ["all"], "check": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "users", "role": "public", "grant": ["all"], "check": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "tasks", "role": "public", "grant": ["all"], "check": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "projects", "role": "public", "grant": ["all"], "check": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "clients", "role": "public", "grant": ["all"], "check": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "complex_items", "role": "public", "grant": ["all"], "check": [{"sql":"true"}] }
 ]

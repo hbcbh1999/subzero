@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use regex::Regex;
 use std::{fs};
 use std::path::Path;
+// use log::{debug};
 
 #[cfg(feature = "postgresql")]
 pub mod postgresql;
@@ -37,14 +38,19 @@ fn split_keep<'a>(r: &Regex, text: &'a str) -> Vec<SplitStr<'a>> {
 }
 
 pub fn include_files(template: String) -> String {
-    let r = Regex::new(r"\{@[^}]+\}").expect("Invalid regex");
+    let r = Regex::new(r"\{@[^}]+(#[^\}]*)?\}").expect("Invalid regex");
     split_keep(&r, template.as_str()).into_iter()
     .map(|v| match v {
         SplitStr::Str(s) => s.to_owned(),
         SplitStr::Sep(s) => {
-            let file_name = &s[2..(s.len()-1)];
+            let parts = &s[2..(s.len()-1)].split("#").collect::<Vec<&str>>();
+            debug!("parts {:?}", parts);
+            let file_name = parts[0];
+            let missing_msg = format!("{{not found @{}}}", file_name);
+            let default_val = parts.get(1).unwrap_or(&(missing_msg.as_str())).to_owned();
             //TODO!!! this allows including any file, should this be restricted in some way?
-            let contents = fs::read_to_string(Path::new(file_name)).unwrap_or(format!("{{not found @{}}}", file_name));
+            let contents = fs::read_to_string(Path::new(file_name)).unwrap_or(String::from(default_val));
+            debug!("contents for {} {}", file_name, contents);
             contents
         }
     })

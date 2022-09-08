@@ -56,7 +56,7 @@ custom_relations as (
         json_extract(value, '$.foreign_table_schema') as foreign_table_schema,
         json_extract(value, '$.foreign_table_name') as foreign_table_name,
         json_extract(value, '$.foreign_columns') as foreign_columns
-    from json_each('{@relations.json}')
+    from json_each('{@relations.json#[]}')
 ),
 
 relations as (
@@ -85,11 +85,14 @@ permissions as (
         json_extract(value, '$.policy_for') as policy_for,
         json_extract(value, '$.check') as "check",
         json_extract(value, '$.using') as "using"
-    from json_each('{@permissions.json}')
+    from json_each('{@permissions.json#[]}')
 )
 
 
-select json_object('schemas',json_group_array(s.row)) from (
+select json_object(
+    'use_internal_permissions', (select count(*) from permissions) > 0,
+    'schemas',json_group_array(s.row)
+) from (
     select json_object(
         'name', schema_name,
         'objects', (
