@@ -10,7 +10,7 @@ FROM rustlang/rust:nightly as builder
 ARG FEATURES
 WORKDIR /usr/src/subzero
 COPY . .
-RUN cargo build --features ${FEATURES} --release
+RUN cargo build --package subzero-rocket --features ${FEATURES} --release
 
 FROM debian:buster-slim
 ARG FEATURES
