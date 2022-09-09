@@ -519,8 +519,14 @@ where D: Deserializer<'de>,
                         };
                         
                         for a in actions_ {
-                            let pols = policies.entry((p.role.clone(), a)).or_insert(Vec::new());
-                            pols.push(Policy {check: check.clone(), using: using.clone()});
+                            let pols = policies.entry((p.role.clone(), a.clone())).or_insert(Vec::new());
+                            match (a, &check, &using) {
+                                (Action::Select,_,Some(u)) => pols.push(Policy {check: None, using: Some(u.clone())}),
+                                (Action::Insert,Some(c),_) => pols.push(Policy {check: Some(c.clone()), using: None}),
+                                (Action::Update,c,u)       => pols.push(Policy {check: c.clone(), using: u.clone()}),
+                                (Action::Delete,_,Some(u)) => pols.push(Policy {check: None, using: Some(u.clone())}),
+                                _ => (),
+                            }
                         }
                     },
                     _ => {},
