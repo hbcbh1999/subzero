@@ -1,12 +1,7 @@
 use super::super::start;
 use super::common::*;
-use demonstrate::demonstrate;
-use pretty_assertions::assert_eq;
-use rocket::http::{Accept, Header};
-use serde_json::Value;
-use std::str::FromStr;
-
 use async_once::AsyncOnce;
+use demonstrate::demonstrate;
 use rocket::local::asynchronous::Client;
 use std::sync::Once;
 static INIT_CLIENT: Once = Once::new();

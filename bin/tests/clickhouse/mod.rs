@@ -1,5 +1,5 @@
 // list of passing tests
 
 mod common;
-mod basic;
-mod tutorial;
+#[allow(unused_imports)] mod basic;
+#[allow(unused_imports)] mod tutorial;
