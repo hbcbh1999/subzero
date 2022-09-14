@@ -27,8 +27,10 @@ pub struct Permissions {
     pub policies: HashMap<(Role, Action), Vec<Policy>>
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Deserialize)]
 pub struct Policy {
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub restrictive: bool,
     #[serde(default, skip_serializing_if = "is_default")]
     pub using: Option<Vec<Condition>>,
     #[serde(default, skip_serializing_if = "is_default")]
@@ -39,6 +41,9 @@ pub struct Policy {
 struct PermissionDef {
     pub role: Role,
 
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub restrictive: bool,
+    
     #[serde(default, skip_serializing_if = "is_default")]
     pub policy_for: Option<Vec<Action>>,
     #[serde(default, skip_serializing_if = "is_default")]
@@ -521,10 +526,10 @@ where D: Deserializer<'de>,
                         for a in actions_ {
                             let pols = policies.entry((p.role.clone(), a.clone())).or_insert(Vec::new());
                             match (a, &check, &using) {
-                                (Action::Select,_,Some(u)) => pols.push(Policy {check: None, using: Some(u.clone())}),
-                                (Action::Insert,Some(c),_) => pols.push(Policy {check: Some(c.clone()), using: None}),
-                                (Action::Update,c,u)       => pols.push(Policy {check: c.clone(), using: u.clone()}),
-                                (Action::Delete,_,Some(u)) => pols.push(Policy {check: None, using: Some(u.clone())}),
+                                (Action::Select,_,Some(u)) => pols.push(Policy {restrictive: p.restrictive, check: None, using: Some(u.clone())}),
+                                (Action::Insert,Some(c),_) => pols.push(Policy {restrictive: p.restrictive, check: Some(c.clone()), using: None}),
+                                (Action::Update,c,u)       => pols.push(Policy {restrictive: p.restrictive, check: c.clone(), using: u.clone()}),
+                                (Action::Delete,_,Some(u)) => pols.push(Policy {restrictive: p.restrictive, check: None, using: Some(u.clone())}),
                                 _ => (),
                             }
                         }
@@ -873,6 +878,7 @@ mod tests {
                                                 (s("role"), Select),
                                                 vec![
                                                     Policy {
+                                                        restrictive: false,
                                                         using: Some(vec![
                                                             Condition::Single{
                                                                 field: Field{name:s("id"), json_path:None},

@@ -1,4 +1,6 @@
 
+use std::collections::HashSet;
+
 use crate::api::{ColumnName, ConditionTree};
 use crate::api::{ApiRequest, FunctionParam, Query, SubSelect, QueryNode::*, SelectItem::Func, SelectItem,Qi, Condition, LogicOperator::*};
 use crate::error::*;
@@ -59,21 +61,22 @@ pub fn insert_policy_conditions(db_schema: &DbSchema, current_schema: &String,  
         let policies = &origin_table.permissions.policies;
         
         let mut all_policies = relevant_for_actions.iter().fold(vec![], |mut acc, action| {
-            if let Some(policy) = policies.get(&(role.clone(), action.clone())) {
-                acc.push(policy);
+            if let Some(pv) = policies.get(&(role.clone(), action.clone())) {
+                acc.push(pv);
             }
-            if let Some(policy) = policies.get(&("public".to_string(), action.clone())) {
-                acc.push(policy);
+            if let Some(pv) = policies.get(&("public".to_string(), action.clone())) {
+                acc.push(pv);
             }
             acc
         });
-        let deny_policy_v = vec![Policy{using: Some(vec![Condition::Raw {sql: "false".to_string()}]), check: Some(vec![Condition::Raw {sql: "false".to_string()}])}];
+        
+        let deny_policy_v = vec![Policy{restrictive:false, using: Some(vec![Condition::Raw {sql: "false".to_string()}]), check: Some(vec![Condition::Raw {sql: "false".to_string()}])}];
         if all_policies.len() == 0 {
             all_policies.push(&deny_policy_v);
         }
-        
-        let (toatal_policies, policy_condition) = all_policies.into_iter()
-            .flatten()
+        let all_unique_policies = all_policies.into_iter().flatten().collect::<HashSet<_>>();
+        debug!("Policies for role {} and action {:?}: {:?}", role, action, all_unique_policies);
+        let (toatal_policies, policy_condition) = all_unique_policies.into_iter()
             .fold(
                 (0, Condition::Group { negate: false, tree: ConditionTree{operator: Or, conditions:vec![]} }),
                 |(i,mut acc), p| {

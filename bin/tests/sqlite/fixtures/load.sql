@@ -15,7 +15,9 @@ create table tbl1 (
 create table permissions_check (
     id int primary key,
     value text,
-    hidden text
+    hidden text,
+    role text,
+    public boolean
 );
 
 create table clients (
@@ -95,8 +97,8 @@ insert into complex_items values (1, 'One', '{"foo":{"int":1,"bar":"baz"}}');
 insert into complex_items values (2, 'Two', '{"foo":{"int":1,"bar":"baz"}}');
 insert into complex_items values (3, 'Three', '{"foo":{"int":1,"bar":"baz"}}');
 
-insert into permissions_check values (1, 'One', 'Hidden');
-insert into permissions_check values (2, 'Two', 'Hidden');
-insert into permissions_check values (3, 'Three', 'Hidden');
-insert into permissions_check values (10, 'Ten', 'Hidden');
-insert into permissions_check values (20, 'Twenty', 'Hidden');
+insert into permissions_check values (1, 'One Alice Public', 'Hidden', 'alice', true);
+insert into permissions_check values (2, 'Two Bob Public', 'Hidden', 'bob', true);
+insert into permissions_check values (3, 'Three Charlie Public', 'Hidden', 'charlie', true);
+insert into permissions_check values (10, 'Ten Alice Private', 'Hidden', 'alice', false);
+insert into permissions_check values (20, 'Twenty Bob Private', 'Hidden', 'bob', false);

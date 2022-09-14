@@ -339,7 +339,7 @@ pub enum OrderNulls {
 
 pub type JoinHint = String;
 
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Deserialize, Serialize)]
 pub struct Qi(pub String, pub String);
 
 #[derive(Debug, PartialEq, Clone)]
@@ -401,14 +401,14 @@ pub struct SubSelect {
     pub join: Option<Join>,
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, )]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize, )]
 pub struct ConditionTree {
     #[serde(rename = "logic_op")]
     pub operator: LogicOperator,
     pub conditions: Vec<Condition>,
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize,)]
 #[serde(rename_all = "snake_case", untagged)]
 pub enum Condition {
     Group {
@@ -430,7 +430,7 @@ pub enum Condition {
     },
 }
 
-#[derive(Debug, PartialEq, Clone,)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone,)]
 pub enum TrileanVal {
     TriTrue,
     TriFalse,
@@ -472,7 +472,7 @@ impl<'de> serde::Deserialize<'de> for TrileanVal {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize,)]
 pub struct EnvVar {
     #[serde(rename = "env")]
     pub var: String,
@@ -482,7 +482,7 @@ pub struct EnvVar {
     pub part: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Clone,)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone,)]
 pub enum Filter {
     Op(Operator, SingleVal),
     In(ListVal),
@@ -558,7 +558,7 @@ enum FilterHelper {
     Col{qi: Qi, field: Field},
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize,)]
 pub struct Field {
     #[serde(rename = "column")]
     pub name: ColumnName,
@@ -567,7 +567,7 @@ pub struct Field {
     pub json_path: Option<Vec<JsonOperation>>, //TODO!! should contain some info about the data type so that fmt_field function could make better decisions
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize,)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize,)]
 pub enum JsonOperation {
     #[serde(rename = "->")]
     JArrow(JsonOperand),
@@ -575,7 +575,7 @@ pub enum JsonOperation {
     J2Arrow(JsonOperand),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum JsonOperand {
     JKey(String),
     JIdx(String),
@@ -613,7 +613,7 @@ pub type ColumnName = String;
 #[derive(Debug, PartialEq, Clone)]
 pub struct Payload(pub String, pub Option<String>);
 
-#[derive(Debug, PartialEq, Clone,)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone,)]
 pub struct SingleVal(
     pub String,
     pub Option<String>
@@ -654,7 +654,7 @@ impl<'de> Deserialize<'de> for SingleVal     {
     }
 }
 
-#[derive(Debug, PartialEq, Clone,)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone,)]
 pub struct ListVal(
     pub Vec<String>,
     pub Option<String>
@@ -705,7 +705,7 @@ impl<'de> Deserialize<'de> for ListVal {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize, )]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize, )]
 #[serde(rename_all = "snake_case")]
 pub enum LogicOperator {
     And,

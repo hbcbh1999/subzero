@@ -1,31 +1,33 @@
 [
     {
-        "table_schema": "public",
-        "table_name": "permissions_check",
+        "table_schema": "public", "table_name": "permissions_check",
         "role": "public",
-        "grant": ["select"],
-        "columns": ["id", "value"]
+        "grant": ["select"], "columns": ["id", "value"],
+        "policy_for": ["select"], "using": [{"column":"public","op":"=","val":"1"}]
     },
     {
-        "table_schema": "public",
-        "table_name": "permissions_check",
-        "role": "public",
-        "policy_for": ["all"],
-        "using": [{"column":"id","op":">","val":"1"}]
-    },
-    {
-        "table_schema": "public",
-        "table_name": "permissions_check",
+        "table_schema": "public", "table_name": "permissions_check",
         "role": "admin",
-        "grant": ["select", "insert", "update", "delete"]
-    },
-    {
-        "table_schema": "public",
-        "table_name": "permissions_check",
-        "role": "admin",
+        "grant": ["select", "insert", "update", "delete"],
         "policy_for": ["select", "insert", "update", "delete"],
         "using": [{"sql":"true"}],
         "check": [{"sql":"true"}]
+    },
+    {
+        "table_schema": "public","table_name": "permissions_check",
+        "role": "alice",
+        "grant": ["all"],
+        "policy_for": ["select", "insert", "update", "delete"],
+        "using": [{"column":"role","op":"=","val":"alice"}],
+        "check": [{"column":"role","op":"=","val":"alice"}]
+    },
+    {
+        "table_schema": "public","table_name": "permissions_check",
+        "role": "bob",
+        "grant": ["all"],
+        "policy_for": ["all"],
+        "using": [{"column":"role","op":"=","val":"bob"}],
+        "check": [{"column":"role","op":"=","val":"bob"}]
     },
 
     { "table_schema": "public", "table_name": "tbl1", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },

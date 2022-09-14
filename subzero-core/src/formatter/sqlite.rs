@@ -256,8 +256,8 @@ pub fn fmt_query<'a>(
                 fmt_body(payload, columns) +
                 " insert into " + fmt_qi(qi) + " " +into_columns +
                 " select " + select_columns +
-                " from subzero_body " +
-                " " + if !where_.conditions.is_empty() { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql(" where true ") } + // this line is only relevant for upsert
+                " from subzero_body _ " +
+                " " + if !where_.conditions.is_empty() { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql(" where true ") } + // this line is only relevant for upsert and rls
                 match on_conflict {
                     Some((r,cols)) if !cols.is_empty() => {
                         let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
