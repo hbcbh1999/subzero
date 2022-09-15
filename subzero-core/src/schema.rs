@@ -10,7 +10,7 @@ use ColumnPermissions::*;
 pub type Role = String;
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Action {Execute,Select,Insert,Update,Delete,All}
+pub enum Action {Execute,Select,Insert,Update,Delete,All,Merge}
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ColumnPermissions {

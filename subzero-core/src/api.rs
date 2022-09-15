@@ -263,6 +263,7 @@ pub enum QueryNode {
         into: String,
         columns: Vec<ColumnName>,
         payload: Payload,
+        check: ConditionTree,
         where_: ConditionTree, //used only for put
         returning: Vec<String>,
         select: Vec<SelectItem>,
@@ -279,6 +280,7 @@ pub enum QueryNode {
         table: String,
         columns: Vec<ColumnName>,
         payload: Payload,
+        check: ConditionTree,
         where_: ConditionTree,
         returning: Vec<String>,
         select: Vec<SelectItem>,
@@ -305,6 +307,15 @@ impl QueryNode {
         }
     }
     pub fn where_(&self) -> &ConditionTree {
+        match self {
+            Self::Select { where_, .. } |
+            Self::Update { where_, .. } |
+            Self::Insert { where_, .. } |
+            Self::Delete { where_, .. } | 
+            Self::FunctionCall { where_, .. } => where_,
+        }
+    }
+    pub fn where_as_mut(&mut self) -> &mut ConditionTree {
         match self {
             Self::Select { where_, .. } |
             Self::Update { where_, .. } |

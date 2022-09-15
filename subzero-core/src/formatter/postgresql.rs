@@ -141,6 +141,7 @@ mod tests {
                     },
                 ],
                 into: s("projects"),
+                check: ConditionTree {operator: And,conditions:vec![]},
                 where_: ConditionTree {
                     operator: And,
                     conditions: vec![

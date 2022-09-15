@@ -381,6 +381,7 @@ pub fn fmt_query<'a>(
             columns,
             payload,
             where_,
+            check,
             returning,
             select,
             on_conflict,
@@ -567,6 +568,7 @@ pub fn fmt_query<'a>(
             columns,
             payload,
             where_,
+            check,
             returning,
             select,
         } => {
