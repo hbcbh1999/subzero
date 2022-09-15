@@ -1,6 +1,7 @@
 // use std::collections::HashMap;
 
 use r2d2::Pool;
+
 use r2d2_sqlite::SqliteConnectionManager;
 use crate::config::{VhostConfig,SchemaStructure::*};
 use subzero_core::{
@@ -50,6 +51,8 @@ fn wrap_param<'a>(p: &'a (dyn ToParam + Sync)) -> WrapParam<'a> {
 }
 
 //generate_fn!();
+
+//TODO: refactor transaction rollback
 fn execute(
     pool: &Pool<SqliteConnectionManager>, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>, config: &VhostConfig,
 ) -> Result<ApiResponse> {
@@ -82,11 +85,11 @@ fn execute(
                 _ => {}
             }
             let env1 = env.clone();
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, &mutate_request, &env1).context(CoreError)?);
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, &mutate_request, &env1).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
             debug!("pre_statement: {}\n{:?}", main_statement, main_parameters);
-            let mut mutate_stmt = conn.prepare(main_statement.as_str()).context(SqliteDbError { authenticated })?;
+            let mut mutate_stmt = conn.prepare(main_statement.as_str()).context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
             let mutate_params = params_from_iter(main_parameters.into_iter().map(wrap_param));
-            let mut rows = mutate_stmt.query(mutate_params).context(SqliteDbError { authenticated })?;
+            let mut rows = mutate_stmt.query(mutate_params).context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
             let mut ids:Vec<i64> = vec![];
             while let Some(r) = rows.next().context(SqliteDbError { authenticated })? {
                 ids.push(r.get(0).context(SqliteDbError { authenticated })?)
@@ -134,8 +137,7 @@ fn execute(
         _ => {
             Ok((None,None))
         }
-    }.map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
-
+    }?;
     if let Some(r) = first_stage_reponse { // this is a special case for delete
         if config.db_tx_rollback {
             conn.execute_batch("ROLLBACK").context(SqliteDbError { authenticated })?;
