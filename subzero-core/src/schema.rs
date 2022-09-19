@@ -27,13 +27,15 @@ pub struct Permissions {
     pub policies: HashMap<(Role, Action), Vec<Policy>>
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Policy {
-    #[serde(default, skip_serializing_if = "is_default")]
+    //#[serde(default, skip_serializing_if = "is_default")]
+    pub name: Option<String>,
+    //#[serde(default, skip_serializing_if = "is_default")]
     pub restrictive: bool,
-    #[serde(default, skip_serializing_if = "is_default")]
+    //#[serde(default, skip_serializing_if = "is_default")]
     pub using: Option<Vec<Condition>>,
-    #[serde(default, skip_serializing_if = "is_default")]
+    //#[serde(default, skip_serializing_if = "is_default")]
     pub check: Option<Vec<Condition>>,
 }
 
@@ -42,6 +44,9 @@ struct PermissionDef {
     pub role: Role,
 
     #[serde(default, skip_serializing_if = "is_default")]
+    pub name: Option<String>,
+
+    #[serde(default, skip_serializing_if = "is_default", deserialize_with = "deserialize_bool_from_anything")]
     pub restrictive: bool,
     
     #[serde(default, skip_serializing_if = "is_default")]
@@ -519,17 +524,17 @@ where D: Deserializer<'de>,
                 match (p.policy_for, p.check, p.using){
                     (actions@_,check@Some(_),using@_) | (actions@_,check@_,using@Some(_)) => {
                         let actions_ = match actions {
-                            Some(actions) => normalize_actions(&actions),
-                            None => vec![Action::Select, Action::Insert, Action::Update, Action::Delete],
+                            Some(actions) => actions,
+                            None => vec![Action::All],
                         };
                         
                         for a in actions_ {
                             let pols = policies.entry((p.role.clone(), a.clone())).or_insert(Vec::new());
                             match (a, &check, &using) {
-                                (Action::Select,_,Some(u)) => pols.push(Policy {restrictive: p.restrictive, check: None, using: Some(u.clone())}),
-                                (Action::Insert,Some(c),_) => pols.push(Policy {restrictive: p.restrictive, check: Some(c.clone()), using: None}),
-                                (Action::Update,c,u)       => pols.push(Policy {restrictive: p.restrictive, check: c.clone(), using: u.clone()}),
-                                (Action::Delete,_,Some(u)) => pols.push(Policy {restrictive: p.restrictive, check: None, using: Some(u.clone())}),
+                                (Action::Select,_,Some(u)) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: None, using: Some(u.clone())}),
+                                (Action::Insert,Some(c),_) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: Some(c.clone()), using: None}),
+                                (Action::Update,c,u) | (Action::All,c,u) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: c.clone(), using: u.clone()}),
+                                (Action::Delete,_,Some(u)) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: None, using: Some(u.clone())}),
                                 _ => (),
                             }
                         }
@@ -878,6 +883,7 @@ mod tests {
                                                 (s("role"), Select),
                                                 vec![
                                                     Policy {
+                                                        name: None,
                                                         restrictive: false,
                                                         using: Some(vec![
                                                             Condition::Single{

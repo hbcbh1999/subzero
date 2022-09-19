@@ -1,11 +1,29 @@
 [
     {
+        "name": "public can see rows marked as public",
         "table_schema": "public", "table_name": "permissions_check",
         "role": "public",
         "grant": ["select"], "columns": ["id", "value"],
-        "policy_for": ["select"], "using": [{"column":"public","op":"=","val":"1"}]
+        "policy_for": ["select"], 
+        "using": [{"column":"public","op":"=","val":"1"}]
     },
     {
+        "name": "validation for hidden value",
+        "table_schema": "public", "table_name": "permissions_check",
+        "role": "public",
+        "restrictive": true,
+        "check": [{
+            "tree":{
+                "logic_op":"or",
+                "conditions":[
+                    {"column":"hidden","op":"=","val":"Hidden"},
+                    {"column":"hidden","op":"=","val":"Hidden changed"}
+                ]
+            }
+        }]
+    },
+    {
+        "name": "admin allow all",
         "table_schema": "public", "table_name": "permissions_check",
         "role": "admin",
         "grant": ["select", "insert", "update", "delete"],
@@ -14,6 +32,7 @@
         "check": [{"sql":"true"}]
     },
     {
+        "name": "alice allow owned",
         "table_schema": "public","table_name": "permissions_check",
         "role": "alice",
         "grant": ["all"],
@@ -22,6 +41,7 @@
         "check": [{"column":"role","op":"=","val":"alice"}]
     },
     {
+        "name": "bob allow owned",
         "table_schema": "public","table_name": "permissions_check",
         "role": "bob",
         "grant": ["all"],

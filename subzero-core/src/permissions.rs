@@ -50,7 +50,7 @@ fn get_policies_for_relation<'a>(object: &'a Object, action: Action, role: &Role
             }
         }
     }
-    if let Some(policies) = object.permissions.policies.get(&("public".to_string(), action)) {
+    if let Some(policies) = object.permissions.policies.get(&("public".to_string(), action.clone())) {
         for p in policies {
             match p.restrictive {
                 false => permissive_policies.push(p),
@@ -58,6 +58,23 @@ fn get_policies_for_relation<'a>(object: &'a Object, action: Action, role: &Role
             }
         }
     }
+    if let Some(policies) = object.permissions.policies.get(&(role.clone(), Action::All)) {
+        for p in policies {
+            match p.restrictive {
+                false => permissive_policies.push(p),
+                true => restrictive_policies.push(p)
+            }
+        }
+    }
+    if let Some(policies) = object.permissions.policies.get(&("public".to_string(), Action::All)) {
+        for p in policies {
+            match p.restrictive {
+                false => permissive_policies.push(p),
+                true => restrictive_policies.push(p)
+            }
+        }
+    }
+    debug!("get_policies_for_relation Object: {:?}, Action: {:?}, Role: {:?}, \nPermissive policies: {:?}, \nRestrictive policies: {:?}", object.name, action, role, permissive_policies, restrictive_policies);
 }
 
 fn add_security_quals(security_quals: &mut Vec<Condition>, restrictive_policies: &Vec<&Policy>, permissive_policies: &Vec<&Policy>) {
@@ -171,7 +188,7 @@ fn add_with_check_options(with_check_options: &mut Vec<Condition>, restrictive_p
     }
 }
 
-fn get_row_security_policies(rel: &Object, role: &Role, action: Action, apply_select_policies: bool, has_on_conflict_update: bool) -> (Condition, Condition) {
+fn get_row_security_policies(rel: &Object, role: &Role, action: Action, apply_select_policies: bool, has_on_conflict_update: bool) -> (Option<Condition>, Option<Condition>) {
     let mut security_quals = vec![];
     let mut with_check_options = vec![];
     let mut	permissive_policies = vec![];
@@ -368,10 +385,28 @@ fn get_row_security_policies(rel: &Object, role: &Role, action: Action, apply_se
     }
 
 
-    (
-        Condition::Group { negate: false, tree: ConditionTree{operator: And, conditions:security_quals} },
-        Condition::Group { negate: false, tree: ConditionTree{operator: And, conditions:with_check_options} }
-    )
+    let security_qual_condition = if security_quals.is_empty() {
+        None
+    } else {
+        // deduplicate security_quals using HashSet
+        let mut security_quals_set = HashSet::new();
+        for qual in security_quals {
+            security_quals_set.insert(qual);
+        }
+        Some(Condition::Group { negate: false, tree: ConditionTree{operator: And, conditions:security_quals_set.into_iter().collect()} })
+    };
+
+    let with_check_option_condition = if with_check_options.is_empty() {
+        None
+    } else {
+        // deduplicate with_check_options using HashSet
+        let mut with_check_options_set = HashSet::new();
+        for qual in with_check_options {
+            with_check_options_set.insert(qual);
+        }
+        Some(Condition::Group { negate: false, tree: ConditionTree{operator: And, conditions:with_check_options_set.into_iter().collect()} })
+    };
+    (security_qual_condition,with_check_option_condition)
 }
 
 pub fn insert_policy_conditions(db_schema: &DbSchema, current_schema: &String,  role: &Role, query: &mut Query) -> Result<()> {
@@ -392,19 +427,25 @@ pub fn insert_policy_conditions(db_schema: &DbSchema, current_schema: &String,  
 
     let (security_quals, with_check_options) = get_row_security_policies(&rel, role, action, apply_select_policies, has_on_conflict_update);
 
-    debug!("Adding policy conditions: {:?}", security_quals);
     match query.node {
         Select {where_: ConditionTree {ref mut conditions, ..}, ..} |
         Insert {where_: ConditionTree {ref mut conditions, ..}, ..} |
         Update {where_: ConditionTree {ref mut conditions, ..}, ..} |
-        Delete {where_: ConditionTree {ref mut conditions, ..}, ..} => conditions.push(security_quals),
+        Delete {where_: ConditionTree {ref mut conditions, ..}, ..} => 
+            if let Some(condition) = security_quals {
+                debug!("Adding policy condition: {:?}", condition);
+                conditions.push(condition);
+            },
         _ => {}
     }
 
-    debug!("Adding policy with check options: {:?}", with_check_options);
     match query.node {
         Insert {check: ConditionTree {ref mut conditions, ..}, ..} |
-        Update {check: ConditionTree {ref mut conditions, ..}, ..} => conditions.push(with_check_options),
+        Update {check: ConditionTree {ref mut conditions, ..}, ..} => 
+        if let Some(condition) = with_check_options {
+            debug!("Adding policy with check options: {:?}", condition);
+            conditions.push(condition);
+        },
         _ => {}
     }
 

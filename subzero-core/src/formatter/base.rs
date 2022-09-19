@@ -607,6 +607,7 @@ pub fn fmt_query<'a>(
                 .map(|c| format!("{} = _.{}", fmt_identity(c), fmt_identity(c)))
                 .collect::<Vec<_>>()
                 .join(",");
+
             (
                 if columns.len() == 0 {
                     let sel = if returning.len() == 0 {
@@ -637,9 +638,7 @@ pub fn fmt_query<'a>(
                             + fmt_qi(qi)
                             + " set "
                             + set_columns
-                            + " from (select * from json_populate_recordset (null::"
-                            + fmt_qi(qi)
-                            + " , (select val from subzero_body) )) _ "
+                            + " from (select * from json_populate_recordset (null::"+ fmt_qi(qi)+ " , (select val from subzero_body) )) _ "
                             + " "
                             + if where_.conditions.len() > 0 {
                                 "where " + fmt_condition_tree(&qi, where_)?

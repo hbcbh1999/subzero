@@ -225,16 +225,6 @@ pub fn fmt_query<'a>(
             .. //select
         } => {
             let qi = &Qi(schema.clone(), into.clone());
-            // let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
-            // let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
-            // let (sub_selects, joins): (Vec<_>, Vec<_>) = q
-            //     .sub_selects
-            //     .iter()
-            //     .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
-            //     .collect::<Result<Vec<_>>>()?
-            //     .into_iter()
-            //     .unzip();
-            // select.extend(sub_selects.into_iter());
             let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
@@ -258,7 +248,8 @@ pub fn fmt_query<'a>(
                 " insert into " + fmt_qi(qi) + " " +into_columns +
                 " select " + select_columns +
                 " from subzero_body _ " +
-                " " + if !where_.conditions.is_empty() { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql(" where true ") } + // this line is only relevant for upsert and rls
+                // where is only relevant for upsert
+                if !where_.conditions.is_empty(){"where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)?} else { sql(" where true ") } + 
                 match on_conflict {
                     Some((r,cols)) if !cols.is_empty() => {
                         let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
@@ -276,51 +267,9 @@ pub fn fmt_query<'a>(
                     },
                     _ => String::new()
                 } +
-                " returning " + returned_columns
-                
-                // Some(
-                //     fmt_body(payload, columns)+
-                //     ", subzero_source as ( " + 
-                //     " insert into " + fmt_qi(qi) + " " +into_columns +
-                //     " select " + select_columns +
-                //     " from subzero_body _ " +
-                //     " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql("") } + // this line is only relevant for upsert
-                //     match on_conflict {
-                //         Some((r,cols)) if cols.len()>0 => {
-                //             let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
-                //             let on_do = match (r, columns.len()) {
-                //                 (Resolution::IgnoreDuplicates, _) |
-                //                 (_, 0) => format!("do nothing"),
-                //                 _ => format!(
-                //                     "do update set {}",
-                //                     columns.iter().map(|c|
-                //                         format!("{} = excluded.{}", fmt_identity(c), fmt_identity(c))
-                //                     ).collect::<Vec<_>>().join(", ")
-                //                 )
-                //             };
-                //             format!("{} {}", on_c, on_do)
-                //         },
-                //         _ => format!("")
-                //     } +
-                //     " returning " + returned_columns +
-                //     " )",
-                // ),
-                // if return_representation {
-                //     " select "
-                //         + select.join(", ")
-                //         + " from "
-                //         + fmt_identity(&"subzero_source".to_string())
-                //         + " "
-                //         + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
-                //         + " "
-                //         + if where_.conditions.len() > 0 {
-                //             "where " + fmt_condition_tree(qi_subzero_source, where_)?
-                //         } else {
-                //             sql("")
-                //         }
-                // } else {
-                //     sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
-                // },
+                " returning " + returned_columns +
+                // for each row add a column if it passes the internal permissions check defined for the schema
+                if !check.conditions.is_empty() { ", " + fmt_condition_tree(qi, check)? + " as _subzero_check__constraint "} else { sql("1  as _subzero_check__constraint ") }
             )
         }
         Delete {
@@ -407,16 +356,6 @@ pub fn fmt_query<'a>(
             ..//select,
         } => {
             let qi = &Qi(schema.clone(), table.clone());
-            //let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
-            // let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
-            // let (sub_selects, joins): (Vec<_>, Vec<_>) = q
-            //     .sub_selects
-            //     .iter()
-            //     .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
-            //     .collect::<Result<Vec<_>>>()?
-            //     .into_iter()
-            //     .unzip();
-            // select.extend(sub_selects.into_iter());
             let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
@@ -456,6 +395,7 @@ pub fn fmt_query<'a>(
                             .collect::<Vec<_>>()
                             .join(",")
                     };
+                    
                     sql(format!(" select {} from {} where false ", sel, fmt_qi(qi)))
                 } else {
                         "with "
@@ -472,59 +412,10 @@ pub fn fmt_query<'a>(
                             sql("")
                         }
                         + " returning "
-                        + returned_columns
+                        + returned_columns +
+                        // for each row add a column if it passes the internal permissions check defined for the schema
+                        if !check.conditions.is_empty() { ", " + fmt_condition_tree(qi, check)? + " as _subzero_check__constraint "} else { sql("1 as _subzero_check__constraint ") }
                 }
-            // (
-            //     if columns.len() == 0 {
-            //         let sel = if returning.len() == 0 {
-            //             "null".to_string()
-            //         } else {
-            //             returning
-            //                 .iter()
-            //                 .map(|r| {
-            //                     if r.as_str() == "*" {
-            //                         format!("{}.*", table)
-            //                     } else {
-            //                         format!("{}.{}", table, r)
-            //                     }
-            //                 })
-            //                 .collect::<Vec<_>>()
-            //                 .join(",")
-            //         };
-            //         Some(sql(format!(" subzero_source as (select {} from {} where false )", sel, fmt_qi(qi))))
-            //     } else {
-            //         Some(
-            //             fmt_body(payload, columns)
-            //                 + ", subzero_source as ( "
-            //                 + " update "
-            //                 + fmt_qi(qi)
-            //                 + " set "
-            //                 + set_columns
-            //                 + " from (select * from json_populate_recordset (null::"
-            //                 + fmt_qi(qi)
-            //                 + " , (select val from subzero_body) )) _ "
-            //                 + " "
-            //                 + if where_.conditions.len() > 0 {
-            //                     "where " + fmt_condition_tree(&qi, where_)?
-            //                 } else {
-            //                     sql("")
-            //                 }
-            //                 + " returning "
-            //                 + returned_columns
-            //                 + " )",
-            //         )
-            //     },
-            //     if return_representation {
-            //         " select "
-            //             + select.join(", ")
-            //             + " from "
-            //             + fmt_identity(&"subzero_source".to_string())
-            //             + " "
-            //             + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
-            //         //" " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
-            //     } else {
-            //         sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
-            //     },
             )
         }
     };

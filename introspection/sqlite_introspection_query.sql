@@ -77,6 +77,8 @@ relations as (
 
 permissions as (
     select
+        json_extract(value, '$.name') as name,
+        json_extract(value, '$.restrictive') as restrictive,
         json_extract(value, '$.table_schema') as table_schema,
         json_extract(value, '$.table_name') as table_name,
         json_extract(value, '$.role') as role,
@@ -125,6 +127,8 @@ select json_object(
                     'permissions', (
                         select json_group_array(p.row) from (
                             select json_object(
+                                'name', pp.name,
+                                'restrictive', coalesce(pp.restrictive,0),
                                 'role', pp.role,
                                 'policy_for', pp.policy_for,
                                 'check', pp."check",

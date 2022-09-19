@@ -85,8 +85,8 @@ feature "permissions"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
           [json| r#"{"id":30,"value":"Thirty Bob Private","hidden":"Hidden","public":0,"role":"bob"}"# |]
           shouldRespondWith
-          [json|r#"[]"#|]
-          { matchStatus  = 201 }
+          [json|r#"{"details":"check constraint of an insert/update permission has failed","message":"Permission denied"}"#|]
+          { matchStatus  = 400 }
       it "anonymous can not insert rows for bob" $
         request methodPost "/permissions_check?select=id,value"
           [ ("Prefer", "return=representation") ]
@@ -102,6 +102,12 @@ feature "permissions"
           shouldRespondWith
           [json|r#"[{"id":10,"value":"Ten Alice Private","hidden":"Hidden changed","public":0,"role":"alice"}]"#|]
           { matchStatus  = 200 }
+        request methodPatch "/permissions_check?select=id"
+          [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4ifQ.aMYD4kILQ5BBlRNB3HvK55sfex_OngpB_d28iAMq-WU", ("Prefer", "return=representation") ]
+          [json| r#"{"hidden":"Hidden changed"}"# |]
+          shouldRespondWith
+          [json|r#"[{"id":1},{"id":2},{"id":3},{"id":10},{"id":20}]"#|]
+          { matchStatus  = 200 }
       it "alice can update her private rows" $
         request methodPatch "/permissions_check?id=eq.10&select=id,value,hidden,public,role"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
@@ -109,19 +115,40 @@ feature "permissions"
           shouldRespondWith
           [json|r#"[{"id":10,"value":"Ten Alice Private","hidden":"Hidden changed","public":1,"role":"alice"}]"#|]
           { matchStatus  = 200 }
+        request methodPatch "/permissions_check?select=id"
+          [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
+          [json| r#"{"hidden":"Hidden changed","public":1}"# |]
+          shouldRespondWith
+          [json|r#"[{"id":1},{"id":10}]"#|]
+          { matchStatus  = 200 }
       it "alice can not update rows for bob even if they are public" $
         request methodPatch "/permissions_check?id=eq.2&select=id,value,hidden,public,role"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
           [json| r#"{"hidden":"Hidden changed"}"# |]
           shouldRespondWith
           [json|r#"[]"#|]
-          { matchStatus  = 200 }
+          { matchStatus  = 404 }
       it "anonymous can not update rows for bob" $
         request methodPatch "/permissions_check?id=eq.10&select=id,value"
           [ ("Prefer", "return=representation") ]
           [json| r#"{"hidden":"Hidden changed"}"# |]
           shouldRespondWith
           [json|r#"{"details":"no Update privileges for 'public.permissions_check' table","message":"Permission denied"}"#|]
+          { matchStatus  = 400 }
+    describe "validation" $
+      it "admin can not insert invalid values for hidden" $
+        request methodPost "/permissions_check?select=id,value,hidden,public,role"
+          [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4ifQ.aMYD4kILQ5BBlRNB3HvK55sfex_OngpB_d28iAMq-WU", ("Prefer", "return=representation") ]
+          [json| r#"{"id":30,"value":"Thirty Alice Private","hidden":"Hidden invalid","public":0,"role":"alice"}"# |]
+          shouldRespondWith
+          [json|r#"{"details":"check constraint of an insert/update permission has failed","message":"Permission denied"}"#|]
+          { matchStatus  = 400 }
+      it "alice can not insert invalid values for hidden" $
+        request methodPost "/permissions_check?select=id,value,hidden,public,role"
+          [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
+          [json| r#"{"id":30,"value":"Thirty Alice Private","hidden":"Hidden invalid","public":0,"role":"alice"}"# |]
+          shouldRespondWith
+          [json|r#"{"details":"check constraint of an insert/update permission has failed","message":"Permission denied"}"#|]
           { matchStatus  = 400 }
       
 }
