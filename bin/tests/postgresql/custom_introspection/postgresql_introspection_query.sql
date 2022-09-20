@@ -537,7 +537,7 @@ permissions as (
       policy_for,
       "check",
       "using"
-    from json_to_recordset('{@permissions.json#[]}'::json)
+    from json_to_recordset('{@permissions_missing.json#[]}'::json)
     as x(
       name text,
       restrictive boolean,

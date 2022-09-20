@@ -28,7 +28,7 @@ pub fn setup_db(init_db_once: &Once) {
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
         let tmp_pg_cmd = project_dir.join("tests/bin/pg_tmp.sh");
-        let init_file = project_dir.join("tests/postgrest/fixtures/load.sql");
+        let init_file = project_dir.join("tests/postgresql/fixtures/load.sql");
 
         let output = Command::new(tmp_pg_cmd)
             .arg("-t")
@@ -37,9 +37,9 @@ pub fn setup_db(init_db_once: &Once) {
             .output()
             .expect("failed to start temporary pg process");
         if !output.status.success() {
-            debug!("status: {}", output.status);
-            debug!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            debug!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+            println!("status: {}", output.status);
+            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
         
         assert!(output.status.success());
@@ -54,14 +54,13 @@ pub fn setup_db(init_db_once: &Once) {
             .expect("failed to execute process");
         
         if !output.status.success() {
-            debug!("status: {}", output.status);
-            debug!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            debug!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+            println!("status: {}", output.status);
+            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
         assert!(output.status.success());
 
         env::set_var("SUBZERO_DB_URI", &*db_uri);
-        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/postgresql_introspection_query.sql}");
     });
 }
 
@@ -80,6 +79,7 @@ where
         env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
         env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "true");
         env::set_var("SUBZERO_URL_PREFIX", "/rest");
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../bin/tests/postgresql/custom_introspection/postgresql_introspection_query.sql}");
         env::remove_var("SUBZERO_DB_MAX_ROWS");
         lazy_static::initialize(client);
     });

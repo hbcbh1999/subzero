@@ -294,7 +294,7 @@ mod tests {
             insert into "api"."projects" ("id","a")
             select "id","a"
             from json_populate_recordset(null::"api"."projects", (select val from subzero_body)) _
-            returning "id","a"
+            returning "id","a", true as _subzero_check__constraint
         )
         select
             "subzero_source"."a",

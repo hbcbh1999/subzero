@@ -269,7 +269,7 @@ pub fn fmt_query<'a>(
                 } +
                 " returning " + returned_columns +
                 // for each row add a column if it passes the internal permissions check defined for the schema
-                if !check.conditions.is_empty() { ", " + fmt_condition_tree(qi, check)? + " as _subzero_check__constraint "} else { sql("1  as _subzero_check__constraint ") }
+                if !check.conditions.is_empty() { ", " + fmt_condition_tree(qi, check)? + " as _subzero_check__constraint "} else { sql(", 1  as _subzero_check__constraint ") }
             )
         }
         Delete {
@@ -414,7 +414,7 @@ pub fn fmt_query<'a>(
                         + " returning "
                         + returned_columns +
                         // for each row add a column if it passes the internal permissions check defined for the schema
-                        if !check.conditions.is_empty() { ", " + fmt_condition_tree(qi, check)? + " as _subzero_check__constraint "} else { sql("1 as _subzero_check__constraint ") }
+                        if !check.conditions.is_empty() { ", " + fmt_condition_tree(qi, check)? + " as _subzero_check__constraint "} else { sql(", 1 as _subzero_check__constraint ") }
                 }
             )
         }

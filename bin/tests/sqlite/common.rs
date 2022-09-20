@@ -29,15 +29,17 @@ pub fn setup_db(init_db_once: &Once) {
 
         let file = File::create(&db).unwrap();
         drop(file);
-        debug!("created db file: {:?}", init_file);
+        //debug!("created db file: {:?}", init_file);
         let output = Command::new("sqlite3")
             .arg(db.to_str().unwrap())
             .arg(format!(r#".read {}"#, init_file.to_str().unwrap()))
             .output()
             .expect("failed to setup sqlite db");
-        debug!("status: {}", output.status);
-        debug!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-        debug!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        if !output.status.success() {
+            println!("status: {}", output.status);
+            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+        }
         assert!(output.status.success());
 
         let db_uri = db.to_str().unwrap();

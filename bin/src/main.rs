@@ -201,8 +201,8 @@ mod basic;
 
 #[cfg(feature = "postgresql")]
 #[cfg(test)]
-#[path = "../tests/postgrest/mod.rs"]
-mod postgrest_core;
+#[path = "../tests/postgresql/mod.rs"]
+mod postgresql;
 
 #[cfg(feature = "sqlite")]
 #[cfg(test)]

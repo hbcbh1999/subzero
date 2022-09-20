@@ -17,3 +17,4 @@
 \ir subzero.odata.sql
 \ir subzero.aggregates.sql
 \ir subzero.custom_relations.sql
+\ir subzero.permissions.sql

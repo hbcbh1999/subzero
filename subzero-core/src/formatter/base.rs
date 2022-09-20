@@ -36,6 +36,7 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
         _ => false,
     };
 
+    let check_constraints = matches!(&request.query.node, Insert{..} | Update{..} );
     let return_representation = return_representation(request);
     let body_snippet = match (
         return_representation,
@@ -132,10 +133,12 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
             "null::bigint"
         }
         + " as total_result_set, "
-        + body_snippet
-        + " as body, "
+        + body_snippet + " as body, "
+        + if check_constraints {"(select coalesce(bool_and(_subzero_check__constraint),true) from subzero_source) as constraints_satisfied, "
+        } else {"true as constraints_satisfied, "}
         + " nullif(current_setting('response.headers', true), '') as response_headers, "
         + " nullif(current_setting('response.status', true), '') as response_status "
+        
         + " from ( select * from _subzero_query ) _subzero_t"
     )
 }
@@ -468,6 +471,8 @@ pub fn fmt_query<'a>(
                         _ => String::new()
                     } +
                     " returning " + returned_columns +
+                    // for each row add a column if it passes the internal permissions check defined for the schema
+                    if !check.conditions.is_empty() { ", " + fmt_condition_tree(qi, check)? + " as _subzero_check__constraint "} else { sql(", true  as _subzero_check__constraint ") } +
                     " )",
                 ),
                 if return_representation {
@@ -647,6 +652,8 @@ pub fn fmt_query<'a>(
                             }
                             + " returning "
                             + returned_columns
+                            // for each row add a column if it passes the internal permissions check defined for the schema
+                            + if !check.conditions.is_empty() { ", " + fmt_condition_tree(qi, check)? + " as _subzero_check__constraint "} else { sql(", true as _subzero_check__constraint ") }
                             + " )",
                     )
                 },

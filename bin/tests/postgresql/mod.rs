@@ -37,3 +37,4 @@ mod common;
 #[allow(unused_imports)] mod upsert;
 #[allow(unused_imports)] mod aggregates;
 #[allow(unused_imports)] mod custom_relations;
+#[allow(unused_imports)] mod permissions;

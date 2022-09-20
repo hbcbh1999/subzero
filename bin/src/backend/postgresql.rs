@@ -8,10 +8,10 @@ use crate::config::{VhostConfig,SchemaStructure::*};
 // use log::{debug};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, ContentType::*, SingleVal,ListVal,Payload},
-    error::{Error::{SingularityError, PutMatchingPkError}},
+    error::{Error::{SingularityError, PutMatchingPkError, PermissionDenied}},
     schema::{DbSchema},
     formatter::{Param, Param::*, postgresql::{fmt_main_query, generate, fmt_env_query}, ToParam,},
-    error::{JsonDeserialize,}
+    error::{JsonDeserialize, }
 };
 use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
 use crate::error::{Result, *};
@@ -81,7 +81,7 @@ fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
 async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'a>, env: &'a HashMap<&'a str, &'a str>, config: &VhostConfig) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(PgDbPoolError)?;
     let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, &env).context(CoreError)?);
-    debug!("{}\n{:?}", main_statement, main_parameters);
+    
 
     let transaction = client
         .build_transaction()
@@ -103,12 +103,15 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
             select "{}".* from "{}"."{}"(), env"#, 
             env_query, f, fn_schema, f
         );
+        debug!("pre_statement {}\n{:?}", pre_request_statement, env_parameters);
         let pre_request_stm = transaction
             .prepare_cached(pre_request_statement.as_str())
             .await
             .context(PgDbError { authenticated })?;
         transaction.query(&pre_request_stm, env_parameters.into_iter().map(wrap_param).collect::<Vec<_>>().iter().map(cast_param).collect::<Vec<_>>().as_slice()).await.context(PgDbError { authenticated })?;
     }
+
+    debug!("main_statement {}\n{:?}", main_statement, main_parameters);
 
     let main_stm = transaction
         .prepare_cached(main_statement.as_str())
@@ -120,7 +123,12 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
         .await
         .context(PgDbError { authenticated })?;
 
-    
+    let constraints_satisfied:bool = rows[0].get("constraints_satisfied");
+    if !constraints_satisfied {
+        transaction.rollback().await.context(PgDbError { authenticated })?;
+        return Err(to_core_error(PermissionDenied { details: "check constraint of an insert/update permission has failed".to_string(),}));
+    }
+
     let api_response = ApiResponse {
         page_total: rows[0].get("page_total"),
         total_result_set: rows[0].get("total_result_set"),
@@ -209,6 +217,7 @@ impl Backend for PostgreSQLBackend {
                         match transaction.query(&query, &[&config.db_schemas]).await {
                             Ok(rows) => {
                                 transaction.commit().await.context(PgDbError { authenticated })?;
+                                //println!("db schema loaded: {}", rows[0].get::<usize, &str>(0));
                                 serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize).context(CoreError)
                             }
                             Err(e) => {

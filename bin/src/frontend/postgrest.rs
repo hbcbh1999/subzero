@@ -232,8 +232,10 @@ pub async fn handle<'a>(
     check_safe_functions(&request, &config.db_allowd_select_functions).map_err(to_core_error)?;
     insert_policy_conditions(db_schema, schema_name, role.unwrap_or(&String::default()), &mut request.query).map_err(to_core_error)?;
     
+    // when using internal privileges not switch "current_role"
+    let env_role = if db_schema.use_internal_permissions {None} else {role};
 
-    let _env = get_env(role, &request, &jwt_claims, config.db_use_legacy_gucs);
+    let _env = get_env(env_role, &request, &jwt_claims, config.db_use_legacy_gucs);
     let env = _env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_,_>>();
     
     let response:ApiResponse = match config.db_type.as_str() {

@@ -89,6 +89,9 @@ pub enum Error {
 
     #[snafu(display("PutMatchingPkError"))]
     PutMatchingPkError,
+
+    #[snafu(display("PermissionDenied {}", details))]
+    PermissionDenied { details: String },
 }
 
 impl Error {
@@ -114,6 +117,7 @@ impl Error {
             Error::GucStatusError => 500,
             Error::InternalError { .. } => 500,
             Error::JwtTokenInvalid { .. } => 401,
+            Error::PermissionDenied { .. } => 403,
             Error::ActionInappropriate => 405,
             Error::InvalidRange => 416,
             Error::InvalidBody { .. } => 400,
@@ -151,6 +155,7 @@ impl Error {
             Error::InvalidRange => json!({"message": "HTTP Range error"}),
             Error::InvalidBody { message } => json!({ "message": message }),
             Error::InternalError { message } => json!({ "message": message }),
+            Error::PermissionDenied { details } => json!({ "message": "Permission denied".to_string(), "details": details }),
             Error::ParseRequestError { message, details } => {
                 json!({"details": details, "message": message })
             }

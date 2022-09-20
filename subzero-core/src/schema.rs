@@ -331,9 +331,9 @@ impl DbSchema {
             [Some(Specific(a)), Some(Specific(b))] => Ok(Specific(a.iter().chain(b.iter()).cloned().collect::<Vec<_>>())),
             [Some(All), _] | [_, Some(All)] => Ok(All),
             [Some(Specific(a)), None] | [None, Some(Specific(a))] => Ok(Specific(a.clone())),
-            [None, None] => Err(Error::ParseRequestError { 
+            [None, None] => Err(Error::PermissionDenied { 
                 details: format!("no {:?} privileges for '{}.{}' table", &action, current_schema, origin),
-                message: "Permission denied".to_string(),
+                
             }),
         }?;
         
@@ -342,17 +342,17 @@ impl DbSchema {
             All => Ok(()),
             Specific(allowed_columns) => {
                 match columns {
-                    All => Err(Error::ParseRequestError { 
+                    All => Err(Error::PermissionDenied { 
                         details: format!("no {:?} privileges for '{}.{}(*)'", &action, current_schema, origin),
-                        message: "Permission denied".to_string(),
+                        
                     }),
                     Specific(accessed_columns) => {
                         if ![Action::Delete, Action::Execute].contains(action) {
                             for c in accessed_columns {
                                 if !allowed_columns.contains(&c) {
-                                    return Err(Error::ParseRequestError { 
+                                    return Err(Error::PermissionDenied { 
                                         details: format!("no {:?} privileges for '{}.{}({})'", &action, current_schema, origin, c),
-                                        message: "Permission denied".to_string(),
+                                        
                                     });
                                 }
                             }

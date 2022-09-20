@@ -12,7 +12,7 @@ use subzero_core::{
         ApiRequest, ApiResponse, ContentType::*, Query, QueryNode::*, Preferences, Count
     },
     error::{JsonSerialize,JsonDeserialize,},
-    error::{Error::{SingularityError, PutMatchingPkError, ParseRequestError}},
+    error::{Error::{SingularityError, PutMatchingPkError, PermissionDenied}},
     schema::DbSchema,
 };
 //use rocket::log::private::debug;
@@ -109,9 +109,9 @@ fn execute(
             // check if all rows paased the permission check
             if ids.iter().any(|(_,p)| !p) {
                 _ = conn.execute_batch("ROLLBACK");
-                return Err(to_core_error(ParseRequestError { 
+                return Err(to_core_error(PermissionDenied { 
                     details: "check constraint of an insert/update permission has failed".to_string(),
-                    message: "Permission denied".to_string(),
+                    
                 }));
             }
 
