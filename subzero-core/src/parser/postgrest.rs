@@ -874,12 +874,12 @@ pub fn parse<'a>(
 
     query.insert_properties(orders, |q, p| {
         let order = match &mut q.node {
-            Select { order, .. } => order,
-            Insert { .. } => todo!(),
-            Delete { .. } => todo!(),
-            Update { .. } => todo!(),
-            FunctionCall { order, .. } => order,
-        };
+            Select { order, .. } => Ok(order),
+            Insert { .. } => Err(Error::OrderNotAllowedError),
+            Delete { .. } => Err(Error::OrderNotAllowedError),
+            Update { .. } => Err(Error::OrderNotAllowedError),
+            FunctionCall { order, .. } => Ok(order),
+        }?;
         for o in p {
             *order = o;
         }

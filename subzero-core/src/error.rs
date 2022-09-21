@@ -87,6 +87,9 @@ pub enum Error {
     #[snafu(display("LimitOffsetNotAllowedError"))]
     LimitOffsetNotAllowedError,
 
+    #[snafu(display("OrderNotAllowedError"))]
+    OrderNotAllowedError,
+
     #[snafu(display("PutMatchingPkError"))]
     PutMatchingPkError,
 
@@ -133,6 +136,7 @@ impl Error {
             // Error::ReadFile { .. } => 500,
             Error::JsonDeserialize { .. } => 400,
             Error::LimitOffsetNotAllowedError => 400,
+            Error::OrderNotAllowedError => 400,
             Error::CsvDeserialize { .. } => 400,
             Error::PutMatchingPkError => 400,
             Error::JsonSerialize { .. } => 500,
@@ -161,7 +165,10 @@ impl Error {
             }
             Error::JwtTokenInvalid { message } => json!({ "message": message }),
             Error::LimitOffsetNotAllowedError => {
-                json!({"message": "Range header and limit/offset querystring parameters are not allowed for PUT"})
+                json!({"message": "Range header and limit/offset querystring parameters are not allowed"})
+            }
+            Error::OrderNotAllowedError => {
+                json!({"message": "order querystring parameter not allowed"})
             }
             Error::NoRelBetween { origin, target } => json!({
                 "message":

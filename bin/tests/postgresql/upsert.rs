@@ -203,14 +203,14 @@ feature "upsert"
           request methodPut "/tiobe_pls?name=eq.Javascript&limit=1"
             [json| r#"[ { "name": "Javascript", "rank": 1 } ]"#|]
             shouldRespondWith
-            [json|r#"{"message":"Range header and limit/offset querystring parameters are not allowed for PUT"}"#|]
+            [json|r#"{"message":"Range header and limit/offset querystring parameters are not allowed"}"#|]
             { matchStatus = 400 , matchHeaders = ["Content-Type" <:> "application/json"] }
 
         it "fails if offset is specified" $
           request methodPut "/tiobe_pls?name=eq.Javascript&offset=1"
             [json| r#"[ { "name": "Javascript", "rank": 1 } ]"#|]
             shouldRespondWith
-            [json|r#"{"message":"Range header and limit/offset querystring parameters are not allowed for PUT"}"#|]
+            [json|r#"{"message":"Range header and limit/offset querystring parameters are not allowed"}"#|]
             { matchStatus = 400 , matchHeaders = ["Content-Type" <:> "application/json"] }
 
         it "rejects every other filter than pk cols eq" $ do
