@@ -841,6 +841,7 @@ pub fn parse<'a>(
     }?;
 
     insert_join_conditions(&mut query, schema)?;
+
     query.insert_conditions(conditions)?;
 
     query.insert_properties(limits, |q, p| {
@@ -902,6 +903,39 @@ pub fn parse<'a>(
                     _ => *limit = Some(SingleVal(format!("{}", max),None)),
                 },
                 None => *limit = Some(SingleVal(format!("{}", max),None)),
+            }
+        }
+    }
+
+    // replace select * with all the columns
+    for (_, node) in &mut query {
+        let (select, o_table_name) = match node {
+            Select { select, from: (table, _), .. } => (select, Some(table)),
+            Insert { select, into, .. } => (select, Some(into)),
+            Delete { select, from, .. } => (select, Some(from)),
+            Update { select, table, .. } => (select, Some(table)),
+            // for function calls we don't know the table name always so we don't do anything
+            FunctionCall { select, .. } => (select, None),
+        };
+        if let Some(table_name) = o_table_name {
+            let mut star_removed = false;
+            select.retain(|s| {
+                if let SelectItem::Star = s {
+                    star_removed = true;
+                    false
+                } else {
+                    true
+                }
+            });
+            if star_removed {
+                let table_obj = schema_obj.objects.get(table_name).context(NotFound { target: table_name.clone() })?;
+                for col in table_obj.columns.keys() {
+                    select.push(SelectItem::Simple {
+                        field: Field { name: col.clone(), json_path: None },
+                        alias: None,
+                        cast: None,
+                    });
+                }
             }
         }
     }
@@ -1684,57 +1718,6 @@ fn insert_join_conditions(query: &mut Query, schema: &str) -> Result<()> {
     }
     Ok(())
 }
-
-// fn insert_properties<T>(query: &mut Query, mut properties: Vec<(Vec<String>, T)>, f: fn(&mut Query, Vec<T>) -> Result<()>) -> Result<()> {
-//     let node_properties = properties.drain_filter(|(path, _)| path.is_empty()).map(|(_, c)| c).collect::<Vec<_>>();
-//     if !node_properties.is_empty() {
-//         f(query, node_properties)?
-//     };
-
-//     for SubSelect { query: q, alias, .. } in query.sub_selects.iter_mut() {
-//         //for s in select.iter_mut() {
-//         //    match s {
-//         //        SelectItem::SubSelect{query: q, alias, ..} => {
-//         if let Select { from: (table, _), .. } = &mut q.node {
-//             // let from : &String = match q {
-//             //     Select {from:(table,_), ..} => table,
-//             //     _ => panic!("there should not be any Insert queries as subselects"),
-//             // };
-//             let node_properties = properties
-//                 .drain_filter(|(path, _)| match path.get(0) {
-//                     Some(p) => {
-//                         if p == table || Some(p) == alias.as_ref() {
-//                             path.remove(0);
-//                             true
-//                         } else {
-//                             false
-//                         }
-//                     }
-//                     None => false,
-//                 })
-//                 .collect::<Vec<_>>();
-//             insert_properties(q, node_properties, f)?;
-//         }
-//         //        }
-//         //        _ => {}
-//         //    }
-//     }
-//     Ok(())
-// }
-
-// fn insert_conditions(query: &mut Query, conditions: Vec<(Vec<String>, Condition)>) -> Result<()> {
-//     query.insert_properties(conditions, |q, p| {
-//         let query_conditions: &mut Vec<Condition> = match &mut q.node {
-//             Select { where_, .. } => where_.conditions.as_mut(),
-//             Insert { where_, .. } => where_.conditions.as_mut(),
-//             Update { where_, .. } => where_.conditions.as_mut(),
-//             Delete { where_, .. } => where_.conditions.as_mut(),
-//             FunctionCall { where_, .. } => where_.conditions.as_mut(),
-//         };
-//         p.into_iter().for_each(|c| query_conditions.push(c));
-//         Ok(())
-//     })
-// }
 
 fn is_logical(s: &str) -> bool { s == "and" || s == "or" || s.ends_with(".or") || s.ends_with(".and") }
 

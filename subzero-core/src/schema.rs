@@ -379,7 +379,7 @@ pub struct Schema {
 pub struct Object {
     pub kind: ObjectType,
     pub name: String,
-    pub columns: HashMap<String, Column>,
+    pub columns: BTreeMap<String, Column>,
     pub foreign_keys: Vec<ForeignKey>,
     pub permissions: Permissions,
 }
@@ -390,7 +390,7 @@ struct ObjectDef {
     pub kind: String,
     pub name: String,
     #[serde(deserialize_with = "deserialize_columns", default)]
-    pub columns: HashMap<String, Column>,
+    pub columns: BTreeMap<String, Column>,
     #[serde(deserialize_with = "deserialize_foreign_keys", default)]
     pub foreign_keys: Vec<ForeignKey>,
 
@@ -699,10 +699,10 @@ where D: Deserializer<'de>,
     Ok(v)
 }
 
-fn deserialize_columns<'de, D>(deserializer: D) -> Result<HashMap<String, Column>, D::Error>
+fn deserialize_columns<'de, D>(deserializer: D) -> Result<BTreeMap<String, Column>, D::Error>
 where D: Deserializer<'de>,
 {
-    let mut map = HashMap::new();
+    let mut map = BTreeMap::new();
     for column in Vec::<Column>::deserialize(deserializer)? {
         map.insert(column.name.clone(), column);
     }

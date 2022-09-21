@@ -849,7 +849,7 @@ feature "query"
 //         shouldRespondWith 200
 
     it "should respond with CSV to 'text/csv' request" $
-      request methodGet "/simple_pk"
+      request methodGet "/simple_pk?select=k,extra"
               (acceptHdrs "text/csv; version=1") ""
         shouldRespondWith [text|"k,extra\nxyyx,u\nxYYx,v"|]
         { matchStatus  = 200

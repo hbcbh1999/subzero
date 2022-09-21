@@ -10,6 +10,7 @@ lazy_static! {
     static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async { 
       env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/postgresql_introspection_query.sql}");
       env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
+      env::remove_var("SUBZERO_DB_PRE_REQUEST");
       Client::untracked(start().await.unwrap()).await.expect("valid client") 
     });
 }

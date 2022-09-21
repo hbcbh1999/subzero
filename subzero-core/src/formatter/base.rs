@@ -631,7 +631,7 @@ pub fn fmt_query<'a>(
                             .join(",")
                     };
                     Some(sql(format!(
-                        " subzero_source as (select {} from {} where false )",
+                        " subzero_source as (select {}, true as _subzero_check__constraint from {} where false )",
                         sel,
                         fmt_qi(qi)
                     )))
