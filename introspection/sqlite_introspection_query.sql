@@ -23,7 +23,7 @@ schemas as (
 )
 , foreign_keys as (
     select
-      'constraint_name' as constraint_name,
+      t.table_name || '_' || json_extract(json_array(f."from"), '$[0]') || '_fkey' as constraint_name,
       'public' as table_schema,
       t.table_name as table_name,
       json_array(f."from") as columns,
@@ -69,9 +69,10 @@ relations as (
         foreign_table_name,
         json(foreign_columns) as foreign_columns
     from (
-        select * from foreign_keys
-        union all
         select * from custom_relations
+        union
+        select * from foreign_keys
+    
     )
 ),
 
@@ -115,7 +116,7 @@ select json_object(
                     'foreign_keys', (
                         select json_group_array(f.row) from (
                             select json_object(
-                                'name', ff."table_name" || '_' || json_extract(ff.columns, '$[0]') || '_fkey', 
+                                'name', ff.constraint_name, 
                                 'table', json_array(ff.table_schema,ff."table_name"),
                                 'columns', ff.columns,
                                 'referenced_table', json_array(ff.foreign_table_schema,ff.foreign_table_name),

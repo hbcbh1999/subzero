@@ -4,9 +4,16 @@ drop table if exists tasks;
 drop table if exists projects;
 drop table if exists clients;
 drop table if exists complex_items;
+drop table if exists permissions_check;
 
-
-
+create table permissions_check (
+    id integer,
+    value text,
+    hidden text,
+    role text,
+    public boolean,
+    primary key (id)
+) ENGINE = MergeTree();
 
 create table clients (
     id integer,
@@ -86,4 +93,10 @@ insert into users_tasks values (3, 5);
 insert into complex_items values (1, 'One', '{"foo":{"int":1,"bar":"baz"}}');
 insert into complex_items values (2, 'Two', '{"foo":{"int":1,"bar":"baz"}}');
 insert into complex_items values (3, 'Three', '{"foo":{"int":1,"bar":"baz"}}');
+
+insert into permissions_check values (1, 'One Alice Public', 'Hidden', 'alice', true);
+insert into permissions_check values (2, 'Two Bob Public', 'Hidden', 'bob', true);
+insert into permissions_check values (3, 'Three Charlie Public', 'Hidden', 'charlie', true);
+insert into permissions_check values (10, 'Ten Alice Private', 'Hidden', 'alice', false);
+insert into permissions_check values (20, 'Twenty Bob Private', 'Hidden', 'bob', false);
 

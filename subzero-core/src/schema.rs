@@ -57,6 +57,11 @@ struct PermissionDef {
     pub using: Option<Vec<Condition>>,
 
     #[serde(default, skip_serializing_if = "is_default")]
+    pub check_json_str: Option<String>,
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub using_json_str: Option<String>,
+
+    #[serde(default, skip_serializing_if = "is_default")]
     pub grant: Option<Vec<Action>>,
     #[serde(default, skip_serializing_if = "is_default")]
     pub columns: Option<Vec<ColumnName>>,
@@ -506,10 +511,15 @@ where D: Deserializer<'de>,
                     (Some(actions), Some(columns)) => {
                         let actions_ = normalize_actions(&actions);
                         for a in actions_ {
-                            let cols = grants.entry((p.role.clone(), a)).or_insert(Specific(Vec::new()));
-                            match cols {
-                                Specific(cols) => cols.extend(columns.iter().cloned()),
-                                _ => (),
+                            if columns.is_empty(){
+                                grants.insert((p.role.clone(), a), All);
+                            }
+                            else {
+                                let cols = grants.entry((p.role.clone(), a)).or_insert(Specific(Vec::new()));
+                                match cols {
+                                    Specific(cols) => cols.extend(columns.iter().cloned()),
+                                    _ => (),
+                                }
                             }
                         }
                     }
@@ -521,13 +531,41 @@ where D: Deserializer<'de>,
                     }
                     _ => (),
                 }
-                match (p.policy_for, p.check, p.using){
-                    (actions@_,check@Some(_),using@_) | (actions@_,check@_,using@Some(_)) => {
+                match (p.policy_for, p.check, p.using, p.check_json_str, p.using_json_str){
+                    (actions@_,check@Some(_),using@_, None, None) | 
+                    (actions@_,check@_,using@Some(_), None, None) => {
                         let actions_ = match actions {
-                            Some(actions) => actions,
+                            Some(actions) => if actions.is_empty() { vec![Action::All] } else { actions },
                             None => vec![Action::All],
                         };
                         
+                        for a in actions_ {
+                            let pols = policies.entry((p.role.clone(), a.clone())).or_insert(Vec::new());
+                            match (a, &check, &using) {
+                                (Action::Select,_,Some(u)) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: None, using: Some(u.clone())}),
+                                (Action::Insert,Some(c),_) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: Some(c.clone()), using: None}),
+                                (Action::Update,c,u) | (Action::All,c,u) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: c.clone(), using: u.clone()}),
+                                (Action::Delete,_,Some(u)) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: None, using: Some(u.clone())}),
+                                _ => (),
+                            }
+                        }
+                    },
+                    //these is custom handling for clickouse where json manipulation is limited
+                    //and check and using are stored as json strings
+                    (actions@_, None, None,check_str@Some(_),using_str@_) | 
+                    (actions@_, None, None,check_str@_,using_str@Some(_)) => {
+                        let actions_ = match actions {
+                            Some(actions) => if actions.is_empty() { vec![Action::All] } else { actions },
+                            None => vec![Action::All],
+                        };
+                        let check:Option<Vec<Condition>> = match check_str {
+                            Some(check_str) => Some(serde_json::from_str(&check_str).map_err(serde::de::Error::custom)?),
+                            None => None,
+                        };
+                        let using:Option<Vec<Condition>> = match using_str {
+                            Some(using_str) => Some(serde_json::from_str(&using_str).map_err(serde::de::Error::custom)?),
+                            None => None,
+                        };
                         for a in actions_ {
                             let pols = policies.entry((p.role.clone(), a.clone())).or_insert(Vec::new());
                             match (a, &check, &using) {

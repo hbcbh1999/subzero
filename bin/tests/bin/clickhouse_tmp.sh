@@ -77,7 +77,7 @@ start)
 	if [ ${TIMEOUT:-1} -gt 0 ]; then
 		nice -n 19 $0 $KEEP -w ${TIMEOUT:-60} -d $TD -p ${CHPORT:-8123} stop > $TD/stop.log 2>&1 &
 	fi
-	[ -n "$CHPORT" ] && OPTS="--http_port=$CHPORT --tcp_port= --mysql_port= --postgresql_port= --users_config=$SCRIPT_DIR/users.xml"
+	[ -n "$CHPORT" ] && OPTS="--http_port=$CHPORT --default_database=public --tcp_port= --mysql_port= --postgresql_port= --users_config=$SCRIPT_DIR/users.xml"
 	[ -n "$USER_OPTS" ] && OPTS="$OPTS $USER_OPTS"
 	clickhouse-server start --daemon --log-file=$TD/ch.log -- $OPTS $USER_OPTS
 	sleep 3

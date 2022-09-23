@@ -219,7 +219,9 @@ impl Backend for ClickhouseBackend {
                         let _headers = parts.headers;
                         let bytes = hyper::body::to_bytes(body).await.context(HyperError)?;
                         let s = String::from_utf8(bytes.to_vec()).unwrap_or("".to_string());
-                        //println!("clickhouse body {:?}", s);
+                        //println!("json schema:\n{:?}", s);
+                        //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;
+                        //println!("schema {:?}", schema);
                         serde_json::from_str::<DbSchema>(&s).context(JsonDeserialize).context(CoreError)
                         
                     }

@@ -56,5 +56,8 @@
     { "table_schema": "public", "table_name": "tasks", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
     { "table_schema": "public", "table_name": "projects", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
     { "table_schema": "public", "table_name": "clients", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
-    { "table_schema": "public", "table_name": "complex_items", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] }
+    { "table_schema": "public", "table_name": "complex_items", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
+
+    { "table_schema": "public", "table_name": "taxi_zone_dictionary", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "trips", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] }
 ]

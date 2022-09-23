@@ -514,15 +514,15 @@ custom_relations as (
 ),
 
 relations as (
-    select * from table_table_relations
-    union all
-    select * from view_table_relations
-    union all
-    select * from table_view_relations
-    union all
-    select * from view_view_relations
-    union all
     select * from custom_relations
+    union
+    select * from table_table_relations
+    union
+    select * from view_table_relations
+    union
+    select * from table_view_relations
+    union
+    select * from view_view_relations
 ),
 
 permissions as (

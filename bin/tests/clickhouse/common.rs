@@ -93,7 +93,7 @@ where
         env::set_var("SUBZERO_DB_ANON_ROLE", &"default");
         env::set_var("SUBZERO_DB_TX_ROLLBACK", &"true");
         env::set_var("SUBZERO_DB_TYPE", &"clickhouse");
-        env::set_var("SUBZERO_DB_SCHEMAS", "[default]");
+        env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
         //env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
         // env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "true");

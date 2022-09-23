@@ -75,8 +75,41 @@ relations as (
     foreign_columns
   from custom_relations
 ),
+permissions as (
+    select
+      tupleElement(row, 'name') as name,
+      tupleElement(row, 'restrictive') as restrictive,
+      tupleElement(row, 'table_schema') as table_schema,
+      tupleElement(row, 'table_name') as table_name,
+      tupleElement(row, 'role') as role,
+      tupleElement(row, 'grant') as "grant",
+      tupleElement(row, 'columns') as columns,
+      tupleElement(row, 'policy_for') as policy_for,
+      tupleElement(row, 'check') as check_json_str,
+      tupleElement(row, 'using') as using_json_str
+    from (
+      select arrayJoin(
+          JSONExtract(
+              '{@permissions.json#[]}'
+              , 'Array(Tuple(
+                  name Nullable(String),
+                  restrictive Boolean,
+                  table_schema String,
+                  table_name String,
+                  "role" String,
+                  "grant" Array(String),
+                  columns Array(String),
+                  policy_for Array(String),
+                  check Nullable(String),
+                  using Nullable(String)
+                  ))'
+          )
+      ) as row
+  )
+),
 json_schema as (
-  select schemas_agg.array_agg as schemas
+  select
+    schemas_agg.array_agg as schemas
   from (
     select groupArray(r) as array_agg
     from (
@@ -95,13 +128,14 @@ json_schema as (
           s.name as name,
           groupArray(
             cast(
-              tuple(t.name, t.kind, t.columns, t.foreign_keys),
+              tuple(t.name, t.kind, t.columns, t.foreign_keys, t.permissions),
               concat(
                 'Tuple(',
                 'name ', toTypeName(t.name), ',',
                 'kind ', toTypeName(t.kind), ',',
                 'columns ', toTypeName(t.columns), ',',
-                'foreign_keys ', toTypeName(t.foreign_keys),
+                'foreign_keys ', toTypeName(t.foreign_keys), ',',
+                'permissions ', toTypeName(t.permissions),
                 ')'
               )
             )
@@ -116,8 +150,11 @@ json_schema as (
               else 'table'
             end as kind,
             c.columns as columns,
-            r.foreign_keys as foreign_keys
+            r.foreign_keys as foreign_keys,
+            p.permissions as permissions
           from tables tt
+
+          -- columns
           left any join (
             select
               database,
@@ -132,6 +169,8 @@ json_schema as (
             from columns
             group by database, table
           ) c on c.database = tt.database and c.table = tt.name
+
+          -- foreign keys
           left any join (
             select
               table_schema,
@@ -152,15 +191,51 @@ json_schema as (
             from relations
             group by table_schema, table_name
           ) r on r.table_schema = tt.database and r.table_name = tt.name
+          
+          -- permissions
+          left any join (
+            select
+              table_schema,
+              table_name,
+              cast(
+                groupArray(
+                    tuple(
+                      name,
+                      restrictive,
+                      role,
+                      grant,
+                      columns,
+                      policy_for,
+                      check_json_str,
+                      using_json_str
+                    )
+                ),
+                'Array(Tuple(
+                  name Nullable(String),
+                  restrictive Boolean,
+                  "role" String,
+                  "grant" Array(String),
+                  columns Array(String),
+                  policy_for Array(String),
+                  check_json_str Nullable(String),
+                  using_json_str Nullable(String)
+                  ))'
+              ) 
+              as permissions
+            from permissions
+            group by table_schema, table_name
+          ) p on p.table_schema = tt.database and p.table_name = tt.name
         
         ) t on s.name = t.database
         group by s.name
       )
-      
     )
   ) schemas_agg
 )
-select schemas from json_schema
+select
+    (select count(*) from permissions) > 0 as use_internal_permissions,
+    schemas from json_schema
+-- select * from permissions
 format JSONEachRow
 settings 
 output_format_json_named_tuples_as_objects=1,
