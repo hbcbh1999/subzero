@@ -11,6 +11,8 @@ lazy_static! {
       env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/postgresql_introspection_query.sql}");
       env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
       env::remove_var("SUBZERO_DB_PRE_REQUEST");
+      env::remove_var("SUBZERO_DB_USE_LEGACY_GUCS");
+      
       Client::untracked(start().await.unwrap()).await.expect("valid client") 
     });
 }

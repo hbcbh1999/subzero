@@ -1,5 +1,5 @@
 use super::base::{
-    cast_select_item_format, fmt_as, fmt_body, fmt_condition, fmt_condition_tree, fmt_count_query, fmt_field, fmt_field_format, fmt_filter,
+    cast_select_item_format, fmt_as, fmt_body, fmt_condition, fmt_condition_tree, fmt_count_query, fmt_field, fmt_field_format, fmt_filter, fmt_env_var,
     fmt_identity, fmt_in_filter, fmt_json_operand, fmt_json_operation, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_main_query, fmt_offset,
     fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_query, fmt_select_item, fmt_select_name, fmt_sub_select_item, return_representation,
     simple_select_item_format, star_select_item_format, fmt_function_param, fmt_select_item_function,fmt_function_call, fmt_env_query
@@ -21,6 +21,7 @@ fmt_count_query!();
 fmt_body!();
 fmt_condition_tree!();
 fmt_condition!();
+fmt_env_var!();
 fmt_filter!();
 fmt_select_name!();
 fmt_function_call!();

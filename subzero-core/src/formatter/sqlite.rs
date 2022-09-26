@@ -7,6 +7,7 @@ use super::base::{
     //fmt_query,
     fmt_count_query,
     fmt_field,
+    //fmt_env_var,
     fmt_filter,
     fmt_identity,
     fmt_json_path,
@@ -52,7 +53,7 @@ macro_rules! cast_select_item_format {
 }
 
 //fmt_main_query!();
-pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
     let schema = String::from(schema_str);
     let count = matches!(&request.preferences, Some(Preferences {count: Some(Count::ExactCount),..}));
 
@@ -92,7 +93,7 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'
             },
         ) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
 
-        (true, ApplicationJSON, _) => "json_group_array(_subzero_t.row)",
+        (true, ApplicationJSON, _) => "json_group_array(json(_subzero_t.row))",
         (true, SingularJSON, _) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
         (true, TextCSV, _) => {
             r#"
@@ -111,14 +112,17 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'
     };
 
     let run_unwrapped_query = matches!(request.query.node, Insert {..} | Update {..} | Delete {..});
+    let has_payload_cte = matches!(request.query.node, Insert {..} | Update {..});
     let wrap_cte_name = if run_unwrapped_query {None} else {Some("_subzero_query")};
     let source_query = fmt_query(&schema, return_representation, wrap_cte_name, &request.query, &None)?;
     let main_query = if run_unwrapped_query {
-        source_query
+        "with env as materialized (" + fmt_env_query(&env)+ ") "
+        + if has_payload_cte {", "} else {""}
+        + source_query
     }
     else {
-        source_query
-        + " , "
+        "with env as materialized (" + fmt_env_query(&env)+ "), "
+        + source_query + " , "
         + if count {
             fmt_count_query(&schema, Some("_subzero_count_query"), &request.query)?
         } else {
@@ -137,10 +141,26 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'
     
     Ok(main_query)
 }
+
+pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
+    "select " +
+    if env.is_empty() {sql("null")} 
+    else {
+        env
+        .iter()
+        .map(|(k, v)| param(v as &SqlParam) + " as " + fmt_identity(&String::from(*k)))
+        .join(",")
+    }
+}
+
+
 //fmt_query!();
 pub fn fmt_query<'a>(
     schema: &String, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
+
+    let add_env_tbl_to_from = wrapin_cte.is_some();
+
     let (cte_snippet, query_snippet) = match &q.node {
         FunctionCall {..} => {
             return Err(Error::UnsupportedFeature { message: "function calls in sqlite not supported".to_string()})
@@ -183,6 +203,7 @@ pub fn fmt_query<'a>(
                     + ") as row"
                     + " from "
                     + from_snippet
+                    + if add_env_tbl_to_from { ", env " } else { "" }
                     + " "
                     + if !join_tables.is_empty() {
                         format!(
@@ -243,7 +264,6 @@ pub fn fmt_query<'a>(
             let select_columns = columns.iter().map(fmt_identity).collect::<Vec<_>>().join(",");
             (
                 None,
-                "with " +
                 fmt_body(payload, columns) +
                 " insert into " + fmt_qi(qi) + " " +into_columns +
                 " select " + select_columns +
@@ -398,8 +418,7 @@ pub fn fmt_query<'a>(
                     
                     sql(format!(" select {} from {} where false ", sel, fmt_qi(qi)))
                 } else {
-                        "with "
-                        + fmt_body(payload, columns)
+                        fmt_body(payload, columns)
                         + " update "
                         + fmt_qi(qi)
                         + " set "
@@ -422,11 +441,11 @@ pub fn fmt_query<'a>(
 
     Ok(match wrapin_cte {
         Some(cte_name) => match cte_snippet {
-            Some(cte) => " with " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )",
-            None => format!(" with {} as ( ", cte_name) + query_snippet + " )",
+            Some(cte) => " " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )",
+            None => format!(" {} as ( ", cte_name) + query_snippet + " )",
         },
         None => match cte_snippet {
-            Some(cte) => " with " + cte + query_snippet,
+            Some(cte) => " " + cte + query_snippet,
             None => query_snippet,
         },
     })
@@ -456,6 +475,13 @@ macro_rules! fmt_in_filter {
     ($p:ident) => {
         fmt_operator(&"in".to_string())? + ("( select * from rarray(" + param($p) + ") )")
     };
+}
+//fmt_env_var!();
+fn fmt_env_var<'a>(e: &'a EnvVar) -> String {
+    match e {
+        EnvVar{var, part:None} => format!("(select {} from env)",fmt_identity(var)),
+        EnvVar{var, part:Some(part)} => format!("(select json({})->>'{}' from env)",fmt_identity(var), part),
+    }
 }
 fmt_filter!();
 fmt_select_name!();
@@ -525,9 +551,9 @@ fn fmt_sub_select_item<'a>(schema: &String, _qi: &Qi, i: &'a SubSelect) -> Resul
                     (sql(alias_or_name)
                         + ", "
                         + "("
-                        + " select json_group_array("
+                        + " select json_group_array(json("
                         + local_table_name.clone()
-                        + ".row)"
+                        + ".row))"
                         + " from ("
                         + subquery
                         + " ) as "
@@ -544,9 +570,9 @@ fn fmt_sub_select_item<'a>(schema: &String, _qi: &Qi, i: &'a SubSelect) -> Resul
                     (sql(alias_or_name)
                         + ", "
                         + "("
-                        + " select json_group_array("
+                        + " select json_group_array(json("
                         + local_table_name.clone()
-                        + ".row)"
+                        + ".row))"
                         + " from ("
                         + subquery
                         + " ) as "

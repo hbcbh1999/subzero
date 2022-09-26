@@ -37,8 +37,8 @@
         "role": "alice",
         "grant": ["all"],
         "policy_for": ["select", "insert", "update", "delete"],
-        "using": [{"column":"role","op":"=","val":"alice"}],
-        "check": [{"column":"role","op":"=","val":"alice"}]
+        "using": [{"column":"role","op":"=","env":"request.jwt.claims","env_part":"role"}],
+        "check": [{"column":"role","op":"=","env":"request.jwt.claims","env_part":"role"}]
     },
     {
         "name": "bob allow owned",

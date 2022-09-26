@@ -94,17 +94,17 @@ permissions as (
 
 select json_object(
     'use_internal_permissions', (select count(*) from permissions) > 0,
-    'schemas',json_group_array(s.row)
+    'schemas',json_group_array(json(s.row))
 ) from (
     select json_object(
         'name', schema_name,
         'objects', (
-            select json_group_array(o.row) from (
+            select json_group_array(json(o.row)) from (
                 select json_object(
                     'kind', t.kind, 
                     'name', t.table_name,
                     'columns', (
-                        select json_group_array(c.row) from (
+                        select json_group_array(json(c.row)) from (
                             select json_object(
                                 'name', cc.name,
                                 'data_type', cc.data_type,
@@ -114,28 +114,28 @@ select json_object(
                         ) c
                     ),
                     'foreign_keys', (
-                        select json_group_array(f.row) from (
+                        select json_group_array(json(f.row)) from (
                             select json_object(
                                 'name', ff.constraint_name, 
                                 'table', json_array(ff.table_schema,ff."table_name"),
-                                'columns', ff.columns,
+                                'columns', json(ff.columns),
                                 'referenced_table', json_array(ff.foreign_table_schema,ff.foreign_table_name),
-                                'referenced_columns', ff.foreign_columns
+                                'referenced_columns', json(ff.foreign_columns)
                             ) as row from relations ff
                             where t.table_schema = ff.table_schema and t.table_name = ff.table_name
                         ) f
                     ),
                     'permissions', (
-                        select json_group_array(p.row) from (
+                        select json_group_array(json(p.row)) from (
                             select json_object(
                                 'name', pp.name,
                                 'restrictive', coalesce(pp.restrictive,0),
                                 'role', pp.role,
-                                'policy_for', pp.policy_for,
-                                'check', pp."check",
-                                'using', pp."using",
-                                'grant', pp.grant,
-                                'columns', pp.columns
+                                'policy_for', json(pp.policy_for),
+                                'check', json(pp."check"),
+                                'using', json(pp."using"),
+                                'grant', json(pp.grant),
+                                'columns', json(pp.columns)
                             ) as row from permissions pp
                             where t.table_schema = pp.table_schema and t.table_name = pp.table_name
                         ) p

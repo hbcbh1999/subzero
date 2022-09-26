@@ -174,10 +174,7 @@ pub fn fmt_query<'a>(
     q: &'a Query,
     _join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
-    let add_env_tbl_to_from = match wrapin_cte {
-        Some(_) => true,
-        _ => false,
-    };
+    let add_env_tbl_to_from = wrapin_cte.is_some();
     let (cte_snippet, query_snippet) = match &q.node {
         FunctionCall {
             fn_name,
@@ -852,13 +849,28 @@ macro_rules! fmt_filter {
                     }
                 }
                 Col(qi, fld) => sql(format!("= {}", fmt_field(qi, fld)?)),
-                Env(o, EnvVar{var, part:None}) => sql(format!("{} env.\"{}\"",fmt_operator(o)?, var)),
-                Env(o, EnvVar{var, part:Some(part)}) => sql(format!("{} env.\"{}\"->'{}'",fmt_operator(o)?, var, part)),
+                Env(o, e) => sql(format!("{} {}", fmt_operator(o)?, fmt_env_var(e))),
+                // Env(o, EnvVar{var, part:None}) => sql(format!("{} (select \"{}\" from env)",fmt_operator(o)?, var)),
+                // Env(o, EnvVar{var, part:Some(part)}) => sql(format!("{} (select \"{}\"::json->>'{}' from env)",fmt_operator(o)?, var, part)),
             })
         }
     };
 }
 #[allow(unused_macros)]
+
+#[allow(unused_macros)]
+macro_rules! fmt_env_var {
+    () => {
+        fn fmt_env_var<'a>(e: &'a EnvVar) -> String {
+            match e {
+                EnvVar{var, part:None} => format!("(select {} from env)",fmt_identity(var)),
+                EnvVar{var, part:Some(part)} => format!("(select {}::json->>'{}' from env)",fmt_identity(var), part),
+            }
+        }
+    };
+}
+#[allow(unused_macros)]
+
 macro_rules! fmt_function_call {
     () => {
         fn fmt_function_call<'a>(
@@ -1296,6 +1308,8 @@ pub(super) use fmt_field;
 pub(super) use fmt_field_format;
 #[allow(unused_imports)]
 pub(super) use fmt_filter;
+#[allow(unused_imports)]
+pub(super) use fmt_env_var;
 #[allow(unused_imports)]
 pub(super) use fmt_identity;
 #[allow(unused_imports)]

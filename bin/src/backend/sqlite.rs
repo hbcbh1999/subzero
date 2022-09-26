@@ -96,11 +96,11 @@ fn execute(
             let mutate_params = params_from_iter(main_parameters.into_iter().map(wrap_param));
             let mut rows = mutate_stmt.query(mutate_params).context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
             let mut ids:Vec<(i64,bool)> = vec![];
-            while let Some(r) = rows.next().context(SqliteDbError { authenticated })? {
+            while let Some(r) = rows.next().context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})? {
                 ids.push(
                     (
-                        r.get(0).context(SqliteDbError { authenticated })?, //rowid
-                        if is_delete {true} else {r.get(1).context(SqliteDbError { authenticated })?} //constraint check
+                        r.get(0).context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?, //rowid
+                        if is_delete {true} else {r.get(1).context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?} //constraint check
                     )
                 )
             }
@@ -252,12 +252,12 @@ impl Backend for SQLiteBackend {
                         task::block_in_place(|| {
                             let authenticated = false;
                             let query = include_files(q);
-                            //println!("schema query: {}", query);
+                            println!("schema query: {}", query);
                             let mut stmt = conn.prepare(query.as_str()).context(SqliteDbError { authenticated })?;
                             let mut rows = stmt.query([]).context(SqliteDbError { authenticated })?;
                             match rows.next().context(SqliteDbError { authenticated })? {
                                 Some(r) => {
-                                    //println!("json db_schema: {}", r.get::<usize,String>(0).context(SqliteDbError { authenticated })?.as_str());
+                                    println!("json db_schema: {}", r.get::<usize,String>(0).context(SqliteDbError { authenticated })?.as_str());
                                     serde_json::from_str::<DbSchema>(r.get::<usize,String>(0).context(SqliteDbError { authenticated })?.as_str()).context(JsonDeserialize).context(CoreError)
                                 },
                                 None => Err(Error::InternalError { message: "sqlite structure query did not return any rows".to_string() }),

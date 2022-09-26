@@ -27,7 +27,7 @@ macro_rules! param_placeholder_format {() => {"{{p{pos}:{data_type}}}"};}
 generate_fn!(true, "String");
 
 //fmt_main_query!();
-pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
     let schema = String::from(schema_str);
     let _count = match &request.preferences {
         Some(Preferences {
@@ -38,8 +38,10 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'
     };
 
     let return_representation = return_representation(request);
-
+    let has_payload_cte = matches!(request.query.node, Insert {..} | Update {..});
     Ok(
+        "with env as (" + fmt_env_query(&env)+ ") " +
+        if has_payload_cte {", "} else {""} +
         fmt_query(
             &schema,
             return_representation,
@@ -63,6 +65,16 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, _env: &'
         "
     )
 }
+pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
+    "select " +
+    if env.is_empty() {sql("null")} 
+    else {
+        env
+        .iter()
+        .map(|(k, v)| param(v as &SqlParam) + " as " + fmt_identity(&String::from(*k)))
+        .join(",")
+    }
+}
 //fmt_query!();
 pub fn fmt_query<'a>(
     schema: &String,
@@ -71,6 +83,9 @@ pub fn fmt_query<'a>(
     q: &'a Query,
     join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
+
+    let add_env_tbl_to_from = wrapin_cte.is_some();
+
     let (cte_snippet, query_snippet) = match &q.node {
         Select {
             select,
@@ -174,6 +189,7 @@ pub fn fmt_query<'a>(
                     + select_snippets.join(", ")
                     + " from "
                     + from_snippet
+                    + if add_env_tbl_to_from { ", env " } else { "" }
                     + " "
                     + if join_tables.len() > 0 {
                         format!(
@@ -215,12 +231,12 @@ pub fn fmt_query<'a>(
     match wrapin_cte {
         Some(cte_name) => match cte_snippet {
             Some(cte) => {
-                " with " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )"
+                " " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )"
             }
-            None => format!(" with {} as ( ", cte_name) + query_snippet + " )",
+            None => format!(" {} as ( ", cte_name) + query_snippet + " )",
         },
         None => match cte_snippet {
-            Some(cte) => " with " + cte + query_snippet,
+            Some(cte) => " " + cte + query_snippet,
             None => query_snippet,
         },
     }
@@ -251,6 +267,12 @@ macro_rules! fmt_in_filter {
     ($p:ident) => {
         fmt_operator(&"in ".to_string())? + param($p)
     };
+}
+fn fmt_env_var<'a>(e: &'a EnvVar) -> String {
+    match e {
+        EnvVar{var, part:None} => format!("(select {} from env)",fmt_identity(var)),
+        EnvVar{var, part:Some(part)} => format!("(select JSON_VALUE({},'$.{}') from env)",fmt_identity(var), part),
+    }
 }
 fmt_filter!();
 fmt_select_name!();
@@ -661,7 +683,7 @@ mod tests {
             query: q
         }; 
 
-        let expected_main_query_str = format!(r#"
+        let expected_main_query_str = format!(r#"with env as (select null)
         {}
         format JSONEachRow
         settings 
