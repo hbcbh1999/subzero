@@ -38,7 +38,7 @@ fn split_keep<'a>(r: &Regex, text: &'a str) -> Vec<SplitStr<'a>> {
 }
 
 pub fn include_files(template: String) -> String {
-    let r = Regex::new(r"\{@[^}]+(#[^\}]*)?\}").expect("Invalid regex");
+    let r = Regex::new(r"\{@[^#}]+(#[^\}]*)?\}").expect("Invalid regex");
     split_keep(&r, template.as_str()).into_iter()
     .map(|v| match v {
         SplitStr::Str(s) => s.to_owned(),

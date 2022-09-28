@@ -1,5 +1,5 @@
 import { expect, test } from '@jest/globals';
-import { Subzero } from '../index';
+import { Subzero, Statement } from '../index';
 
 const schema = {
     "schemas":[
@@ -76,8 +76,11 @@ const schema = {
     ]
 };
 
-function normalize_statement(p: [query: string, parameters: any]) {
-    return [p[0].replace(/\s+/g, ' ').trim(), p[1]];
+function normalize_statement(s : Statement) {
+    return {
+        query: s.query.replace(/\s+/g, ' ').trim(),
+        parameters: s.parameters
+    };
 }
 
 const subzero = new Subzero('postgresql', schema);
@@ -98,31 +101,32 @@ test('main query', () => {
         )
     )
     .toStrictEqual(
-        normalize_statement([
-            `
+        normalize_statement({
+            query: `
             with 
             env as materialized (select set_config($1, $2, true), $3 as "request",set_config($4, $5, true), $6 as "role")
             , _subzero_query as (
-                select "public"."tasks".* from "public"."tasks", env where "public"."tasks"."id" = $7
+                select "public"."tasks"."id", "public"."tasks"."name" from "public"."tasks", env where "public"."tasks"."id" = $7
             )
             , _subzero_count_query AS (select 1)
             select
                 pg_catalog.count(_subzero_t) as page_total,
                 null::bigint as total_result_set,
                 coalesce(json_agg(_subzero_t), '[]')::character varying as body,
+                true as constraints_satisfied,
                 nullif(current_setting('response.headers', true), '') as response_headers,
                 nullif(current_setting('response.status', true), '') as response_status
             from ( select * from _subzero_query ) _subzero_t
             `,
-            ["request"
-            ,'{"method":"GET"}'
-            ,'{"method":"GET"}'
-            ,'role'
-            ,'admin'
-            ,'admin'
-            , "1"
+            parameters: ["request"
+                , '{"method":"GET"}'
+                , '{"method":"GET"}'
+                , 'role'
+                , 'admin'
+                , 'admin'
+                , "1"
             ]
-        ])
+        })
     );
 });
 
@@ -140,11 +144,11 @@ test('core query', () => {
             )
         )
     )
-    .toStrictEqual(
-        normalize_statement([
-            `select "public"."tasks".* from "public"."tasks" where "public"."tasks"."id" = $1`,
-            ["1"]
-        ])
+        .toStrictEqual(
+            normalize_statement({
+            query: `select "public"."tasks"."id", "public"."tasks"."name" from "public"."tasks" where "public"."tasks"."id" = $1`,
+            parameters: ["1"]
+            })
     );
 });
 

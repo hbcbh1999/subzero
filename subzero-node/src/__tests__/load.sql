@@ -1,0 +1,1 @@
+../../../bin/tests/sqlite/fixtures/load.sql

@@ -1,7 +1,7 @@
 [package]
 name = "subzero-wasm"
 version = "0.0.1"
-authors = ["Ruslan Talpa <ruslan.talpa@gmail.com>"]
+authors = ["Ruslan Talpa <ruslan.talpa@subzero.cloud>"]
 edition = "2018"
 license = "LICENSE.txt"
 description = "subzero core module"
