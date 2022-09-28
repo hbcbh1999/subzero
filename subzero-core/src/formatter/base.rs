@@ -1,4 +1,5 @@
-use crate::api::{ApiRequest, Preferences, QueryNode::*, Representation,};
+use crate::api::{Preferences, QueryNode::*, Representation, Query, };
+
 
 #[allow(unused_macros)]
 macro_rules! fmt_field_format {
@@ -6,29 +7,38 @@ macro_rules! fmt_field_format {
         "to_jsonb({}{}{}){}"
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_field_format;
+
+
 #[allow(unused_macros)]
 macro_rules! star_select_item_format {
     () => {
         "{}.*"
     };
 }
+#[allow(unused_imports)] pub(super) use star_select_item_format;
+
 #[allow(unused_macros)]
 macro_rules! simple_select_item_format {
     () => {
         "{field}{as}{select_name:.0}"
     };
 }
+#[allow(unused_imports)] pub(super) use simple_select_item_format;
+
 #[allow(unused_macros)]
 macro_rules! cast_select_item_format {
     () => {
         "cast({field} as {cast}){as}{select_name:.0}"
     };
 }
+#[allow(unused_imports)] pub(super) use cast_select_item_format;
+
 #[allow(unused_macros)]
-macro_rules! fmt_main_query { () => {
-pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+macro_rules! fmt_main_query_internal { () => {
+pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
     let schema = String::from(schema_str);
-    let count = match &request.preferences {
+    let count = match preferences {
         Some(Preferences {
             count: Some(Count::ExactCount),
             ..
@@ -36,12 +46,12 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
         _ => false,
     };
 
-    let check_constraints = matches!(&request.query.node, Insert{..} | Update{..} );
-    let return_representation = return_representation(request);
+    let check_constraints = matches!(query.node, Insert{..} | Update{..} );
+    let return_representation = return_representation(method, query, preferences);
     let body_snippet = match (
         return_representation,
-        &request.accept_content_type,
-        &request.query.node,
+        accept_content_type,
+        &query.node,
     ) {
         (false, _, _) => "''",
         (
@@ -116,12 +126,12 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
             &schema,
             return_representation,
             Some("_subzero_query"),
-            &request.query,
+            query,
             &None,
         )?  + " , "
         
         + if count {
-            fmt_count_query(&schema, Some("_subzero_count_query"), &request.query)?
+            fmt_count_query(&schema, Some("_subzero_count_query"), query)?
         } else {
             sql("_subzero_count_query AS (select 1)")
         }
@@ -143,7 +153,15 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
     )
 }
 }}
+#[allow(unused_imports)] pub(super) use fmt_main_query_internal;
 
+#[allow(unused_macros)]
+macro_rules! fmt_main_query { () => {
+pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+    fmt_main_query_internal(schema_str, &request.method, &request.accept_content_type, &request.query, &request.preferences, env)
+}
+}}
+#[allow(unused_imports)] pub(super) use fmt_main_query;
 
 #[allow(unused_macros)]
 macro_rules! fmt_env_query { () => {
@@ -161,9 +179,7 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
     }
 }
 }}
-#[allow(unused_imports)]
-pub(super) use fmt_env_query;
-
+#[allow(unused_imports)] pub(super) use fmt_env_query;
 
 #[allow(unused_macros)]
 macro_rules! fmt_query { () => {
@@ -688,6 +704,8 @@ pub fn fmt_query<'a>(
     )
 }
 }}
+#[allow(unused_imports)] pub(super) use fmt_query;
+
 #[allow(unused_macros)]
 macro_rules! fmt_count_query {
     () => {
@@ -739,6 +757,8 @@ macro_rules! fmt_count_query {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_count_query;
+
 #[allow(unused_macros)]
 macro_rules! fmt_body {
     () => {
@@ -757,6 +777,8 @@ macro_rules! fmt_body {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_body;
+
 #[allow(unused_macros)]
 macro_rules! fmt_condition_tree {
     () => {
@@ -775,6 +797,8 @@ macro_rules! fmt_condition_tree {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_condition_tree;
+
 #[allow(unused_macros)]
 macro_rules! fmt_condition {
     () => {
@@ -809,12 +833,16 @@ macro_rules! fmt_condition {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_condition;
+
 #[allow(unused_macros)]
 macro_rules! fmt_in_filter {
     ($p:ident) => {
         fmt_operator(&"= any".to_string())? + ("(" + param($p) + ")")
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_in_filter;
+
 #[allow(unused_macros)]
 macro_rules! fmt_filter {
     () => {
@@ -856,7 +884,7 @@ macro_rules! fmt_filter {
         }
     };
 }
-#[allow(unused_macros)]
+#[allow(unused_imports)] pub(super) use fmt_filter;
 
 #[allow(unused_macros)]
 macro_rules! fmt_env_var {
@@ -869,8 +897,9 @@ macro_rules! fmt_env_var {
         }
     };
 }
-#[allow(unused_macros)]
+#[allow(unused_imports)] pub(super) use fmt_env_var;
 
+#[allow(unused_macros)]
 macro_rules! fmt_function_call {
     () => {
         fn fmt_function_call<'a>(
@@ -892,6 +921,7 @@ macro_rules! fmt_function_call {
         }
     };   
 }
+#[allow(unused_imports)] pub(super) use fmt_function_call;
 
 #[allow(unused_macros)]
 macro_rules! fmt_select_item_function {
@@ -934,7 +964,7 @@ macro_rules! fmt_select_item_function {
         }
     };   
 }
-
+#[allow(unused_imports)] pub(super) use fmt_select_item_function;
 
 #[allow(unused_macros)]
 macro_rules! fmt_select_item { 
@@ -974,6 +1004,8 @@ macro_rules! fmt_select_item {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_select_item;
+
 #[allow(unused_macros)]
 macro_rules! fmt_sub_select_item {
     () => {
@@ -1030,6 +1062,8 @@ macro_rules! fmt_sub_select_item {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_sub_select_item;
+
 #[allow(unused_macros)]
 macro_rules! fmt_operator {
     () => {
@@ -1037,6 +1071,8 @@ macro_rules! fmt_operator {
         fn fmt_operator(o: &Operator) -> Result<String> { Ok(String::new() + o.as_str() + " ") }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_operator;
+
 #[allow(unused_macros)]
 macro_rules! fmt_logic_operator {
     () => {
@@ -1048,6 +1084,8 @@ macro_rules! fmt_logic_operator {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_logic_operator;
+
 #[allow(unused_macros)]
 macro_rules! fmt_identity {
     () => {
@@ -1059,6 +1097,8 @@ macro_rules! fmt_identity {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_identity;
+
 #[allow(unused_macros)]
 macro_rules! fmt_qi {
     () => {
@@ -1074,6 +1114,8 @@ macro_rules! fmt_qi {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_qi;
+
 #[allow(unused_macros)]
 macro_rules! fmt_field {
     () => {
@@ -1094,6 +1136,8 @@ macro_rules! fmt_field {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_field;
+
 #[allow(unused_macros)]
 macro_rules! fmt_function_param {
     () => {
@@ -1112,6 +1156,8 @@ macro_rules! fmt_function_param {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_function_param;
+
 #[allow(unused_macros)]
 macro_rules! fmt_order {
     () => {
@@ -1125,6 +1171,8 @@ macro_rules! fmt_order {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_order;
+
 #[allow(unused_macros)]
 macro_rules! fmt_order_term {
     () => {
@@ -1148,6 +1196,8 @@ macro_rules! fmt_order_term {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_order_term;
+
 #[allow(unused_macros)]
 macro_rules! fmt_groupby {
     () => {
@@ -1161,6 +1211,8 @@ macro_rules! fmt_groupby {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_groupby;
+
 #[allow(unused_macros)]
 macro_rules! fmt_groupby_term {
     () => {
@@ -1170,6 +1222,8 @@ macro_rules! fmt_groupby_term {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_groupby_term;
+
 #[allow(unused_macros)]
 macro_rules! fmt_select_name {
     () => {
@@ -1194,6 +1248,8 @@ macro_rules! fmt_select_name {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_select_name;
+
 #[allow(unused_macros)]
 macro_rules! fmt_as {
     () => {
@@ -1210,6 +1266,8 @@ macro_rules! fmt_as {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_as;
+
 #[allow(unused_macros)]
 macro_rules! fmt_limit {
     () => {
@@ -1224,6 +1282,8 @@ macro_rules! fmt_limit {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_limit;
+
 #[allow(unused_macros)]
 macro_rules! fmt_offset {
     () => {
@@ -1238,6 +1298,8 @@ macro_rules! fmt_offset {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_offset;
+
 #[allow(unused_macros)]
 macro_rules! fmt_json_path {
     () => {
@@ -1249,6 +1311,8 @@ macro_rules! fmt_json_path {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_json_path;
+
 #[allow(unused_macros)]
 macro_rules! fmt_json_operation {
     () => {
@@ -1260,6 +1324,8 @@ macro_rules! fmt_json_operation {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_json_operation;
+
 #[allow(unused_macros)]
 macro_rules! fmt_json_operand {
     () => {
@@ -1271,11 +1337,12 @@ macro_rules! fmt_json_operand {
         }
     };
 }
+#[allow(unused_imports)] pub(super) use fmt_json_operand;
 
 #[allow(unused)]
-pub fn return_representation(request: &ApiRequest) -> bool {
+pub fn return_representation<'a>(method: &str, query: &'a Query, preferences: &Option<Preferences>) -> bool {
     !matches!(
-        (request.method, &request.query.node, &request.preferences),       
+        (method, &query.node, preferences),       
         ("POST",   Insert { .. }, None) |
         ("POST",   Insert { .. }, Some(Preferences {representation: Some(Representation::None),..})) |
         ("POST",   Insert { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
@@ -1290,73 +1357,73 @@ pub fn return_representation(request: &ApiRequest) -> bool {
     )
 }
 
-#[allow(unused_imports)]
-pub(super) use cast_select_item_format;
-#[allow(unused_imports)]
-pub(super) use fmt_as;
-#[allow(unused_imports)]
-pub(super) use fmt_body;
-#[allow(unused_imports)]
-pub(super) use fmt_condition;
-#[allow(unused_imports)]
-pub(super) use fmt_condition_tree;
-#[allow(unused_imports)]
-pub(super) use fmt_count_query;
-#[allow(unused_imports)]
-pub(super) use fmt_field;
-#[allow(unused_imports)]
-pub(super) use fmt_field_format;
-#[allow(unused_imports)]
-pub(super) use fmt_filter;
-#[allow(unused_imports)]
-pub(super) use fmt_env_var;
-#[allow(unused_imports)]
-pub(super) use fmt_identity;
-#[allow(unused_imports)]
-pub(super) use fmt_in_filter;
-#[allow(unused_imports)]
-pub(super) use fmt_json_operand;
-#[allow(unused_imports)]
-pub(super) use fmt_json_operation;
-#[allow(unused_imports)]
-pub(super) use fmt_json_path;
-#[allow(unused_imports)]
-pub(super) use fmt_limit;
-#[allow(unused_imports)]
-pub(super) use fmt_logic_operator;
-#[allow(unused_imports)]
-pub(super) use fmt_main_query;
-#[allow(unused_imports)]
-pub(super) use fmt_offset;
-#[allow(unused_imports)]
-pub(super) use fmt_operator;
-#[allow(unused_imports)]
-pub(super) use fmt_order;
-#[allow(unused_imports)]
-pub(super) use fmt_order_term;
-#[allow(unused_imports)]
-pub(super) use fmt_groupby;
-#[allow(unused_imports)]
-pub(super) use fmt_groupby_term;
-#[allow(unused_imports)]
-pub(super) use fmt_qi;
-#[allow(unused_imports)]
-pub(super) use fmt_query;
-#[allow(unused_imports)]
-pub(super) use fmt_function_call;
-#[allow(unused_imports)]
-pub(super) use fmt_select_item_function;
-#[allow(unused_imports)]
-pub(super) use fmt_select_item;
-#[allow(unused_imports)]
-pub(super) use fmt_select_name;
-#[allow(unused_imports)]
-pub(super) use fmt_sub_select_item;
-#[allow(unused_imports)]
-pub(super) use simple_select_item_format;
-#[allow(unused_imports)]
-pub(super) use star_select_item_format;
-#[allow(unused_imports)]
-pub(super) use fmt_function_param;
+// #[allow(unused_imports)]
+// pub(super) use cast_select_item_format;
+// #[allow(unused_imports)]
+// pub(super) use fmt_as;
+// #[allow(unused_imports)]
+// pub(super) use fmt_body;
+// #[allow(unused_imports)]
+// pub(super) use fmt_condition;
+// #[allow(unused_imports)]
+// pub(super) use fmt_condition_tree;
+// #[allow(unused_imports)]
+// pub(super) use fmt_count_query;
+// #[allow(unused_imports)]
+// pub(super) use fmt_field;
+// #[allow(unused_imports)]
+// pub(super) use fmt_field_format;
+// #[allow(unused_imports)]
+// pub(super) use fmt_filter;
+// #[allow(unused_imports)]
+// pub(super) use fmt_env_var;
+// #[allow(unused_imports)]
+// pub(super) use fmt_identity;
+// #[allow(unused_imports)]
+// pub(super) use fmt_in_filter;
+// #[allow(unused_imports)]
+// pub(super) use fmt_json_operand;
+// #[allow(unused_imports)]
+// pub(super) use fmt_json_operation;
+// #[allow(unused_imports)]
+// pub(super) use fmt_json_path;
+// #[allow(unused_imports)]
+// pub(super) use fmt_limit;
+// #[allow(unused_imports)]
+// pub(super) use fmt_logic_operator;
+// #[allow(unused_imports)]
+// pub(super) use fmt_main_query;
+// #[allow(unused_imports)]
+// pub(super) use fmt_offset;
+// #[allow(unused_imports)]
+// pub(super) use fmt_operator;
+// #[allow(unused_imports)]
+// pub(super) use fmt_order;
+// #[allow(unused_imports)]
+// pub(super) use fmt_order_term;
+// #[allow(unused_imports)]
+// pub(super) use fmt_groupby;
+// #[allow(unused_imports)]
+// pub(super) use fmt_groupby_term;
+// #[allow(unused_imports)]
+// pub(super) use fmt_qi;
+// #[allow(unused_imports)]
+// pub(super) use fmt_query;
+// #[allow(unused_imports)]
+// pub(super) use fmt_function_call;
+// #[allow(unused_imports)]
+// pub(super) use fmt_select_item_function;
+// #[allow(unused_imports)]
+// pub(super) use fmt_select_item;
+// #[allow(unused_imports)]
+// pub(super) use fmt_select_name;
+// #[allow(unused_imports)]
+// pub(super) use fmt_sub_select_item;
+// #[allow(unused_imports)]
+// pub(super) use simple_select_item_format;
+// #[allow(unused_imports)]
+// pub(super) use star_select_item_format;
+// #[allow(unused_imports)]
+// pub(super) use fmt_function_param;
 
 

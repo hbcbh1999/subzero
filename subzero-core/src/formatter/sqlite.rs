@@ -3,7 +3,8 @@ use super::base::{
     //fmt_body,
     fmt_condition,
     fmt_condition_tree,
-    //fmt_main_query,
+    //fmt_main_query_internal,
+    fmt_main_query,
     //fmt_query,
     fmt_count_query,
     fmt_field,
@@ -52,13 +53,13 @@ macro_rules! cast_select_item_format {
     };
 }
 
-//fmt_main_query!();
-pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+fmt_main_query!();
+pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
     let schema = String::from(schema_str);
-    let count = matches!(&request.preferences, Some(Preferences {count: Some(Count::ExactCount),..}));
+    let count = matches!(preferences, Some(Preferences {count: Some(Count::ExactCount),..}));
 
-    let return_representation = return_representation(request);
-    let body_snippet = match (return_representation, &request.accept_content_type, &request.query.node) {
+    let return_representation = return_representation(method, query, preferences);
+    let body_snippet = match (return_representation, accept_content_type, &query.node) {
         (false, _, _) => "''",
         (true, SingularJSON, FunctionCall { is_scalar: true, .. })
         | (
@@ -111,10 +112,10 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
         }
     };
 
-    let run_unwrapped_query = matches!(request.query.node, Insert {..} | Update {..} | Delete {..});
-    let has_payload_cte = matches!(request.query.node, Insert {..} | Update {..});
+    let run_unwrapped_query = matches!(query.node, Insert {..} | Update {..} | Delete {..});
+    let has_payload_cte = matches!(query.node, Insert {..} | Update {..});
     let wrap_cte_name = if run_unwrapped_query {None} else {Some("_subzero_query")};
-    let source_query = fmt_query(&schema, return_representation, wrap_cte_name, &request.query, &None)?;
+    let source_query = fmt_query(&schema, return_representation, wrap_cte_name, query, &None)?;
     let main_query = if run_unwrapped_query {
         "with env as materialized (" + fmt_env_query(&env)+ ") "
         + if has_payload_cte {", "} else {""}
@@ -124,7 +125,7 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
         "with env as materialized (" + fmt_env_query(&env)+ "), "
         + source_query + " , "
         + if count {
-            fmt_count_query(&schema, Some("_subzero_count_query"), &request.query)?
+            fmt_count_query(&schema, Some("_subzero_count_query"), query)?
         } else {
             sql("_subzero_count_query as (select 1)")
         }

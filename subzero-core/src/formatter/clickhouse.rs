@@ -8,6 +8,7 @@ use super::base::{
     fmt_identity, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_offset,
     fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_select_item, fmt_select_name, return_representation,
     simple_select_item_format, star_select_item_format, fmt_select_item_function,fmt_function_call,
+    fmt_main_query,
 };
 use crate::api::{Condition::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *, ContentType::SingularJSON};
 use crate::dynamic_statement::{
@@ -26,10 +27,10 @@ macro_rules! fmt_field_format {
 macro_rules! param_placeholder_format {() => {"{{p{pos}:{data_type}}}"};}
 generate_fn!(true, "String");
 
-//fmt_main_query!();
-pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+fmt_main_query!();
+pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
     let schema = String::from(schema_str);
-    let _count = match &request.preferences {
+    let _count = match preferences {
         Some(Preferences {
             count: Some(Count::ExactCount),
             ..
@@ -37,8 +38,8 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
         _ => false,
     };
 
-    let return_representation = return_representation(request);
-    let has_payload_cte = matches!(request.query.node, Insert {..} | Update {..});
+    let return_representation = return_representation(method, query, preferences);
+    let has_payload_cte = matches!(query.node, Insert {..} | Update {..});
     Ok(
         "with env as (" + fmt_env_query(&env)+ ") " +
         if has_payload_cte {", "} else {""} +
@@ -46,7 +47,7 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
             &schema,
             return_representation,
             None, //Some("_subzero_query"),
-            &request.query,
+            query,
             &None,
         )? + 
         "
@@ -54,7 +55,7 @@ pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a
         settings 
         "
         +
-        match &request.accept_content_type {
+        match accept_content_type {
             SingularJSON => "",
             _ => "output_format_json_array_of_rows=1,",
         }

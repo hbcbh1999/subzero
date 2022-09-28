@@ -62,7 +62,7 @@ fn execute(
     conn.execute_batch("BEGIN DEFERRED").context(SqliteDbError { authenticated })?;
     //let transaction = conn.transaction().context(SqliteDbError { authenticated })?;
     let primary_key_column = "rowid"; //every table has this (TODO!!! check)
-    let return_representation = return_representation(request);
+    let return_representation = return_representation(request.method, &request.query, &request.preferences);
     let (second_stage_select, first_stage_reponse) = match request {
         ApiRequest {query: Query { node: node@Insert {into:table,where_,select,..}, sub_selects },..} |
         ApiRequest {query: Query { node: node@Update {table,where_,select,..}, sub_selects },..} |
