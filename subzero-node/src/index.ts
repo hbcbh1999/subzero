@@ -1,4 +1,4 @@
-import { Backend } from 'subzero-wasm';
+import { Backend, Request as SubzeroRequest } from 'subzero-wasm';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -13,25 +13,32 @@ export type Headers = ([string, string])[];
 export type Cookies = ([string, string])[];
 export type Env = ([string, string])[];
 
+
 export class Subzero {
     private backend: Backend;
-    private dbType: DbType;
 
     constructor(dbType: DbType, schema: any) {
-        this.backend = Backend.init(JSON.stringify(schema));
-        this.dbType = dbType;
+        this.backend = Backend.init(JSON.stringify(schema), dbType);
     }
 
-    get_main_query(method: Method, schemaName: string, entity: string, path: string, get: GetParameters, body: Body, headers: Headers, cookies: Cookies, env: Env): Statement {
-        const [query, parameters] = this.backend.get_query(schemaName, entity, method, path, get, body ?? "", headers, cookies, env, this.dbType, false);
-        return { query, parameters };
-    }
-    get_core_query(method: Method, schemaName: string, entity: string, path: string, get: GetParameters, body: Body, headers: Headers, ): Statement {
-        const [query, parameters] = this.backend.get_query(schemaName, entity, method, path, get, body ?? "", headers, [], [], this.dbType, true);
-        return { query, parameters };
+    parse(schemaName: string, urlPrefix: string, request: Request): SubzeroRequest {
+        let method = request.method;
+        let url = new URL(request.url);
+        let path = url.pathname;
+        let entity = url.pathname.substring(urlPrefix.length);
+        let body = request.body ? request.body.toString() : "";
+        // cookies are not actually used at the parse stage, they are used in the fmt stage through the env parameter
+        let cookies: Cookies = [];
+        let headers: Headers = [];
+        request.headers.forEach((value, key) => headers.push([key, value]));
+        let get: GetParameters = Array.from(url.searchParams.entries());
+        return this.backend.parse(schemaName, entity, method, path, get, body, headers, cookies)
     }
 
-    
+    fmt_main_query(request: SubzeroRequest, env: Env): Statement {
+        const [query, parameters] = this.backend.fmt_main_query(request, env);
+        return { query, parameters };
+    }
 }
 
 export function get_raw_introspection_query(dbType: DbType): Query {

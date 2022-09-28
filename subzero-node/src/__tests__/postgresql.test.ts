@@ -82,20 +82,22 @@ function normalize_statement(s : Statement) {
         parameters: s.parameters
     };
 }
-
+const base_url = 'http://localhost:3000/rest';
 const subzero = new Subzero('postgresql', schema);
 test('main query', () => {
+    const request = subzero.parse('public', '/rest/', new Request(
+        `${base_url}/tasks?id=eq.1`,
+        {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            }
+        }
+    ));
     expect(
         normalize_statement(
-            subzero.get_main_query(
-                "GET", // method
-                "public", // schema
-                "tasks", // entity
-                "/tasks", // path
-                [["id", "eq.1"]], // get query parameters
-                undefined, // body
-                [["accept", "application/json"]], // headers
-                [["acookie","cookieval"]], // cookies
+            subzero.fmt_main_query(
+                request,
                 [["role", "admin"],["request", '{"method":"GET"}']] // env
             )
         )
@@ -130,25 +132,25 @@ test('main query', () => {
     );
 });
 
-test('core query', () => {
-    expect(
-        normalize_statement(
-            subzero.get_core_query(
-                "GET", // method
-                "public", // schema
-                "tasks", // entity
-                "/tasks", // path
-                [["id", "eq.1"]], // get query parameters
-                undefined, // body
-                [["accept", "application/json"]] // headers
-            )
-        )
-    )
-        .toStrictEqual(
-            normalize_statement({
-            query: `select "public"."tasks"."id", "public"."tasks"."name" from "public"."tasks" where "public"."tasks"."id" = $1`,
-            parameters: ["1"]
-            })
-    );
-});
+// test('core query', () => {
+//     expect(
+//         normalize_statement(
+//             subzero.get_core_query(
+//                 "GET", // method
+//                 "public", // schema
+//                 "tasks", // entity
+//                 "/tasks", // path
+//                 [["id", "eq.1"]], // get query parameters
+//                 undefined, // body
+//                 [["accept", "application/json"]] // headers
+//             )
+//         )
+//     )
+//         .toStrictEqual(
+//             normalize_statement({
+//             query: `select "public"."tasks"."id", "public"."tasks"."name" from "public"."tasks" where "public"."tasks"."id" = $1`,
+//             parameters: ["1"]
+//             })
+//     );
+// });
 
