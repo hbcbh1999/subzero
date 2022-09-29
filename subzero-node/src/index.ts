@@ -1,7 +1,8 @@
-import { Backend, Request as SubzeroRequest } from 'subzero-wasm';
+
 import * as fs from 'fs';
 import * as path from 'path';
-
+import { Backend, Request as SubzeroRequest } from 'subzero-wasm';
+export { Request } from 'subzero-wasm';
 export type DbType = "postgresql" | "sqlite" | "clickhouse";
 export type Query = string;
 export type Parameters = (string | number | boolean | null | (string|number|boolean|null)[])[];
@@ -14,6 +15,7 @@ export type Cookies = ([string, string])[];
 export type Env = ([string, string])[];
 
 
+
 export class Subzero {
     private backend: Backend;
 
@@ -21,12 +23,12 @@ export class Subzero {
         this.backend = Backend.init(JSON.stringify(schema), dbType);
     }
 
-    parse(schemaName: string, urlPrefix: string, request: Request): SubzeroRequest {
+    async parse(schemaName: string, urlPrefix: string, request: Request): Promise<SubzeroRequest> {
         let method = request.method;
         let url = new URL(request.url);
         let path = url.pathname;
         let entity = url.pathname.substring(urlPrefix.length);
-        let body = request.body ? request.body.toString() : "";
+        let body = await request.text();
         // cookies are not actually used at the parse stage, they are used in the fmt stage through the env parameter
         let cookies: Cookies = [];
         let headers: Headers = [];
@@ -37,8 +39,22 @@ export class Subzero {
 
     fmt_main_query(request: SubzeroRequest, env: Env): Statement {
         const [query, parameters] = this.backend.fmt_main_query(request, env);
+        //const query = _query.replaceAll('rarray(', 'carray(');
         return { query, parameters };
     }
+
+    fmt_sqlite_mutate_query(request: SubzeroRequest, env: Env): Statement {
+        const [query, parameters] = this.backend.fmt_sqlite_mutate_query(request, env);
+        //const query = _query.replaceAll('rarray(', 'carray(');
+        return { query, parameters };
+    }
+
+    fmt_sqlite_second_stage_select(request: SubzeroRequest, ids: string[], env: Env): Statement {
+        const [query, parameters] = this.backend.fmt_sqlite_second_stage_select(request, ids, env);
+        //const query = _query.replaceAll('rarray(', 'carray(');
+        return { query, parameters };
+    }
+    
 }
 
 export function get_raw_introspection_query(dbType: DbType): Query {

@@ -11,8 +11,11 @@ use utils::{
 use subzero_core::{
     parser::postgrest::parse,
     schema::DbSchema,
-    formatter::Param::*,
-    api::{SingleVal, ListVal, Payload, ContentType, Query, Preferences}
+    formatter::{Param::*, ToParam},
+    api::{
+        SingleVal, ListVal, Payload, ContentType, Query, Preferences, Field, QueryNode::*,
+        SelectItem, Condition, Filter,
+    }
 };
 #[cfg(feature = "postgresql")]
 use subzero_core::formatter::postgresql;
@@ -31,6 +34,7 @@ use serde_json;
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[wasm_bindgen]
+#[derive(Debug, Clone)]
 pub struct Request {
     schema_name: String,
     method: String,
@@ -126,111 +130,116 @@ impl Backend {
             },
             _ => Err(JsError::new("unsupported database type")),
         }?;
-        // let parameters = main_parameters.into_iter().map(|p| {
-        //     match p.to_param() {
-        //         LV(ListVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
-        //         SV(SingleVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
-        //         PL(Payload(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
-        //         TV(v) => JsValue::from_serde(v).unwrap_or_default(),
-        //     }
-        // }).collect::<Vec<_>>();
+        Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
+    }
 
-        // Ok(Statement {
-        //     statement: main_statement,
-        //     parameters,
-        // })
-        let parameters = JsArray::new_with_length(main_parameters.len() as u32);
-        for (i, p) in main_parameters.into_iter().enumerate() {
+    pub fn fmt_sqlite_mutate_query(&self, original_request: &Request, env: &JsArray) -> Result<Vec<JsValue>, JsError> {
+        
+        let db_type = self.db_type.as_str();
+        let env = env.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
+        let env = env.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
+        //sqlite does not support returining in CTEs so we must do a two step process
+        let primary_key_column = "rowid"; //every table has this (TODO!!! check)
+        let primary_key_field = Field {name: primary_key_column.to_string(), json_path: None};
+
+        // create a clone of the request
+        let mut request:Request = original_request.clone();
+        let is_delete = matches!(request.query.node, Delete{..});
+        
+        // eliminate the sub_selects and also select back
+        match &mut request {
+            Request { query: Query { sub_selects, node: Insert {returning, select, ..}}, ..} |
+            Request { query: Query { sub_selects, node: Delete {returning, select, ..}}, ..} |
+            Request { query: Query { sub_selects, node: Update {returning, select, ..}}, ..} => {
+                //return only the primary key column
+                returning.clear();
+                returning.push(primary_key_column.to_string());
+                select.clear();
+                select.push(SelectItem::Simple {field: primary_key_field.clone(), alias: None,cast: None});
+
+                if !is_delete {
+                    select.push(SelectItem::Simple {field: Field { name: "_subzero_check__constraint".to_string(), json_path: None }, alias: None,cast: None});
+                }
+                // no need for aditional data from joined tables
+                sub_selects.clear();
+            }
+            _ => {}
+        }
+        
+        let (main_statement, main_parameters, _) = match db_type {
+            #[cfg(feature = "sqlite")]
+            "sqlite" => {
+                let query = sqlite::fmt_main_query_internal(request.schema_name.as_str(), &request.method, &request.accept_content_type, &request.query, &request.preferences, &env).map_err(cast_core_err)?;
+                Ok(sqlite::generate(query))
+            },
+            _ => Err(JsError::new("unsupported database type for two step mutation")),
+        }?;
+        
+        Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
+    }
+
+    pub fn fmt_sqlite_second_stage_select(&self, original_request: &Request, ids: &JsArray, env: &JsArray) -> Result<Vec<JsValue>, JsError> {
+        
+        let db_type = self.db_type.as_str();
+        let env = env.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
+        let env = env.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
+        let ids = ids.into_serde::<Vec<String>>().map_err(cast_serde_err)?;
+        // create a clone of the request
+        let mut request:Request = original_request.clone();
+        match &original_request.query {
+            Query { node:Insert {into:table,where_,select,..}, sub_selects } |
+            Query { node:Update {table,where_,select,..}, sub_selects } |
+            Query { node:Delete {from:table,where_,select,..}, sub_selects } => {
+                let primary_key_column = "rowid"; //every table has this (TODO!!! check)
+                let primary_key_field = Field {name: primary_key_column.to_string(), json_path: None};
+            
+                let mut select_where = where_.to_owned();
+                // add the primary key condition to the where clause
+                select_where.conditions.insert(0, Condition::Single {field: primary_key_field, filter: Filter::In(ListVal(ids,None)), negate: false});
+                request.method = "GET".to_string();
+                // set the request query to be a select
+                request.query = Query {
+                    node: Select {
+                        from: (table.to_owned(), None),
+                        join_tables: vec![], //todo!! this should probably not be empty
+                        where_: select_where,
+                        select: select.to_vec(),
+                        limit:None,
+                        offset:None,
+                        order:vec![],
+                        groupby: vec![],
+                    },
+                    sub_selects: sub_selects.to_vec()
+                };
+            }
+            _ => return Err(JsError::new("unsupported query type for two step mutation")),
+        }
+        
+
+        let (main_statement, main_parameters, _) = match db_type {
+            #[cfg(feature = "sqlite")]
+            "sqlite" => {
+                let query = sqlite::fmt_main_query_internal(request.schema_name.as_str(), &request.method, &request.accept_content_type, &request.query, &request.preferences, &env).map_err(cast_core_err)?;
+                Ok(sqlite::generate(query))
+            },
+            _ => Err(JsError::new("unsupported database type")),
+        }?;
+        Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
+    }
+}
+
+// convert parameters vector to a js array
+fn parameters_to_js_array(rust_parameters: Vec<&(dyn ToParam + Sync)>) -> JsArray {
+    let parameters = JsArray::new_with_length(rust_parameters.len() as u32);
+        for (i, p) in rust_parameters.into_iter().enumerate() {
             let v = match p.to_param() {
-                LV(ListVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
+                LV(ListVal(v,_)) => JsValue::from_serde(&serde_json::to_string(v).unwrap_or_default()).unwrap_or_default(),
                 SV(SingleVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
                 PL(Payload(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
                 TV(v) => JsValue::from_serde(v).unwrap_or_default(),
             };
             parameters.set(i as u32, v);
         }
-        Ok(vec![JsValue::from(main_statement), JsValue::from(parameters)])
-    }
-
-    // pub fn get_query(
-    //     &self,
-    //     schema_name: &str,
-    //     root: &str, 
-    //     method: &str, 
-    //     path: &str, 
-    //     get: &JsArray, 
-    //     //body: Option<JsString>,
-    //     body: &str,
-    //     headers: &JsArray,
-    //     cookies: &JsArray,
-    //     env: &JsArray,
-    //     //db_type: Option<JsString>,
-    //     db_type: &str,
-    //     return_core_query: bool,
-    // )
-    // -> Result<Vec<JsValue>, JsError> {
-        
-    //     if !["GET","POST","PUT","DELETE","PATCH"].contains(&method) {
-    //         return Err(JsError::new("invalid method"));
-    //     }
-        
-    //     let get = get.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
-    //     let get = get.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
-    //     let headers = headers.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
-    //     let headers = headers.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
-    //     let cookies = cookies.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
-    //     let cookies = cookies.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
-    //     let env = env.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
-    //     let env = env.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
-    //     let db_schema = &self.db_schema;
-    //     let body = if body.is_empty() {
-    //         None
-    //     } else {
-    //         Some(body)
-    //     };
-    //     let max_rows = None;
-
-    //     let request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, max_rows).map_err(cast_core_err)?;
-
-    //     let (main_statement, main_parameters, _) = match db_type {
-    //         #[cfg(feature = "postgresql")]
-    //         "postgresql" => {
-    //             let query = if !return_core_query
-    //                         {postgresql::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?}
-    //                         else
-    //                         {postgresql::fmt_query(&request.schema_name.to_string(), false, None, &request.query,&None).map_err(cast_core_err)?};
-    //             Ok(postgresql::generate(query))
-    //         },
-    //         #[cfg(feature = "clickhouse")]
-    //         "clickhouse" => {
-    //             let query = if !return_core_query
-    //                         {clickhouse::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?}
-    //                         else
-    //                         {clickhouse::fmt_query(&request.schema_name.to_string(), false, None, &request.query,&None).map_err(cast_core_err)?};
-    //             Ok(clickhouse::generate(query))
-    //         },
-    //         #[cfg(feature = "sqlite")]
-    //         "sqlite" => {
-    //             let query = if !return_core_query
-    //                         {sqlite::fmt_main_query(request.schema_name, &request, &env).map_err(cast_core_err)?}
-    //                         else
-    //                         {sqlite::fmt_query(&request.schema_name.to_string(), false, None, &request.query,&None).map_err(cast_core_err)?};
-    //             Ok(sqlite::generate(query))
-    //         },
-    //         _ => Err(JsError::new("unsupported database type")),
-    //     }?;
-    //     let parameters = JsArray::new_with_length(main_parameters.len() as u32);
-    //     for (i, p) in main_parameters.into_iter().enumerate() {
-    //         let v = match p.to_param() {
-    //             LV(ListVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
-    //             SV(SingleVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
-    //             PL(Payload(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
-    //             TV(v) => JsValue::from_serde(v).unwrap_or_default(),
-    //         };
-    //         parameters.set(i as u32, v);
-    //     }
-    //     Ok(vec![JsValue::from(main_statement), JsValue::from(parameters)])
-    // }
+    parameters
 }
-
 

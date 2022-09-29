@@ -84,8 +84,8 @@ function normalize_statement(s : Statement) {
 }
 const base_url = 'http://localhost:3000/rest';
 const subzero = new Subzero('postgresql', schema);
-test('main query', () => {
-    const request = subzero.parse('public', '/rest/', new Request(
+test('main query', async () => {
+    const request = await subzero.parse('public', '/rest/', new Request(
         `${base_url}/tasks?id=eq.1`,
         {
             method: 'GET',

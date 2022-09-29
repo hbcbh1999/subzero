@@ -474,7 +474,7 @@ fmt_condition_tree!();
 fmt_condition!();
 macro_rules! fmt_in_filter {
     ($p:ident) => {
-        fmt_operator(&"in".to_string())? + ("( select * from rarray(" + param($p) + ") )")
+        fmt_operator(&"in".to_string())? + ("( select value from json_each(" + param($p) + ") )")
     };
 }
 //fmt_env_var!();

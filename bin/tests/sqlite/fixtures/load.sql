@@ -1,4 +1,5 @@
 PRAGMA foreign_keys = ON;
+
 drop table if exists tbl1;
 drop table if exists users_tasks;
 drop table if exists users;

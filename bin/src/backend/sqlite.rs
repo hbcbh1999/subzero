@@ -29,17 +29,19 @@ use super::{Backend, include_files};
 use tokio::task;
 use rusqlite::{
     params_from_iter,
-    types::{ToSqlOutput, Value, Value::*, ValueRef},
+    types::{ToSqlOutput, Value::*, ValueRef},
+    //types::Value,
     Result as SqliteResult, ToSql,
 };
-use std::rc::Rc;
+//use std::rc::Rc;
 
 #[derive(Debug)]
 struct WrapParam<'a>(Param<'a>);
 impl ToSql for WrapParam<'_> {
     fn to_sql(&self) -> SqliteResult<ToSqlOutput<'_>> {
         match self {
-            WrapParam(LV(ListVal(v, ..))) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
+            //WrapParam(LV(ListVal(v, ..))) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
+            WrapParam(LV(ListVal(v, ..))) => Ok(ToSqlOutput::Owned(Text(serde_json::to_string(v).unwrap_or_default()))),
             WrapParam(SV(SingleVal(v, ..))) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
             WrapParam(TV(v)) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
             WrapParam(PL(Payload(v, ..))) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
@@ -61,14 +63,14 @@ fn execute(
 
     conn.execute_batch("BEGIN DEFERRED").context(SqliteDbError { authenticated })?;
     //let transaction = conn.transaction().context(SqliteDbError { authenticated })?;
-    let primary_key_column = "rowid"; //every table has this (TODO!!! check)
     let return_representation = return_representation(request.method, &request.query, &request.preferences);
-    let (second_stage_select, first_stage_reponse) = match request {
+    
+    let api_response = match request {
         ApiRequest {query: Query { node: node@Insert {into:table,where_,select,..}, sub_selects },..} |
         ApiRequest {query: Query { node: node@Update {table,where_,select,..}, sub_selects },..} |
         ApiRequest {query: Query { node: node@Delete {from:table,where_,select,..}, sub_selects },..} => {
             //sqlite does not support returining in CTEs so we must do a two step process
-            
+            let primary_key_column = "rowid"; //every table has this (TODO!!! check)
             let primary_key_field = Field {name: primary_key_column.to_string(), json_path: None};
             let is_delete = matches!(node, Delete{..});
             // here we eliminate the sub_selects and also select back
@@ -77,23 +79,26 @@ fn execute(
                 ApiRequest { query: Query { sub_selects, node: Insert {returning, select, ..}}, ..} |
                 ApiRequest { query: Query { sub_selects, node: Delete {returning, select, ..}}, ..} |
                 ApiRequest { query: Query { sub_selects, node: Update {returning, select, ..}}, ..} => {
+                    //return only the primary key column
                     returning.clear();
                     returning.push(primary_key_column.to_string());
                     select.clear();
                     select.push(SelectItem::Simple {field: primary_key_field.clone(), alias: None,cast: None});
+
                     if !is_delete {
                         select.push(SelectItem::Simple {field: Field { name: "_subzero_check__constraint".to_string(), json_path: None }, alias: None,cast: None});
                     }
+                    // no need for aditional data from joined tables
                     sub_selects.clear();
                 }
                 _ => {}
             }
             //debug!("mutated request query: {:?}", mutate_request.query);
             let env1 = env.clone();
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, &mutate_request, &env1).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
-            debug!("pre_statement: {}\n{:?}", main_statement, main_parameters);
-            let mut mutate_stmt = conn.prepare(main_statement.as_str()).context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
-            let mutate_params = params_from_iter(main_parameters.into_iter().map(wrap_param));
+            let (mutate_statement, mutate_parameters, _) = generate(fmt_main_query(request.schema_name, &mutate_request, &env1).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+            debug!("pre_statement: {}\n{:?}", mutate_statement, mutate_parameters);
+            let mut mutate_stmt = conn.prepare(mutate_statement.as_str()).context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
+            let mutate_params = params_from_iter(mutate_parameters.into_iter().map(wrap_param));
             let mut rows = mutate_stmt.query(mutate_params).context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
             let mut ids:Vec<(i64,bool)> = vec![];
             while let Some(r) = rows.next().context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})? {
@@ -106,7 +111,7 @@ fn execute(
             }
             debug!("ids: {:?}", ids);
 
-            // check if all rows paased the permission check
+            // check if all rows pased the permission check
             if ids.iter().any(|(_,p)| !p) {
                 _ = conn.execute_batch("ROLLBACK");
                 return Err(to_core_error(PermissionDenied { 
@@ -115,14 +120,40 @@ fn execute(
                 }));
             }
 
+            // in case of delete se can not do  "select back" so we jut return the deleted ids
+            if is_delete  {
+                let count = matches!(&request.preferences, Some(Preferences { count: Some(Count::ExactCount), ..}));
+                if config.db_tx_rollback {
+                    conn.execute_batch("ROLLBACK").context(SqliteDbError { authenticated })?;
+                } else {
+                    conn.execute_batch("COMMIT").context(SqliteDbError { authenticated })?;
+                }
+                return Ok(ApiResponse {
+                    page_total: ids.len() as i64,
+                    total_result_set: if count { Some(ids.len() as i64) } else {None},
+                    top_level_offset: 0,
+                    body: if return_representation {
+                        serde_json::to_string(&ids.iter().map(|(i,_)| 
+                            json!({primary_key_column:i})
+                        ).collect::<Vec<_>>()).context(JsonSerialize).context(CoreError)? 
+                    } else {"".to_string()},
+                    response_headers: None,
+                    response_status: None
+                })
+            };
+
+            // create the second stage select
             let mut select_request = request.clone();
             let mut select_where = where_.to_owned();
+            // add the primary key condition to the where clause
             select_where.conditions.insert(0, Condition::Single {field: primary_key_field, filter: Filter::In(ListVal(ids.iter().map(|(i,_)| i.to_string()).collect(),None)), negate: false});
             select_request.method = "GET";
+
+            // set the request query to be a select
             select_request.query = Query {
                 node: Select {
                     from: (table.to_owned(), None),
-                    join_tables: vec![],
+                    join_tables: vec![], //todo!! this should probably not be empty
                     where_: select_where,
                     select: select.to_vec(),
                     limit:None,
@@ -133,71 +164,60 @@ fn execute(
                 sub_selects: sub_selects.to_vec()
             };
 
-            let response  = match node {
-                // in case of delete se can not do  "select back" so we jut return the deleted ids
-                Delete { .. } => {
-                    let count = matches!(&request.preferences, Some(Preferences { count: Some(Count::ExactCount), ..}));
-                    
-                    Some(ApiResponse {
-                        page_total: ids.len() as i64,
-                        total_result_set: if count { Some(ids.len() as i64) } else {None},
-                        top_level_offset: 0,
-                        body: if return_representation {
-                            serde_json::to_string(&ids.iter().map(|(i,_)| 
-                                json!({primary_key_column:i})
-                            ).collect::<Vec<_>>()).context(JsonSerialize).context(CoreError)? 
-                        } else {"".to_string()},
-                        response_headers: None,
-                        response_status: None
-                    })
-                },
-                _ => None
-            };
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(select_request.schema_name, &select_request, env).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+            debug!("main_statement: {}\n{:?}", main_statement, main_parameters);
+            let mut main_stm = conn
+                .prepare_cached(main_statement.as_str())
+                .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
+                .context(SqliteDbError { authenticated })?;
+            let parameters = params_from_iter(main_parameters.into_iter().map(wrap_param));
+            let mut rows = main_stm
+                .query(parameters)
+                .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
+                .context(SqliteDbError { authenticated })?;
 
-            Ok((Some(select_request),response))
+            let response_row = rows.next().context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?.unwrap();
+            
+            let api_response = {
+                Ok(ApiResponse {
+                    page_total: response_row.get("page_total").context(SqliteDbError { authenticated })?,       //("page_total"),
+                    total_result_set: response_row.get("total_result_set").context(SqliteDbError { authenticated })?, //("total_result_set"),
+                    top_level_offset: 0,
+                    body: if return_representation {response_row.get("body").context(SqliteDbError { authenticated })?} else {"".to_string()},             //("body"),
+                    response_headers: response_row.get("response_headers").context(SqliteDbError { authenticated })?, //("response_headers"),
+                    response_status: response_row.get("response_status").context(SqliteDbError { authenticated })?,  //("response_status"),
+                })
+            }.map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
+            api_response
         },
         _ => {
-            Ok((None,None))
-        }
-    }?;
-    if let Some(r) = first_stage_reponse { // this is a special case for delete
-        if config.db_tx_rollback {
-            conn.execute_batch("ROLLBACK").context(SqliteDbError { authenticated })?;
-        } else {
-            conn.execute_batch("COMMIT").context(SqliteDbError { authenticated })?;
-        }
-        return Ok(r)
-    }
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+            debug!("main_statement: {}\n{:?}", main_statement, main_parameters);
+            let mut main_stm = conn
+                .prepare_cached(main_statement.as_str())
+                .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
+                .context(SqliteDbError { authenticated })?;
+            let parameters = params_from_iter(main_parameters.into_iter().map(wrap_param));
+            let mut rows = main_stm
+                .query(parameters)
+                .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
+                .context(SqliteDbError { authenticated })?;
 
-    let final_request = match &second_stage_select {
-        Some(r) => r,
-        None => request
+            let response_row = rows.next().context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?.unwrap();
+            let api_response = {
+                Ok(ApiResponse {
+                    page_total: response_row.get("page_total").context(SqliteDbError { authenticated })?,       //("page_total"),
+                    total_result_set: response_row.get("total_result_set").context(SqliteDbError { authenticated })?, //("total_result_set"),
+                    top_level_offset: 0,
+                    body: if return_representation {response_row.get("body").context(SqliteDbError { authenticated })?} else {"".to_string()},             //("body"),
+                    response_headers: response_row.get("response_headers").context(SqliteDbError { authenticated })?, //("response_headers"),
+                    response_status: response_row.get("response_status").context(SqliteDbError { authenticated })?,  //("response_status"),
+                })
+            }.map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
+            api_response
+        }
     };
     
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, final_request, env).context(CoreError).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
-    debug!("main_statement: {}\n{:?}", main_statement, main_parameters);
-    let mut main_stm = conn
-        .prepare_cached(main_statement.as_str())
-        .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
-        .context(SqliteDbError { authenticated })?;
-    let parameters = params_from_iter(main_parameters.into_iter().map(wrap_param));
-    let mut rows = main_stm
-        .query(parameters)
-        .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
-        .context(SqliteDbError { authenticated })?;
-
-    let main_row = rows.next().context(SqliteDbError { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?.unwrap();
-    
-    let api_response = {
-        Ok(ApiResponse {
-            page_total: main_row.get("page_total").context(SqliteDbError { authenticated })?,       //("page_total"),
-            total_result_set: main_row.get("total_result_set").context(SqliteDbError { authenticated })?, //("total_result_set"),
-            top_level_offset: 0,
-            body: if return_representation {main_row.get("body").context(SqliteDbError { authenticated })?} else {"".to_string()},             //("body"),
-            response_headers: main_row.get("response_headers").context(SqliteDbError { authenticated })?, //("response_headers"),
-            response_status: main_row.get("response_status").context(SqliteDbError { authenticated })?,  //("response_status"),
-        })
-    }.map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
         conn.execute_batch("ROLLBACK").context(SqliteDbError { authenticated })?;
