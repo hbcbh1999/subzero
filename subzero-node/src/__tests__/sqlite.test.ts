@@ -21,7 +21,7 @@ const base_url = 'http://localhost:3000/rest';
 
 beforeAll(async () => {
     db = await open({ filename: ':memory:', driver: sqlite3.Database });
-    db.loadExtension('carray');
+    //db.loadExtension('carray');
     // Read the init SQL file
     const loadSql = fs.readFileSync(path.join(__dirname, 'load.sql')).toString().split(';');
     
