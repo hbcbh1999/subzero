@@ -1,0 +1,63 @@
+[
+    {
+        "name": "public can see rows marked as public",
+        "table_schema": "public", "table_name": "permissions_check",
+        "role": "public",
+        "grant": ["select"], "columns": ["id", "value"],
+        "policy_for": ["select"], 
+        "using": [{"column":"public","op":"=","val":"1"}]
+    },
+    {
+        "name": "validation for hidden value",
+        "table_schema": "public", "table_name": "permissions_check",
+        "role": "public",
+        "restrictive": true,
+        "check": [{
+            "tree":{
+                "logic_op":"or",
+                "conditions":[
+                    {"column":"hidden","op":"=","val":"Hidden"},
+                    {"column":"hidden","op":"=","val":"Hidden changed"}
+                ]
+            }
+        }]
+    },
+    {
+        "name": "admin allow all",
+        "table_schema": "public", "table_name": "permissions_check",
+        "role": "admin",
+        "grant": ["select", "insert", "update", "delete"],
+        "policy_for": ["select", "insert", "update", "delete"],
+        "using": [{"sql":"true"}],
+        "check": [{"sql":"true"}]
+    },
+    {
+        "name": "alice allow owned",
+        "table_schema": "public","table_name": "permissions_check",
+        "role": "alice",
+        "grant": ["all"],
+        "policy_for": ["select", "insert", "update", "delete"],
+        "using": [{"column":"role","op":"=","env":"request.jwt.claims","env_part":"role"}],
+        "check": [{"column":"role","op":"=","env":"request.jwt.claims","env_part":"role"}]
+    },
+    {
+        "name": "bob allow owned",
+        "table_schema": "public","table_name": "permissions_check",
+        "role": "bob",
+        "grant": ["all"],
+        "policy_for": ["all"],
+        "using": [{"column":"role","op":"=","val":"bob"}],
+        "check": [{"column":"role","op":"=","val":"bob"}]
+    },
+
+    { "table_schema": "public", "table_name": "tbl1", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "users_tasks", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "users", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "tasks", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "projects", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "clients", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "complex_items", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
+
+    { "table_schema": "public", "table_name": "taxi_zone_dictionary", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },
+    { "table_schema": "public", "table_name": "trips", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] }
+]

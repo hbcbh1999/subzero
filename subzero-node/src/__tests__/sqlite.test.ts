@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as sqlite3 from 'sqlite3'
 import { open, Database } from 'sqlite'
-import { Subzero, Statement, get_introspection_query } from '../index';
+import { Subzero, Statement, get_introspection_query, Env } from '../index';
 
 // Declare global variables
 sqlite3.verbose();
@@ -21,7 +21,6 @@ const base_url = 'http://localhost:3000/rest';
 
 beforeAll(async () => {
     db = await open({ filename: ':memory:', driver: sqlite3.Database });
-    //db.loadExtension('carray');
     // Read the init SQL file
     const loadSql = fs.readFileSync(path.join(__dirname, 'load.sql')).toString().split(';');
     
@@ -30,7 +29,9 @@ beforeAll(async () => {
     // note: although we have a second parameter that lists the schemas
     // in case of sqlite it is not used in the query (sqlite does not have the notion of schemas)
     // that is why we don't read/use the `parameters` from the result
-    let { query } = get_introspection_query('sqlite', 'public');
+    const permissions = JSON.parse(fs.readFileSync(path.join(__dirname, 'permissions.json')).toString());
+    const placeholder_values = new Map<string, any>([['permissions.json', permissions]]);
+    let { query } = get_introspection_query('sqlite', 'public', placeholder_values);
     let result = await db.get(query);
     let schema = JSON.parse(result.json_schema);
 
@@ -42,10 +43,11 @@ beforeAll(async () => {
 });
 
 // execute teh queries for a given parsed request
-async function run(role:string, request: Request) {
+async function run(role:string, request: Request, env?: Env) {
     const subzeroRequest = await subzero.parse('public', '/rest/', role, request);
+    env = env || [];
     if (request.method == 'GET') {
-        let { query, parameters } = subzero.fmt_sqlite_mutate_query(subzeroRequest, []);
+        let { query, parameters } = subzero.fmt_sqlite_mutate_query(subzeroRequest, env);
         //console.log(query,"\n",parameters);
         let result = await db.get(query, parameters);
         //console.log(result);
@@ -66,6 +68,21 @@ async function run(role:string, request: Request) {
     }
 }
 
+describe('permissions', () => {
+    test('alice can select public rows and her private rows', async () => {
+        expect(await run(
+            'alice',
+            new Request(`${base_url}/permissions_check?select=id,value,hidden,public,role`),
+            [['request.jwt.claims', JSON.stringify({role: 'alice'})]]
+        ))
+        .toStrictEqual([
+            { "id": 1, "value": "One Alice Public", "hidden": "Hidden", "public": 1, "role": "alice" },
+            { "id": 2, "value": "Two Bob Public", "hidden": "Hidden", "public": 1, "role": "bob" },
+            { "id": 3, "value": "Three Charlie Public", "hidden": "Hidden", "public": 1, "role": "charlie" },
+            { "id": 10, "value": "Ten Alice Private", "hidden": "Hidden", "public": 0, "role": "alice" }
+        ]);
+    });
+});
 describe('select', () => {
 
     test('simple', async () => {
@@ -131,7 +148,7 @@ describe('insert', () => {
                 insert into "clients" ("name")
                 select "name" from subzero_body _ 
                 where true
-                returning "rowid", 1 as _subzero_check__constraint
+                returning "rowid", ((true)) as _subzero_check__constraint
                 `,
                 parameters: ["env_value",'{"name":"new client"}']
             })

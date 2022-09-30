@@ -68,8 +68,9 @@ export function get_raw_introspection_query(dbType: DbType): Query {
  * an example placeholder looks like {@permissions.json#[]}
  * The following function replaces the placeholders with the contents of the files if they exist.
  */
-export function get_introspection_query(dbType: DbType, schemas: string | string[]): Statement {
+export function get_introspection_query(dbType: DbType, schemas: string | string[], placeholder_values?: Map<string, any>): Statement {
     let re = new RegExp(`{@([^#}]+)(#([^}]+))?}`, 'g');
+    let placeholder_values_map = placeholder_values || new Map<string, any>();
     let raw_query = get_raw_introspection_query(dbType);
     let parts = raw_query.split(re);
     let query = '';
@@ -82,7 +83,10 @@ export function get_introspection_query(dbType: DbType, schemas: string | string
             if (default_value === undefined) {
                 default_value = `{not found @${file_to_include}}`;
             }
-            if (fs.existsSync(file_to_include)) {
+            if (placeholder_values_map.has(file_to_include)) {
+                query += JSON.stringify(placeholder_values_map.get(file_to_include));
+            }
+            else if (fs.existsSync(file_to_include)) {
                 let file_content = fs.readFileSync(file_to_include, 'utf8');
                 query += file_content;
             }
