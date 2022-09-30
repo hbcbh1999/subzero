@@ -34,7 +34,7 @@ fn get_current_timestamp() -> u64 {
 // fn validate_fn_param(config: &VhostConfig, p: &FunctionParam) -> Result<()> {
 //     match p {
 //         FunctionParam::Func { fn_name, parameters } => {
-//             if !config.db_allowd_select_functions.contains(&fn_name) {
+//             if !config.db_allowed_select_functions.contains(&fn_name) {
 //                 return Err(to_core_error(Error::ParseRequestError { 
 //                     details: format!("calling: '{}' is not allowed", fn_name),
 //                     message: "Unsafe functions called".to_string(),
@@ -229,7 +229,7 @@ pub async fn handle<'a>(
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
     check_privileges(db_schema, schema_name, role.unwrap_or(&String::default()), &request).map_err(to_core_error)?; 
-    check_safe_functions(&request, &config.db_allowd_select_functions).map_err(to_core_error)?;
+    check_safe_functions(&request, &config.db_allowed_select_functions).map_err(to_core_error)?;
     insert_policy_conditions(db_schema, schema_name, role.unwrap_or(&String::default()), &mut request.query).map_err(to_core_error)?;
     
     // when using internal privileges not switch "current_role"

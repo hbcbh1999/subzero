@@ -23,7 +23,7 @@ export class Subzero {
         this.backend = Backend.init(JSON.stringify(schema), dbType);
     }
 
-    async parse(schemaName: string, urlPrefix: string, request: Request): Promise<SubzeroRequest> {
+    async parse(schemaName: string, urlPrefix: string, role: string, request: Request): Promise<SubzeroRequest> {
         let method = request.method;
         let url = new URL(request.url);
         let path = url.pathname;
@@ -34,7 +34,7 @@ export class Subzero {
         let headers: Headers = [];
         request.headers.forEach((value, key) => headers.push([key, value]));
         let get: GetParameters = Array.from(url.searchParams.entries());
-        return this.backend.parse(schemaName, entity, method, path, get, body, headers, cookies)
+        return this.backend.parse(schemaName, entity, method, path, get, body, role, headers, cookies)
     }
 
     fmt_main_query(request: SubzeroRequest, env: Env): Statement {

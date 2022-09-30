@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Deserializer, Serialize};
+use subzero_core::api::{DEFAULT_SAFE_SELECT_FUNCTIONS};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(rename_all(serialize = "snake_case", deserialize = "snake_case"))]
@@ -66,8 +67,8 @@ pub struct VhostConfig {
     pub db_schema_structure: SchemaStructure,
     pub db_anon_role: Option<String>,
     pub db_max_rows: Option<u32>,
-    #[serde(default = "db_allowd_select_functions")]
-    pub db_allowd_select_functions: Vec<String>,
+    #[serde(default = "db_allowed_select_functions")]
+    pub db_allowed_select_functions: Vec<String>,
     #[serde(default)]
     pub db_use_legacy_gucs: bool,
     #[serde(default = "db_pool")]
@@ -82,16 +83,8 @@ pub struct VhostConfig {
     pub role_claim_key: String,
 }
 
-fn db_allowd_select_functions() -> Vec<String>{
-    vec![
-        "avg", "count", "every", "max", "min", "sum", "array_agg", "json_agg", "jsonb_agg", "json_object_agg", "jsonb_object_agg", "string_agg",
-        "corr", "covar_pop", "covar_samp", "regr_avgx", "regr_avgy", "regr_count", "regr_intercept", "regr_r2", "regr_slope", "regr_sxx", "regr_sxy", "regr_syy",
-        "mode", "percentile_cont", "percentile_cont", "percentile_disc", "percentile_disc",
-        "row_number", "rank", " dense_rank", "cume_dist", "percent_rank", "first_value", "last_value", "nth_value",
-        "lower", "trim", "upper", "concat", "concat_ws", "format", "substr", "ceil", "truncate",
-        "date_diff",
-        "toHour", "dictGet", "dictHas", "dictGetOrDefault", "toUInt64"
-        ].iter().map(|s| s.to_string()).collect()
+fn db_allowed_select_functions() -> Vec<String>{
+    DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect()
 }
 fn db_type() -> String { "postgresql".to_string() }
 fn db_schemas() -> Vec<String> { vec!["public".to_string()] }
@@ -137,7 +130,7 @@ mod test {
                     db_use_legacy_gucs: false,
                     db_tx_rollback: false,
                     db_pre_request: Some(("api".to_string(), "test".to_string())),
-                    db_allowd_select_functions: vec![],
+                    db_allowed_select_functions: vec![],
                     jwt_secret: None,
                     jwt_aud: None,
                     role_claim_key: ".role".to_string(),
@@ -147,7 +140,7 @@ mod test {
             )]),
         };
         let json_config = r#"
-        {"vhosts":{"domain_com":{"db_uri":"db_uri","db_schemas":["db_schema"],"db_schema_structure":{"sql_file":"sql_file"}, "db_anon_role": "anonymous", "db_pre_request": "api.test", "db_allowd_select_functions": []}}}
+        {"vhosts":{"domain_com":{"db_uri":"db_uri","db_schemas":["db_schema"],"db_schema_structure":{"sql_file":"sql_file"}, "db_anon_role": "anonymous", "db_pre_request": "api.test", "db_allowed_select_functions": []}}}
         "#;
 
         let deserialized_result = serde_json::from_str::<Config>(json_config);

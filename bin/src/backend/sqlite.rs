@@ -83,7 +83,7 @@ fn execute(
                     returning.clear();
                     returning.push(primary_key_column.to_string());
                     select.clear();
-                    select.push(SelectItem::Simple {field: primary_key_field.clone(), alias: None,cast: None});
+                    select.push(SelectItem::Simple {field: primary_key_field.clone(), alias: Some(primary_key_column.to_string()),cast: None});
 
                     if !is_delete {
                         select.push(SelectItem::Simple {field: Field { name: "_subzero_check__constraint".to_string(), json_path: None }, alias: None,cast: None});
@@ -152,7 +152,7 @@ fn execute(
             // set the request query to be a select
             select_request.query = Query {
                 node: Select {
-                    from: (table.to_owned(), None),
+                    from: (table.to_owned(), Some("subzero_source".to_string())),
                     join_tables: vec![], //todo!! this should probably not be empty
                     where_: select_where,
                     select: select.to_vec(),

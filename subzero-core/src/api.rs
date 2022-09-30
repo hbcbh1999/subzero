@@ -4,6 +4,16 @@ use serde_json::Value as JsonValue;
 use crate::error::Result;
 use QueryNode::*;
 
+pub const DEFAULT_SAFE_SELECT_FUNCTIONS: &'static [&'static str] = &[
+    "avg", "count", "every", "max", "min", "sum", "array_agg", "json_agg", "jsonb_agg", "json_object_agg", "jsonb_object_agg", "string_agg",
+    "corr", "covar_pop", "covar_samp", "regr_avgx", "regr_avgy", "regr_count", "regr_intercept", "regr_r2", "regr_slope", "regr_sxx", "regr_sxy", "regr_syy",
+    "mode", "percentile_cont", "percentile_cont", "percentile_disc", "percentile_disc",
+    "row_number", "rank", " dense_rank", "cume_dist", "percent_rank", "first_value", "last_value", "nth_value",
+    "lower", "trim", "upper", "concat", "concat_ws", "format", "substr", "ceil", "truncate",
+    "date_diff",
+    "toHour", "dictGet", "dictHas", "dictGetOrDefault", "toUInt64"
+    ];
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Resolution {
     MergeDuplicates,

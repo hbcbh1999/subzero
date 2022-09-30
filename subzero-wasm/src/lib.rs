@@ -15,7 +15,9 @@ use subzero_core::{
     api::{
         SingleVal, ListVal, Payload, ContentType, Query, Preferences, Field, QueryNode::*,
         SelectItem, Condition, Filter,
-    }
+        DEFAULT_SAFE_SELECT_FUNCTIONS,
+    },
+    permissions::{check_privileges,check_safe_functions,insert_policy_conditions}
 };
 #[cfg(feature = "postgresql")]
 use subzero_core::formatter::postgresql;
@@ -47,6 +49,7 @@ pub struct Request {
 pub struct Backend {
     db_schema: DbSchema,
     db_type: String,
+    allowed_select_functions: Vec<String>,
 }
 
 // #[wasm_bindgen]
@@ -57,11 +60,15 @@ pub struct Backend {
 
 #[wasm_bindgen]
 impl Backend {
-    pub fn init(s: &str, dt: &str) -> Backend {
+    pub fn init(s: &str, dt: &str, allowed_select_functions: Option<JsArray>) -> Backend {
         set_panic_hook();
         let db_schema = serde_json::from_str(s).expect("invalid schema json");
         let db_type = dt.to_owned();
-        Backend { db_schema, db_type }
+        let allowed_select_functions = match allowed_select_functions {
+            Some(v) => v.into_serde::<Vec<String>>().unwrap_or_default(),
+            None => DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
+        };
+        Backend { db_schema, db_type, allowed_select_functions }
     }
     pub fn parse(
         &self,
@@ -71,6 +78,7 @@ impl Backend {
         path: &str, 
         get: &JsArray, 
         body: &str,
+        role: &str,
         headers: &JsArray,
         cookies: &JsArray,
     )
@@ -87,6 +95,8 @@ impl Backend {
         let cookies = cookies.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
         let cookies = cookies.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
         let db_schema = &self.db_schema;
+        let schema_name_string = schema_name.to_owned();
+        let role = role.to_owned();
         let body = if body.is_empty() {
             None
         } else {
@@ -94,7 +104,14 @@ impl Backend {
         };
         let max_rows = None;
 
-        let rust_request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, max_rows).map_err(cast_core_err)?;
+        
+        let mut rust_request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, max_rows).map_err(cast_core_err)?;
+        // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
+        // of the "authenticator" role unless the DbSchema has internal privileges set
+        
+        check_privileges(db_schema, &schema_name_string, &role, &rust_request).map_err(cast_core_err)?; 
+        check_safe_functions(&rust_request, &self.allowed_select_functions).map_err(cast_core_err)?;
+        insert_policy_conditions(db_schema, &schema_name_string, &role, &mut rust_request.query).map_err(cast_core_err)?;
 
         Ok(Request {
             method: rust_request.method.to_string(),
@@ -155,7 +172,7 @@ impl Backend {
                 returning.clear();
                 returning.push(primary_key_column.to_string());
                 select.clear();
-                select.push(SelectItem::Simple {field: primary_key_field.clone(), alias: None,cast: None});
+                select.push(SelectItem::Simple {field: primary_key_field.clone(), alias: Some(primary_key_column.to_string()),cast: None});
 
                 if !is_delete {
                     select.push(SelectItem::Simple {field: Field { name: "_subzero_check__constraint".to_string(), json_path: None }, alias: None,cast: None});
@@ -200,7 +217,7 @@ impl Backend {
                 // set the request query to be a select
                 request.query = Query {
                     node: Select {
-                        from: (table.to_owned(), None),
+                        from: (table.to_owned(), Some("subzero_source".to_string())),
                         join_tables: vec![], //todo!! this should probably not be empty
                         where_: select_where,
                         select: select.to_vec(),

@@ -132,6 +132,34 @@ feature "basic"
                               //, "Location" <:> "/projects?id=eq.6"
                               , "Content-Range" <:> "0-1/2" ]
           }
+    it "with embedding" $ do
+      request methodPatch "/projects?select=id,name,client:clients(id),tasks(id)&id=in.(1,3)"
+        [("Prefer", "return=representation, count=exact")]
+        [json|r#"{"name":"updated"}"#|]
+        shouldRespondWith
+        [json|r#"[
+          {"id":1,"name":"updated","client":{"id":1},"tasks":[{"id":1},{"id":2}]},
+          {"id":3,"name":"updated","client":{"id":2},"tasks":[{"id":5},{"id":6}]}
+        ]"#|]
+        { matchStatus  = 200
+          , matchHeaders = [ "Content-Type" <:> "application/json"
+                            //, "Location" <:> "/projects?id=eq.6"
+                            , "Content-Range" <:> "0-1/2" ]
+        }
+    it "with embedding many to many" $ do
+        request methodPatch "/tasks?select=id,name,project:projects(id),users(id,name)&id=in.(1,3)"
+          [("Prefer", "return=representation, count=exact")]
+          [json|r#"{"name":"updated"}"#|]
+          shouldRespondWith
+          [json|r#"[
+            {"id":1,"name":"updated","project":{"id":1},"users":[{"id":1,"name":"Angela Martin"},{"id":3,"name":"Dwight Schrute"}]},
+            {"id":3,"name":"updated","project":{"id":2},"users":[{"id":1,"name":"Angela Martin"}]}
+          ]"#|]
+          { matchStatus  = 200
+            , matchHeaders = [ "Content-Type" <:> "application/json"
+                              //, "Location" <:> "/projects?id=eq.6"
+                              , "Content-Range" <:> "0-1/2" ]
+          }
   describe "inserting" $ do
     it "basic no representation" $ do
       request methodPost "/clients"
@@ -140,8 +168,8 @@ feature "basic"
         [text|""|]
         { matchStatus  = 201
           , matchHeaders = [ "Content-Type" <:> "application/json"
-                           //, "Location" <:> "/projects?id=eq.6"
-                           , "Content-Range" <:> "*/*" ]
+                            //, "Location" <:> "/projects?id=eq.6"
+                            , "Content-Range" <:> "*/*" ]
         }
     it "basic with representation" $ do
         request methodPost "/clients?select=id,name"

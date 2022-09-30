@@ -342,7 +342,7 @@ impl DbSchema {
             }),
         }?;
         
-        // check if columns vector is contained in allowd_columns except for Delete/Execute action
+        // check if columns vector is contained in allowed_columns except for Delete/Execute action
         match column_permissions {
             All => Ok(()),
             Specific(allowed_columns) => {
