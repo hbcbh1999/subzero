@@ -1,5 +1,4 @@
-use crate::api::{Preferences, QueryNode::*, Representation, Query, };
-
+use crate::api::{Preferences, QueryNode::*, Representation, Query};
 
 #[allow(unused_macros)]
 macro_rules! fmt_field_format {
@@ -7,8 +6,8 @@ macro_rules! fmt_field_format {
         "to_jsonb({}{}{}){}"
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_field_format;
-
+#[allow(unused_imports)]
+pub(super) use fmt_field_format;
 
 #[allow(unused_macros)]
 macro_rules! star_select_item_format {
@@ -16,7 +15,8 @@ macro_rules! star_select_item_format {
         "{}.*"
     };
 }
-#[allow(unused_imports)] pub(super) use star_select_item_format;
+#[allow(unused_imports)]
+pub(super) use star_select_item_format;
 
 #[allow(unused_macros)]
 macro_rules! simple_select_item_format {
@@ -24,7 +24,8 @@ macro_rules! simple_select_item_format {
         "{field}{as}{select_name:.0}"
     };
 }
-#[allow(unused_imports)] pub(super) use simple_select_item_format;
+#[allow(unused_imports)]
+pub(super) use simple_select_item_format;
 
 #[allow(unused_macros)]
 macro_rules! cast_select_item_format {
@@ -32,7 +33,8 @@ macro_rules! cast_select_item_format {
         "cast({field} as {cast}){as}{select_name:.0}"
     };
 }
-#[allow(unused_imports)] pub(super) use cast_select_item_format;
+#[allow(unused_imports)]
+pub(super) use cast_select_item_format;
 
 #[allow(unused_macros)]
 macro_rules! fmt_main_query_internal { () => {
@@ -129,7 +131,7 @@ pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_
             query,
             &None,
         )?  + " , "
-        
+
         + if count {
             fmt_count_query(&schema, Some("_subzero_count_query"), query)?
         } else {
@@ -148,38 +150,51 @@ pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_
         } else {"true as constraints_satisfied, "}
         + " nullif(current_setting('response.headers', true), '') as response_headers, "
         + " nullif(current_setting('response.status', true), '') as response_status "
-        
+
         + " from ( select * from _subzero_query ) _subzero_t"
     )
 }
 }}
-#[allow(unused_imports)] pub(super) use fmt_main_query_internal;
+#[allow(unused_imports)]
+pub(super) use fmt_main_query_internal;
 
 #[allow(unused_macros)]
-macro_rules! fmt_main_query { () => {
-pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
-    fmt_main_query_internal(schema_str, &request.method, &request.accept_content_type, &request.query, &request.preferences, env)
+macro_rules! fmt_main_query {
+    () => {
+        pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+            fmt_main_query_internal(schema_str, &request.method, &request.accept_content_type, &request.query, &request.preferences, env)
+        }
+    };
 }
-}}
-#[allow(unused_imports)] pub(super) use fmt_main_query;
+#[allow(unused_imports)]
+pub(super) use fmt_main_query;
 
 #[allow(unused_macros)]
-macro_rules! fmt_env_query { () => {
-pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
-    "select " +
-    if env.is_empty() {sql("null")} 
-    else {
-        env
-        .iter()
-        .map(|(k, v)| {
-            "set_config(" + param(k as &SqlParam) + ", " + param(v as &SqlParam) + ", true), " +
-            param(v as &SqlParam) + " as " + fmt_identity(&String::from(*k))
-        })
-        .join(",")
-    }
+macro_rules! fmt_env_query {
+    () => {
+        pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
+            "select "
+                + if env.is_empty() {
+                    sql("null")
+                } else {
+                    env.iter()
+                        .map(|(k, v)| {
+                            "set_config("
+                                + param(k as &SqlParam)
+                                + ", "
+                                + param(v as &SqlParam)
+                                + ", true), "
+                                + param(v as &SqlParam)
+                                + " as "
+                                + fmt_identity(&String::from(*k))
+                        })
+                        .join(",")
+                }
+        }
+    };
 }
-}}
-#[allow(unused_imports)] pub(super) use fmt_env_query;
+#[allow(unused_imports)]
+pub(super) use fmt_env_query;
 
 #[allow(unused_macros)]
 macro_rules! fmt_query { () => {
@@ -704,7 +719,8 @@ pub fn fmt_query<'a>(
     )
 }
 }}
-#[allow(unused_imports)] pub(super) use fmt_query;
+#[allow(unused_imports)]
+pub(super) use fmt_query;
 
 #[allow(unused_macros)]
 macro_rules! fmt_count_query {
@@ -757,12 +773,13 @@ macro_rules! fmt_count_query {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_count_query;
+#[allow(unused_imports)]
+pub(super) use fmt_count_query;
 
 #[allow(unused_macros)]
 macro_rules! fmt_body {
     () => {
-        #[rustfmt::skip]
+#[rustfmt::skip]
         fn fmt_body<'a>(payload: &'a Payload) -> Snippet<'a> {
             let payload_param: &SqlParam = payload;
             " subzero_payload as ( select " + param(payload_param) + "::json as json_data ),"
@@ -777,7 +794,8 @@ macro_rules! fmt_body {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_body;
+#[allow(unused_imports)]
+pub(super) use fmt_body;
 
 #[allow(unused_macros)]
 macro_rules! fmt_condition_tree {
@@ -797,7 +815,8 @@ macro_rules! fmt_condition_tree {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_condition_tree;
+#[allow(unused_imports)]
+pub(super) use fmt_condition_tree;
 
 #[allow(unused_macros)]
 macro_rules! fmt_condition {
@@ -817,10 +836,13 @@ macro_rules! fmt_condition {
                 Foreign {
                     left: (l_qi, l_fld),
                     right: (r_qi, r_fld),
-                } => //sql(format!("{} = {}", fmt_field(l_qi, l_fld)?, fmt_field(r_qi, r_fld)?)),
-                    sql(fmt_field(l_qi, l_fld)? + " = " + fmt_field(r_qi, r_fld)?.as_str()),
+                } =>
+                //sql(format!("{} = {}", fmt_field(l_qi, l_fld)?, fmt_field(r_qi, r_fld)?)),
+                {
+                    sql(fmt_field(l_qi, l_fld)? + " = " + fmt_field(r_qi, r_fld)?.as_str())
+                }
 
-                Group{negate, tree} => {
+                Group { negate, tree } => {
                     if *negate {
                         "not(" + fmt_condition_tree(qi, tree)? + ")"
                     } else {
@@ -828,12 +850,13 @@ macro_rules! fmt_condition {
                     }
                 }
 
-                Raw{sql:s} => sql(s.as_str()),
+                Raw { sql: s } => sql(s.as_str()),
             })
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_condition;
+#[allow(unused_imports)]
+pub(super) use fmt_condition;
 
 #[allow(unused_macros)]
 macro_rules! fmt_in_filter {
@@ -841,7 +864,8 @@ macro_rules! fmt_in_filter {
         fmt_operator(&"= any".to_string())? + ("(" + param($p) + ")")
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_in_filter;
+#[allow(unused_imports)]
+pub(super) use fmt_in_filter;
 
 #[allow(unused_macros)]
 macro_rules! fmt_filter {
@@ -884,90 +908,75 @@ macro_rules! fmt_filter {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_filter;
+#[allow(unused_imports)]
+pub(super) use fmt_filter;
 
 #[allow(unused_macros)]
 macro_rules! fmt_env_var {
     () => {
         fn fmt_env_var<'a>(e: &'a EnvVar) -> String {
             match e {
-                EnvVar{var, part:None} => format!("(select {} from env)",fmt_identity(var)),
-                EnvVar{var, part:Some(part)} => format!("(select {}::json->>'{}' from env)",fmt_identity(var), part),
+                EnvVar { var, part: None } => format!("(select {} from env)", fmt_identity(var)),
+                EnvVar { var, part: Some(part) } => format!("(select {}::json->>'{}' from env)", fmt_identity(var), part),
             }
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_env_var;
+#[allow(unused_imports)]
+pub(super) use fmt_env_var;
 
 #[allow(unused_macros)]
 macro_rules! fmt_function_call {
     () => {
-        fn fmt_function_call<'a>(
-            qi: &Qi,
-            fn_name: &String,
-            parameters: &'a [FunctionParam]) -> Result<Snippet<'a>>
-        {
-
-            Ok(
-                sql(fmt_identity(fn_name)) + 
-                "(" +
-                    parameters
+        fn fmt_function_call<'a>(qi: &Qi, fn_name: &String, parameters: &'a [FunctionParam]) -> Result<Snippet<'a>> {
+            Ok(sql(fmt_identity(fn_name))
+                + "("
+                + parameters
                     .iter()
                     .map(|p| fmt_function_param(qi, p))
                     .collect::<Result<Vec<_>>>()?
-                    .join(",") +
-                ")"
-            )
+                    .join(",")
+                + ")")
         }
-    };   
+    };
 }
-#[allow(unused_imports)] pub(super) use fmt_function_call;
+#[allow(unused_imports)]
+pub(super) use fmt_function_call;
 
 #[allow(unused_macros)]
 macro_rules! fmt_select_item_function {
     () => {
         fn fmt_select_item_function<'a>(
-            qi: &Qi,
-            fn_name: &String,
-            parameters: &'a [FunctionParam],
-            partitions: &'a Vec<Field>,
-            orders: &'a Vec<OrderTerm>,
-            alias: &'a Option<String>,) -> Result<Snippet<'a>>
-        {
-
-            Ok(
-                fmt_function_call(qi, fn_name, parameters)? + 
-                if partitions.is_empty() && orders.is_empty() {
+            qi: &Qi, fn_name: &String, parameters: &'a [FunctionParam], partitions: &'a Vec<Field>, orders: &'a Vec<OrderTerm>,
+            alias: &'a Option<String>,
+        ) -> Result<Snippet<'a>> {
+            Ok(fmt_function_call(qi, fn_name, parameters)?
+                + if partitions.is_empty() && orders.is_empty() {
                     sql("")
                 } else {
-                    sql(" over( ") +
-                        if partitions.is_empty() {
+                    sql(" over( ")
+                        + if partitions.is_empty() {
                             sql("")
                         } else {
-                            sql("partition by ") +
-                            partitions
-                                .iter()
-                                .map(|p| fmt_field(qi, p))
-                                .collect::<Result<Vec<_>>>()?
-                                .join(",")
-                        } +
-                        " " +
-                        if orders.is_empty() {
+                            sql("partition by ") + partitions.iter().map(|p| fmt_field(qi, p)).collect::<Result<Vec<_>>>()?.join(",")
+                        }
+                        + " "
+                        + if orders.is_empty() {
                             "".to_string()
                         } else {
                             fmt_order(qi, orders)?
-                        } +
-                    " )"
-                } +
-                fmt_as(fn_name, &None, alias)
-            )
+                        }
+                        + " )"
+                }
+                + fmt_as(fn_name, &None, alias))
         }
-    };   
+    };
 }
-#[allow(unused_imports)] pub(super) use fmt_select_item_function;
+#[allow(unused_imports)]
+pub(super) use fmt_select_item_function;
 
 #[allow(unused_macros)]
-macro_rules! fmt_select_item { 
+macro_rules! fmt_select_item {
     () => {
         fn fmt_select_item<'a>(qi: &Qi, i: &'a SelectItem) -> Result<Snippet<'a>> {
             match i {
@@ -1004,7 +1013,8 @@ macro_rules! fmt_select_item {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_select_item;
+#[allow(unused_imports)]
+pub(super) use fmt_select_item;
 
 #[allow(unused_macros)]
 macro_rules! fmt_sub_select_item {
@@ -1062,7 +1072,8 @@ macro_rules! fmt_sub_select_item {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_sub_select_item;
+#[allow(unused_imports)]
+pub(super) use fmt_sub_select_item;
 
 #[allow(unused_macros)]
 macro_rules! fmt_operator {
@@ -1071,7 +1082,8 @@ macro_rules! fmt_operator {
         fn fmt_operator(o: &Operator) -> Result<String> { Ok(String::new() + o.as_str() + " ") }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_operator;
+#[allow(unused_imports)]
+pub(super) use fmt_operator;
 
 #[allow(unused_macros)]
 macro_rules! fmt_logic_operator {
@@ -1084,20 +1096,26 @@ macro_rules! fmt_logic_operator {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_logic_operator;
+#[allow(unused_imports)]
+pub(super) use fmt_logic_operator;
 
 #[allow(unused_macros)]
 macro_rules! fmt_identity {
     () => {
         #[allow(clippy::ptr_arg)]
-        fn fmt_identity(i: &String) -> String { 
-            String::from("\"") + 
-            i.chars().take_while(|x| x != &'\0').collect::<String>().replace("\"","\"\"").as_str() + 
-            "\"" 
+        fn fmt_identity(i: &String) -> String {
+            String::from("\"")
+                + i.chars()
+                    .take_while(|x| x != &'\0')
+                    .collect::<String>()
+                    .replace("\"", "\"\"")
+                    .as_str()
+                + "\""
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_identity;
+#[allow(unused_imports)]
+pub(super) use fmt_identity;
 
 #[allow(unused_macros)]
 macro_rules! fmt_qi {
@@ -1106,7 +1124,7 @@ macro_rules! fmt_qi {
             match (qi.0.as_str(), qi.1.as_str()) {
                 // (_,"subzero_source") |
                 // (_,"subzero_fn_call") |
-                ("", "")  => String::new(),
+                ("", "") => String::new(),
                 ("", _) | ("_sqlite_public_", _) => fmt_identity(&qi.1),
                 //_ => format!("{}.{}", fmt_identity(&qi.0), fmt_identity(&qi.1)),
                 _ => vec![fmt_identity(&qi.0), fmt_identity(&qi.1)].join("."),
@@ -1114,7 +1132,8 @@ macro_rules! fmt_qi {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_qi;
+#[allow(unused_imports)]
+pub(super) use fmt_qi;
 
 #[allow(unused_macros)]
 macro_rules! fmt_field {
@@ -1136,27 +1155,29 @@ macro_rules! fmt_field {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_field;
+#[allow(unused_imports)]
+pub(super) use fmt_field;
 
 #[allow(unused_macros)]
 macro_rules! fmt_function_param {
     () => {
         fn fmt_function_param<'a>(qi: &Qi, p: &'a FunctionParam) -> Result<Snippet<'a>> {
             Ok(match p {
-                FunctionParam::Val(v,c) => {
+                FunctionParam::Val(v, c) => {
                     let vv: &SqlParam = v;
                     match c {
                         Some(c) => "cast(" + param(vv) + format!(" as {}", c) + ")",
                         None => param(vv),
                     }
-                },
+                }
                 FunctionParam::Fld(f) => sql(fmt_field(qi, f)?),
-                FunctionParam::Func {fn_name,parameters,} => fmt_function_call(qi, fn_name, parameters)?,
+                FunctionParam::Func { fn_name, parameters } => fmt_function_call(qi, fn_name, parameters)?,
             })
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_function_param;
+#[allow(unused_imports)]
+pub(super) use fmt_function_param;
 
 #[allow(unused_macros)]
 macro_rules! fmt_order {
@@ -1164,14 +1185,20 @@ macro_rules! fmt_order {
         fn fmt_order(qi: &Qi, o: &Vec<OrderTerm>) -> Result<String> {
             Ok(if o.len() > 0 {
                 //format!("order by {}", o.iter().map(|t| fmt_order_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", "))
-                String::from("order by ") + o.iter().map(|t| fmt_order_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", ").as_str()
+                String::from("order by ")
+                    + o.iter()
+                        .map(|t| fmt_order_term(qi, t))
+                        .collect::<Result<Vec<_>>>()?
+                        .join(", ")
+                        .as_str()
             } else {
                 String::new()
             })
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_order;
+#[allow(unused_imports)]
+pub(super) use fmt_order;
 
 #[allow(unused_macros)]
 macro_rules! fmt_order_term {
@@ -1192,11 +1219,12 @@ macro_rules! fmt_order_term {
                 },
             };
             //Ok(format!("{} {} {}", fmt_field(&Qi("".to_string(),"".to_string()), &t.term)?, direction, nulls))
-            Ok(vec![fmt_field(&Qi("".to_string(),"".to_string()), &t.term)?.as_str(), direction, nulls].join(" "))
+            Ok(vec![fmt_field(&Qi("".to_string(), "".to_string()), &t.term)?.as_str(), direction, nulls].join(" "))
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_order_term;
+#[allow(unused_imports)]
+pub(super) use fmt_order_term;
 
 #[allow(unused_macros)]
 macro_rules! fmt_groupby {
@@ -1211,18 +1239,20 @@ macro_rules! fmt_groupby {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_groupby;
+#[allow(unused_imports)]
+pub(super) use fmt_groupby;
 
 #[allow(unused_macros)]
 macro_rules! fmt_groupby_term {
     () => {
         fn fmt_groupby_term(_qi: &Qi, t: &GroupByTerm) -> Result<String> {
-            fmt_field(&Qi("".to_string(),"".to_string()), &t.0)
+            fmt_field(&Qi("".to_string(), "".to_string()), &t.0)
             //Ok(fmt_identity(&t.0.name))
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_groupby_term;
+#[allow(unused_imports)]
+pub(super) use fmt_groupby_term;
 
 #[allow(unused_macros)]
 macro_rules! fmt_select_name {
@@ -1239,7 +1269,8 @@ macro_rules! fmt_select_name {
                                 _ => None,
                             })
                             .unwrap_or(n)
-                            .clone()),
+                            .clone(),
+                    ),
                     None => None,
                 },
                 (_, _, Some(aa)) => Some(aa.clone()),
@@ -1248,25 +1279,26 @@ macro_rules! fmt_select_name {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_select_name;
+#[allow(unused_imports)]
+pub(super) use fmt_select_name;
 
 #[allow(unused_macros)]
 macro_rules! fmt_as {
     () => {
         fn fmt_as(name: &String, json_path: &Option<Vec<JsonOperation>>, alias: &Option<String>) -> String {
             match (name, json_path, alias) {
-                (_, Some(_), None) =>
-                    match fmt_select_name(name, json_path, alias) {
-                        Some(nn) => String::from(" as ") + fmt_identity(&nn).as_str(), //format!(" as {}", fmt_identity(&nn)),
-                        None => String::new(),
-                    },
-                (_, _, Some(aa)) => String::from(" as ") + fmt_identity(aa).as_str(),//format!(" as {}", fmt_identity(aa)),
+                (_, Some(_), None) => match fmt_select_name(name, json_path, alias) {
+                    Some(nn) => String::from(" as ") + fmt_identity(&nn).as_str(), //format!(" as {}", fmt_identity(&nn)),
+                    None => String::new(),
+                },
+                (_, _, Some(aa)) => String::from(" as ") + fmt_identity(aa).as_str(), //format!(" as {}", fmt_identity(aa)),
                 _ => String::new(),
             }
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_as;
+#[allow(unused_imports)]
+pub(super) use fmt_as;
 
 #[allow(unused_macros)]
 macro_rules! fmt_limit {
@@ -1282,7 +1314,8 @@ macro_rules! fmt_limit {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_limit;
+#[allow(unused_imports)]
+pub(super) use fmt_limit;
 
 #[allow(unused_macros)]
 macro_rules! fmt_offset {
@@ -1298,7 +1331,8 @@ macro_rules! fmt_offset {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_offset;
+#[allow(unused_imports)]
+pub(super) use fmt_offset;
 
 #[allow(unused_macros)]
 macro_rules! fmt_json_path {
@@ -1311,7 +1345,8 @@ macro_rules! fmt_json_path {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_json_path;
+#[allow(unused_imports)]
+pub(super) use fmt_json_path;
 
 #[allow(unused_macros)]
 macro_rules! fmt_json_operation {
@@ -1324,36 +1359,87 @@ macro_rules! fmt_json_operation {
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_json_operation;
+#[allow(unused_imports)]
+pub(super) use fmt_json_operation;
 
 #[allow(unused_macros)]
 macro_rules! fmt_json_operand {
     () => {
         fn fmt_json_operand(o: &JsonOperand) -> String {
             match o {
-                JKey(k) => String::from("'") + k.as_str() + "'",  //format!("'{}'", k),
+                JKey(k) => String::from("'") + k.as_str() + "'", //format!("'{}'", k),
                 JIdx(i) => i.clone(),
             }
         }
     };
 }
-#[allow(unused_imports)] pub(super) use fmt_json_operand;
+#[allow(unused_imports)]
+pub(super) use fmt_json_operand;
 
 #[allow(unused)]
 pub fn return_representation<'a>(method: &str, query: &'a Query, preferences: &Option<Preferences>) -> bool {
     !matches!(
-        (method, &query.node, preferences),       
-        ("POST",   Insert { .. }, None) |
-        ("POST",   Insert { .. }, Some(Preferences {representation: Some(Representation::None),..})) |
-        ("POST",   Insert { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
-        ("PATCH",  Update { .. }, None)|
-        ("PATCH",  Update { .. }, Some(Preferences {representation: Some(Representation::None),..}))|
-        ("PATCH",  Update { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
-        ("PUT",    Insert { .. }, None)|
-        ("PUT",    Insert { .. }, Some(Preferences {representation: Some(Representation::None),..}))|
-        ("PUT",    Insert { .. }, Some(Preferences {representation: Some(Representation::HeadersOnly),..}))|
-        ("DELETE", Delete { .. }, None)|
-        ("DELETE", Delete { .. }, Some(Preferences {representation: Some(Representation::None),..}))
+        (method, &query.node, preferences),
+        ("POST", Insert { .. }, None)
+            | (
+                "POST",
+                Insert { .. },
+                Some(Preferences {
+                    representation: Some(Representation::None),
+                    ..
+                })
+            )
+            | (
+                "POST",
+                Insert { .. },
+                Some(Preferences {
+                    representation: Some(Representation::HeadersOnly),
+                    ..
+                })
+            )
+            | ("PATCH", Update { .. }, None)
+            | (
+                "PATCH",
+                Update { .. },
+                Some(Preferences {
+                    representation: Some(Representation::None),
+                    ..
+                })
+            )
+            | (
+                "PATCH",
+                Update { .. },
+                Some(Preferences {
+                    representation: Some(Representation::HeadersOnly),
+                    ..
+                })
+            )
+            | ("PUT", Insert { .. }, None)
+            | (
+                "PUT",
+                Insert { .. },
+                Some(Preferences {
+                    representation: Some(Representation::None),
+                    ..
+                })
+            )
+            | (
+                "PUT",
+                Insert { .. },
+                Some(Preferences {
+                    representation: Some(Representation::HeadersOnly),
+                    ..
+                })
+            )
+            | ("DELETE", Delete { .. }, None)
+            | (
+                "DELETE",
+                Delete { .. },
+                Some(Preferences {
+                    representation: Some(Representation::None),
+                    ..
+                })
+            )
     )
 }
 
@@ -1425,5 +1511,3 @@ pub fn return_representation<'a>(method: &str, query: &'a Query, preferences: &O
 // pub(super) use star_select_item_format;
 // #[allow(unused_imports)]
 // pub(super) use fmt_function_param;
-
-

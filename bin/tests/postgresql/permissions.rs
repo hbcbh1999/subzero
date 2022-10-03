@@ -7,13 +7,13 @@ use std::sync::Once;
 static INIT_CLIENT: Once = Once::new();
 use std::env;
 lazy_static! {
-    static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async { 
-      env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/postgresql_introspection_query.sql}");
-      env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
-      env::remove_var("SUBZERO_DB_PRE_REQUEST");
-      env::remove_var("SUBZERO_DB_USE_LEGACY_GUCS");
-      
-      Client::untracked(start().await.unwrap()).await.expect("valid client") 
+    static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async {
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/postgresql_introspection_query.sql}");
+        env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
+        env::remove_var("SUBZERO_DB_PRE_REQUEST");
+        env::remove_var("SUBZERO_DB_USE_LEGACY_GUCS");
+
+        Client::untracked(start().await.unwrap()).await.expect("valid client")
     });
 }
 
@@ -52,7 +52,7 @@ feature "permissions"
             {"id":20,"value":"Twenty Bob Private","hidden":"Hidden"}
           ]"#|]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
-      
+
       it "anonymous can select public rows" $ do
         get "/permissions_check?select=id,value"
           shouldRespondWith
@@ -158,5 +158,5 @@ feature "permissions"
           shouldRespondWith
           [json|r#"{"details":"check constraint of an insert/update permission has failed","message":"Permission denied"}"#|]
           { matchStatus  = 403 }
-      
+
 }

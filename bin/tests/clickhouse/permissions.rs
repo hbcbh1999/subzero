@@ -44,7 +44,7 @@ feature "permissions"
             {"id":20,"value":"Twenty Bob Private","hidden":"Hidden"}
           ]"#|]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
-      
+
       it "anonymous can select public rows" $ do
         get "/permissions_check?select=id,value&order=id"
           shouldRespondWith
@@ -150,5 +150,5 @@ feature "permissions"
     //       shouldRespondWith
     //       [json|r#"{"details":"check constraint of an insert/update permission has failed","message":"Permission denied"}"#|]
     //       { matchStatus  = 403 }
-      
+
 }

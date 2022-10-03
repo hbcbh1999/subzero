@@ -4,14 +4,21 @@ use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use postgres_openssl::{MakeTlsConnector};
 use snafu::ResultExt;
 use tokio::time::{Duration, sleep};
-use crate::config::{VhostConfig,SchemaStructure::*};
+use crate::config::{VhostConfig, SchemaStructure::*};
 // use log::{debug};
 use subzero_core::{
-    api::{ApiRequest, ApiResponse, ContentType::*, SingleVal,ListVal,Payload},
-    error::{Error::{SingularityError, PutMatchingPkError, PermissionDenied}},
+    api::{ApiRequest, ApiResponse, ContentType::*, SingleVal, ListVal, Payload},
+    error::{
+        Error::{SingularityError, PutMatchingPkError, PermissionDenied},
+    },
     schema::{DbSchema},
-    formatter::{Param, Param::*, postgresql::{fmt_main_query, generate, fmt_env_query}, ToParam,},
-    error::{JsonDeserialize, }
+    formatter::{
+        Param,
+        Param::*,
+        postgresql::{fmt_main_query, generate, fmt_env_query},
+        ToParam,
+    },
+    error::{JsonDeserialize},
 };
 use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
 use crate::error::{Result, *};
@@ -71,17 +78,14 @@ impl ToSql for WrapParam<'_> {
     to_sql_checked!();
 }
 
-fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> {
-    WrapParam(p.to_param())
-}
-fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
-    p as &(dyn ToSql + Sync)
-}
+fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> { WrapParam(p.to_param()) }
+fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) { p as &(dyn ToSql + Sync) }
 
-async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'a>, env: &'a HashMap<&'a str, &'a str>, config: &VhostConfig) -> Result<ApiResponse> {
+async fn execute<'a>(
+    pool: &'a Pool, authenticated: bool, request: &ApiRequest<'a>, env: &'a HashMap<&'a str, &'a str>, config: &VhostConfig,
+) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(PgDbPool)?;
     let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(Core)?);
-    
 
     let transaction = client
         .build_transaction()
@@ -91,16 +95,17 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
         .await
         .context(PgDb { authenticated })?;
 
-    if let Some((s, f)) = &config.db_pre_request {  
+    if let Some((s, f)) = &config.db_pre_request {
         let fn_schema = match s.as_str() {
             "" => request.schema_name,
             _ => s.as_str(),
         };
         let (env_query, env_parameters, _) = generate(fmt_env_query(env));
 
-        let pre_request_statement = format!(r#"
+        let pre_request_statement = format!(
+            r#"
             with env as materialized({})
-            select "{}".* from "{}"."{}"(), env"#, 
+            select "{}".* from "{}"."{}"(), env"#,
             env_query, f, fn_schema, f
         );
         debug!("pre_statement {}\n{:?}", pre_request_statement, env_parameters);
@@ -108,7 +113,20 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
             .prepare_cached(pre_request_statement.as_str())
             .await
             .context(PgDb { authenticated })?;
-        transaction.query(&pre_request_stm, env_parameters.into_iter().map(wrap_param).collect::<Vec<_>>().iter().map(cast_param).collect::<Vec<_>>().as_slice()).await.context(PgDb { authenticated })?;
+        transaction
+            .query(
+                &pre_request_stm,
+                env_parameters
+                    .into_iter()
+                    .map(wrap_param)
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .map(cast_param)
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+            )
+            .await
+            .context(PgDb { authenticated })?;
     }
 
     debug!("main_statement {}\n{:?}", main_statement, main_parameters);
@@ -119,14 +137,26 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
         .context(PgDb { authenticated })?;
 
     let rows = transaction
-        .query(&main_stm, main_parameters.into_iter().map(wrap_param).collect::<Vec<_>>().iter().map(cast_param).collect::<Vec<_>>().as_slice())
+        .query(
+            &main_stm,
+            main_parameters
+                .into_iter()
+                .map(wrap_param)
+                .collect::<Vec<_>>()
+                .iter()
+                .map(cast_param)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )
         .await
         .context(PgDb { authenticated })?;
 
-    let constraints_satisfied:bool = rows[0].get("constraints_satisfied");
+    let constraints_satisfied: bool = rows[0].get("constraints_satisfied");
     if !constraints_satisfied {
         transaction.rollback().await.context(PgDb { authenticated })?;
-        return Err(to_core_error(PermissionDenied { details: "check constraint of an insert/update permission has failed".to_string(),}));
+        return Err(to_core_error(PermissionDenied {
+            details: "check constraint of an insert/update permission has failed".to_string(),
+        }));
     }
 
     let api_response = ApiResponse {
@@ -196,11 +226,14 @@ impl Backend for PostgreSQLBackend {
             .timeouts(timeouts)
             .build()
             .unwrap();
-        
+
         //read db schema
         let db_schema = match &config.db_schema_structure {
             SqlFile(f) => match fs::read_to_string(
-                vec![f, &format!("postgresql_{}", f)].into_iter().find(|f| Path::new(f).exists()).unwrap_or(f)
+                vec![f, &format!("postgresql_{}", f)]
+                    .into_iter()
+                    .find(|f| Path::new(f).exists())
+                    .unwrap_or(f),
             ) {
                 Ok(q) => match wait_for_pg_connection(&vhost, &pool).await {
                     Ok(mut client) => {
@@ -212,7 +245,7 @@ impl Backend for PostgreSQLBackend {
                             .read_only(true)
                             .start()
                             .await
-                            .context(PgDb { authenticated})?;
+                            .context(PgDb { authenticated })?;
                         let _ = transaction.query("set local schema ''", &[]).await;
                         match transaction.query(&query, &[&config.db_schemas]).await {
                             Ok(rows) => {
@@ -237,7 +270,7 @@ impl Backend for PostgreSQLBackend {
             JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(Core),
         }?;
 
-        Ok(PostgreSQLBackend {config, pool, db_schema})
+        Ok(PostgreSQLBackend { config, pool, db_schema })
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
         execute(&self.pool, authenticated, request, env, &self.config).await
@@ -247,26 +280,29 @@ impl Backend for PostgreSQLBackend {
 }
 
 async fn wait_for_pg_connection(vhost: &String, db_pool: &Pool) -> Result<Object, PoolError> {
-
     let mut i = 1;
     let mut time_since_start = 0;
     let max_delay_interval = 10;
     let max_retry_interval = 30;
     let mut client = db_pool.get().await;
-    while let Err(e)  = client {
+    while let Err(e) = client {
         println!("[{}] Failed to connect to PostgreSQL {:?}", vhost, e);
         let time = Duration::from_secs(i);
         println!("[{}] Retrying the PostgreSQL connection in {:?} seconds..", vhost, time.as_secs());
         sleep(time).await;
         client = db_pool.get().await;
         i *= 2;
-        if i > max_delay_interval { i = max_delay_interval };
+        if i > max_delay_interval {
+            i = max_delay_interval
+        };
         time_since_start += i;
-        if time_since_start > max_retry_interval { break }
-    };
+        if time_since_start > max_retry_interval {
+            break;
+        }
+    }
     match client {
-        Err(_) =>{},
-        _ => println!("[{}] Connection to PostgreSQL successful", vhost)
+        Err(_) => {}
+        _ => println!("[{}] Connection to PostgreSQL successful", vhost),
     }
     client
 }

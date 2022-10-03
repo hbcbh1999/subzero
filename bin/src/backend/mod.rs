@@ -1,21 +1,24 @@
-use subzero_core::{api::{ApiRequest,ApiResponse}, schema::DbSchema};
+use subzero_core::{
+    api::{ApiRequest, ApiResponse},
+    schema::DbSchema,
+};
 use std::collections::HashMap;
 use crate::error::Result;
-use crate::config::{VhostConfig,};
+use crate::config::{VhostConfig};
 use async_trait::async_trait;
 use regex::Regex;
 use std::{fs};
 use std::path::Path;
 // use log::{debug};
 
-#[cfg(feature = "postgresql")]
-pub mod postgresql;
 #[cfg(feature = "clickhouse")]
 pub mod clickhouse;
+#[cfg(feature = "postgresql")]
+pub mod postgresql;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
-#[derive (Debug)]
+#[derive(Debug)]
 enum SplitStr<'a> {
     Str(&'a str),
     Sep(&'a str),
@@ -39,33 +42,35 @@ fn split_keep<'a>(r: &Regex, text: &'a str) -> Vec<SplitStr<'a>> {
 
 pub fn include_files(template: String) -> String {
     let r = Regex::new(r"\{@[^#}]+(#[^\}]*)?\}").expect("Invalid regex");
-    split_keep(&r, template.as_str()).into_iter()
-    .map(|v| match v {
-        SplitStr::Str(s) => s.to_owned(),
-        SplitStr::Sep(s) => {
-            let parts = &s[2..(s.len()-1)].split('#').collect::<Vec<&str>>();
-            debug!("parts {:?}", parts);
-            let file_name = parts[0];
-            let missing_msg = format!("{{not found @{}}}", file_name);
-            let default_val = parts.get(1).unwrap_or(&(missing_msg.as_str())).to_owned();
-            //TODO!!! this allows including any file, should this be restricted in some way?
-            let contents = fs::read_to_string(Path::new(file_name)).unwrap_or_else(|_| String::from(default_val));
-            debug!("contents for {} {}", file_name, contents);
-            contents
-        }
-    })
-    .collect::<Vec<_>>()
-    .join("")
+    split_keep(&r, template.as_str())
+        .into_iter()
+        .map(|v| match v {
+            SplitStr::Str(s) => s.to_owned(),
+            SplitStr::Sep(s) => {
+                let parts = &s[2..(s.len() - 1)].split('#').collect::<Vec<&str>>();
+                debug!("parts {:?}", parts);
+                let file_name = parts[0];
+                let missing_msg = format!("{{not found @{}}}", file_name);
+                let default_val = parts.get(1).unwrap_or(&(missing_msg.as_str())).to_owned();
+                //TODO!!! this allows including any file, should this be restricted in some way?
+                let contents = fs::read_to_string(Path::new(file_name)).unwrap_or_else(|_| String::from(default_val));
+                debug!("contents for {} {}", file_name, contents);
+                contents
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 #[async_trait]
-pub trait Backend{
-    async fn init(vhost: String, config: VhostConfig) -> Result<Self> where Self: Sized;
+pub trait Backend {
+    async fn init(vhost: String, config: VhostConfig) -> Result<Self>
+    where
+        Self: Sized;
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse>;
     fn db_schema(&self) -> &DbSchema;
     fn config(&self) -> &VhostConfig;
 }
-
 
 #[cfg(test)]
 mod tests {

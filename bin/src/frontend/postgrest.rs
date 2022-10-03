@@ -7,15 +7,15 @@ use snafu::ResultExt;
 #[cfg(feature = "sqlite")]
 use tokio::task;
 
-use subzero_core::api::{ApiResponse, };
+use subzero_core::api::{ApiResponse};
 
 use crate::backend::Backend;
 
 use subzero_core::{
-    api::{ ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*,  ApiRequest},
+    api::{ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*, ApiRequest},
     error::{*},
     parser::postgrest::parse,
-    permissions::{check_safe_functions, check_privileges,insert_policy_conditions},
+    permissions::{check_safe_functions, check_privileges, insert_policy_conditions},
 };
 
 use crate::error::{Result, Core, to_core_error};
@@ -35,7 +35,7 @@ fn get_current_timestamp() -> u64 {
 //     match p {
 //         FunctionParam::Func { fn_name, parameters } => {
 //             if !config.db_allowed_select_functions.contains(&fn_name) {
-//                 return Err(to_core_error(Error::ParseRequestError { 
+//                 return Err(to_core_error(Error::ParseRequestError {
 //                     details: format!("calling: '{}' is not allowed", fn_name),
 //                     message: "Unsafe functions called".to_string(),
 //                 }));
@@ -54,80 +54,73 @@ fn get_env(role: Option<&String>, request: &ApiRequest, jwt_claims: &Option<Json
     let search_path = &[String::from(request.schema_name)];
     if let Some(r) = role {
         env.insert("role".to_string(), r.clone());
-        
     }
-    
+
     env.insert("request.method".to_string(), request.method.to_string());
     env.insert("request.path".to_string(), request.path.to_string());
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
-    
+
     env.insert("search_path".to_string(), search_path.join(", "));
     if use_legacy_gucs {
         if let Some(r) = role {
             env.insert("request.jwt.claim.role".to_string(), r.clone());
         }
-        
-        env.extend(request.headers.iter().map(|(k, v)| (format!("request.header.{}", k.to_lowercase()), v.to_string())));
+
+        env.extend(
+            request
+                .headers
+                .iter()
+                .map(|(k, v)| (format!("request.header.{}", k.to_lowercase()), v.to_string())),
+        );
         env.extend(request.cookies.iter().map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())));
         env.extend(request.get.iter().map(|(k, v)| (format!("request.get.{}", k), v.to_string())));
         match jwt_claims {
-            Some(v) => if let Some(claims) = v.as_object() {
-                env.extend(claims.iter().map(|(k, v)| (
-                    format!("request.jwt.claim.{}", k),
-                    match v {
-                        JsonValue::String(s) => s.clone(),
-                        _ => format!("{}", v),
-                    }
-                )));
-            },
+            Some(v) => {
+                if let Some(claims) = v.as_object() {
+                    env.extend(claims.iter().map(|(k, v)| {
+                        (
+                            format!("request.jwt.claim.{}", k),
+                            match v {
+                                JsonValue::String(s) => s.clone(),
+                                _ => format!("{}", v),
+                            },
+                        )
+                    }));
+                }
+            }
             None => {}
         }
-    }
-    else {
-        env.insert("request.headers".to_string(), 
-            serde_json::to_string(
-                &request
-                .headers
-                .iter()
-                .map(|(k, v)| (k.to_lowercase(), v.to_string()))
-                .collect::<Vec<_>>()
-            ).unwrap()
+    } else {
+        env.insert(
+            "request.headers".to_string(),
+            serde_json::to_string(&request.headers.iter().map(|(k, v)| (k.to_lowercase(), v.to_string())).collect::<Vec<_>>()).unwrap(),
         );
-        env.insert("request.cookies".to_string(), 
-            serde_json::to_string(
-                &request
-                .cookies
-                .iter()
-                .map(|(k, v)| (k, v.to_string()))
-                .collect::<Vec<_>>()
-            ).unwrap()
+        env.insert(
+            "request.cookies".to_string(),
+            serde_json::to_string(&request.cookies.iter().map(|(k, v)| (k, v.to_string())).collect::<Vec<_>>()).unwrap(),
         );
-        env.insert("request.get".to_string(), 
-            serde_json::to_string(
-                &request
-                .get
-                .iter()
-                .map(|(k, v)| (k, v.to_string()))
-                .collect::<Vec<_>>()
-            ).unwrap()
+        env.insert(
+            "request.get".to_string(),
+            serde_json::to_string(&request.get.iter().map(|(k, v)| (k, v.to_string())).collect::<Vec<_>>()).unwrap(),
         );
         match jwt_claims {
-            Some(v) => if let Some(claims) = v.as_object() {
-                env.insert("request.jwt.claims".to_string(), serde_json::to_string(&claims).unwrap());                    
-            },
+            Some(v) => {
+                if let Some(claims) = v.as_object() {
+                    env.insert("request.jwt.claims".to_string(), serde_json::to_string(&claims).unwrap());
+                }
+            }
             None => {}
         }
     }
-    
+
     env
 }
 
 #[allow(clippy::borrowed_box)]
 #[allow(clippy::too_many_arguments)]
 pub async fn handle<'a>(
-    root: &'a str, method: &Method, path: &'a str, get: Vec<(&'a str, &'a str)>, 
-    body: Option<&'a str>, headers: HashMap<&'a str, &'a str>, cookies: HashMap<&'a str, &'a str>,
-    backend: &Box<dyn Backend + Send + Sync>
+    root: &'a str, method: &Method, path: &'a str, get: Vec<(&'a str, &'a str)>, body: Option<&'a str>, headers: HashMap<&'a str, &'a str>,
+    cookies: HashMap<&'a str, &'a str>, backend: &Box<dyn Backend + Send + Sync>,
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
     #![allow(unused_variables)]
     #![allow(unreachable_code)]
@@ -158,7 +151,8 @@ pub async fn handle<'a>(
             }
         }
         _ => Ok(config.db_schemas.get(0).unwrap().clone()),
-    }.context(Core)?);
+    }
+    .context(Core)?);
 
     if config.db_schemas.len() > 1 {
         response_headers.push(("Content-Profile".to_string(), schema_name.clone()));
@@ -198,7 +192,8 @@ pub async fn handle<'a>(
             None => Ok(None),
         },
         None => Ok(None),
-    }.context(Core)?;
+    }
+    .context(Core)?;
 
     let (role, authenticated) = match &jwt_claims {
         Some(claims) => match select(claims, format!("${}", config.role_claim_key).as_str()) {
@@ -209,36 +204,39 @@ pub async fn handle<'a>(
             Err(e) => Err(Error::JwtTokenInvalid { message: format!("{}", e) }),
         },
         None => Ok((config.db_anon_role.as_ref(), false)),
-    }.context(Core)?;
+    }
+    .context(Core)?;
 
     debug!("role: {:?}, jwt_claims: {:?}", role, jwt_claims);
-    
+
     // do not allow unauthenticated requests when there is no anonymous role setup
     if let (None, false) = (role, authenticated) {
-        return Err(to_core_error(Error::JwtTokenInvalid {message: "unauthenticated requests not allowed".to_string()}))
+        return Err(to_core_error(Error::JwtTokenInvalid {
+            message: "unauthenticated requests not allowed".to_string(),
+        }));
     }
 
     // parse request and generate the query
     let mut request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(Core)?;
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
-    check_privileges(db_schema, schema_name, role.unwrap_or(&String::default()), &request).map_err(to_core_error)?; 
+    check_privileges(db_schema, schema_name, role.unwrap_or(&String::default()), &request).map_err(to_core_error)?;
     check_safe_functions(&request, &config.db_allowed_select_functions).map_err(to_core_error)?;
     insert_policy_conditions(db_schema, schema_name, role.unwrap_or(&String::default()), &mut request.query).map_err(to_core_error)?;
-    
+
     // when using internal privileges not switch "current_role"
-    let env_role = if db_schema.use_internal_permissions {None} else {role};
+    let env_role = if db_schema.use_internal_permissions { None } else { role };
 
     let _env = get_env(env_role, &request, &jwt_claims, config.db_use_legacy_gucs);
-    let env = _env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_,_>>();
-    
-    let response:ApiResponse = match config.db_type.as_str() {
+    let env = _env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
+
+    let response: ApiResponse = match config.db_type.as_str() {
         #[cfg(feature = "postgresql")]
         "postgresql" => backend.execute(authenticated, &request, &env).await?,
 
         #[cfg(feature = "clickhouse")]
         "clickhouse" => backend.execute(authenticated, &request, &env).await?,
-        
+
         #[cfg(feature = "sqlite")]
         "sqlite" => task::block_in_place(|| backend.execute(authenticated, &request, &env)).await?,
 
@@ -283,17 +281,20 @@ pub async fn handle<'a>(
                                         Ok(())
                                     }
                                     _ => Err(Error::GucHeadersError),
-                                }.context(Core)?
+                                }
+                                .context(Core)?
                             }
                             Ok(())
                         }
                         _ => Err(Error::GucHeadersError),
-                    }.context(Core)?
+                    }
+                    .context(Core)?
                 }
                 Ok(())
             }
             _ => Err(Error::GucHeadersError),
-        }.context(Core)?
+        }
+        .context(Core)?
     }
 
     #[rustfmt::skip]

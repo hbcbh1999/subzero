@@ -29,7 +29,6 @@ use super::base::{
     //fmt_json_operation,
     //fmt_json_operand,
     //return_representation,
-
     star_select_item_format,
     //fmt_select_item_function,
     fmt_function_call,
@@ -37,9 +36,8 @@ use super::base::{
 use std::collections::HashMap;
 pub use super::base::return_representation;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
-use crate::dynamic_statement::{param, sql, JoinIterator, 
-    SqlSnippet,SqlSnippetChunk,generate_fn, param_placeholder_format,};
-use crate::error::{Result,Error};
+use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
+use crate::error::{Result, Error};
 use super::{ToParam, Snippet, SqlParam};
 generate_fn!();
 macro_rules! simple_select_item_format {
@@ -54,9 +52,18 @@ macro_rules! cast_select_item_format {
 }
 
 fmt_main_query!();
-pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+pub fn fmt_main_query_internal<'a>(
+    schema_str: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
+    env: &'a HashMap<&'a str, &'a str>,
+) -> Result<Snippet<'a>> {
     let schema = String::from(schema_str);
-    let count = matches!(preferences, Some(Preferences {count: Some(Count::ExactCount),..}));
+    let count = matches!(
+        preferences,
+        Some(Preferences {
+            count: Some(Count::ExactCount),
+            ..
+        })
+    );
 
     let return_representation = return_representation(method, query, preferences);
     let body_snippet = match (return_representation, accept_content_type, &query.node) {
@@ -112,54 +119,52 @@ pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_
         }
     };
 
-    let run_unwrapped_query = matches!(query.node, Insert {..} | Update {..} | Delete {..});
-    let has_payload_cte = matches!(query.node, Insert {..} | Update {..});
-    let wrap_cte_name = if run_unwrapped_query {None} else {Some("_subzero_query")};
+    let run_unwrapped_query = matches!(query.node, Insert { .. } | Update { .. } | Delete { .. });
+    let has_payload_cte = matches!(query.node, Insert { .. } | Update { .. });
+    let wrap_cte_name = if run_unwrapped_query { None } else { Some("_subzero_query") };
     let source_query = fmt_query(&schema, return_representation, wrap_cte_name, query, &None)?;
     let main_query = if run_unwrapped_query {
-        "with env as materialized (" + fmt_env_query(env)+ ") "
-        + if has_payload_cte {", "} else {""}
-        + source_query
-    }
-    else {
-        "with env as materialized (" + fmt_env_query(env)+ "), "
-        + source_query + " , "
-        + if count {
-            fmt_count_query(&schema, Some("_subzero_count_query"), query)?
-        } else {
-            sql("_subzero_count_query as (select 1)")
-        }
-        + " select"
-        + " count(_subzero_t.row) AS page_total, "
-        + if count { "(SELECT count(*) FROM _subzero_count_query)" } else { "null" }
-        + " as total_result_set, "
-        + body_snippet
-        + " as body, "
-        + " null as response_headers, "
-        + " null as response_status "
-        + " from ( select * from _subzero_query ) _subzero_t"
+        "with env as materialized (" + fmt_env_query(env) + ") " + if has_payload_cte { ", " } else { "" } + source_query
+    } else {
+        "with env as materialized ("
+            + fmt_env_query(env)
+            + "), "
+            + source_query
+            + " , "
+            + if count {
+                fmt_count_query(&schema, Some("_subzero_count_query"), query)?
+            } else {
+                sql("_subzero_count_query as (select 1)")
+            }
+            + " select"
+            + " count(_subzero_t.row) AS page_total, "
+            + if count { "(SELECT count(*) FROM _subzero_count_query)" } else { "null" }
+            + " as total_result_set, "
+            + body_snippet
+            + " as body, "
+            + " null as response_headers, "
+            + " null as response_status "
+            + " from ( select * from _subzero_query ) _subzero_t"
     };
-    
+
     Ok(main_query)
 }
 
 pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
-    "select " +
-    if env.is_empty() {sql("null")} 
-    else {
-        env
-        .iter()
-        .map(|(k, v)| param(v as &SqlParam) + " as " + fmt_identity(&String::from(*k)))
-        .join(",")
-    }
+    "select "
+        + if env.is_empty() {
+            sql("null")
+        } else {
+            env.iter()
+                .map(|(k, v)| param(v as &SqlParam) + " as " + fmt_identity(&String::from(*k)))
+                .join(",")
+        }
 }
-
 
 //fmt_query!();
 pub fn fmt_query<'a>(
     schema: &String, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
-
     let add_env_tbl_to_from = wrapin_cte.is_some();
 
     let (cte_snippet, query_snippet) = match &q.node {
@@ -480,55 +485,39 @@ macro_rules! fmt_in_filter {
 //fmt_env_var!();
 fn fmt_env_var(e: &'_ EnvVar) -> String {
     match e {
-        EnvVar{var, part:None} => format!("(select {} from env)",fmt_identity(var)),
-        EnvVar{var, part:Some(part)} => format!("(select json({})->>'{}' from env)",fmt_identity(var), part),
+        EnvVar { var, part: None } => format!("(select {} from env)", fmt_identity(var)),
+        EnvVar { var, part: Some(part) } => format!("(select json({})->>'{}' from env)", fmt_identity(var), part),
     }
 }
 fmt_filter!();
 fmt_select_name!();
 fmt_function_call!();
 //fmt_select_item_function!();
-fn fmt_select_item_function<'a>(qi: &Qi, fn_name: &String,
-    parameters: &'a [FunctionParam],
-    partitions: &'a Vec<Field>,
-    orders: &'a Vec<OrderTerm>,
-    alias: &'a Option<String>,) -> Result<Snippet<'a>>
-{
-
-    Ok(
-        format!("'{}', ", fmt_select_name(fn_name, &None, alias).unwrap_or_default()) +
-        sql(fmt_identity(fn_name)) + 
-        "(" +
-            parameters
+fn fmt_select_item_function<'a>(
+    qi: &Qi, fn_name: &String, parameters: &'a [FunctionParam], partitions: &'a Vec<Field>, orders: &'a Vec<OrderTerm>, alias: &'a Option<String>,
+) -> Result<Snippet<'a>> {
+    Ok(format!("'{}', ", fmt_select_name(fn_name, &None, alias).unwrap_or_default())
+        + sql(fmt_identity(fn_name))
+        + "("
+        + parameters
             .iter()
             .map(|p| fmt_function_param(qi, p))
             .collect::<Result<Vec<_>>>()?
-            .join(",") +
-        ")" + 
-        if partitions.is_empty() && orders.is_empty() {
+            .join(",")
+        + ")"
+        + if partitions.is_empty() && orders.is_empty() {
             sql("")
         } else {
-            sql(" over( ") +
-                if partitions.is_empty() {
+            sql(" over( ")
+                + if partitions.is_empty() {
                     sql("")
                 } else {
-                    sql("partition by ") +
-                    partitions
-                        .iter()
-                        .map(|p| fmt_field(qi, p))
-                        .collect::<Result<Vec<_>>>()?
-                        .join(",")
-                } +
-                " " +
-                if orders.is_empty() {
-                    "".to_string()
-                } else {
-                    fmt_order(qi, orders)?
-                } +
-            " )"
-        }
-        
-    )
+                    sql("partition by ") + partitions.iter().map(|p| fmt_field(qi, p)).collect::<Result<Vec<_>>>()?.join(",")
+                }
+                + " "
+                + if orders.is_empty() { "".to_string() } else { fmt_order(qi, orders)? }
+                + " )"
+        })
 }
 fmt_select_item!();
 fmt_function_param!();
@@ -593,7 +582,7 @@ fmt_identity!();
 //fmt_qi!();
 fn fmt_qi(qi: &Qi) -> String {
     match (qi.0.as_str(), qi.1.as_str()) {
-        ("", "")  => String::new(),
+        ("", "") => String::new(),
         _ => fmt_identity(&qi.1),
     }
 }

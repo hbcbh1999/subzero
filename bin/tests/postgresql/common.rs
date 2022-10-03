@@ -41,7 +41,7 @@ pub fn setup_db(init_db_once: &Once) {
             println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
             println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
-        
+
         assert!(output.status.success());
 
         let db_uri = String::from_utf8_lossy(&output.stdout);
@@ -52,7 +52,7 @@ pub fn setup_db(init_db_once: &Once) {
             .arg(db_uri.clone().into_owned())
             .output()
             .expect("failed to execute process");
-        
+
         if !output.status.success() {
             println!("status: {}", output.status);
             println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
@@ -69,7 +69,6 @@ where
     T: LazyStatic,
 {
     init_client_once.call_once(|| {
-        
         env::set_var("SUBZERO_CONFIG", "inexistent_config.toml");
         env::set_var("SUBZERO_DB_ANON_ROLE", "postgrest_test_anonymous");
         env::set_var("SUBZERO_DB_TX_ROLLBACK", "true");
@@ -79,7 +78,10 @@ where
         env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
         env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "true");
         env::set_var("SUBZERO_URL_PREFIX", "/rest");
-        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../bin/tests/postgresql/custom_introspection/postgresql_introspection_query.sql}");
+        env::set_var(
+            "SUBZERO_DB_SCHEMA_STRUCTURE",
+            "{sql_file=../bin/tests/postgresql/custom_introspection/postgresql_introspection_query.sql}",
+        );
         env::remove_var("SUBZERO_DB_MAX_ROWS");
         lazy_static::initialize(client);
     });

@@ -34,8 +34,10 @@ pub fn setup_db(init_db_once: &Once) {
             .arg("-t")
             // .arg("-u")
             // .arg("postgrest_test_authenticator")
-            .arg("-w").arg("300")
-            .arg("-o").arg(format!("--user_files_path={}", fixtures_dir.to_str().unwrap()))
+            .arg("-w")
+            .arg("300")
+            .arg("-o")
+            .arg(format!("--user_files_path={}", fixtures_dir.to_str().unwrap()))
             .output()
             .expect("failed to start temporary ch process");
         if !output.status.success() {
@@ -43,7 +45,7 @@ pub fn setup_db(init_db_once: &Once) {
             debug!("stdout: {}", String::from_utf8_lossy(&output.stdout));
             debug!("stderr: {}", String::from_utf8_lossy(&output.stderr));
         }
-        
+
         assert!(output.status.success());
 
         let db_uri = String::from_utf8_lossy(&output.stdout);
@@ -53,7 +55,7 @@ pub fn setup_db(init_db_once: &Once) {
             .arg(db_uri.clone().into_owned())
             .output()
             .expect("failed to execute process");
-        
+
         if !output.status.success() {
             println!("status: {}", output.status);
             println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
@@ -68,7 +70,7 @@ pub fn setup_db(init_db_once: &Once) {
             .arg(db_uri.clone().into_owned())
             .output()
             .expect("failed to execute process");
-        
+
         if !output.status.success() {
             println!("status: {}", output.status);
             println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
@@ -80,7 +82,6 @@ pub fn setup_db(init_db_once: &Once) {
         env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/clickhouse_introspection_query.sql}");
         debug!("db init ok clickhouse");
     });
-
 }
 
 pub fn setup_client<T>(init_client_once: &Once, client: &T)
@@ -88,7 +89,6 @@ where
     T: LazyStatic,
 {
     init_client_once.call_once(|| {
-        
         env::set_var("SUBZERO_CONFIG", "inexistent_config.toml");
         env::set_var("SUBZERO_DB_ANON_ROLE", "default");
         env::set_var("SUBZERO_DB_TX_ROLLBACK", "true");

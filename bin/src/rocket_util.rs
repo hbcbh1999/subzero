@@ -55,7 +55,9 @@ impl<'r> Responder<'r, 'static> for ApiResponse {
     fn respond_to(self, req: &'r Request<'_>) -> Result<'static> {
         let mut response = Response::build_from(self.response.respond_to(req)?);
         for h in self.headers {
-            if h.name() != "content-type" { response.header_adjoin(h);}
+            if h.name() != "content-type" {
+                response.header_adjoin(h);
+            }
         }
         response.ok()
     }
@@ -88,7 +90,7 @@ impl<'r> Responder<'r, 'static> for ApiResponse {
 // #[rocket::async_trait]
 // impl<'r> FromRequest<'r> for DenoProxyResponse {
 //     type Error = std::convert::Infallible;
-//     async fn from_request(req: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> { 
+//     async fn from_request(req: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
 //         let client = req.rocket().state::<Client<HttpConnector>>().unwrap();
 //         let hreq = hyper::Request::builder()
 //             .uri(format!("http://localhost:8080{}",req.uri().path().as_str()))
@@ -110,7 +112,7 @@ impl<'r> Responder<'r, 'static> for ApiResponse {
 //                 Outcome::Forward(())
 //             }
 //         }
-        
+
 //     }
 // }
 

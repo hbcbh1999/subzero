@@ -182,7 +182,7 @@ feature "basic"
                              //, "Location" <:> "/projects?id=eq.6"
                              , "Content-Range" <:> "*/1" ]
           }
-        
+
   describe "json operators" $ do
     it "obtains a json subfield one level with casting" $
       get "/complex_items?id=eq.1&select=settings->>foo" shouldRespondWith

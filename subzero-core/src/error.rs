@@ -8,7 +8,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[snafu(visibility(pub))]
 pub enum Error {
     #[snafu(display("{}", source))]
-    Serde{source: SerdeError},
+    Serde { source: SerdeError },
 
     #[snafu(display("ActionInappropriate"))]
     ActionInappropriate,
@@ -146,8 +146,10 @@ impl Error {
 
     pub fn json_body(&self) -> JsonValue {
         match self {
-            Error::Serde { source } => {json!({ "message": format!("{}", source) })},
-            Error::UnsupportedFeature {message} => json!({ "message": message }),
+            Error::Serde { source } => {
+                json!({ "message": format!("{}", source) })
+            }
+            Error::UnsupportedFeature { message } => json!({ "message": message }),
             Error::ContentTypeError { message } => json!({ "message": message }),
             Error::GucHeadersError => {
                 json!({"message": "response.headers guc must be a JSON array composed of objects with a single key and a string value"})
@@ -263,4 +265,3 @@ fn compressed_rel(join: &Join) -> JsonValue {
         }),
     }
 }
-

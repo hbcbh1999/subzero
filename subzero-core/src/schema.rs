@@ -10,7 +10,15 @@ use ColumnPermissions::*;
 pub type Role = String;
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum Action {Execute,Select,Insert,Update,Delete,All,Merge}
+pub enum Action {
+    Execute,
+    Select,
+    Insert,
+    Update,
+    Delete,
+    All,
+    Merge,
+}
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum ColumnPermissions {
@@ -23,8 +31,8 @@ impl Default for ColumnPermissions {
 
 #[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
 pub struct Permissions {
-    pub grants: HashMap<(Role, Action), ColumnPermissions>, 
-    pub policies: HashMap<(Role, Action), Vec<Policy>>
+    pub grants: HashMap<(Role, Action), ColumnPermissions>,
+    pub policies: HashMap<(Role, Action), Vec<Policy>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
@@ -48,7 +56,7 @@ struct PermissionDef {
 
     #[serde(default, skip_serializing_if = "is_default", deserialize_with = "deserialize_bool_from_anything")]
     pub restrictive: bool,
-    
+
     #[serde(default, skip_serializing_if = "is_default")]
     pub policy_for: Option<Vec<Action>>,
     #[serde(default, skip_serializing_if = "is_default")]
@@ -92,7 +100,6 @@ impl DbSchema {
             // projects?select=projects_client_id_fkey(*)
             // TODO! when views are involved there may be multiple fks with the same name
             Some(fk) => {
-                
                 if origin == &fk.table.1 {
                     Ok(Parent(fk.clone()))
                 } else {
@@ -103,7 +110,6 @@ impl DbSchema {
                 match schema.objects.get(target) {
                     // the target is an existing table
                     Some(target_table) => {
-                        
                         match hint {
                             Some(h) => {
                                 // projects?select=clients!projects_client_id_fkey(*)
@@ -124,13 +130,14 @@ impl DbSchema {
 
                                 // users?select=tasks!users_tasks(*)
                                 if let Some(join_table) = schema.objects.get(h) {
-                                    let ofk1 = join_table.foreign_keys.iter().find(|fk| {
-                                        &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin
-                                    });
-                                    let ofk2 = join_table.foreign_keys.iter().find(|fk| {
-                                        &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target
-                                        
-                                    });
+                                    let ofk1 = join_table
+                                        .foreign_keys
+                                        .iter()
+                                        .find(|fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin);
+                                    let ofk2 = join_table
+                                        .foreign_keys
+                                        .iter()
+                                        .find(|fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target);
                                     if let (Some(fk1), Some(fk2)) = (ofk1, ofk2) {
                                         return Ok(Many(Qi(current_schema.clone(), join_table.name.clone()), fk1.clone(), fk2.clone()));
                                     } else {
@@ -174,7 +181,6 @@ impl DbSchema {
                                         .collect::<Vec<_>>(),
                                 );
 
-                                
                                 if joins.len() == 1 {
                                     Ok(joins[0].clone())
                                 } else if joins.is_empty() {
@@ -227,17 +233,12 @@ impl DbSchema {
                                             let fks1 = join_table
                                                 .foreign_keys
                                                 .iter()
-                                                .filter(|fk| {
-                                                    &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin
-                                                })
+                                                .filter(|fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin)
                                                 .collect::<Vec<_>>();
                                             let fks2 = join_table
                                                 .foreign_keys
                                                 .iter()
-                                                .filter(|fk| {
-                                                    &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target
-                                                    
-                                                })
+                                                .filter(|fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target)
                                                 .collect::<Vec<_>>();
                                             let product = fks1
                                                 .iter()
@@ -304,24 +305,24 @@ impl DbSchema {
             }
         }
     }
-    
-    pub fn has_select_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()>{
+
+    pub fn has_select_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()> {
         self.has_privileges(role, &Action::Select, current_schema, origin, columns)
     }
-    pub fn has_insert_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()>{
-        self.has_privileges(role, &Action::Insert, current_schema, origin,columns)
+    pub fn has_insert_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()> {
+        self.has_privileges(role, &Action::Insert, current_schema, origin, columns)
     }
-    pub fn has_update_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()>{
+    pub fn has_update_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()> {
         self.has_privileges(role, &Action::Update, current_schema, origin, columns)
     }
-    pub fn has_delete_privileges(&self, role: &Role, current_schema: &String, origin: &String) -> Result<()>{
+    pub fn has_delete_privileges(&self, role: &Role, current_schema: &String, origin: &String) -> Result<()> {
         self.has_privileges(role, &Action::Delete, current_schema, origin, &All)
     }
-    pub fn has_execute_privileges(&self, role: &Role, current_schema: &String, origin: &String) -> Result<()>{
+    pub fn has_execute_privileges(&self, role: &Role, current_schema: &String, origin: &String) -> Result<()> {
         self.has_privileges(role, &Action::Execute, current_schema, origin, &All)
     }
 
-    fn has_privileges(&self, role: &Role, action: &Action, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()>{
+    fn has_privileges(&self, role: &Role, action: &Action, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()> {
         debug!("has_privileges: {:?} {:?} {:?} {:?} {:?}", role, action, current_schema, origin, columns);
         let schema = self.schemas.get(current_schema).context(UnacceptableSchema {
             schemas: vec![current_schema.to_owned()],
@@ -336,37 +337,31 @@ impl DbSchema {
             [Some(Specific(a)), Some(Specific(b))] => Ok(Specific(a.iter().chain(b.iter()).cloned().collect::<Vec<_>>())),
             [Some(All), _] | [_, Some(All)] => Ok(All),
             [Some(Specific(a)), None] | [None, Some(Specific(a))] => Ok(Specific(a.clone())),
-            [None, None] => Err(Error::PermissionDenied { 
+            [None, None] => Err(Error::PermissionDenied {
                 details: format!("no {:?} privileges for '{}.{}' table", &action, current_schema, origin),
-                
             }),
         }?;
-        
+
         // check if columns vector is contained in allowed_columns except for Delete/Execute action
         match column_permissions {
             All => Ok(()),
-            Specific(allowed_columns) => {
-                match columns {
-                    All => Err(Error::PermissionDenied { 
-                        details: format!("no {:?} privileges for '{}.{}(*)'", &action, current_schema, origin),
-                        
-                    }),
-                    Specific(accessed_columns) => {
-                        if ![Action::Delete, Action::Execute].contains(action) {
-                            for c in accessed_columns {
-                                if !allowed_columns.contains(c) {
-                                    return Err(Error::PermissionDenied { 
-                                        details: format!("no {:?} privileges for '{}.{}({})'", &action, current_schema, origin, c),
-                                        
-                                    });
-                                }
+            Specific(allowed_columns) => match columns {
+                All => Err(Error::PermissionDenied {
+                    details: format!("no {:?} privileges for '{}.{}(*)'", &action, current_schema, origin),
+                }),
+                Specific(accessed_columns) => {
+                    if ![Action::Delete, Action::Execute].contains(action) {
+                        for c in accessed_columns {
+                            if !allowed_columns.contains(c) {
+                                return Err(Error::PermissionDenied {
+                                    details: format!("no {:?} privileges for '{}.{}({})'", &action, current_schema, origin, c),
+                                });
                             }
                         }
-                        Ok(())
                     }
+                    Ok(())
                 }
-                
-            }
+            },
         }
     }
 }
@@ -380,7 +375,7 @@ pub struct Schema {
     join_tables: BTreeMap<(String, String), BTreeSet<String>>,
 }
 
-#[derive(Debug, PartialEq, Eq,  Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Object {
     pub kind: ObjectType,
     pub name: String,
@@ -492,14 +487,15 @@ fn normalize_actions(actions: &[Action]) -> Vec<Action> {
         match a {
             Action::All => {
                 acc.extend(vec![Action::Select, Action::Insert, Action::Update, Action::Delete]);
-            },
+            }
             _ => acc.push(a.clone()),
         }
         acc
     })
 }
 fn deserialize_permissions<'de, D>(deserializer: D) -> Result<Permissions, D::Error>
-where D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     let permissions = Option::<Vec<PermissionDef>>::deserialize(deserializer)?;
     match permissions {
@@ -511,10 +507,9 @@ where D: Deserializer<'de>,
                     (Some(actions), Some(columns)) => {
                         let actions_ = normalize_actions(&actions);
                         for a in actions_ {
-                            if columns.is_empty(){
+                            if columns.is_empty() {
                                 grants.insert((p.role.clone(), a), All);
-                            }
-                            else {
+                            } else {
                                 let cols = grants.entry((p.role.clone(), a)).or_insert(Specific(Vec::new()));
                                 if let Specific(cols) = cols {
                                     cols.extend(columns.iter().cloned())
@@ -530,56 +525,106 @@ where D: Deserializer<'de>,
                     }
                     _ => (),
                 }
-                match (p.policy_for, p.check, p.using, p.check_json_str, p.using_json_str){
-                    (actions,check@Some(_),using, None, None) | 
-                    (actions,check,using@Some(_), None, None) => {
+                match (p.policy_for, p.check, p.using, p.check_json_str, p.using_json_str) {
+                    (actions, check @ Some(_), using, None, None) | (actions, check, using @ Some(_), None, None) => {
                         let actions_ = match actions {
-                            Some(actions) => if actions.is_empty() { vec![Action::All] } else { actions },
+                            Some(actions) => {
+                                if actions.is_empty() {
+                                    vec![Action::All]
+                                } else {
+                                    actions
+                                }
+                            }
                             None => vec![Action::All],
                         };
-                        
+
                         for a in actions_ {
                             let pols = policies.entry((p.role.clone(), a.clone())).or_insert_with(Vec::new);
                             match (a, &check, &using) {
-                                (Action::Select,_,Some(u)) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: None, using: Some(u.clone())}),
-                                (Action::Insert,Some(c),_) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: Some(c.clone()), using: None}),
-                                (Action::Update,c,u) | (Action::All,c,u) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: c.clone(), using: u.clone()}),
-                                (Action::Delete,_,Some(u)) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: None, using: Some(u.clone())}),
+                                (Action::Select, _, Some(u)) => pols.push(Policy {
+                                    name: p.name.clone(),
+                                    restrictive: p.restrictive,
+                                    check: None,
+                                    using: Some(u.clone()),
+                                }),
+                                (Action::Insert, Some(c), _) => pols.push(Policy {
+                                    name: p.name.clone(),
+                                    restrictive: p.restrictive,
+                                    check: Some(c.clone()),
+                                    using: None,
+                                }),
+                                (Action::Update, c, u) | (Action::All, c, u) => pols.push(Policy {
+                                    name: p.name.clone(),
+                                    restrictive: p.restrictive,
+                                    check: c.clone(),
+                                    using: u.clone(),
+                                }),
+                                (Action::Delete, _, Some(u)) => pols.push(Policy {
+                                    name: p.name.clone(),
+                                    restrictive: p.restrictive,
+                                    check: None,
+                                    using: Some(u.clone()),
+                                }),
                                 _ => (),
                             }
                         }
-                    },
+                    }
                     //these is custom handling for clickouse where json manipulation is limited
                     //and check and using are stored as json strings
-                    (actions, None, None,check_str@Some(_),using_str) | 
-                    (actions, None, None,check_str,using_str@Some(_)) => {
+                    (actions, None, None, check_str @ Some(_), using_str) | (actions, None, None, check_str, using_str @ Some(_)) => {
                         let actions_ = match actions {
-                            Some(actions) => if actions.is_empty() { vec![Action::All] } else { actions },
+                            Some(actions) => {
+                                if actions.is_empty() {
+                                    vec![Action::All]
+                                } else {
+                                    actions
+                                }
+                            }
                             None => vec![Action::All],
                         };
-                        let check:Option<Vec<Condition>> = match check_str {
+                        let check: Option<Vec<Condition>> = match check_str {
                             Some(check_str) => Some(serde_json::from_str(&check_str).map_err(serde::de::Error::custom)?),
                             None => None,
                         };
-                        let using:Option<Vec<Condition>> = match using_str {
+                        let using: Option<Vec<Condition>> = match using_str {
                             Some(using_str) => Some(serde_json::from_str(&using_str).map_err(serde::de::Error::custom)?),
                             None => None,
                         };
                         for a in actions_ {
                             let pols = policies.entry((p.role.clone(), a.clone())).or_insert_with(Vec::new);
                             match (a, &check, &using) {
-                                (Action::Select,_,Some(u)) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: None, using: Some(u.clone())}),
-                                (Action::Insert,Some(c),_) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: Some(c.clone()), using: None}),
-                                (Action::Update,c,u) | (Action::All,c,u) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: c.clone(), using: u.clone()}),
-                                (Action::Delete,_,Some(u)) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: None, using: Some(u.clone())}),
+                                (Action::Select, _, Some(u)) => pols.push(Policy {
+                                    name: p.name.clone(),
+                                    restrictive: p.restrictive,
+                                    check: None,
+                                    using: Some(u.clone()),
+                                }),
+                                (Action::Insert, Some(c), _) => pols.push(Policy {
+                                    name: p.name.clone(),
+                                    restrictive: p.restrictive,
+                                    check: Some(c.clone()),
+                                    using: None,
+                                }),
+                                (Action::Update, c, u) | (Action::All, c, u) => pols.push(Policy {
+                                    name: p.name.clone(),
+                                    restrictive: p.restrictive,
+                                    check: c.clone(),
+                                    using: u.clone(),
+                                }),
+                                (Action::Delete, _, Some(u)) => pols.push(Policy {
+                                    name: p.name.clone(),
+                                    restrictive: p.restrictive,
+                                    check: None,
+                                    using: Some(u.clone()),
+                                }),
                                 _ => (),
                             }
                         }
-                    },
-                    _ => {},
+                    }
+                    _ => {}
                 }
             }
-            Ok(Permissions{grants, policies})
+            Ok(Permissions { grants, policies })
         }
         None => Ok(Permissions::default()),
     }
@@ -610,15 +655,16 @@ where D: Deserializer<'de>,
 //                     map.insert((role.clone(), method), conditions);
 //                 }
 //             }
-//             Ok(Some(map))  
+//             Ok(Some(map))
 //         },
 //         None => return Ok(None),
 //     }
-    
+
 // }
 
 fn deserialize_vec_procparam<'de, D>(deserializer: D) -> Result<Vec<ProcParam>, D::Error>
-where D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     #[derive(Deserialize)]
     struct Wrapper(#[serde(with = "ProcParamDef")] ProcParam);
@@ -628,7 +674,8 @@ where D: Deserializer<'de>,
 }
 
 fn deserialize_schemas<'de, D>(deserializer: D) -> Result<HashMap<String, Schema>, D::Error>
-where D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     let mut map = HashMap::new();
     for mut schema in Vec::<Schema>::deserialize(deserializer)? {
@@ -667,53 +714,48 @@ where D: Deserializer<'de>,
 }
 
 fn deserialize_objects<'de, D>(deserializer: D) -> Result<BTreeMap<String, Object>, D::Error>
-where D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     let mut map = BTreeMap::new();
     for o in Vec::<ObjectDef>::deserialize(deserializer)? {
         map.insert(
             o.name.clone(),
             match o.kind.as_str() {
-                "function" => {
-                    Object {
-                        kind: ObjectType::Function {
-                            volatile: match o.volatile {
-                                'i' => ProcVolatility::Imutable,
-                                's' => ProcVolatility::Stable,
-                                _ => ProcVolatility::Volatile,
-                            },
-                            return_type: match (o.setof, o.composite) {
-                                (true, true) => ProcReturnType::SetOf(PgType::Composite(Qi(o.return_type_schema, o.return_type))),
-                                (true, false) => ProcReturnType::SetOf(PgType::Scalar),
-                                (false, true) => ProcReturnType::One(PgType::Composite(Qi(o.return_type_schema, o.return_type))),
-                                (false, false) => ProcReturnType::One(PgType::Scalar),
-                            },
-                            parameters: o.parameters,
+                "function" => Object {
+                    kind: ObjectType::Function {
+                        volatile: match o.volatile {
+                            'i' => ProcVolatility::Imutable,
+                            's' => ProcVolatility::Stable,
+                            _ => ProcVolatility::Volatile,
                         },
-                        name: o.name,
-                        columns: o.columns,
-                        foreign_keys: o.foreign_keys,
-                        permissions: o.permissions,
-                    }
-                }
-                "view" => {
-                    Object {
-                        kind: ObjectType::View,
-                        name: o.name,
-                        columns: o.columns,
-                        foreign_keys: o.foreign_keys,
-                        permissions: o.permissions,
-                    }
-                }
-                _ => {
-                    Object {
-                        kind: ObjectType::Table,
-                        name: o.name,
-                        columns: o.columns,
-                        foreign_keys: o.foreign_keys,
-                        permissions: o.permissions,
-                    }
-                }
+                        return_type: match (o.setof, o.composite) {
+                            (true, true) => ProcReturnType::SetOf(PgType::Composite(Qi(o.return_type_schema, o.return_type))),
+                            (true, false) => ProcReturnType::SetOf(PgType::Scalar),
+                            (false, true) => ProcReturnType::One(PgType::Composite(Qi(o.return_type_schema, o.return_type))),
+                            (false, false) => ProcReturnType::One(PgType::Scalar),
+                        },
+                        parameters: o.parameters,
+                    },
+                    name: o.name,
+                    columns: o.columns,
+                    foreign_keys: o.foreign_keys,
+                    permissions: o.permissions,
+                },
+                "view" => Object {
+                    kind: ObjectType::View,
+                    name: o.name,
+                    columns: o.columns,
+                    foreign_keys: o.foreign_keys,
+                    permissions: o.permissions,
+                },
+                _ => Object {
+                    kind: ObjectType::Table,
+                    name: o.name,
+                    columns: o.columns,
+                    foreign_keys: o.foreign_keys,
+                    permissions: o.permissions,
+                },
             },
         );
     }
@@ -721,7 +763,8 @@ where D: Deserializer<'de>,
 }
 
 fn deserialize_foreign_keys<'de, D>(deserializer: D) -> Result<Vec<ForeignKey>, D::Error>
-where D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     let mut v = vec![];
     for foreign_key in Vec::<ForeignKeyDef>::deserialize(deserializer)? {
@@ -737,7 +780,8 @@ where D: Deserializer<'de>,
 }
 
 fn deserialize_columns<'de, D>(deserializer: D) -> Result<BTreeMap<String, Column>, D::Error>
-where D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     let mut map = BTreeMap::new();
     for column in Vec::<Column>::deserialize(deserializer)? {
@@ -747,7 +791,8 @@ where D: Deserializer<'de>,
 }
 
 fn deserialize_bool_from_anything<'de, D>(deserializer: D) -> Result<bool, D::Error>
-where D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     use std::f64::EPSILON;
 
@@ -773,9 +818,7 @@ where D: Deserializer<'de>,
             } else if f == 0.0f64 {
                 Ok(false)
             } else {
-                Err(serde::de::Error::custom(
-                    "The number is neither 1.0 nor 0.0",
-                ))
+                Err(serde::de::Error::custom("The number is neither 1.0 nor 0.0"))
             }
         }
         AnythingOrBool::String(string) => {
@@ -793,15 +836,10 @@ where D: Deserializer<'de>,
                 } else if f == 0.0f64 {
                     Ok(false)
                 } else {
-                    Err(serde::de::Error::custom(
-                        "The number is neither 1.0 nor 0.0",
-                    ))
+                    Err(serde::de::Error::custom("The number is neither 1.0 nor 0.0"))
                 }
             } else {
-                Err(serde::de::Error::custom(format!(
-                    "Could not parse boolean from a string: {}",
-                    string
-                )))
+                Err(serde::de::Error::custom(format!("Could not parse boolean from a string: {}", string)))
             }
         }
     }
@@ -818,7 +856,7 @@ mod tests {
     use super::*;
     use super::Action::*;
     use crate::api::{Field, Filter, EnvVar, Filter::*, SingleVal, ListVal, LogicOperator::*, ConditionTree, Condition, Condition::*, TrileanVal::*};
-    use super::{ObjectType::*, ProcParam, };
+    use super::{ObjectType::*, ProcParam};
     use crate::error::Error as AppError;
     use serde_json::Value as JsonValue;
     use pretty_assertions::assert_eq;
@@ -885,7 +923,8 @@ mod tests {
                                     columns: vec![s("project_id")],
                                     referenced_table: Qi(s("api"), s("projects")),
                                     referenced_columns: vec![s("id")],
-                                }].to_vec(),
+                                }]
+                                .to_vec(),
                                 permissions: Permissions::default(),
                             },
                         ),
@@ -908,36 +947,27 @@ mod tests {
                                 .collect(),
                                 foreign_keys: [].to_vec(),
                                 permissions: Permissions {
-                                        grants: vec![
-                                            (
-                                                (s("role"), Select),
-                                                Specific(vec![s("id"),s("name")]),
-                                            ),
-                                        ]
-                                        .iter().cloned().collect(),
-                                        policies: vec![
-                                            (
-                                                (s("role"), Select),
-                                                vec![
-                                                    Policy {
-                                                        name: None,
-                                                        restrictive: false,
-                                                        using: Some(vec![
-                                                            Condition::Single{
-                                                                field: Field{name:s("id"), json_path:None},
-                                                                filter: Filter::Op(s("eq"), SingleVal(s("10"),Some(s("int")))),
-                                                                negate:false,
-                                                            }
-                                                        ]),
-                                                        check: None
-                                                    }
-                                                    
-                                                ],
-                                            ),
-                                        ]
-                                        .iter().cloned().collect(),
-                                    
-                                }
+                                    grants: vec![((s("role"), Select), Specific(vec![s("id"), s("name")]))].iter().cloned().collect(),
+                                    policies: vec![(
+                                        (s("role"), Select),
+                                        vec![Policy {
+                                            name: None,
+                                            restrictive: false,
+                                            using: Some(vec![Condition::Single {
+                                                field: Field {
+                                                    name: s("id"),
+                                                    json_path: None,
+                                                },
+                                                filter: Filter::Op(s("eq"), SingleVal(s("10"), Some(s("int")))),
+                                                negate: false,
+                                            }]),
+                                            check: None,
+                                        }],
+                                    )]
+                                    .iter()
+                                    .cloned()
+                                    .collect(),
+                                },
                             },
                         ),
                     ]
@@ -1037,7 +1067,10 @@ mod tests {
 
         println!("deserialized_result = {:?}", deserialized_result);
 
-        let deserialized = deserialized_result.unwrap_or(DbSchema { use_internal_permissions:false, schemas: HashMap::new() });
+        let deserialized = deserialized_result.unwrap_or(DbSchema {
+            use_internal_permissions: false,
+            schemas: HashMap::new(),
+        });
 
         assert_eq!(deserialized, db_schema);
 
@@ -1045,7 +1078,7 @@ mod tests {
         // println!("serialized_result = {:?}", serialized_result);
         // let serialized = serialized_result.unwrap_or(s("failed to serialize"));
         // assert_eq!(serde_json::from_str::<serde_json::Value>(serialized.as_str()).unwrap(), serde_json::from_str::<serde_json::Value>(json_schema).unwrap());
-        
+
         //a sample sqlite schema
         let ss = r#"{
             "schemas":[
@@ -1069,25 +1102,72 @@ mod tests {
     }
 
     #[test]
-    fn serialize_conditions(){
-        let field = Field { name: s("id"), json_path: None};
+    fn serialize_conditions() {
+        let field = Field {
+            name: s("id"),
+            json_path: None,
+        };
         let negate = false;
         let conditions = vec![
-            
-            Single { field: field.clone(), negate, filter: Env(s("eq"), EnvVar { var: s("role"), part: None})},
-            Single { field: field.clone(), negate, filter: Env(s("eq"), EnvVar { var: s("request.jwt.claim"), part: Some(s("user_id"))})},
-            Single { field: field.clone(), negate, filter: Op(s("eq"), SingleVal(s("hello"), None))},
-            Single { field: field.clone(), negate, filter: Op(s("eq"), SingleVal(s("hello"), Some(s("text"))))},
-            Single { field: field.clone(), negate, filter: In(ListVal(vec![s("1"), s("2"), s("3")], None))},
-            Single { field: field.clone(), negate, filter: Is(TriTrue)},
-            Single { field: field.clone(), negate: true, filter: Fts(s("eq"), None, SingleVal(s("hello"), None))},
-            Group{ negate: false, tree: ConditionTree {
-                operator: And,
-                conditions: vec![
-                    Single { field: field.clone(), negate, filter: Op(s("eq"), SingleVal(s("hello"), None))},
-                    Single { field, negate, filter: In(ListVal(vec![s("1"), s("2"), s("3")], None))},
-                ]
-            }},
+            Single {
+                field: field.clone(),
+                negate,
+                filter: Env(s("eq"), EnvVar { var: s("role"), part: None }),
+            },
+            Single {
+                field: field.clone(),
+                negate,
+                filter: Env(
+                    s("eq"),
+                    EnvVar {
+                        var: s("request.jwt.claim"),
+                        part: Some(s("user_id")),
+                    },
+                ),
+            },
+            Single {
+                field: field.clone(),
+                negate,
+                filter: Op(s("eq"), SingleVal(s("hello"), None)),
+            },
+            Single {
+                field: field.clone(),
+                negate,
+                filter: Op(s("eq"), SingleVal(s("hello"), Some(s("text")))),
+            },
+            Single {
+                field: field.clone(),
+                negate,
+                filter: In(ListVal(vec![s("1"), s("2"), s("3")], None)),
+            },
+            Single {
+                field: field.clone(),
+                negate,
+                filter: Is(TriTrue),
+            },
+            Single {
+                field: field.clone(),
+                negate: true,
+                filter: Fts(s("eq"), None, SingleVal(s("hello"), None)),
+            },
+            Group {
+                negate: false,
+                tree: ConditionTree {
+                    operator: And,
+                    conditions: vec![
+                        Single {
+                            field: field.clone(),
+                            negate,
+                            filter: Op(s("eq"), SingleVal(s("hello"), None)),
+                        },
+                        Single {
+                            field,
+                            negate,
+                            filter: In(ListVal(vec![s("1"), s("2"), s("3")], None)),
+                        },
+                    ],
+                },
+            },
             //Single { field, filter: Col(Qi, field)},
         ];
         let conditions_json = r#"
@@ -1111,12 +1191,14 @@ mod tests {
 
         let serialized_result = serde_json::to_string(&conditions).unwrap();
         println!("serialized_result = {}", serialized_result);
-        assert_eq!(serde_json::from_str::<JsonValue>(conditions_json).unwrap(), serde_json::from_str::<JsonValue>(&serialized_result).unwrap());
+        assert_eq!(
+            serde_json::from_str::<JsonValue>(conditions_json).unwrap(),
+            serde_json::from_str::<JsonValue>(&serialized_result).unwrap()
+        );
 
         let deserialized_result = serde_json::from_str::<Vec<Condition>>(conditions_json);
         println!("deserialized_result = {:?}", deserialized_result);
         assert_eq!(deserialized_result.unwrap(), conditions);
-
     }
 
     #[test]

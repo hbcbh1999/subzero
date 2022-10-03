@@ -4,15 +4,22 @@ use r2d2::Pool;
 
 use r2d2_sqlite::SqliteConnectionManager;
 use rocket::log::private::debug;
-use crate::config::{VhostConfig,SchemaStructure::*};
+use crate::config::{VhostConfig, SchemaStructure::*};
 use subzero_core::{
-    formatter::{Param, Param::*, sqlite::{fmt_main_query, generate,return_representation}, ToParam,},
-    api::{
-        Condition, Field, SelectItem, Filter, ListVal, SingleVal, Payload,
-        ApiRequest, ApiResponse, ContentType::*, Query, QueryNode::*, Preferences, Count
+    formatter::{
+        Param,
+        Param::*,
+        sqlite::{fmt_main_query, generate, return_representation},
+        ToParam,
     },
-    error::{JsonSerialize,JsonDeserialize,},
-    error::{Error::{SingularityError, PutMatchingPkError, PermissionDenied}},
+    api::{
+        Condition, Field, SelectItem, Filter, ListVal, SingleVal, Payload, ApiRequest, ApiResponse, ContentType::*, Query, QueryNode::*, Preferences,
+        Count,
+    },
+    error::{JsonSerialize, JsonDeserialize},
+    error::{
+        Error::{SingularityError, PutMatchingPkError, PermissionDenied},
+    },
     schema::DbSchema,
 };
 //use rocket::log::private::debug;
@@ -31,7 +38,8 @@ use rusqlite::{
     params_from_iter,
     types::{ToSqlOutput, Value::*, ValueRef},
     //types::Value,
-    Result as SqliteResult, ToSql,
+    Result as SqliteResult,
+    ToSql,
 };
 //use std::rc::Rc;
 
@@ -49,9 +57,7 @@ impl ToSql for WrapParam<'_> {
     }
 }
 
-fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> {
-    WrapParam(p.to_param())
-}
+fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> { WrapParam(p.to_param()) }
 
 //generate_fn!();
 
@@ -64,29 +70,88 @@ fn execute(
     conn.execute_batch("BEGIN DEFERRED").context(SqliteDb { authenticated })?;
     //let transaction = conn.transaction().context(SqliteDb { authenticated })?;
     let return_representation = return_representation(request.method, &request.query, &request.preferences);
-    
+
     let api_response = match request {
-        ApiRequest {query: Query { node: node@Insert {into:table,where_,select,..}, sub_selects },..} |
-        ApiRequest {query: Query { node: node@Update {table,where_,select,..}, sub_selects },..} |
-        ApiRequest {query: Query { node: node@Delete {from:table,where_,select,..}, sub_selects },..} => {
+        ApiRequest {
+            query:
+                Query {
+                    node: node @ Insert {
+                        into: table, where_, select, ..
+                    },
+                    sub_selects,
+                },
+            ..
+        }
+        | ApiRequest {
+            query: Query {
+                node: node @ Update { table, where_, select, .. },
+                sub_selects,
+            },
+            ..
+        }
+        | ApiRequest {
+            query:
+                Query {
+                    node: node @ Delete {
+                        from: table, where_, select, ..
+                    },
+                    sub_selects,
+                },
+            ..
+        } => {
             //sqlite does not support returining in CTEs so we must do a two step process
             let primary_key_column = "rowid"; //every table has this (TODO!!! check)
-            let primary_key_field = Field {name: primary_key_column.to_string(), json_path: None};
-            let is_delete = matches!(node, Delete{..});
+            let primary_key_field = Field {
+                name: primary_key_column.to_string(),
+                json_path: None,
+            };
+            let is_delete = matches!(node, Delete { .. });
             // here we eliminate the sub_selects and also select back
             let mut mutate_request = request.clone();
             match &mut mutate_request {
-                ApiRequest { query: Query { sub_selects, node: Insert {returning, select, ..}}, ..} |
-                ApiRequest { query: Query { sub_selects, node: Delete {returning, select, ..}}, ..} |
-                ApiRequest { query: Query { sub_selects, node: Update {returning, select, ..}}, ..} => {
+                ApiRequest {
+                    query:
+                        Query {
+                            sub_selects,
+                            node: Insert { returning, select, .. },
+                        },
+                    ..
+                }
+                | ApiRequest {
+                    query:
+                        Query {
+                            sub_selects,
+                            node: Delete { returning, select, .. },
+                        },
+                    ..
+                }
+                | ApiRequest {
+                    query:
+                        Query {
+                            sub_selects,
+                            node: Update { returning, select, .. },
+                        },
+                    ..
+                } => {
                     //return only the primary key column
                     returning.clear();
                     returning.push(primary_key_column.to_string());
                     select.clear();
-                    select.push(SelectItem::Simple {field: primary_key_field.clone(), alias: Some(primary_key_column.to_string()),cast: None});
+                    select.push(SelectItem::Simple {
+                        field: primary_key_field.clone(),
+                        alias: Some(primary_key_column.to_string()),
+                        cast: None,
+                    });
 
                     if !is_delete {
-                        select.push(SelectItem::Simple {field: Field { name: "_subzero_check__constraint".to_string(), json_path: None }, alias: None,cast: None});
+                        select.push(SelectItem::Simple {
+                            field: Field {
+                                name: "_subzero_check__constraint".to_string(),
+                                json_path: None,
+                            },
+                            alias: None,
+                            cast: None,
+                        });
                     }
                     // no need for aditional data from joined tables
                     sub_selects.clear();
@@ -95,34 +160,60 @@ fn execute(
             }
             //debug!("mutated request query: {:?}", mutate_request.query);
             let env1 = env.clone();
-            let (mutate_statement, mutate_parameters, _) = generate(fmt_main_query(request.schema_name, &mutate_request, &env1).context(Core).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+            let (mutate_statement, mutate_parameters, _) =
+                generate(fmt_main_query(request.schema_name, &mutate_request, &env1).context(Core).map_err(|e| {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    e
+                })?);
             debug!("pre_statement: {}\n{:?}", mutate_statement, mutate_parameters);
-            let mut mutate_stmt = conn.prepare(mutate_statement.as_str()).context(SqliteDb { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
+            let mut mutate_stmt = conn.prepare(mutate_statement.as_str()).context(SqliteDb { authenticated }).map_err(|e| {
+                let _ = conn.execute_batch("ROLLBACK");
+                e
+            })?;
             let mutate_params = params_from_iter(mutate_parameters.into_iter().map(wrap_param));
-            let mut rows = mutate_stmt.query(mutate_params).context(SqliteDb { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?;
-            let mut ids:Vec<(i64,bool)> = vec![];
-            while let Some(r) = rows.next().context(SqliteDb { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})? {
-                ids.push(
-                    (
-                        r.get(0).context(SqliteDb { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?, //rowid
-                        if is_delete {true} else {r.get(1).context(SqliteDb { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?} //constraint check
-                    )
-                )
+            let mut rows = mutate_stmt.query(mutate_params).context(SqliteDb { authenticated }).map_err(|e| {
+                let _ = conn.execute_batch("ROLLBACK");
+                e
+            })?;
+            let mut ids: Vec<(i64, bool)> = vec![];
+            while let Some(r) = rows.next().context(SqliteDb { authenticated }).map_err(|e| {
+                let _ = conn.execute_batch("ROLLBACK");
+                e
+            })? {
+                ids.push((
+                    r.get(0).context(SqliteDb { authenticated }).map_err(|e| {
+                        let _ = conn.execute_batch("ROLLBACK");
+                        e
+                    })?, //rowid
+                    if is_delete {
+                        true
+                    } else {
+                        r.get(1).context(SqliteDb { authenticated }).map_err(|e| {
+                            let _ = conn.execute_batch("ROLLBACK");
+                            e
+                        })?
+                    }, //constraint check
+                ))
             }
             debug!("ids: {:?}", ids);
 
             // check if all rows pased the permission check
-            if ids.iter().any(|(_,p)| !p) {
+            if ids.iter().any(|(_, p)| !p) {
                 _ = conn.execute_batch("ROLLBACK");
-                return Err(to_core_error(PermissionDenied { 
+                return Err(to_core_error(PermissionDenied {
                     details: "check constraint of an insert/update permission has failed".to_string(),
-                    
                 }));
             }
 
             // in case of delete se can not do  "select back" so we jut return the deleted ids
-            if is_delete  {
-                let count = matches!(&request.preferences, Some(Preferences { count: Some(Count::ExactCount), ..}));
+            if is_delete {
+                let count = matches!(
+                    &request.preferences,
+                    Some(Preferences {
+                        count: Some(Count::ExactCount),
+                        ..
+                    })
+                );
                 if config.db_tx_rollback {
                     conn.execute_batch("ROLLBACK").context(SqliteDb { authenticated })?;
                 } else {
@@ -130,23 +221,32 @@ fn execute(
                 }
                 return Ok(ApiResponse {
                     page_total: ids.len() as i64,
-                    total_result_set: if count { Some(ids.len() as i64) } else {None},
+                    total_result_set: if count { Some(ids.len() as i64) } else { None },
                     top_level_offset: 0,
                     body: if return_representation {
-                        serde_json::to_string(&ids.iter().map(|(i,_)| 
-                            json!({primary_key_column:i})
-                        ).collect::<Vec<_>>()).context(JsonSerialize).context(Core)? 
-                    } else {"".to_string()},
+                        serde_json::to_string(&ids.iter().map(|(i, _)| json!({ primary_key_column: i })).collect::<Vec<_>>())
+                            .context(JsonSerialize)
+                            .context(Core)?
+                    } else {
+                        "".to_string()
+                    },
                     response_headers: None,
-                    response_status: None
-                })
+                    response_status: None,
+                });
             };
 
             // create the second stage select
             let mut select_request = request.clone();
             let mut select_where = where_.to_owned();
             // add the primary key condition to the where clause
-            select_where.conditions.insert(0, Condition::Single {field: primary_key_field, filter: Filter::In(ListVal(ids.iter().map(|(i,_)| i.to_string()).collect(),None)), negate: false});
+            select_where.conditions.insert(
+                0,
+                Condition::Single {
+                    field: primary_key_field,
+                    filter: Filter::In(ListVal(ids.iter().map(|(i, _)| i.to_string()).collect(), None)),
+                    negate: false,
+                },
+            );
             select_request.method = "GET";
 
             // set the request query to be a select
@@ -156,68 +256,118 @@ fn execute(
                     join_tables: vec![], //todo!! this should probably not be empty
                     where_: select_where,
                     select: select.to_vec(),
-                    limit:None,
-                    offset:None,
-                    order:vec![],
+                    limit: None,
+                    offset: None,
+                    order: vec![],
                     groupby: vec![],
                 },
-                sub_selects: sub_selects.to_vec()
+                sub_selects: sub_selects.to_vec(),
             };
 
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(select_request.schema_name, &select_request, env).context(Core).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+            let (main_statement, main_parameters, _) = generate(
+                fmt_main_query(select_request.schema_name, &select_request, env)
+                    .context(Core)
+                    .map_err(|e| {
+                        let _ = conn.execute_batch("ROLLBACK");
+                        e
+                    })?,
+            );
             debug!("main_statement: {}\n{:?}", main_statement, main_parameters);
             let mut main_stm = conn
                 .prepare_cached(main_statement.as_str())
-                .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
+                .map_err(|e| {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    e
+                })
                 .context(SqliteDb { authenticated })?;
             let parameters = params_from_iter(main_parameters.into_iter().map(wrap_param));
             let mut rows = main_stm
                 .query(parameters)
-                .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
+                .map_err(|e| {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    e
+                })
                 .context(SqliteDb { authenticated })?;
 
-            let response_row = rows.next().context(SqliteDb { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?.unwrap();
-            
-            
+            let response_row = rows
+                .next()
+                .context(SqliteDb { authenticated })
+                .map_err(|e| {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    e
+                })?
+                .unwrap();
+
             {
                 Ok(ApiResponse {
-                    page_total: response_row.get("page_total").context(SqliteDb { authenticated })?,       //("page_total"),
+                    page_total: response_row.get("page_total").context(SqliteDb { authenticated })?, //("page_total"),
                     total_result_set: response_row.get("total_result_set").context(SqliteDb { authenticated })?, //("total_result_set"),
                     top_level_offset: 0,
-                    body: if return_representation {response_row.get("body").context(SqliteDb { authenticated })?} else {"".to_string()},             //("body"),
+                    body: if return_representation {
+                        response_row.get("body").context(SqliteDb { authenticated })?
+                    } else {
+                        "".to_string()
+                    }, //("body"),
                     response_headers: response_row.get("response_headers").context(SqliteDb { authenticated })?, //("response_headers"),
-                    response_status: response_row.get("response_status").context(SqliteDb { authenticated })?,  //("response_status"),
+                    response_status: response_row.get("response_status").context(SqliteDb { authenticated })?,   //("response_status"),
                 })
-            }.map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?
-        },
+            }
+            .map_err(|e| {
+                let _ = conn.execute_batch("ROLLBACK");
+                e
+            })?
+        }
         _ => {
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(Core).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?);
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(Core).map_err(|e| {
+                let _ = conn.execute_batch("ROLLBACK");
+                e
+            })?);
             debug!("main_statement: {}\n{:?}", main_statement, main_parameters);
             let mut main_stm = conn
                 .prepare_cached(main_statement.as_str())
-                .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
+                .map_err(|e| {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    e
+                })
                 .context(SqliteDb { authenticated })?;
             let parameters = params_from_iter(main_parameters.into_iter().map(wrap_param));
             let mut rows = main_stm
                 .query(parameters)
-                .map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})
+                .map_err(|e| {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    e
+                })
                 .context(SqliteDb { authenticated })?;
 
-            let response_row = rows.next().context(SqliteDb { authenticated }).map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?.unwrap();
-            
+            let response_row = rows
+                .next()
+                .context(SqliteDb { authenticated })
+                .map_err(|e| {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    e
+                })?
+                .unwrap();
+
             {
                 Ok(ApiResponse {
-                    page_total: response_row.get("page_total").context(SqliteDb { authenticated })?,       //("page_total"),
+                    page_total: response_row.get("page_total").context(SqliteDb { authenticated })?, //("page_total"),
                     total_result_set: response_row.get("total_result_set").context(SqliteDb { authenticated })?, //("total_result_set"),
                     top_level_offset: 0,
-                    body: if return_representation {response_row.get("body").context(SqliteDb { authenticated })?} else {"".to_string()},             //("body"),
+                    body: if return_representation {
+                        response_row.get("body").context(SqliteDb { authenticated })?
+                    } else {
+                        "".to_string()
+                    }, //("body"),
                     response_headers: response_row.get("response_headers").context(SqliteDb { authenticated })?, //("response_headers"),
-                    response_status: response_row.get("response_status").context(SqliteDb { authenticated })?,  //("response_status"),
+                    response_status: response_row.get("response_status").context(SqliteDb { authenticated })?,   //("response_status"),
                 })
-            }.map_err(|e| { let _ = conn.execute_batch("ROLLBACK"); e})?
+            }
+            .map_err(|e| {
+                let _ = conn.execute_batch("ROLLBACK");
+                e
+            })?
         }
     };
-    
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
         conn.execute_batch("ROLLBACK").context(SqliteDb { authenticated })?;
@@ -245,7 +395,6 @@ fn execute(
     Ok(api_response)
 }
 
-
 pub struct SQLiteBackend {
     //vhost: String,
     config: VhostConfig,
@@ -261,29 +410,28 @@ impl Backend for SQLiteBackend {
         let manager = SqliteConnectionManager::file(db_file).with_init(|c| array::load_module(c));
         let pool = Pool::builder().max_size(config.db_pool as u32).build(manager).unwrap();
 
-        
         //read db schema
         let db_schema = match &config.db_schema_structure {
-            SqlFile(f) => match fs::read_to_string(
-                vec![f, &format!("sqlite_{}", f)].into_iter().find(|f| Path::new(f).exists()).unwrap_or(f)
-            ) {
+            SqlFile(f) => match fs::read_to_string(vec![f, &format!("sqlite_{}", f)].into_iter().find(|f| Path::new(f).exists()).unwrap_or(f)) {
                 Ok(q) => match pool.get() {
-                    Ok(conn) => {
-                        task::block_in_place(|| {
-                            let authenticated = false;
-                            let query = include_files(q);
-                            println!("schema query: {}", query);
-                            let mut stmt = conn.prepare(query.as_str()).context(SqliteDb { authenticated })?;
-                            let mut rows = stmt.query([]).context(SqliteDb { authenticated })?;
-                            match rows.next().context(SqliteDb { authenticated })? {
-                                Some(r) => {
-                                    println!("json db_schema: {}", r.get::<usize,String>(0).context(SqliteDb { authenticated })?.as_str());
-                                    serde_json::from_str::<DbSchema>(r.get::<usize,String>(0).context(SqliteDb { authenticated })?.as_str()).context(JsonDeserialize).context(Core)
-                                },
-                                None => Err(Error::Internal { message: "sqlite structure query did not return any rows".to_string() }),
+                    Ok(conn) => task::block_in_place(|| {
+                        let authenticated = false;
+                        let query = include_files(q);
+                        println!("schema query: {}", query);
+                        let mut stmt = conn.prepare(query.as_str()).context(SqliteDb { authenticated })?;
+                        let mut rows = stmt.query([]).context(SqliteDb { authenticated })?;
+                        match rows.next().context(SqliteDb { authenticated })? {
+                            Some(r) => {
+                                println!("json db_schema: {}", r.get::<usize, String>(0).context(SqliteDb { authenticated })?.as_str());
+                                serde_json::from_str::<DbSchema>(r.get::<usize, String>(0).context(SqliteDb { authenticated })?.as_str())
+                                    .context(JsonDeserialize)
+                                    .context(Core)
                             }
-                        })
-                    }
+                            None => Err(Error::Internal {
+                                message: "sqlite structure query did not return any rows".to_string(),
+                            }),
+                        }
+                    }),
                     Err(e) => Err(e).context(SqliteDbPool),
                 },
                 Err(e) => Err(e).context(ReadFile { path: f }),
@@ -295,7 +443,7 @@ impl Backend for SQLiteBackend {
             JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(Core),
         }?;
         debug!("db_schema: {:?}", db_schema);
-        Ok(SQLiteBackend {config, pool, db_schema})
+        Ok(SQLiteBackend { config, pool, db_schema })
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
         execute(&self.pool, authenticated, request, env, &self.config)

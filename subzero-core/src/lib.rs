@@ -10,5 +10,5 @@ pub mod dynamic_statement;
 pub mod error;
 pub mod formatter;
 pub mod parser;
-pub mod schema;
 pub mod permissions;
+pub mod schema;

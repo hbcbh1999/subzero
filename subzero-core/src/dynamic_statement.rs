@@ -17,9 +17,7 @@ impl<'a, T: ?Sized> SqlSnippet<'a, T> {
     }
 
     #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
+    pub fn is_empty(&self) -> bool { self.len() == 0 }
 }
 
 pub trait JoinIterator<'a, T: ?Sized> {
@@ -142,7 +140,7 @@ macro_rules! param_placeholder_format {
 #[allow(unused_imports)]
 pub(super) use param_placeholder_format;
 #[allow(unused_macros)]
-macro_rules! generate_fn { 
+macro_rules! generate_fn {
     (@get_data_type $pp:ident false) => { &None };
     (@get_data_type $pp:ident true) => { $pp.to_data_type() };
 

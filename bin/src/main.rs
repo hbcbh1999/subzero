@@ -3,7 +3,7 @@ extern crate lazy_static;
 
 #[macro_use]
 extern crate rocket;
-use http::{Method, };
+use http::{Method};
 use snafu::{OptionExt, ResultExt};
 use std::collections::HashMap;
 use figment::{
@@ -98,7 +98,10 @@ async fn handle_request(
     method: &Method, table: &str, origin: &Origin<'_>, parameters: QueryString<'_>, body: Option<&str>, cookies: &CookieJar<'_>,
     headers: AllHeaders<'_>, db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    let headers_str = headers.iter().map(|h| (h.name().as_str().to_lowercase(), h.value().to_string())).collect::<HashMap<_,_>>();
+    let headers_str = headers
+        .iter()
+        .map(|h| (h.name().as_str().to_lowercase(), h.value().to_string()))
+        .collect::<HashMap<_, _>>();
     let (status, response_content_type, response_headers, response_body) = postgrest::handle(
         table,
         method,
@@ -146,7 +149,7 @@ async fn start() -> Result<Rocket<Build>, Error> {
 
     // extract the subzero specific part of the configuration
     let vhost_config: VhostConfig = config.extract().expect("config");
-    
+
     let default_prefix = "/".to_string();
     #[allow(unused_variables)]
     let url_prefix = vhost_config.url_prefix.clone().unwrap_or(default_prefix);
@@ -184,7 +187,6 @@ async fn rocket() -> Rocket<Build> {
         Err(e) => panic!("{}", e),
     }
 }
-
 
 // #[cfg(test)]
 // #[macro_use]

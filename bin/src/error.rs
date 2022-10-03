@@ -30,7 +30,6 @@ use hyper::Error as SourceHyperError;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
-
     #[snafu(display("Unable to read from {}: {}", path.display(), source))]
     ReadFile { source: io::Error, path: PathBuf },
 
@@ -61,7 +60,7 @@ pub enum Error {
     #[cfg(feature = "sqlite")]
     #[snafu(display("ThreadError: {}", source))]
     Thread { source: JoinError },
-    
+
     #[cfg(feature = "clickhouse")]
     #[snafu(display("HttpRequestError: {}", source))]
     HttpRequest { source: HttpError },
@@ -179,9 +178,13 @@ impl Error {
             }
             Error::Internal { message } => json!({ "message": message }),
             #[cfg(feature = "clickhouse")]
-            Error::HttpRequest { source } => {json!({ "message": format!("{}", source) })},
+            Error::HttpRequest { source } => {
+                json!({ "message": format!("{}", source) })
+            }
             #[cfg(feature = "clickhouse")]
-            Error::Hyper { source } => {json!({ "message": format!("{}", source) })}
+            Error::Hyper { source } => {
+                json!({ "message": format!("{}", source) })
+            }
             Error::Core { source } => source.json_body(),
             #[cfg(feature = "sqlite")]
             Error::Thread { .. } => json!({"message":"internal thread error"}),
@@ -221,12 +224,10 @@ impl Error {
             #[cfg(feature = "sqlite")]
             Error::SqliteDb { source, .. } => {
                 json!({ "message": format!("Unhandled db error: {}", source) })
-            },
+            }
         }
     }
 }
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub fn to_core_error(e: SubzeroCoreError) -> Error {
-    Error::Core { source: e }
-}
+pub fn to_core_error(e: SubzeroCoreError) -> Error { Error::Core { source: e } }

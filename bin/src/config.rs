@@ -83,9 +83,7 @@ pub struct VhostConfig {
     pub role_claim_key: String,
 }
 
-fn db_allowed_select_functions() -> Vec<String>{
-    DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect()
-}
+fn db_allowed_select_functions() -> Vec<String> { DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect() }
 fn db_type() -> String { "postgresql".to_string() }
 fn db_schemas() -> Vec<String> { vec!["public".to_string()] }
 fn role_claim_key() -> String { ".role".to_string() }

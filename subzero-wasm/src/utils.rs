@@ -1,4 +1,4 @@
-use wasm_bindgen::{prelude::*, };
+use wasm_bindgen::{prelude::*};
 use serde_wasm_bindgen::Error as JsError;
 
 pub fn set_panic_hook() {
@@ -42,6 +42,4 @@ pub fn cast_core_err(err: subzero_core::error::Error) -> JsError {
     JsError::new(err.json_body().get("message").unwrap().as_str().unwrap_or("internal error"))
 }
 
-pub fn cast_serde_err(err: serde_wasm_bindgen::Error) -> JsError {
-    JsError::new(err.to_string().as_str())
-}
+pub fn cast_serde_err(err: serde_wasm_bindgen::Error) -> JsError { JsError::new(err.to_string().as_str()) }

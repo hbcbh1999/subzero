@@ -11,7 +11,7 @@ use combine::{
     look_ahead,
     parser::{
         char::{char, digit, letter, spaces, string},
-        choice::{choice, optional,},
+        choice::{choice, optional},
         combinator::{attempt, not_followed_by},
         repeat::many,
         repeat::{many1, sep_by, sep_by1},
@@ -227,7 +227,6 @@ pub fn parse<'a>(
                         }
                     }
                     _ => {
-                        
                         let ((negate, filter), _) = negatable_filter(&data_type)
                             .message("failed to parse filter")
                             .easy_parse(*v)
@@ -405,7 +404,7 @@ pub fn parse<'a>(
                     parameters: params,
 
                     //CallParams::KeyParams(vec![]),
-                    payload: Payload(payload,None),
+                    payload: Payload(payload, None),
 
                     is_scalar: matches!(return_type, One(Scalar) | SetOf(Scalar)),
                     returns_single: match return_type {
@@ -556,8 +555,11 @@ pub fn parse<'a>(
                 node: Insert {
                     into: root.to_string(),
                     columns,
-                    payload: Payload(payload,None),
-                    check: ConditionTree {operator: And,conditions:vec![]},
+                    payload: Payload(payload, None),
+                    check: ConditionTree {
+                        operator: And,
+                        conditions: vec![],
+                    },
                     where_: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -683,8 +685,11 @@ pub fn parse<'a>(
                 node: Update {
                     table: root.to_string(),
                     columns,
-                    payload: Payload(payload,None),
-                    check: ConditionTree {operator: And,conditions:vec![]},
+                    payload: Payload(payload, None),
+                    check: ConditionTree {
+                        operator: And,
+                        conditions: vec![],
+                    },
                     where_: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -810,8 +815,11 @@ pub fn parse<'a>(
                 node: Insert {
                     into: root.to_string(),
                     columns,
-                    payload: Payload(payload,None),
-                    check: ConditionTree {operator: And,conditions:vec![]},
+                    payload: Payload(payload, None),
+                    check: ConditionTree {
+                        operator: And,
+                        conditions: vec![],
+                    },
                     where_: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -899,10 +907,10 @@ pub fn parse<'a>(
             };
             match limit {
                 Some(SingleVal(l, ..)) => match l.parse::<u32>() {
-                    Ok(ll) if ll > max => *limit = Some(SingleVal(format!("{}", max),None)),
-                    _ => *limit = Some(SingleVal(format!("{}", max),None)),
+                    Ok(ll) if ll > max => *limit = Some(SingleVal(format!("{}", max), None)),
+                    _ => *limit = Some(SingleVal(format!("{}", max), None)),
                 },
-                None => *limit = Some(SingleVal(format!("{}", max),None)),
+                None => *limit = Some(SingleVal(format!("{}", max), None)),
             }
         }
     }
@@ -910,7 +918,9 @@ pub fn parse<'a>(
     // replace select * with all the columns
     for (_, node) in &mut query {
         let (select, o_table_name) = match node {
-            Select { select, from: (table, _), .. } => (select, Some(table)),
+            Select {
+                select, from: (table, _), ..
+            } => (select, Some(table)),
             Insert { select, into, .. } => (select, Some(into)),
             Delete { select, from, .. } => (select, Some(from)),
             Update { select, table, .. } => (select, Some(table)),
@@ -931,7 +941,10 @@ pub fn parse<'a>(
                 let table_obj = schema_obj.objects.get(table_name).context(NotFound { target: table_name.clone() })?;
                 for col in table_obj.columns.keys() {
                     select.push(SelectItem::Simple {
-                        field: Field { name: col.clone(), json_path: None },
+                        field: Field {
+                            name: col.clone(),
+                            json_path: None,
+                        },
                         alias: None,
                         cast: None,
                     });
@@ -1004,10 +1017,7 @@ fn field<Input>() -> impl Parser<Input, Output = Field>
 where
     Input: Stream<Token = char>,
 {
-    field_name().and(optional(json_path())).map(|(name, json_path)| Field {
-        name,
-        json_path,
-    })
+    field_name().and(optional(json_path())).map(|(name, json_path)| Field { name, json_path })
 }
 
 fn json_path<Input>() -> impl Parser<Input, Output = Vec<JsonOperation>>
@@ -1051,7 +1061,7 @@ fn cast<Input>() -> impl Parser<Input, Output = String>
 where
     Input: Stream<Token = char>,
 {
-    string("::").and(many1(choice((letter(),digit())))).map(|(_, c)| c)
+    string("::").and(many1(choice((letter(), digit())))).map(|(_, c)| c)
 }
 
 fn dot<Input>() -> impl Parser<Input, Output = char>
@@ -1134,20 +1144,16 @@ where
     Input: Stream<Token = char>,
 {
     choice!(
-        function_call().map(|(fn_name, parameters)| FunctionParam::Func {fn_name, parameters}),
+        function_call().map(|(fn_name, parameters)| FunctionParam::Func { fn_name, parameters }),
         field().map(FunctionParam::Fld),
-        between(
-            char('\''), 
-            char('\''), 
-            many::<String,_,_>(none_of("'".chars())),
-        )
-        .and(optional(cast()))
-        .map(|(v,c)| FunctionParam::Val(SingleVal(v,c.clone()),c))
+        between(char('\''), char('\''), many::<String, _, _>(none_of("'".chars())),)
+            .and(optional(cast()))
+            .map(|(v, c)| FunctionParam::Val(SingleVal(v, c.clone()), c))
     )
 }
 
 // We need to use `parser!` to break the recursive use of `function_call` to prevent the returned parser from containing itself
-fn function_call<Input>() -> impl Parser<Input, Output = (String,Vec<FunctionParam>)>
+fn function_call<Input>() -> impl Parser<Input, Output = (String, Vec<FunctionParam>)>
 where
     Input: Stream<Token = char>,
 {
@@ -1167,7 +1173,6 @@ parser! {
     }
 }
 
-
 // We need to use `parser!` to break the recursive use of `select_item` to prevent the returned parser from containing itself
 #[inline]
 fn select_item<Input>() -> impl Parser<Input, Output = SelectKind>
@@ -1176,7 +1181,6 @@ where
 {
     select_item_()
 }
-
 
 parser! {
     #[inline]
@@ -1201,12 +1205,12 @@ parser! {
                 .and(between(lex(char('(')), lex(char(')')),  sep_by(order_term(), lex(char(','))))))
             )
         )
-        .map(|(alias, (fn_name, parameters), partitions, orders)| 
+        .map(|(alias, (fn_name, parameters), partitions, orders)|
             Item(Func{
-                alias, fn_name, parameters, 
+                alias, fn_name, parameters,
                 partitions: match partitions { None => vec![], Some((_,p))=>p},
                 orders: match orders {None => vec![], Some((_,o))=>o},
-                
+
             })
         );
 
@@ -1258,7 +1262,7 @@ fn integer<Input>() -> impl Parser<Input, Output = SingleVal>
 where
     Input: Stream<Token = char>,
 {
-    many1(digit()).map(|v| SingleVal(v,Some("integer".to_string())))
+    many1(digit()).map(|v| SingleVal(v, Some("integer".to_string())))
 }
 
 fn limit<Input>() -> impl Parser<Input, Output = SingleVal>
@@ -1284,14 +1288,15 @@ where
         attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))),
         between(char('{'), char('}'), many(none_of("{}".chars()))).map(|v: String| format!("{{{}}}", v)),
         many(none_of(",)".chars())),
-    )).map(move |v| (v, dt.clone()))
+    ))
+    .map(move |v| (v, dt.clone()))
 }
 
 fn list_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (Vec<String>, Option<String>)>
 where
     Input: Stream<Token = char>,
 {
-    let dt = data_type.as_ref().map(|v| format!("Array({})",v)); //TODO!!! this is hardcoded for clickhouse
+    let dt = data_type.as_ref().map(|v| format!("Array({})", v)); //TODO!!! this is hardcoded for clickhouse
     lex(between(lex(char('(')), lex(char(')')), sep_by(list_element(), lex(char(','))))).map(move |v| (v, dt.clone()))
 }
 
@@ -1306,13 +1311,9 @@ fn operator<Input>() -> impl Parser<Input, Output = String>
 where
     Input: Stream<Token = char>,
 {
-    many1(letter()).and_then(|o: String| {
-        match OPERATORS.get(o.as_str()) {
-            Some(oo) => Ok(oo.to_string()),
-            None => {
-                Err(StreamErrorFor::<Input>::message_static_message("unknown operator"))
-            }
-        }
+    many1(letter()).and_then(|o: String| match OPERATORS.get(o.as_str()) {
+        Some(oo) => Ok(oo.to_string()),
+        None => Err(StreamErrorFor::<Input>::message_static_message("unknown operator")),
     })
 }
 
@@ -1329,7 +1330,9 @@ fn negatable_filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Out
 where
     Input: Stream<Token = char>,
 {
-    optional(attempt(string("not").skip(dot()))).and(filter(data_type)).map(|(n, f)| (n.is_some(), f))
+    optional(attempt(string("not").skip(dot())))
+        .and(filter(data_type))
+        .map(|(n, f)| (n.is_some(), f))
 }
 //TODO! filter and logic_filter parsers should be combined, they differ only in single_value parser type
 fn filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
@@ -1337,9 +1340,9 @@ where
     Input: Stream<Token = char>,
 {
     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
-    
+
     choice((
-        attempt(operator().skip(dot()).and(single_value(data_type)).map(move |(o, (v,dt))| match &*o {
+        attempt(operator().skip(dot()).and(single_value(data_type)).map(move |(o, (v, dt))| match &*o {
             "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace('*', "%"), dt))),
             "is" => match &*v {
                 "null" => Ok(Filter::Is(TrileanVal::TriNull)),
@@ -1352,14 +1355,19 @@ where
             },
             _ => Ok(Filter::Op(o, SingleVal(v, dt))),
         })),
-        attempt(string("in").skip(dot()).and(list_value(data_type)).map(move |(_, (v,dt))| Ok(Filter::In(ListVal(v,dt))))),
+        attempt(
+            string("in")
+                .skip(dot())
+                .and(list_value(data_type))
+                .map(move |(_, (v, dt))| Ok(Filter::In(ListVal(v, dt)))),
+        ),
         fts_operator()
             .and(optional(
                 between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(|v| SingleVal(v, None)),
             ))
             .skip(dot())
             .and(single_value(data_type))
-            .map(move |((o, l), (v,dt))| Ok(Filter::Fts(o, l, SingleVal(v,dt)))),
+            .map(move |((o, l), (v, dt))| Ok(Filter::Fts(o, l, SingleVal(v, dt)))),
     ))
     .and_then(|r| r)
 }
@@ -1371,8 +1379,8 @@ where
     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
 
     choice((
-        attempt(operator().skip(dot()).and(logic_single_value(data_type)).map(|(o, (v,dt))| match &*o {
-            "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace('*', "%"),dt))),
+        attempt(operator().skip(dot()).and(logic_single_value(data_type)).map(|(o, (v, dt))| match &*o {
+            "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace('*', "%"), dt))),
             "is" => match &*v {
                 "null" => Ok(Filter::Is(TrileanVal::TriNull)),
                 "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
@@ -1382,16 +1390,21 @@ where
                     "unknown value for is operator, use null, unknown, true, false",
                 )),
             },
-            _ => Ok(Filter::Op(o, SingleVal(v,dt))),
+            _ => Ok(Filter::Op(o, SingleVal(v, dt))),
         })),
-        attempt(string("in").skip(dot()).and(list_value(data_type)).map(|(_, (v,dt))| Ok(Filter::In(ListVal(v,dt))))),
+        attempt(
+            string("in")
+                .skip(dot())
+                .and(list_value(data_type))
+                .map(|(_, (v, dt))| Ok(Filter::In(ListVal(v, dt)))),
+        ),
         fts_operator()
             .and(optional(
-                between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(|v| SingleVal(v,None)),
+                between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(|v| SingleVal(v, None)),
             ))
             .skip(dot())
             .and(logic_single_value(data_type))
-            .map(|((o, l), (v,dt))| Ok(Filter::Fts(o, l, SingleVal(v,dt)))),
+            .map(|((o, l), (v, dt))| Ok(Filter::Fts(o, l, SingleVal(v, dt)))),
     ))
     .and_then(|v| v)
 }
@@ -1437,7 +1450,6 @@ where
 {
     field().map(GroupByTerm)
 }
-
 
 fn content_type<Input>() -> impl Parser<Input, Output = ContentType>
 where
@@ -1566,8 +1578,7 @@ fn add_join_info(query: &mut Query, schema: &str, db_schema: &DbSchema, depth: u
         FunctionCall { return_table_type, .. } => match return_table_type {
             Some(q) => &q.1,
             None => dummy_source,
-        }
-        
+        },
     };
 
     for SubSelect {
@@ -1731,10 +1742,7 @@ fn has_operator(s: &str) -> bool { OPERATORS_START.iter().map(|op| s.starts_with
 
 fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
     move |mut e| {
-        let m = e
-            .errors
-            .drain_filter(|v| matches!(v, ParserError::Message(_)))
-            .collect::<Vec<_>>();
+        let m = e.errors.drain_filter(|v| matches!(v, ParserError::Message(_))).collect::<Vec<_>>();
         let position = e.position.translate_position(s);
         let message = match m.as_slice() {
             [ParserError::Message(Info::Static(s))] => s,
@@ -1757,7 +1765,7 @@ fn get_returning(selects: &[SelectItem], sub_selects: &[SubSelect]) -> Result<Ve
         .map(|s| match s {
             Simple { field, .. } => Ok(vec![&field.name]),
             Star => Ok(vec![&*STAR]),
-            Func {..} => Ok(vec![]),
+            Func { .. } => Ok(vec![]),
         })
         .chain(sub_selects.iter().map(|s| match s {
             SubSelect { join: Some(j), .. } => match j {
@@ -1944,11 +1952,11 @@ pub mod tests {
     // }
     #[test]
     fn test_parse_get_function() {
-        let emtpy_hashmap:HashMap<&str, &str> = HashMap::new();
+        let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
         let mut api_request = ApiRequest {
             schema_name: "api",
-            get:vec![("id", "10")],
+            get: vec![("id", "10")],
             preferences: None,
             path: "dummy",
             method: "GET",
@@ -1965,7 +1973,7 @@ pub mod tests {
                         required: true,
                         variadic: false,
                     }]),
-                    payload: Payload(s(r#"{"id":"10"}"#),None),
+                    payload: Payload(s(r#"{"id":"10"}"#), None),
                     is_scalar: true,
                     returns_single: true,
                     is_multiple_call: false,
@@ -2076,7 +2084,7 @@ pub mod tests {
                 name: s("a"),
                 json_path: None,
             },
-            filter: Filter::Op(s(">="), SingleVal(s("5"),None)),
+            filter: Filter::Op(s(">="), SingleVal(s("5"), None)),
             negate: false,
         };
         let _ = query.insert_conditions(vec![(vec![], condition.clone()), (vec![s("child")], condition.clone())]);
@@ -2138,7 +2146,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_get() {
-        let emtpy_hashmap:HashMap<&str, &str> = HashMap::new();
+        let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
         let a = parse(
             "api",
@@ -2212,16 +2220,16 @@ pub mod tests {
                                         name: s("id"),
                                         json_path: None
                                     },
-                                    filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
+                                    filter: Filter::Op(s(">"), SingleVal(s("10"), Some(s("int")))),
                                     negate: true,
                                 },
-                                Group{
+                                Group {
                                     negate: true,
                                     tree: ConditionTree {
                                         operator: Or,
                                         conditions: vec![
                                             Single {
-                                                filter: Filter::Op(s("="), SingleVal(s("11"),None)),
+                                                filter: Filter::Op(s("="), SingleVal(s("11"), None)),
                                                 field: Field {
                                                     name: s("id"),
                                                     json_path: None
@@ -2229,7 +2237,7 @@ pub mod tests {
                                                 negate: false
                                             },
                                             Single {
-                                                filter: Filter::Op(s("="), SingleVal(s("12"),None)),
+                                                filter: Filter::Op(s("="), SingleVal(s("12"), None)),
                                                 field: Field {
                                                     name: s("id"),
                                                     json_path: None
@@ -2332,16 +2340,16 @@ pub mod tests {
                                                     name: s("id"),
                                                     json_path: None
                                                 },
-                                                filter: Filter::Op(s("<"), SingleVal(s("500"),Some(s("int")))),
+                                                filter: Filter::Op(s("<"), SingleVal(s("500"), Some(s("int")))),
                                                 negate: false,
                                             },
-                                            Group{
+                                            Group {
                                                 negate: false,
                                                 tree: ConditionTree {
                                                     operator: Or,
                                                     conditions: vec![
                                                         Single {
-                                                            filter: Filter::Op(s("="), SingleVal(s("11"),None)),
+                                                            filter: Filter::Op(s("="), SingleVal(s("11"), None)),
                                                             field: Field {
                                                                 name: s("id"),
                                                                 json_path: None
@@ -2349,7 +2357,7 @@ pub mod tests {
                                                             negate: false
                                                         },
                                                         Single {
-                                                            filter: Filter::Op(s("="), SingleVal(s("12"),None)),
+                                                            filter: Filter::Op(s("="), SingleVal(s("12"), None)),
                                                             field: Field {
                                                                 name: s("id"),
                                                                 json_path: None
@@ -2423,9 +2431,9 @@ pub mod tests {
 
     #[test]
     fn test_parse_post() {
-        let emtpy_hashmap:HashMap<&str, &str> = HashMap::new();
+        let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-        let headers = [("prefer", "return=representation")].iter().cloned().collect::<HashMap<_,_>>();
+        let headers = [("prefer", "return=representation")].iter().cloned().collect::<HashMap<_, _>>();
         let payload = r#"{"id":10, "name":"john"}"#;
         assert_eq!(
             parse(
@@ -2466,10 +2474,13 @@ pub mod tests {
                             alias: None,
                             cast: None
                         },],
-                        payload: Payload(s(payload),None),
+                        payload: Payload(s(payload), None),
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
-                        check: ConditionTree {operator: And,conditions:vec![]},
+                        check: ConditionTree {
+                            operator: And,
+                            conditions: vec![]
+                        },
                         where_: ConditionTree {
                             operator: And,
                             conditions: vec![Single {
@@ -2477,7 +2488,7 @@ pub mod tests {
                                     name: s("id"),
                                     json_path: None
                                 },
-                                filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
+                                filter: Filter::Op(s(">"), SingleVal(s("10"), Some(s("int")))),
                                 negate: false,
                             }]
                         },
@@ -2536,10 +2547,13 @@ pub mod tests {
                                 cast: None
                             },
                         ],
-                        payload: Payload(s(payload),None),
+                        payload: Payload(s(payload), None),
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
-                        check: ConditionTree {operator: And,conditions:vec![]},
+                        check: ConditionTree {
+                            operator: And,
+                            conditions: vec![]
+                        },
                         where_: ConditionTree {
                             operator: And,
                             conditions: vec![Single {
@@ -2547,7 +2561,7 @@ pub mod tests {
                                     name: s("id"),
                                     json_path: None
                                 },
-                                filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
+                                filter: Filter::Op(s(">"), SingleVal(s("10"), Some(s("int")))),
                                 negate: false,
                             }]
                         },
@@ -2701,10 +2715,13 @@ pub mod tests {
                             alias: None,
                             cast: None
                         },],
-                        payload: Payload(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),None),
+                        payload: Payload(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#), None),
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
-                        check: ConditionTree {operator: And,conditions:vec![]},
+                        check: ConditionTree {
+                            operator: And,
+                            conditions: vec![]
+                        },
                         where_: ConditionTree {
                             operator: And,
                             conditions: vec![Single {
@@ -2712,7 +2729,7 @@ pub mod tests {
                                     name: s("id"),
                                     json_path: None
                                 },
-                                filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
+                                filter: Filter::Op(s(">"), SingleVal(s("10"), Some(s("int")))),
                                 negate: false,
                             }]
                         },
@@ -2793,7 +2810,7 @@ pub mod tests {
                                                     name: s("id"),
                                                     json_path: None
                                                 },
-                                                filter: Filter::Op(s(">"), SingleVal(s("20"),Some(s("int")))),
+                                                filter: Filter::Op(s(">"), SingleVal(s("20"), Some(s("int")))),
                                                 negate: false,
                                             }
                                         ]
@@ -2879,10 +2896,13 @@ pub mod tests {
                                 cast: None
                             },
                         ],
-                        payload: Payload(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),None),
+                        payload: Payload(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#), None),
                         into: s("projects"),
                         columns: vec![s("id"), s("name")],
-                        check: ConditionTree {operator: And,conditions:vec![]},
+                        check: ConditionTree {
+                            operator: And,
+                            conditions: vec![]
+                        },
                         where_: ConditionTree {
                             operator: And,
                             conditions: vec![Single {
@@ -2890,7 +2910,7 @@ pub mod tests {
                                     name: s("id"),
                                     json_path: None
                                 },
-                                filter: Filter::Op(s(">"), SingleVal(s("10"),Some(s("int")))),
+                                filter: Filter::Op(s(">"), SingleVal(s("10"), Some(s("int")))),
                                 negate: false,
                             }]
                         },
@@ -3053,14 +3073,14 @@ pub mod tests {
 
     #[test]
     fn parse_filter() {
-        assert_eq!(filter(&None).easy_parse("gte.5"), Ok((Filter::Op(s(">="), SingleVal(s("5"),None)), "")));
+        assert_eq!(filter(&None).easy_parse("gte.5"), Ok((Filter::Op(s(">="), SingleVal(s("5"), None)), "")));
         assert_eq!(
             filter(&None).easy_parse("in.(1,2,3)"),
-            Ok((Filter::In(ListVal(["1", "2", "3"].map(str::to_string).to_vec(),None)), ""))
+            Ok((Filter::In(ListVal(["1", "2", "3"].map(str::to_string).to_vec(), None)), ""))
         );
         assert_eq!(
             filter(&None).easy_parse("fts.word"),
-            Ok((Filter::Fts(s("@@ to_tsquery"), None, SingleVal(s("word"),None)), ""))
+            Ok((Filter::Fts(s("@@ to_tsquery"), None, SingleVal(s("word"), None)), ""))
         );
     }
 
@@ -3074,7 +3094,7 @@ pub mod tests {
             logic_condition().easy_parse("id.gte.5"),
             Ok((
                 Single {
-                    filter: Filter::Op(s(">="), SingleVal(s("5"),None)),
+                    filter: Filter::Op(s(">="), SingleVal(s("5"), None)),
                     field: field.clone(),
                     negate: false
                 },
@@ -3085,7 +3105,7 @@ pub mod tests {
             logic_condition().easy_parse("id.not.in.(1,2,3)"),
             Ok((
                 Single {
-                    filter: Filter::In(ListVal(vec![s("1"), s("2"), s("3")],None)),
+                    filter: Filter::In(ListVal(vec![s("1"), s("2"), s("3")], None)),
                     field: field.clone(),
                     negate: true
                 },
@@ -3096,7 +3116,7 @@ pub mod tests {
             logic_condition().easy_parse("id.fts.word"),
             Ok((
                 Single {
-                    filter: Filter::Fts(s("@@ to_tsquery"), None, SingleVal(s("word"),None)),
+                    filter: Filter::Fts(s("@@ to_tsquery"), None, SingleVal(s("word"), None)),
                     field: field.clone(),
                     negate: false
                 },
@@ -3106,18 +3126,18 @@ pub mod tests {
         assert_eq!(
             logic_condition().easy_parse("not.or(id.gte.5, id.lte.10)"),
             Ok((
-                Condition::Group{
+                Condition::Group {
                     negate: true,
                     tree: ConditionTree {
                         operator: Or,
                         conditions: vec![
                             Single {
-                                filter: Filter::Op(s(">="), SingleVal(s("5"),None)),
+                                filter: Filter::Op(s(">="), SingleVal(s("5"), None)),
                                 field: field.clone(),
                                 negate: false
                             },
                             Single {
-                                filter: Filter::Op(s("<="), SingleVal(s("10"),None)),
+                                filter: Filter::Op(s("<="), SingleVal(s("10"), None)),
                                 field: field.clone(),
                                 negate: false
                             }
@@ -3130,33 +3150,33 @@ pub mod tests {
         assert_eq!(
             logic_condition().easy_parse("not.or(id.gte.5, id.lte.10, and(id.gte.2, id.lte.4))"),
             Ok((
-                Condition::Group{
+                Condition::Group {
                     negate: true,
                     tree: ConditionTree {
                         operator: Or,
                         conditions: vec![
                             Single {
-                                filter: Filter::Op(s(">="), SingleVal(s("5"),None)),
+                                filter: Filter::Op(s(">="), SingleVal(s("5"), None)),
                                 field: field.clone(),
                                 negate: false
                             },
                             Single {
-                                filter: Filter::Op(s("<="), SingleVal(s("10"),None)),
+                                filter: Filter::Op(s("<="), SingleVal(s("10"), None)),
                                 field: field.clone(),
                                 negate: false
                             },
-                            Condition::Group{
+                            Condition::Group {
                                 negate: false,
                                 tree: ConditionTree {
                                     operator: And,
                                     conditions: vec![
                                         Single {
-                                            filter: Filter::Op(s(">="), SingleVal(s("2"),None)),
+                                            filter: Filter::Op(s(">="), SingleVal(s("2"), None)),
                                             field: field.clone(),
                                             negate: false
                                         },
                                         Single {
-                                            filter: Filter::Op(s("<="), SingleVal(s("4"),None)),
+                                            filter: Filter::Op(s("<="), SingleVal(s("4"), None)),
                                             field,
                                             negate: false
                                         }
@@ -3197,16 +3217,19 @@ pub mod tests {
 
     #[test]
     fn parse_single_value() {
-        assert_eq!(single_value(&None).easy_parse("any 123 value"), Ok(((s("any 123 value"),None), "")));
-        assert_eq!(single_value(&None).easy_parse("any123value,another"), Ok(((s("any123value,another"),None), "")));
+        assert_eq!(single_value(&None).easy_parse("any 123 value"), Ok(((s("any 123 value"), None), "")));
+        assert_eq!(single_value(&None).easy_parse("any123value,another"), Ok(((s("any123value,another"), None), "")));
     }
 
     #[test]
     fn parse_logic_single_value() {
-        assert_eq!(logic_single_value(&None).easy_parse("any 123 value"), Ok(((s("any 123 value"),None), "")));
-        assert_eq!(logic_single_value(&None).easy_parse("any123value,another"), Ok(((s("any123value"),None), ",another")));
-        assert_eq!(logic_single_value(&None).easy_parse("\"any 123 value,)\""), Ok(((s("any 123 value,)"),None), "")));
-        assert_eq!(logic_single_value(&None).easy_parse("{a, b, c}"), Ok(((s("{a, b, c}"),None), "")));
+        assert_eq!(logic_single_value(&None).easy_parse("any 123 value"), Ok(((s("any 123 value"), None), "")));
+        assert_eq!(
+            logic_single_value(&None).easy_parse("any123value,another"),
+            Ok(((s("any123value"), None), ",another"))
+        );
+        assert_eq!(logic_single_value(&None).easy_parse("\"any 123 value,)\""), Ok(((s("any 123 value,)"), None), "")));
+        assert_eq!(logic_single_value(&None).easy_parse("{a, b, c}"), Ok(((s("{a, b, c}"), None), "")));
     }
 
     #[test]
@@ -3219,17 +3242,23 @@ pub mod tests {
 
     #[test]
     fn parse_list_value() {
-        assert_eq!(list_value(&None).easy_parse("()"), Ok(((vec![],None), "")));
-        assert_eq!(list_value(&None).easy_parse("(any 123 value)"), Ok(((vec![s("any 123 value")],None), "")));
-        assert_eq!(list_value(&None).easy_parse("(any123value,another)"), Ok(((vec![s("any123value"), s("another")],None), "")));
+        assert_eq!(list_value(&None).easy_parse("()"), Ok(((vec![], None), "")));
+        assert_eq!(list_value(&None).easy_parse("(any 123 value)"), Ok(((vec![s("any 123 value")], None), "")));
+        assert_eq!(
+            list_value(&None).easy_parse("(any123value,another)"),
+            Ok(((vec![s("any123value"), s("another")], None), ""))
+        );
         assert_eq!(
             list_value(&None).easy_parse("(\"any123 value\", another)"),
-            Ok(((vec![s("any123 value"), s("another")],None), ""))
+            Ok(((vec![s("any123 value"), s("another")], None), ""))
         );
-        assert_eq!(list_value(&None).easy_parse("(\"any123 value\", 123)"), Ok(((vec![s("any123 value"), s("123")],None), "")));
+        assert_eq!(
+            list_value(&None).easy_parse("(\"any123 value\", 123)"),
+            Ok(((vec![s("any123 value"), s("123")], None), ""))
+        );
         assert_eq!(
             list_value(&None).easy_parse("(\"Double\\\"Quote\\\"McGraw\\\"\")"),
-            Ok(((vec![s("Double\"Quote\"McGraw\"")],None), ""))
+            Ok(((vec![s("Double\"Quote\"McGraw\"")], None), ""))
         );
     }
 
@@ -3476,26 +3505,22 @@ pub mod tests {
                 Item(Func {
                     alias: Some(s("alias")),
                     fn_name: s("sum"),
-                    parameters: vec![
-                        FunctionParam::Fld(Field {
-                            name: s("field"),
-                            json_path: None,
-                        })
-                    ],
-                    partitions: vec![Field{
+                    parameters: vec![FunctionParam::Fld(Field {
+                        name: s("field"),
+                        json_path: None
+                    })],
+                    partitions: vec![Field {
                         name: s("city"),
-                        json_path: None,
+                        json_path: None
                     }],
-                    orders: vec![
-                        OrderTerm {
-                            term: Field {
-                                name: s("city"),
-                                json_path: None,
-                            },
-                            direction: Some(OrderDirection::Desc),
-                            null_order: None,
-                        }
-                    ],
+                    orders: vec![OrderTerm {
+                        term: Field {
+                            name: s("city"),
+                            json_path: None
+                        },
+                        direction: Some(OrderDirection::Desc),
+                        null_order: None,
+                    }],
                 }),
                 ""
             ))
@@ -3509,9 +3534,9 @@ pub mod tests {
                     parameters: vec![
                         FunctionParam::Fld(Field {
                             name: s("field"),
-                            json_path: None,
+                            json_path: None
                         }),
-                        FunctionParam::Val(SingleVal(s("10"),None),None),
+                        FunctionParam::Val(SingleVal(s("10"), None), None),
                     ],
                     partitions: vec![],
                     orders: vec![],

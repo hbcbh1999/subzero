@@ -38,7 +38,7 @@ feature "tutorial"
       ]
       "#|]
       { matchStatus = 200, matchHeaders = ["Content-Type" <:> "application/json"] }
-    
+
     it "daily number of pickups per neighborhood" $
       get "/trips?select=pickup_date,pickup_ntaname,number_of_trips:$sum('1'::UInt8)&groupby=pickup_date,pickup_ntaname&order=pickup_date.asc&limit=3"
       shouldRespondWith
