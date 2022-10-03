@@ -568,12 +568,18 @@ mod tests {
                                         operator: And,
                                         conditions: vec![
                                             Single {
-                                                field: Field { name: s("name"), json_path: None },
+                                                field: Field {
+                                                    name: s("name"),
+                                                    json_path: None
+                                                },
                                                 filter: Op(s(">"), SingleVal(s("2"), None)),
                                                 negate: false
                                             },
                                             Single {
-                                                field: Field { name: s("name"), json_path: None },
+                                                field: Field {
+                                                    name: s("name"),
+                                                    json_path: None
+                                                },
                                                 filter: Op(s("<"), SingleVal(s("5"), None)),
                                                 negate: false
                                             }
@@ -589,7 +595,9 @@ mod tests {
             format!(
                 "{:?}",
                 (
-                    s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1 and (\"schema\".\"table\".\"name\" > $2 and \"schema\".\"table\".\"name\" < $3)"),
+                    s(
+                        "to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1 and (\"schema\".\"table\".\"name\" > $2 and \"schema\".\"table\".\"name\" < $3)"
+                    ),
                     vec![SingleVal(s("2"), None), SingleVal(s("2"), None), SingleVal(s("5"), None)],
                     4
                 )

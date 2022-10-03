@@ -305,16 +305,6 @@ pub fn fmt_query<'a>(
             .. //select,
         } => {
             let qi = &Qi(schema.clone(), from.clone());
-            // let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
-            // let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
-            // let (sub_selects, joins): (Vec<_>, Vec<_>) = q
-            //     .sub_selects
-            //     .iter()
-            //     .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
-            //     .collect::<Result<Vec<_>>>()?
-            //     .into_iter()
-            //     .unzip();
-            // select.extend(sub_selects.into_iter());
             let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
@@ -339,38 +329,7 @@ pub fn fmt_query<'a>(
                 + returned_columns
             )
 
-            // (
-            //     Some(
-            //         sql(" subzero_source as ( ")
-            //             + " delete from "
-            //             + fmt_qi(qi)
-            //             + " "
-            //             + if where_.conditions.len() > 0 {
-            //                 "where " + fmt_condition_tree(&qi, where_)?
-            //             } else {
-            //                 sql("")
-            //             }
-            //             + " returning "
-            //             + returned_columns
-            //             + " )",
-            //     ),
-            //     if return_representation {
-            //         " select "
-            //             + select.join(", ")
-            //             + " from "
-            //             + fmt_identity(&"subzero_source".to_string())
-            //             + " "
-            //             + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
-            //             + " "
-            //             + if where_.conditions.len() > 0 {
-            //                 "where " + fmt_condition_tree(qi_subzero_source, where_)?
-            //             } else {
-            //                 sql("")
-            //             }
-            //     } else {
-            //         sql(format!(" select * from {}", fmt_identity(&"subzero_source".to_string())))
-            //     },
-            // )
+
         }
         Update {
             table,
@@ -421,7 +380,7 @@ pub fn fmt_query<'a>(
                             .collect::<Vec<_>>()
                             .join(",")
                     };
-                    
+
                     sql(format!(" select {} from {} where false ", sel, fmt_qi(qi)))
                 } else {
                         fmt_body(payload, columns)

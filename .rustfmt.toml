@@ -1,3 +1,4 @@
+version = "Two"
 reorder_imports = false
 fn_args_layout = "Compressed"
 fn_single_line = true

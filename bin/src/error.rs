@@ -97,7 +97,7 @@ impl Error {
             Error::ReadFile { .. } => 500,
 
             #[cfg(feature = "clickhouse")]
-            Error::Hyper {..} => 500,
+            Error::Hyper { .. } => 500,
             Error::Internal { .. } => 500,
             #[cfg(feature = "clickhouse")]
             Error::HttpRequest { .. } => 500,
@@ -115,18 +115,12 @@ impl Error {
 
             #[cfg(feature = "clickhouse")]
             Error::ClickhouseDb { .. } => 503,
-            
+
             #[cfg(feature = "sqlite")]
-            Error::SqliteDb {
-                ..
-                // source,
-                // authenticated,
-            } => 500,
+            Error::SqliteDb { .. } => 500,
+
             #[cfg(feature = "postgresql")]
-            Error::PgDb {
-                source,
-                authenticated,
-            } => match source.code() {
+            Error::PgDb { source, authenticated } => match source.code() {
                 Some(c) => match c.code().chars().collect::<Vec<char>>()[..] {
                     ['0', '8', ..] => 503,            // pg connection err
                     ['0', '9', ..] => 500,            // triggered action exception
@@ -161,9 +155,7 @@ impl Error {
                             401
                         }
                     }
-                    ['P', 'T', a, b, c] => {
-                        [a, b, c].iter().collect::<String>().parse::<u16>().unwrap_or(500)
-                    }
+                    ['P', 'T', a, b, c] => [a, b, c].iter().collect::<String>().parse::<u16>().unwrap_or(500),
                     _ => 400,
                 },
                 None => 500,
