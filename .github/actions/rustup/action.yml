@@ -12,3 +12,4 @@ runs:
       shell: bash
     - run: rustup default ${{ inputs.version }}
       shell: bash
+    - run: rustup component add rustfmt clippy

@@ -34,15 +34,15 @@ jobs:
       - uses: ./.github/actions/cargo-cache
       - run: cargo clippy --all-targets
 
-  test:
-    name: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: ./.github/actions/rust-install
-        if: ${{ env.ACT }}
-      - uses: ./.github/actions/rustup
-        if: ${{ !env.ACT }}
-      - uses: ./.github/actions/cargo-cache
-      - run: cargo test -- --test-threads=1
+  # test:
+  #   name: test
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: ./.github/actions/rust-install
+  #       if: ${{ env.ACT }}
+  #     - uses: ./.github/actions/rustup
+  #       if: ${{ !env.ACT }}
+  #     - uses: ./.github/actions/cargo-cache
+  #     - run: cargo test -- --test-threads=1
 
