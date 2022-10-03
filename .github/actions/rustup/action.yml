@@ -1,0 +1,14 @@
+name: "Rustup"
+description: "Use rustup to select a default toolchain and ensure it is up to date"
+inputs:
+  version:
+    description: "The default toolchain version"
+    required: false
+    default: "nightly"
+runs:
+  using: "composite"
+  steps:
+    - run: rustup update --no-self-update ${{ inputs.version }}
+      shell: bash
+    - run: rustup default ${{ inputs.version }}
+      shell: bash

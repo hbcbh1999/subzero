@@ -1,0 +1,7 @@
+name: "Rustfmt"
+description: "Check for proper formatting of Rust code in the workspace."
+runs:
+  using: "composite"
+  steps:
+    - run: cargo fmt --all -- --check
+      shell: bash
