@@ -117,12 +117,12 @@ pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_
     let wrap_cte_name = if run_unwrapped_query {None} else {Some("_subzero_query")};
     let source_query = fmt_query(&schema, return_representation, wrap_cte_name, query, &None)?;
     let main_query = if run_unwrapped_query {
-        "with env as materialized (" + fmt_env_query(&env)+ ") "
+        "with env as materialized (" + fmt_env_query(env)+ ") "
         + if has_payload_cte {", "} else {""}
         + source_query
     }
     else {
-        "with env as materialized (" + fmt_env_query(&env)+ "), "
+        "with env as materialized (" + fmt_env_query(env)+ "), "
         + source_query + " , "
         + if count {
             fmt_count_query(&schema, Some("_subzero_count_query"), query)?
@@ -478,7 +478,7 @@ macro_rules! fmt_in_filter {
     };
 }
 //fmt_env_var!();
-fn fmt_env_var<'a>(e: &'a EnvVar) -> String {
+fn fmt_env_var(e: &'_ EnvVar) -> String {
     match e {
         EnvVar{var, part:None} => format!("(select {} from env)",fmt_identity(var)),
         EnvVar{var, part:Some(part)} => format!("(select json({})->>'{}' from env)",fmt_identity(var), part),
@@ -593,7 +593,7 @@ fmt_identity!();
 //fmt_qi!();
 fn fmt_qi(qi: &Qi) -> String {
     match (qi.0.as_str(), qi.1.as_str()) {
-        ("", "")  => format!(""),
+        ("", "")  => String::new(),
         _ => fmt_identity(&qi.1),
     }
 }

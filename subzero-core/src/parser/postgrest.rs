@@ -71,7 +71,7 @@ pub fn parse<'a>(
     let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {
         schemas: vec![schema.to_owned()],
     })?;
-    let root_obj = schema_obj.objects.get(root).context(NotFound { target: root.clone() })?;
+    let root_obj = schema_obj.objects.get(root).context(NotFound { target: root })?;
 
     //let mut select_items = vec![SelectItem::Star];
     let mut limits = vec![];
@@ -395,7 +395,7 @@ pub fn parse<'a>(
                         }
                     };
 
-                    Ok((payload.to_string(), params))
+                    Ok((payload, params))
                 }
                 _ => Err(Error::UnsupportedVerb),
             }?;
@@ -944,7 +944,7 @@ pub fn parse<'a>(
         schema_name: schema,
         read_only: matches!(method, "GET"),
         preferences,
-        method: method.clone(),
+        method,
         path,
         query,
         accept_content_type,

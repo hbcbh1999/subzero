@@ -354,7 +354,7 @@ impl DbSchema {
                     Specific(accessed_columns) => {
                         if ![Action::Delete, Action::Execute].contains(action) {
                             for c in accessed_columns {
-                                if !allowed_columns.contains(&c) {
+                                if !allowed_columns.contains(c) {
                                     return Err(Error::PermissionDenied { 
                                         details: format!("no {:?} privileges for '{}.{}({})'", &action, current_schema, origin, c),
                                         
@@ -487,7 +487,7 @@ pub struct Column {
 }
 
 //replace Action::All with specific actions
-fn normalize_actions(actions: &Vec<Action>) -> Vec<Action> {
+fn normalize_actions(actions: &[Action]) -> Vec<Action> {
     actions.iter().fold(vec![], |mut acc, a| {
         match a {
             Action::All => {
@@ -516,9 +516,8 @@ where D: Deserializer<'de>,
                             }
                             else {
                                 let cols = grants.entry((p.role.clone(), a)).or_insert(Specific(Vec::new()));
-                                match cols {
-                                    Specific(cols) => cols.extend(columns.iter().cloned()),
-                                    _ => (),
+                                if let Specific(cols) = cols {
+                                    cols.extend(columns.iter().cloned())
                                 }
                             }
                         }
@@ -532,8 +531,8 @@ where D: Deserializer<'de>,
                     _ => (),
                 }
                 match (p.policy_for, p.check, p.using, p.check_json_str, p.using_json_str){
-                    (actions@_,check@Some(_),using@_, None, None) | 
-                    (actions@_,check@_,using@Some(_), None, None) => {
+                    (actions,check@Some(_),using, None, None) | 
+                    (actions,check,using@Some(_), None, None) => {
                         let actions_ = match actions {
                             Some(actions) => if actions.is_empty() { vec![Action::All] } else { actions },
                             None => vec![Action::All],
@@ -552,8 +551,8 @@ where D: Deserializer<'de>,
                     },
                     //these is custom handling for clickouse where json manipulation is limited
                     //and check and using are stored as json strings
-                    (actions@_, None, None,check_str@Some(_),using_str@_) | 
-                    (actions@_, None, None,check_str@_,using_str@Some(_)) => {
+                    (actions, None, None,check_str@Some(_),using_str) | 
+                    (actions, None, None,check_str,using_str@Some(_)) => {
                         let actions_ = match actions {
                             Some(actions) => if actions.is_empty() { vec![Action::All] } else { actions },
                             None => vec![Action::All],
@@ -1086,7 +1085,7 @@ mod tests {
                 operator: And,
                 conditions: vec![
                     Single { field: field.clone(), negate, filter: Op(s("eq"), SingleVal(s("hello"), None))},
-                    Single { field: field.clone(), negate, filter: In(ListVal(vec![s("1"), s("2"), s("3")], None))},
+                    Single { field, negate, filter: In(ListVal(vec![s("1"), s("2"), s("3")], None))},
                 ]
             }},
             //Single { field, filter: Col(Qi, field)},

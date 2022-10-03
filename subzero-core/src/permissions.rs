@@ -8,7 +8,7 @@ use crate::schema::{Role, DbSchema, ColumnPermissions::*, ColumnPermissions, Act
 use snafu::OptionExt;
 use log::debug;
 
-fn get_select_columns_in_params(params: &Vec<FunctionParam>) -> Vec<ColumnName> {
+fn get_select_columns_in_params(params: &[FunctionParam]) -> Vec<ColumnName> {
     params.iter().fold(vec![], |mut acc, p| {
         match p {
             FunctionParam::Fld(f) => acc.push(f.name.clone()),
@@ -19,7 +19,7 @@ fn get_select_columns_in_params(params: &Vec<FunctionParam>) -> Vec<ColumnName> 
     })
 }
 
-fn get_select_columns(select: &Vec<SelectItem>) -> ColumnPermissions {
+fn get_select_columns(select: &[SelectItem]) -> ColumnPermissions {
     select.iter().fold(Specific(vec![]), |cols, s| {
         match cols {
             All => All,
@@ -90,7 +90,7 @@ fn add_security_quals(security_quals: &mut Vec<Condition>, restrictive_policies:
         }
     }
 
-    if permissive_quals.len() > 0 {
+    if !permissive_quals.is_empty() {
         /*
 		 * We now know that permissive policies exist, so we can now add
 		 * security quals based on the USING clauses from the restrictive
@@ -154,7 +154,7 @@ fn add_with_check_options(with_check_options: &mut Vec<Condition>, restrictive_p
 	 * If there are no permissive_quals then we fall through and return a
 	 * single 'false' WCO, preventing all new rows.
 	 */
-    if permissive_quals.len() > 0 {
+    if !permissive_quals.is_empty() {
         /*
 		 * Add a single WithCheckOption for all the permissive policy clauses,
 		 * combining them together using OR.  This check has no policy name,
@@ -418,14 +418,14 @@ pub fn insert_policy_conditions(db_schema: &DbSchema, current_schema: &String,  
     let (origin, action, apply_select_policies, has_on_conflict_update) = match &query.node {
         FunctionCall {fn_name: Qi(_, origin), ..} => (origin, Action::Execute, false, false),
         Select {from: (origin, _), ..} => (origin, Action::Select, false, false),
-        Insert {into: origin, returning, on_conflict, ..} => (origin, Action::Insert, returning.len() > 0, on_conflict.is_some()),
-        Update {table: origin, returning, ..} => (origin, Action::Update, returning.len() > 0, false),
-        Delete {from: origin, returning, ..} => (origin, Action::Delete, returning.len() > 0, false),
+        Insert {into: origin, returning, on_conflict, ..} => (origin, Action::Insert, !returning.is_empty(), on_conflict.is_some()),
+        Update {table: origin, returning, ..} => (origin, Action::Update, !returning.is_empty(), false),
+        Delete {from: origin, returning, ..} => (origin, Action::Delete, !returning.is_empty(), false),
     };
     let rel = schema.objects.get(origin).context(UnknownRelation { relation: origin.to_owned() })?;
     
 
-    let (security_quals, with_check_options) = get_row_security_policies(&rel, role, action, apply_select_policies, has_on_conflict_update);
+    let (security_quals, with_check_options) = get_row_security_policies(rel, role, action, apply_select_policies, has_on_conflict_update);
 
     match query.node {
         Select {where_: ConditionTree {ref mut conditions, ..}, ..} |
@@ -555,7 +555,7 @@ pub fn check_privileges(db_schema: &DbSchema, current_schema: &String,  user: &R
 fn validate_fn_param(safe_functions: &Vec<String>, p: &FunctionParam) -> Result<()> {
     match p {
         FunctionParam::Func { fn_name, parameters } => {
-            if !safe_functions.contains(&fn_name) {
+            if !safe_functions.contains(fn_name) {
                 return Err(Error::ParseRequestError { 
                     details: format!("calling: '{}' is not allowed", fn_name),
                     message: "Unsafe functions called".to_string(),

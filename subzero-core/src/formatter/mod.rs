@@ -44,7 +44,7 @@ impl ToParam for SingleVal {
 }
 
 impl<'a> ToParam for &'a str {
-    fn to_param(&self) -> Param {Param::TV(&self)}
+    fn to_param(&self) -> Param {Param::TV(self)}
     fn to_data_type(&self) -> &Option<String> {
         &None
     }

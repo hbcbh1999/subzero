@@ -43,13 +43,13 @@ pub fn include_files(template: String) -> String {
     .map(|v| match v {
         SplitStr::Str(s) => s.to_owned(),
         SplitStr::Sep(s) => {
-            let parts = &s[2..(s.len()-1)].split("#").collect::<Vec<&str>>();
+            let parts = &s[2..(s.len()-1)].split('#').collect::<Vec<&str>>();
             debug!("parts {:?}", parts);
             let file_name = parts[0];
             let missing_msg = format!("{{not found @{}}}", file_name);
             let default_val = parts.get(1).unwrap_or(&(missing_msg.as_str())).to_owned();
             //TODO!!! this allows including any file, should this be restricted in some way?
-            let contents = fs::read_to_string(Path::new(file_name)).unwrap_or(String::from(default_val));
+            let contents = fs::read_to_string(Path::new(file_name)).unwrap_or_else(|_| String::from(default_val));
             debug!("contents for {} {}", file_name, contents);
             contents
         }

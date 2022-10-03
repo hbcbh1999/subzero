@@ -1089,7 +1089,7 @@ macro_rules! fmt_logic_operator {
 #[allow(unused_macros)]
 macro_rules! fmt_identity {
     () => {
-        //fn fmt_identity(i: &String) -> String { format!("\"{}\"", i) }
+        #[allow(clippy::ptr_arg)]
         fn fmt_identity(i: &String) -> String { 
             String::from("\"") + 
             i.chars().take_while(|x| x != &'\0').collect::<String>().replace("\"","\"\"").as_str() + 

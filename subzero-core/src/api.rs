@@ -4,7 +4,7 @@ use serde_json::Value as JsonValue;
 use crate::error::Result;
 use QueryNode::*;
 
-pub const DEFAULT_SAFE_SELECT_FUNCTIONS: &'static [&'static str] = &[
+pub const DEFAULT_SAFE_SELECT_FUNCTIONS: &[&str] = &[
     "avg", "count", "every", "max", "min", "sum", "array_agg", "json_agg", "jsonb_agg", "json_object_agg", "jsonb_object_agg", "string_agg",
     "corr", "covar_pop", "covar_samp", "regr_avgx", "regr_avgy", "regr_count", "regr_intercept", "regr_r2", "regr_slope", "regr_sxx", "regr_sxy", "regr_syy",
     "mode", "percentile_cont", "percentile_cont", "percentile_disc", "percentile_disc",
@@ -711,7 +711,7 @@ impl<'de> Deserialize<'de> for ListVal {
         D: Deserializer<'de>,
     {
         // TODO!!! flatten will eliminate None and we need to treat it as an error
-        let to_str_vec = |v: &Vec<JsonValue>| v.iter().map(|v:&JsonValue| v.as_str()).flatten().map(String::from).collect();
+        let to_str_vec = |v: &Vec<JsonValue>| v.iter().filter_map(|v:&JsonValue| v.as_str()).map(String::from).collect();
         let v = JsonValue::deserialize(deserializer)?;
         match v {
             JsonValue::Array(v) => Ok(Self(to_str_vec(&v),None)),

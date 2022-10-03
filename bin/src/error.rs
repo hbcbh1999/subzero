@@ -36,53 +36,53 @@ pub enum Error {
 
     #[cfg(feature = "postgresql")]
     #[snafu(display("DbPoolError {}", source))]
-    PgDbPoolError { source: PgPoolError },
+    PgDbPool { source: PgPoolError },
 
     #[cfg(feature = "clickhouse")]
     #[snafu(display("DbPoolError {}", source))]
-    ClickhouseDbPoolError { source: ClickhousePoolError<HttpError> },
+    ClickhouseDbPool { source: ClickhousePoolError<HttpError> },
 
     #[cfg(feature = "sqlite")]
     #[snafu(display("DbPoolError {}", source))]
-    SqliteDbPoolError { source: SqlitePoolError },
+    SqliteDbPool { source: SqlitePoolError },
 
     #[cfg(feature = "postgresql")]
     #[snafu(display("DbError {}", source))]
-    PgDbError { source: PgError, authenticated: bool },
+    PgDb { source: PgError, authenticated: bool },
 
     #[cfg(feature = "sqlite")]
     #[snafu(display("DbError {}", source))]
-    SqliteDbError { source: SqliteError, authenticated: bool },
+    SqliteDb { source: SqliteError, authenticated: bool },
 
     #[cfg(feature = "clickhouse")]
     #[snafu(display("DbError {}", source))]
-    ClickhouseDbError { source: HttpError, authenticated: bool },
+    ClickhouseDb { source: HttpError, authenticated: bool },
 
     #[cfg(feature = "sqlite")]
     #[snafu(display("ThreadError: {}", source))]
-    ThreadError { source: JoinError },
+    Thread { source: JoinError },
     
     #[cfg(feature = "clickhouse")]
     #[snafu(display("HttpRequestError: {}", source))]
-    HttpRequestError { source: HttpError },
+    HttpRequest { source: HttpError },
 
     #[cfg(feature = "clickhouse")]
     #[snafu(display("HttpRequestError: {}", source))]
-    HyperError { source: SourceHyperError },
+    Hyper { source: SourceHyperError },
 
     #[snafu(display("{}", source))]
-    CoreError { source: SubzeroCoreError },
+    Core { source: SubzeroCoreError },
 
     #[snafu(display("InternalError {}", message))]
-    InternalError { message: String },
+    Internal { message: String },
 }
 
 impl Error {
     pub fn headers(&self) -> Vec<(String, String)> {
         match self {
-            Error::CoreError { source } => source.headers(),
+            Error::Core { source } => source.headers(),
             #[cfg(feature = "postgresql")]
-            Error::PgDbError { .. } => match self.status_code() {
+            Error::PgDb { .. } => match self.status_code() {
                 401 => vec![
                     ("Content-Type".into(), "application/json".into()),
                     ("WWW-Authenticate".into(), "Bearer".into()),
@@ -98,33 +98,33 @@ impl Error {
             Error::ReadFile { .. } => 500,
 
             #[cfg(feature = "clickhouse")]
-            Error::HyperError {..} => 500,
-            Error::InternalError { .. } => 500,
+            Error::Hyper {..} => 500,
+            Error::Internal { .. } => 500,
             #[cfg(feature = "clickhouse")]
-            Error::HttpRequestError { .. } => 500,
-            Error::CoreError { source } => source.status_code(),
+            Error::HttpRequest { .. } => 500,
+            Error::Core { source } => source.status_code(),
             #[cfg(feature = "sqlite")]
-            Error::ThreadError { .. } => 500,
+            Error::Thread { .. } => 500,
             #[cfg(feature = "sqlite")]
-            Error::SqliteDbPoolError { .. } => 503,
+            Error::SqliteDbPool { .. } => 503,
 
             #[cfg(feature = "postgresql")]
-            Error::PgDbPoolError { .. } => 503,
+            Error::PgDbPool { .. } => 503,
 
             #[cfg(feature = "clickhouse")]
-            Error::ClickhouseDbPoolError { .. } => 503,
+            Error::ClickhouseDbPool { .. } => 503,
 
             #[cfg(feature = "clickhouse")]
-            Error::ClickhouseDbError { .. } => 503,
+            Error::ClickhouseDb { .. } => 503,
             
             #[cfg(feature = "sqlite")]
-            Error::SqliteDbError {
+            Error::SqliteDb {
                 ..
                 // source,
                 // authenticated,
             } => 500,
             #[cfg(feature = "postgresql")]
-            Error::PgDbError {
+            Error::PgDb {
                 source,
                 authenticated,
             } => match source.code() {
@@ -177,32 +177,32 @@ impl Error {
             Error::ReadFile { source, path } => {
                 json!({ "message": format!("Failed to read file {} ({})", path.to_str().unwrap(), source) })
             }
-            Error::InternalError { message } => json!({ "message": message }),
+            Error::Internal { message } => json!({ "message": message }),
             #[cfg(feature = "clickhouse")]
-            Error::HttpRequestError { source } => {json!({ "message": format!("{}", source) })},
+            Error::HttpRequest { source } => {json!({ "message": format!("{}", source) })},
             #[cfg(feature = "clickhouse")]
-            Error::HyperError { source } => {json!({ "message": format!("{}", source) })}
-            Error::CoreError { source } => source.json_body(),
+            Error::Hyper { source } => {json!({ "message": format!("{}", source) })}
+            Error::Core { source } => source.json_body(),
             #[cfg(feature = "sqlite")]
-            Error::ThreadError { .. } => json!({"message":"internal thread error"}),
+            Error::Thread { .. } => json!({"message":"internal thread error"}),
             #[cfg(feature = "postgresql")]
-            Error::PgDbPoolError { source } => {
+            Error::PgDbPool { source } => {
                 json!({ "message": format!("Db pool error {}", source) })
             }
             #[cfg(feature = "clickhouse")]
-            Error::ClickhouseDbPoolError { source } => {
+            Error::ClickhouseDbPool { source } => {
                 json!({ "message": format!("Db pool error {}", source) })
             }
             #[cfg(feature = "sqlite")]
-            Error::SqliteDbPoolError { source } => {
+            Error::SqliteDbPool { source } => {
                 json!({ "message": format!("Db pool error {}", source) })
             }
             #[cfg(feature = "clickhouse")]
-            Error::ClickhouseDbError { source, .. } => {
+            Error::ClickhouseDb { source, .. } => {
                 json!({ "message": format!("Unhandled db error: {}", source) })
             }
             #[cfg(feature = "postgresql")]
-            Error::PgDbError { source, .. } => match source.as_db_error() {
+            Error::PgDb { source, .. } => match source.as_db_error() {
                 Some(db_err) => match db_err.code().code().chars().collect::<Vec<char>>()[..] {
                     ['P', 'T', ..] => json!({
                         "details": match db_err.detail() {Some(v) => v.into(), None => JsonValue::Null},
@@ -219,7 +219,7 @@ impl Error {
             },
 
             #[cfg(feature = "sqlite")]
-            Error::SqliteDbError { source, .. } => {
+            Error::SqliteDb { source, .. } => {
                 json!({ "message": format!("Unhandled db error: {}", source) })
             },
         }
@@ -228,5 +228,5 @@ impl Error {
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub fn to_core_error(e: SubzeroCoreError) -> Error {
-    Error::CoreError { source: e }
+    Error::Core { source: e }
 }

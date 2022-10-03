@@ -18,7 +18,7 @@ use subzero_core::{
     permissions::{check_safe_functions, check_privileges,insert_policy_conditions},
 };
 
-use crate::error::{Result, CoreError, to_core_error};
+use crate::error::{Result, Core, to_core_error};
 
 use std::{
     collections::HashMap,
@@ -57,7 +57,7 @@ fn get_env(role: Option<&String>, request: &ApiRequest, jwt_claims: &Option<Json
         
     }
     
-    env.insert("request.method".to_string(), format!("{}", request.method));
+    env.insert("request.method".to_string(), request.method.to_string());
     env.insert("request.path".to_string(), request.path.to_string());
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
     
@@ -164,7 +164,7 @@ pub async fn handle<'a>(
             }
         }
         _ => Ok(config.db_schemas.get(0).unwrap().clone()),
-    }.context(CoreError)?);
+    }.context(Core)?);
 
     if config.db_schemas.len() > 1 {
         response_headers.push(("Content-Profile".to_string(), schema_name.clone()));
@@ -184,7 +184,7 @@ pub async fn handle<'a>(
                         match decode::<JsonValue>(t, &DecodingKey::from_secret(key.as_bytes()), &validation) {
                             Ok(c) => {
                                 if let Some(exp) = c.claims.get("exp") {
-                                    if from_value::<u64>(exp.clone()).context(JsonSerialize).context(CoreError)? < get_current_timestamp() - 1 {
+                                    if from_value::<u64>(exp.clone()).context(JsonSerialize).context(Core)? < get_current_timestamp() - 1 {
                                         return Err(to_core_error(Error::JwtTokenInvalid {
                                             message: "JWT expired".to_string(),
                                         }));
@@ -204,7 +204,7 @@ pub async fn handle<'a>(
             None => Ok(None),
         },
         None => Ok(None),
-    }.context(CoreError)?;
+    }.context(Core)?;
 
     let (role, authenticated) = match &jwt_claims {
         Some(claims) => match select(claims, format!("${}", config.role_claim_key).as_str()) {
@@ -215,7 +215,7 @@ pub async fn handle<'a>(
             Err(e) => Err(Error::JwtTokenInvalid { message: format!("{}", e) }),
         },
         None => Ok((config.db_anon_role.as_ref(), false)),
-    }.context(CoreError)?;
+    }.context(Core)?;
 
     debug!("role: {:?}, jwt_claims: {:?}", role, jwt_claims);
     
@@ -225,7 +225,7 @@ pub async fn handle<'a>(
     }
 
     // parse request and generate the query
-    let mut request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(CoreError)?;
+    let mut request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(Core)?;
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
     check_privileges(db_schema, schema_name, role.unwrap_or(&String::default()), &request).map_err(to_core_error)?; 
@@ -289,17 +289,17 @@ pub async fn handle<'a>(
                                         Ok(())
                                     }
                                     _ => Err(Error::GucHeadersError),
-                                }.context(CoreError)?
+                                }.context(Core)?
                             }
                             Ok(())
                         }
                         _ => Err(Error::GucHeadersError),
-                    }.context(CoreError)?
+                    }.context(Core)?
                 }
                 Ok(())
             }
             _ => Err(Error::GucHeadersError),
-        }.context(CoreError)?
+        }.context(Core)?
     }
 
     #[rustfmt::skip]
@@ -327,7 +327,7 @@ pub async fn handle<'a>(
 
     let response_status: Option<String> = response.response_status;
     if let Some(response_status_str) = response_status {
-        status = response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError).context(CoreError)?;
+        status = response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError).context(Core)?;
     }
 
     Ok((status, content_type, response_headers, response.body))

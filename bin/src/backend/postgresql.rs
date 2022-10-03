@@ -71,7 +71,7 @@ impl ToSql for WrapParam<'_> {
     to_sql_checked!();
 }
 
-fn wrap_param<'a>(p: &'a (dyn ToParam + Sync)) -> WrapParam<'a> {
+fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> {
     WrapParam(p.to_param())
 }
 fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
@@ -79,8 +79,8 @@ fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
 }
 
 async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'a>, env: &'a HashMap<&'a str, &'a str>, config: &VhostConfig) -> Result<ApiResponse> {
-    let mut client = pool.get().await.context(PgDbPoolError)?;
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, &env).context(CoreError)?);
+    let mut client = pool.get().await.context(PgDbPool)?;
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(Core)?);
     
 
     let transaction = client
@@ -89,14 +89,14 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
         .read_only(request.read_only)
         .start()
         .await
-        .context(PgDbError { authenticated })?;
+        .context(PgDb { authenticated })?;
 
     if let Some((s, f)) = &config.db_pre_request {  
         let fn_schema = match s.as_str() {
             "" => request.schema_name,
             _ => s.as_str(),
         };
-        let (env_query, env_parameters, _) = generate(fmt_env_query(&env));
+        let (env_query, env_parameters, _) = generate(fmt_env_query(env));
 
         let pre_request_statement = format!(r#"
             with env as materialized({})
@@ -107,8 +107,8 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
         let pre_request_stm = transaction
             .prepare_cached(pre_request_statement.as_str())
             .await
-            .context(PgDbError { authenticated })?;
-        transaction.query(&pre_request_stm, env_parameters.into_iter().map(wrap_param).collect::<Vec<_>>().iter().map(cast_param).collect::<Vec<_>>().as_slice()).await.context(PgDbError { authenticated })?;
+            .context(PgDb { authenticated })?;
+        transaction.query(&pre_request_stm, env_parameters.into_iter().map(wrap_param).collect::<Vec<_>>().iter().map(cast_param).collect::<Vec<_>>().as_slice()).await.context(PgDb { authenticated })?;
     }
 
     debug!("main_statement {}\n{:?}", main_statement, main_parameters);
@@ -116,16 +116,16 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
     let main_stm = transaction
         .prepare_cached(main_statement.as_str())
         .await
-        .context(PgDbError { authenticated })?;
+        .context(PgDb { authenticated })?;
 
     let rows = transaction
         .query(&main_stm, main_parameters.into_iter().map(wrap_param).collect::<Vec<_>>().iter().map(cast_param).collect::<Vec<_>>().as_slice())
         .await
-        .context(PgDbError { authenticated })?;
+        .context(PgDb { authenticated })?;
 
     let constraints_satisfied:bool = rows[0].get("constraints_satisfied");
     if !constraints_satisfied {
-        transaction.rollback().await.context(PgDbError { authenticated })?;
+        transaction.rollback().await.context(PgDb { authenticated })?;
         return Err(to_core_error(PermissionDenied { details: "check constraint of an insert/update permission has failed".to_string(),}));
     }
 
@@ -139,7 +139,7 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
     };
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
-        transaction.rollback().await.context(PgDbError { authenticated })?;
+        transaction.rollback().await.context(PgDb { authenticated })?;
         return Err(to_core_error(SingularityError {
             count: api_response.page_total,
             content_type: "application/vnd.pgrst.object+json".to_string(),
@@ -151,14 +151,14 @@ async fn execute<'a>(pool: &'a Pool, authenticated: bool, request: &ApiRequest<'
         // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
-        transaction.rollback().await.context(PgDbError { authenticated })?;
+        transaction.rollback().await.context(PgDb { authenticated })?;
         return Err(to_core_error(PutMatchingPkError));
     }
 
     if config.db_tx_rollback {
-        transaction.rollback().await.context(PgDbError { authenticated })?;
+        transaction.rollback().await.context(PgDb { authenticated })?;
     } else {
-        transaction.commit().await.context(PgDbError { authenticated })?;
+        transaction.commit().await.context(PgDb { authenticated })?;
     }
 
     Ok(api_response)
@@ -212,29 +212,29 @@ impl Backend for PostgreSQLBackend {
                             .read_only(true)
                             .start()
                             .await
-                            .context(PgDbError { authenticated})?;
+                            .context(PgDb { authenticated})?;
                         let _ = transaction.query("set local schema ''", &[]).await;
                         match transaction.query(&query, &[&config.db_schemas]).await {
                             Ok(rows) => {
-                                transaction.commit().await.context(PgDbError { authenticated })?;
+                                transaction.commit().await.context(PgDb { authenticated })?;
                                 //println!("db schema loaded: {}", rows[0].get::<usize, &str>(0));
-                                serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize).context(CoreError)
+                                serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize).context(Core)
                             }
                             Err(e) => {
-                                transaction.rollback().await.context(PgDbError { authenticated })?;
-                                Err(e).context(PgDbError { authenticated })
+                                transaction.rollback().await.context(PgDb { authenticated })?;
+                                Err(e).context(PgDb { authenticated })
                             }
                         }
                     }
-                    Err(e) => Err(e).context(PgDbPoolError),
+                    Err(e) => Err(e).context(PgDbPool),
                 },
                 Err(e) => Err(e).context(ReadFile { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(Core),
                 Err(e) => Err(e).context(ReadFile { path: f }),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(CoreError),
+            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(Core),
         }?;
 
         Ok(PostgreSQLBackend {config, pool, db_schema})

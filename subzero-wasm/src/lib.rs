@@ -27,7 +27,7 @@ use subzero_core::formatter::clickhouse;
 use subzero_core::formatter::sqlite;
 use wasm_bindgen::{prelude::*, };
 use js_sys::{Error as JsError, Array as JsArray,};
-use serde_json;
+
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -70,6 +70,7 @@ impl Backend {
         };
         Backend { db_schema, db_type, allowed_select_functions }
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn parse(
         &self,
         schema_name: &str,
@@ -172,7 +173,7 @@ impl Backend {
                 returning.clear();
                 returning.push(primary_key_column.to_string());
                 select.clear();
-                select.push(SelectItem::Simple {field: primary_key_field.clone(), alias: Some(primary_key_column.to_string()),cast: None});
+                select.push(SelectItem::Simple {field: primary_key_field, alias: Some(primary_key_column.to_string()),cast: None});
 
                 if !is_delete {
                     select.push(SelectItem::Simple {field: Field { name: "_subzero_check__constraint".to_string(), json_path: None }, alias: None,cast: None});

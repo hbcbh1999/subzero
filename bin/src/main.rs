@@ -25,7 +25,7 @@ use subzero_core::{
     api::ContentType::{SingularJSON, TextCSV, ApplicationJSON},
 };
 mod error;
-use error::{Error, CoreError};
+use error::{Error, Core};
 
 mod backend;
 use backend::{Backend};
@@ -56,7 +56,7 @@ lazy_static! {
 async fn get<'a>(
     table: &'a str, origin: &Origin<'_>, parameters: QueryString<'a>, cookies: &CookieJar<'a>, headers: AllHeaders<'a>, db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::GET, &table, origin, parameters, None, cookies, headers, db_backend).await
+    handle_request(&Method::GET, table, origin, parameters, None, cookies, headers, db_backend).await
 }
 
 #[post("/<table>?<parameters..>", data = "<body>")]
@@ -64,7 +64,7 @@ async fn post<'a>(
     table: &'a str, origin: &Origin<'_>, parameters: QueryString<'a>, body: &'a str, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::POST, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
+    handle_request(&Method::POST, table, origin, parameters, Some(body), cookies, headers, db_backend).await
 }
 
 #[delete("/<table>?<parameters..>", data = "<body>")]
@@ -72,7 +72,7 @@ async fn delete<'a>(
     table: &'a str, origin: &Origin<'_>, parameters: QueryString<'a>, body: &'a str, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::DELETE, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
+    handle_request(&Method::DELETE, table, origin, parameters, Some(body), cookies, headers, db_backend).await
 }
 
 #[patch("/<table>?<parameters..>", data = "<body>")]
@@ -80,7 +80,7 @@ async fn patch<'a>(
     table: &'a str, origin: &Origin<'_>, parameters: QueryString<'a>, body: &'a str, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::PATCH, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
+    handle_request(&Method::PATCH, table, origin, parameters, Some(body), cookies, headers, db_backend).await
 }
 
 #[put("/<table>?<parameters..>", data = "<body>")]
@@ -88,7 +88,7 @@ async fn put<'a>(
     table: &'a str, origin: &Origin<'_>, parameters: QueryString<'a>, body: &'a str, cookies: &CookieJar<'a>, headers: AllHeaders<'a>,
     db_backend: &State<DbBackend>,
 ) -> Result<ApiResponse, RocketError> {
-    handle_request(&Method::PUT, &table, origin, parameters, Some(body), cookies, headers, db_backend).await
+    handle_request(&Method::PUT, table, origin, parameters, Some(body), cookies, headers, db_backend).await
 }
 
 // main request handler
@@ -120,7 +120,7 @@ async fn handle_request(
 
     Ok(ApiResponse {
         response: (
-            Status::from_code(status).context(GucStatusError).context(CoreError).map_err(RocketError)?,
+            Status::from_code(status).context(GucStatusError).context(Core).map_err(RocketError)?,
             (http_content_type, response_body),
         ),
         headers: response_headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),
