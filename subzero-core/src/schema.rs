@@ -1,6 +1,6 @@
 use crate::api::{ForeignKey, Join, Join::*, ProcParam, Qi, ColumnName, Condition};
 use crate::error::*;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use snafu::OptionExt;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
@@ -8,11 +8,11 @@ use log::debug;
 use ColumnPermissions::*;
 
 pub type Role = String;
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Action {Execute,Select,Insert,Update,Delete,All,Merge}
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum ColumnPermissions {
     All,
     Specific(Vec<ColumnName>),
@@ -21,13 +21,13 @@ impl Default for ColumnPermissions {
     fn default() -> Self { ColumnPermissions::All }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
 pub struct Permissions {
     pub grants: HashMap<(Role, Action), ColumnPermissions>, 
     pub policies: HashMap<(Role, Action), Vec<Policy>>
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct Policy {
     //#[serde(default, skip_serializing_if = "is_default")]
     pub name: Option<String>,
@@ -67,7 +67,7 @@ struct PermissionDef {
     pub columns: Option<Vec<ColumnName>>,
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub struct DbSchema {
     #[serde(default, deserialize_with = "deserialize_bool_from_anything")]
     pub use_internal_permissions: bool,
@@ -371,7 +371,7 @@ impl DbSchema {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Schema {
     pub name: String,
     #[serde(deserialize_with = "deserialize_objects")]
@@ -380,7 +380,7 @@ pub struct Schema {
     join_tables: BTreeMap<(String, String), BTreeSet<String>>,
 }
 
-#[derive(Debug, PartialEq, Eq,  Clone)]
+#[derive(Debug, PartialEq, Eq,  Clone, Serialize, Deserialize)]
 pub struct Object {
     pub kind: ObjectType,
     pub name: String,
@@ -431,26 +431,26 @@ struct ProcParamDef {
     variadic: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub enum ProcVolatility {
     Imutable,
     Stable,
     Volatile,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub enum ProcReturnType {
     One(PgType),
     SetOf(PgType),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub enum PgType {
     Scalar,
     Composite(Qi),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub enum ObjectType {
     #[serde(rename = "view")]
     View,
@@ -476,7 +476,7 @@ struct ForeignKeyDef {
     referenced_columns: Vec<String>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub struct Column {
     #[serde(default)]
     pub name: ColumnName,

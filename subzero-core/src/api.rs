@@ -14,25 +14,25 @@ pub const DEFAULT_SAFE_SELECT_FUNCTIONS: &[&str] = &[
     "toHour", "dictGet", "dictHas", "dictGetOrDefault", "toUInt64"
     ];
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum Resolution {
     MergeDuplicates,
     IgnoreDuplicates,
 }
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum Representation {
     Full,
     None,
     HeadersOnly,
 }
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum Count {
     ExactCount,
     PlannedCount,
     EstimatedCount,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Preferences {
     pub resolution: Option<Resolution>,
     pub representation: Option<Representation>,
@@ -63,14 +63,14 @@ pub struct ApiResponse {
     pub body: String,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum ContentType {
     ApplicationJSON,
     SingularJSON,
     TextCSV,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct ProcParam {
     pub name: String,
     pub type_: String,
@@ -78,13 +78,13 @@ pub struct ProcParam {
     pub variadic: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum CallParams {
     KeyParams(Vec<ProcParam>),
     OnePosParam(ProcParam),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Query {
     pub node: QueryNode,
     pub sub_selects: Vec<SubSelect>,
@@ -242,7 +242,7 @@ where
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum QueryNode {
     FunctionCall {
         fn_name: Qi,
@@ -336,23 +336,23 @@ impl QueryNode {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct OrderTerm {
     pub term: Field,
     pub direction: Option<OrderDirection>,
     pub null_order: Option<OrderNulls>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct GroupByTerm (pub Field);
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum OrderDirection {
     Asc,
     Desc,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum OrderNulls {
     NullsFirst,
     NullsLast,
@@ -363,7 +363,7 @@ pub type JoinHint = String;
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Deserialize, Serialize)]
 pub struct Qi(pub String, pub String);
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub struct ForeignKey {
     pub name: String,
     pub table: Qi,
@@ -373,7 +373,7 @@ pub struct ForeignKey {
 }
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum Join {
     Child(ForeignKey),
     Parent(ForeignKey),
@@ -386,7 +386,7 @@ pub enum SelectKind {
     Sub(Box<SubSelect>), //TODO! check performance implications for using box
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum FunctionParam {
     Fld(Field),
     Val(SingleVal,Option<String>),
@@ -396,7 +396,7 @@ pub enum FunctionParam {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum SelectItem {
     //TODO!!! better name
     Star,
@@ -414,7 +414,7 @@ pub enum SelectItem {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct SubSelect {
     pub query: Query,
     pub alias: Option<String>,
@@ -631,7 +631,7 @@ pub type Negate = bool;
 pub type Language = SingleVal;
 pub type ColumnName = String;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize,)]
 pub struct Payload(pub String, pub Option<String>);
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone,)]

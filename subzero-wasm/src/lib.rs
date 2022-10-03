@@ -1,5 +1,12 @@
 // #![no_std]
-
+use serde::{Serialize, Deserialize};
+use wasm_bindgen::{prelude::*, };
+use js_sys::{Array as JsArray,};
+// use wasm_bindgen::prelude::wasm_bindgen;
+use serde_wasm_bindgen::from_value as from_js_value;
+use serde_wasm_bindgen::to_value as to_js_value;
+use serde_wasm_bindgen::Error as JsError;
+use wasm_bindgen::{JsValue, };
 mod utils;
 
 use utils::{
@@ -25,8 +32,7 @@ use subzero_core::formatter::postgresql;
 use subzero_core::formatter::clickhouse;
 #[cfg(feature = "sqlite")]
 use subzero_core::formatter::sqlite;
-use wasm_bindgen::{prelude::*, };
-use js_sys::{Error as JsError, Array as JsArray,};
+
 
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
@@ -36,7 +42,7 @@ use js_sys::{Error as JsError, Array as JsArray,};
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[wasm_bindgen]
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Request {
     schema_name: String,
     method: String,
@@ -46,6 +52,7 @@ pub struct Request {
 }
 
 #[wasm_bindgen]
+#[derive(Serialize, Deserialize)]
 pub struct Backend {
     db_schema: DbSchema,
     db_type: String,
@@ -57,15 +64,15 @@ pub struct Backend {
 //     pub statement: String,
 //     pub parameters: Vec<JsValue>,
 // }
-
 #[wasm_bindgen]
 impl Backend {
-    pub fn init(s: &str, dt: &str, allowed_select_functions: Option<JsArray>) -> Backend {
+    pub fn init(s: &str, dt: &str, allowed_select_functions: JsValue) -> Backend {
         set_panic_hook();
         let db_schema = serde_json::from_str(s).expect("invalid schema json");
         let db_type = dt.to_owned();
+        let allowed_select_functions = from_js_value::<Option<Vec<String>>>(allowed_select_functions).unwrap_or_default();
         let allowed_select_functions = match allowed_select_functions {
-            Some(v) => v.into_serde::<Vec<String>>().unwrap_or_default(),
+            Some(v) => v,
             None => DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
         };
         Backend { db_schema, db_type, allowed_select_functions }
@@ -77,11 +84,11 @@ impl Backend {
         root: &str, 
         method: &str, 
         path: &str, 
-        get: &JsArray, 
+        get: JsValue, 
         body: &str,
         role: &str,
-        headers: &JsArray,
-        cookies: &JsArray,
+        headers: JsValue,
+        cookies: JsValue,
     )
     -> Result<Request, JsError>
     {
@@ -89,11 +96,11 @@ impl Backend {
             return Err(JsError::new("invalid method"));
         }
         
-        let get = get.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
+        let get = from_js_value::<Vec<(String,String)>>(get).map_err(cast_serde_err)?;
         let get = get.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
-        let headers = headers.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
+        let headers = from_js_value::<Vec<(String,String)>>(headers).map_err(cast_serde_err)?;
         let headers = headers.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
-        let cookies = cookies.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
+        let cookies = from_js_value::<Vec<(String,String)>>(cookies).map_err(cast_serde_err)?;
         let cookies = cookies.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
         let db_schema = &self.db_schema;
         let schema_name_string = schema_name.to_owned();
@@ -125,10 +132,10 @@ impl Backend {
 
     }
 
-    pub fn fmt_main_query(&self, request: &Request, env: &JsArray) -> Result<Vec<JsValue>, JsError> {
+    pub fn fmt_main_query(&self, request: Request, env: JsValue) -> Result<Vec<JsValue>, JsError> {
         
         let db_type = self.db_type.as_str();
-        let env = env.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
+        let env = from_js_value::<Vec<(String,String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
         let (main_statement, main_parameters, _) = match db_type {
             #[cfg(feature = "postgresql")]
@@ -151,17 +158,17 @@ impl Backend {
         Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
     }
 
-    pub fn fmt_sqlite_mutate_query(&self, original_request: &Request, env: &JsArray) -> Result<Vec<JsValue>, JsError> {
+    pub fn fmt_sqlite_mutate_query(&self, original_request: Request, env: JsValue) -> Result<Vec<JsValue>, JsError> {
         
         let db_type = self.db_type.as_str();
-        let env = env.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
+        let env = from_js_value::<Vec<(String,String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
         //sqlite does not support returining in CTEs so we must do a two step process
         let primary_key_column = "rowid"; //every table has this (TODO!!! check)
         let primary_key_field = Field {name: primary_key_column.to_string(), json_path: None};
 
         // create a clone of the request
-        let mut request:Request = original_request.clone();
+        let mut request:Request = original_request;
         let is_delete = matches!(request.query.node, Delete{..});
         
         // eliminate the sub_selects and also select back
@@ -196,12 +203,12 @@ impl Backend {
         Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
     }
 
-    pub fn fmt_sqlite_second_stage_select(&self, original_request: &Request, ids: &JsArray, env: &JsArray) -> Result<Vec<JsValue>, JsError> {
+    pub fn fmt_sqlite_second_stage_select(&self, original_request: Request, ids: JsValue, env: JsValue) -> Result<Vec<JsValue>, JsError> {
         
         let db_type = self.db_type.as_str();
-        let env = env.into_serde::<Vec<(String,String)>>().map_err(cast_serde_err)?;
+        let env = from_js_value::<Vec<(String,String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k,v)|(k.as_str(),v.as_str())).collect();
-        let ids = ids.into_serde::<Vec<String>>().map_err(cast_serde_err)?;
+        let ids = from_js_value::<Vec<String>>(ids).map_err(cast_serde_err)?;
         // create a clone of the request
         let mut request:Request = original_request.clone();
         match &original_request.query {
@@ -251,13 +258,14 @@ fn parameters_to_js_array(rust_parameters: Vec<&(dyn ToParam + Sync)>) -> JsArra
     let parameters = JsArray::new_with_length(rust_parameters.len() as u32);
         for (i, p) in rust_parameters.into_iter().enumerate() {
             let v = match p.to_param() {
-                LV(ListVal(v,_)) => JsValue::from_serde(&serde_json::to_string(v).unwrap_or_default()).unwrap_or_default(),
-                SV(SingleVal(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
-                PL(Payload(v,_)) => JsValue::from_serde(v).unwrap_or_default(),
-                TV(v) => JsValue::from_serde(v).unwrap_or_default(),
+                LV(ListVal(v,_)) => to_js_value(&v).unwrap_or_default(),
+                SV(SingleVal(v,_)) => to_js_value(&v).unwrap_or_default(),
+                PL(Payload(v,_)) => to_js_value(&v).unwrap_or_default(),
+                TV(v) => to_js_value(&v).unwrap_or_default(),
             };
             parameters.set(i as u32, v);
         }
+    //to_js_value(&parameters).unwrap_or_default()
     parameters
 }
 

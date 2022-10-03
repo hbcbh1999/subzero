@@ -17,6 +17,8 @@ strip = true  # Automatically strip symbols from the binary.
 lto = true
 codegen-units = 1
 panic = "abort"
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
 
 # [target.x86_64-unknown-linux-gnu]
 # rustflags = [

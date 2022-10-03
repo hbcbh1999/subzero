@@ -1,5 +1,5 @@
 use wasm_bindgen::{prelude::*, };
-use js_sys::{Error as JsError, };
+use serde_wasm_bindgen::Error as JsError;
 
 pub fn set_panic_hook() {
     // When the `console_error_panic_hook` feature is enabled, we can call the
@@ -42,6 +42,6 @@ pub fn cast_core_err(err: subzero_core::error::Error) -> JsError {
     JsError::new(err.json_body().get("message").unwrap().as_str().unwrap_or("internal error"))
 }
 
-pub fn cast_serde_err(err: serde_json::Error) -> JsError {
+pub fn cast_serde_err(err: serde_wasm_bindgen::Error) -> JsError {
     JsError::new(err.to_string().as_str())
 }
