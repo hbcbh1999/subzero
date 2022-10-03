@@ -129,7 +129,7 @@ pub fn parse<'a>(
                 let (parsed_value, _) = select()
                     .message("failed to parse select parameter")
                     .easy_parse(*v)
-                    .map_err(to_app_error(*v))?;
+                    .map_err(to_app_error(v))?;
                 select_items = parsed_value;
             }
 
@@ -137,21 +137,21 @@ pub fn parse<'a>(
                 let (parsed_value, _) = columns()
                     .message("failed to parse columns parameter")
                     .easy_parse(*v)
-                    .map_err(to_app_error(*v))?;
+                    .map_err(to_app_error(v))?;
                 columns_ = Some(parsed_value);
             }
             "groupby" => {
                 let (parsed_value, _) = groupby()
                     .message("failed to parse groupby parameter")
                     .easy_parse(*v)
-                    .map_err(to_app_error(*v))?;
+                    .map_err(to_app_error(v))?;
                 groupbys = parsed_value;
             }
             "on_conflict" => {
                 let (parsed_value, _) = on_conflict()
                     .message("failed to parse on_conflict parameter")
                     .easy_parse(*v)
-                    .map_err(to_app_error(*v))?;
+                    .map_err(to_app_error(v))?;
                 on_conflict_ = Some(parsed_value);
             }
 
@@ -159,7 +159,7 @@ pub fn parse<'a>(
                 let ((tp, n, lo), _) = logic_tree_path()
                     .message("failed to parser logic tree path")
                     .easy_parse(*k)
-                    .map_err(to_app_error(*k))?;
+                    .map_err(to_app_error(k))?;
 
                 let ns = if n { "not." } else { "" };
                 let los = if lo == And { "and" } else { "or" };
@@ -176,11 +176,11 @@ pub fn parse<'a>(
                 let ((tp, _), _) = tree_path()
                     .message("failed to parser limit tree path")
                     .easy_parse(*k)
-                    .map_err(to_app_error(*k))?;
+                    .map_err(to_app_error(k))?;
                 let (parsed_value, _) = limit()
                     .message("failed to parse limit parameter")
                     .easy_parse(*v)
-                    .map_err(to_app_error(*v))?;
+                    .map_err(to_app_error(v))?;
                 limits.push((tp, parsed_value));
             }
 
@@ -188,11 +188,11 @@ pub fn parse<'a>(
                 let ((tp, _), _) = tree_path()
                     .message("failed to parser offset tree path")
                     .easy_parse(*k)
-                    .map_err(to_app_error(*k))?;
+                    .map_err(to_app_error(k))?;
                 let (parsed_value, _) = offset()
                     .message("failed to parse limit parameter")
                     .easy_parse(*v)
-                    .map_err(to_app_error(*v))?;
+                    .map_err(to_app_error(v))?;
                 offsets.push((tp, parsed_value));
             }
 
@@ -200,8 +200,8 @@ pub fn parse<'a>(
                 let ((tp, _), _) = tree_path()
                     .message("failed to parser order tree path")
                     .easy_parse(*k)
-                    .map_err(to_app_error(*k))?;
-                let (parsed_value, _) = order().message("failed to parse order").easy_parse(*v).map_err(to_app_error(*v))?;
+                    .map_err(to_app_error(k))?;
+                let (parsed_value, _) = order().message("failed to parse order").easy_parse(*v).map_err(to_app_error(v))?;
                 orders.push((tp, parsed_value));
             }
 
@@ -210,16 +210,16 @@ pub fn parse<'a>(
                 let ((tp, field), _) = tree_path()
                     .message("failed to parser filter tree path")
                     .easy_parse(*k)
-                    .map_err(to_app_error(*k))?;
+                    .map_err(to_app_error(k))?;
                 let data_type = root_obj.columns.get(&field.name).map(|c| c.data_type.clone());
                 match root_obj.kind {
                     Function { .. } => {
-                        if !tp.is_empty() || has_operator(*v) {
+                        if !tp.is_empty() || has_operator(v) {
                             // this is a filter
                             let ((negate, filter), _) = negatable_filter(&data_type)
                                 .message("failed to parse filter")
                                 .easy_parse(*v)
-                                .map_err(to_app_error(*v))?;
+                                .map_err(to_app_error(v))?;
                             conditions.push((tp, Condition::Single { field, filter, negate }));
                         } else {
                             //this is a function parameter
@@ -231,7 +231,7 @@ pub fn parse<'a>(
                         let ((negate, filter), _) = negatable_filter(&data_type)
                             .message("failed to parse filter")
                             .easy_parse(*v)
-                            .map_err(to_app_error(*v))?;
+                            .map_err(to_app_error(v))?;
                         conditions.push((tp, Condition::Single { field, filter, negate }));
                     }
                 };

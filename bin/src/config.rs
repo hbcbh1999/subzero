@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Deserializer, Serialize};
 use subzero_core::api::{DEFAULT_SAFE_SELECT_FUNCTIONS};
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(rename_all(serialize = "snake_case", deserialize = "snake_case"))]
 pub enum SchemaStructure {
     SqlFile(String),
@@ -17,7 +17,7 @@ impl Default for SchemaStructure {
     fn default() -> Self { SchemaStructure::JsonString(r#"{"schemas":[]}"#.to_string()) }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Config {
     #[serde(with = "vhosts")]
     pub vhosts: HashMap<String, VhostConfig>,
@@ -54,7 +54,7 @@ mod vhosts {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct VhostConfig {
     pub url_prefix: Option<String>,
     pub static_files_dir: Option<String>,

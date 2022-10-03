@@ -71,17 +71,14 @@ fn get_env(role: Option<&String>, request: &ApiRequest, jwt_claims: &Option<Json
         env.extend(request.cookies.iter().map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())));
         env.extend(request.get.iter().map(|(k, v)| (format!("request.get.{}", k), v.to_string())));
         match jwt_claims {
-            Some(v) => match v.as_object() {
-                Some(claims) => {
-                    env.extend(claims.iter().map(|(k, v)| (
-                        format!("request.jwt.claim.{}", k),
-                        match v {
-                            JsonValue::String(s) => s.clone(),
-                            _ => format!("{}", v),
-                        }
-                    )));
-                }
-                None => {}
+            Some(v) => if let Some(claims) = v.as_object() {
+                env.extend(claims.iter().map(|(k, v)| (
+                    format!("request.jwt.claim.{}", k),
+                    match v {
+                        JsonValue::String(s) => s.clone(),
+                        _ => format!("{}", v),
+                    }
+                )));
             },
             None => {}
         }
@@ -115,11 +112,8 @@ fn get_env(role: Option<&String>, request: &ApiRequest, jwt_claims: &Option<Json
             ).unwrap()
         );
         match jwt_claims {
-            Some(v) => match v.as_object() {
-                Some(claims) => {
-                    env.insert("request.jwt.claims".to_string(), serde_json::to_string(&claims).unwrap());                    
-                }
-                None => {}
+            Some(v) => if let Some(claims) = v.as_object() {
+                env.insert("request.jwt.claims".to_string(), serde_json::to_string(&claims).unwrap());                    
             },
             None => {}
         }

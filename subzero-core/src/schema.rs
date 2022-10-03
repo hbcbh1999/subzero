@@ -12,7 +12,7 @@ pub type Role = String;
 #[serde(rename_all = "lowercase")]
 pub enum Action {Execute,Select,Insert,Update,Delete,All,Merge}
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ColumnPermissions {
     All,
     Specific(Vec<ColumnName>),
@@ -21,7 +21,7 @@ impl Default for ColumnPermissions {
     fn default() -> Self { ColumnPermissions::All }
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Permissions {
     pub grants: HashMap<(Role, Action), ColumnPermissions>, 
     pub policies: HashMap<(Role, Action), Vec<Policy>>
@@ -67,7 +67,7 @@ struct PermissionDef {
     pub columns: Option<Vec<ColumnName>>,
 }
 
-#[derive(Debug, PartialEq, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Deserialize, Clone)]
 pub struct DbSchema {
     #[serde(default, deserialize_with = "deserialize_bool_from_anything")]
     pub use_internal_permissions: bool,
@@ -371,7 +371,7 @@ impl DbSchema {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub struct Schema {
     pub name: String,
     #[serde(deserialize_with = "deserialize_objects")]
@@ -380,7 +380,7 @@ pub struct Schema {
     join_tables: BTreeMap<(String, String), BTreeSet<String>>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq,  Clone)]
 pub struct Object {
     pub kind: ObjectType,
     pub name: String,
@@ -431,26 +431,26 @@ struct ProcParamDef {
     variadic: bool,
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub enum ProcVolatility {
     Imutable,
     Stable,
     Volatile,
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub enum ProcReturnType {
     One(PgType),
     SetOf(PgType),
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub enum PgType {
     Scalar,
     Composite(Qi),
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub enum ObjectType {
     #[serde(rename = "view")]
     View,
@@ -476,7 +476,7 @@ struct ForeignKeyDef {
     referenced_columns: Vec<String>,
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize)]
 pub struct Column {
     #[serde(default)]
     pub name: ColumnName,
@@ -539,7 +539,7 @@ where D: Deserializer<'de>,
                         };
                         
                         for a in actions_ {
-                            let pols = policies.entry((p.role.clone(), a.clone())).or_insert(Vec::new());
+                            let pols = policies.entry((p.role.clone(), a.clone())).or_insert_with(Vec::new);
                             match (a, &check, &using) {
                                 (Action::Select,_,Some(u)) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: None, using: Some(u.clone())}),
                                 (Action::Insert,Some(c),_) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: Some(c.clone()), using: None}),
@@ -566,7 +566,7 @@ where D: Deserializer<'de>,
                             None => None,
                         };
                         for a in actions_ {
-                            let pols = policies.entry((p.role.clone(), a.clone())).or_insert(Vec::new());
+                            let pols = policies.entry((p.role.clone(), a.clone())).or_insert_with(Vec::new);
                             match (a, &check, &using) {
                                 (Action::Select,_,Some(u)) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: None, using: Some(u.clone())}),
                                 (Action::Insert,Some(c),_) => pols.push(Policy {name: p.name.clone(), restrictive: p.restrictive, check: Some(c.clone()), using: None}),

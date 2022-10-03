@@ -70,10 +70,10 @@ where
 {
     init_client_once.call_once(|| {
         
-        env::set_var("SUBZERO_CONFIG", &"inexistent_config.toml");
-        env::set_var("SUBZERO_DB_ANON_ROLE", &"postgrest_test_anonymous");
-        env::set_var("SUBZERO_DB_TX_ROLLBACK", &"true");
-        env::set_var("SUBZERO_DB_TYPE", &"postgresql");
+        env::set_var("SUBZERO_CONFIG", "inexistent_config.toml");
+        env::set_var("SUBZERO_DB_ANON_ROLE", "postgrest_test_anonymous");
+        env::set_var("SUBZERO_DB_TX_ROLLBACK", "true");
+        env::set_var("SUBZERO_DB_TYPE", "postgresql");
         env::set_var("SUBZERO_DB_SCHEMAS", "[test]");
         env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
