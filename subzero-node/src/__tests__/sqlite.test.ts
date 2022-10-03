@@ -54,13 +54,13 @@ async function run(role:string, request: Request, env?: Env) {
         return JSON.parse(result.body);
     }
     else {
-        let { query: mutate_query, parameters: mutate_parameters } = subzero.fmt_sqlite_mutate_query(subzeroRequest, []);
+        let { query: mutate_query, parameters: mutate_parameters } = subzero.fmt_sqlite_mutate_query(subzeroRequest, env);
         //console.log(mutate_query,"\n",mutate_parameters);
         let result = await db.all(mutate_query, mutate_parameters);
         //console.log(result);
         let ids = result.map(r => r[Object.keys(r)[0]].toString());
         //console.log('ids',ids);
-        let { query: select_query, parameters: select_parameters } = subzero.fmt_sqlite_second_stage_select(subzeroRequest, ids, []);
+        let { query: select_query, parameters: select_parameters } = subzero.fmt_sqlite_second_stage_select(subzeroRequest, ids, env);
         //console.log(select_query,"\n",select_parameters);
         let result2 = await db.get(select_query, select_parameters);
         //console.log(result2);
