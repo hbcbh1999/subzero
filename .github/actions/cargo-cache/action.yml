@@ -17,28 +17,39 @@ runs:
               chmod +x  $HOME/.local/bin/sccache
               echo "$HOME/.local/bin" >> $GITHUB_PATH
               # echo "SCCACHE_DIR=$GITHUB_WORKSPACE/.sccache" >> $GITHUB_ENV
-        - name: Set up cargo cache
+        # - name: Set up cargo cache
+        #   if: ${{ !env.ACT }}
+        #   uses: actions/cache@v3
+        #   continue-on-error: false
+        #   with:
+        #       path: |
+        #           ~/.cargo/bin/
+        #           ~/.cargo/registry/index/
+        #           ~/.cargo/registry/cache/
+        #           ~/.cargo/git/db/
+        #           target/
+        #       key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        #       restore-keys: ${{ runner.os }}-cargo-
+        - uses: actions/cache@v3
           if: ${{ !env.ACT }}
-          uses: actions/cache@v3
-          continue-on-error: false
           with:
-              path: |
-                 ~/.cargo/bin/
-                 ~/.cargo/registry/index/
-                 ~/.cargo/registry/cache/
-                 ~/.cargo/git/db/
-                  target/
-              key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-              restore-keys: ${{ runner.os }}-cargo-
-        - name: Save sccache
-          if: ${{ !env.ACT }}
-          uses: actions/cache@v2
-          continue-on-error: false
-          with:
-              path: ${{ env.SCCACHE_DIR }}
-              key: ${{ runner.os }}-sccache-${{ hashFiles('**/Cargo.lock') }}
-              restore-keys: |
-                  ${{ runner.os }}-sccache-
+            path: |
+                ~/.cargo/bin/
+                ~/.cargo/registry/index/
+                ~/.cargo/registry/cache/
+                ~/.cargo/git/db/
+                target/
+            key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            restore-keys: ${{ runner.os }}-cargo-
+        # - name: Save sccache
+        #   if: ${{ !env.ACT }}
+        #   uses: actions/cache@v2
+        #   continue-on-error: false
+        #   with:
+        #       path: ${{ env.SCCACHE_DIR }}
+        #       key: ${{ runner.os }}-sccache-${{ hashFiles('**/Cargo.lock') }}
+        #       restore-keys: |
+        #           ${{ runner.os }}-sccache-
         - name: Start sccache server
           shell: bash
           run: sccache --start-server || true
