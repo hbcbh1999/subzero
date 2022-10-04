@@ -68,8 +68,8 @@ jobs:
             - run: npm ci
               working-directory: subzero-node
 
-            # - run: cargo test sqlite
-            # - run: cargo test postgresql -- --test-threads=1
+            - run: cargo test sqlite
+            - run: cargo test postgresql -- --test-threads=1
 
             - run: npm test
               working-directory: subzero-node
