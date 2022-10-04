@@ -4,4 +4,3 @@ runs:
   using: "composite"
   steps:
     - run: cargo fmt --all -- --check
-      shell: bash

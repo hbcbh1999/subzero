@@ -4,16 +4,40 @@ description: "cache directories created by cargo"
 runs:
   using: "composite"
   steps:
+    - name: Install sccache (ubuntu-latest)
+      # if: matrix.os == 'ubuntu-latest'
+      env:
+        LINK: https://github.com/mozilla/sccache/releases/download
+        SCCACHE_VERSION: 0.2.13
+      run: |
+        SCCACHE_FILE=sccache-$SCCACHE_VERSION-x86_64-unknown-linux-musl
+        mkdir -p $HOME/.local/bin
+        curl -L "$LINK/$SCCACHE_VERSION/$SCCACHE_FILE.tar.gz" | tar xz
+        mv -f $SCCACHE_FILE/sccache $HOME/.local/bin/sccache
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+        # echo "SCCACHE_DIR=$GITHUB_WORKSPACE/.sccache" >> $GITHUB_ENV
     - name: Set up cargo cache
       if: ${{ !env.ACT }}
       uses: actions/cache@v3
       continue-on-error: false
       with:
         path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
+          $CARGO_HOME/bin/
+          $CARGO_HOME/registry/index/
+          $CARGO_HOME/registry/cache/
+          $CARGO_HOME/git/db/
           target/
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-
+    - name: Save sccache
+      if: ${{ !env.ACT }}
+      uses: actions/cache@v2
+      continue-on-error: false
+      with:
+        path: ${{ env.SCCACHE_DIR }}
+        key: ${{ runner.os }}-sccache-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+                      ${{ runner.os }}-sccache-
+    - name: Start sccache server
+      run: sccache --start-server || true
+  post: 'sccache --show-stats && (sccache --stop-server || true)'

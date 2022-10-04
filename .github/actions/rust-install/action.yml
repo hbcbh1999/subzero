@@ -8,9 +8,12 @@ description: "Install rust toolchain"
 runs:
   using: "composite"
   steps:
+    - name: Add CARGO_HOME to PATH
+      run: echo "$CARGO_HOME/bin" >> $GITHUB_PATH
     - name: Installing latest nightly
       uses: actions-rs/toolchain@v1
       with:
           toolchain: nightly # ${{ inputs.version }}
           override: true
           components: rustfmt, clippy
+    

@@ -9,8 +9,5 @@ runs:
   using: "composite"
   steps:
     - run: rustup update --no-self-update ${{ inputs.version }}
-      shell: bash
     - run: rustup default ${{ inputs.version }}
-      shell: bash
     - run: rustup component add rustfmt clippy
-      shell: bash

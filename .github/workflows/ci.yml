@@ -4,18 +4,28 @@ on:
   push:
     branches:
       - main
+defaults:
+  run:
+    shell: bash
 
 env:
   RUSTFLAGS: -Dwarnings
   RUST_BACKTRACE: 1
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-
+  CARGO_HOME: .cargo
+  SCCACHE_CACHE_SIZE: 2G
+  RUSTUP_HOME: .rustup
+  RUSTC_WRAPPER: sccache
+  SCCACHE_DIR: ${{ github.workspace }}/.sccache
 jobs:
   rustfmt:
+    env:
+      RUSTC_WRAPPER: sccache
     name: rustfmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        if: ${{ !env.ACT }}
       - uses: ./.github/actions/rust-install
         if: ${{ env.ACT }}
       - uses: ./.github/actions/rustup
@@ -27,6 +37,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        if: ${{ !env.ACT }}
       - uses: ./.github/actions/rust-install
         if: ${{ env.ACT }}
       - uses: ./.github/actions/rustup
@@ -34,15 +45,28 @@ jobs:
       - uses: ./.github/actions/cargo-cache
       - run: cargo clippy --all-targets
 
-  # test:
-  #   name: test
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: ./.github/actions/rust-install
-  #       if: ${{ env.ACT }}
-  #     - uses: ./.github/actions/rustup
-  #       if: ${{ !env.ACT }}
-  #     - uses: ./.github/actions/cargo-cache
-  #     - run: cargo test -- --test-threads=1
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    env:
+      RUSTC_WRAPPER: sccache
+    steps:
+      - uses: actions/checkout@v2
+        if: ${{ !env.ACT }}
+      - uses: ./.github/actions/cargo-cache
+      - uses: ./.github/actions/rust-install
+        if: ${{ env.ACT }}
+      - uses: ./.github/actions/rustup
+        if: ${{ !env.ACT }}
+      # - name: Install PostgreSQL
+      #   run: |
+      #     apt-get update
+      #     apt-get install --yes postgresql
+      # - name: Install Dependencies
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install --yes sqlite3
+      - run: cargo build
+      - run: sccache --show-stats
+      #- run: cargo test sqlite::basic::select::simple
 
