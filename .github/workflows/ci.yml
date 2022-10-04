@@ -28,12 +28,14 @@ jobs:
     build-test:
         name: build-test
         runs-on: ubuntu-latest
-        env:
-            POSTGRESQL_DB_URI: postgres://${{ env.POSTGRES_USER }}:${{ env.POSTGRES_PASSWORD }}@localhost:5432/${{ env.POSTGRES_DB }}
         steps:
+            - name: "Set environmental variables"
+              run: |
+                echo "POSTGRESQL_DB_URI=postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5432/$POSTGRES_DB" >> $GITHUB_ENV
+
             - uses: actions/checkout@v2
               if: ${{ !env.ACT }}
-           
+
             - name: Bring up db services
               run: docker-compose --file .github/docker-compose.yml up -d
 
