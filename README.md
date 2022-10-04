@@ -1,3 +1,5 @@
+#WARNING! outdated
+
 ## Start a demo in docker
 This will also build the images locally
 ```
