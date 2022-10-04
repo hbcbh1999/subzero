@@ -116,7 +116,7 @@ impl Backend {
         })
     }
 
-    pub fn fmt_main_query(&self, request: Request, env: JsValue) -> Result<Vec<JsValue>, JsError> {
+    pub fn fmt_main_query(&self, request: &Request, env: JsValue) -> Result<Vec<JsValue>, JsError> {
         let db_type = self.db_type.as_str();
         let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
@@ -165,7 +165,7 @@ impl Backend {
         Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
     }
 
-    pub fn fmt_sqlite_mutate_query(&self, original_request: Request, env: JsValue) -> Result<Vec<JsValue>, JsError> {
+    pub fn fmt_sqlite_mutate_query(&self, original_request: &Request, env: JsValue) -> Result<Vec<JsValue>, JsError> {
         let db_type = self.db_type.as_str();
         let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
@@ -177,7 +177,7 @@ impl Backend {
         };
 
         // create a clone of the request
-        let mut request: Request = original_request;
+        let mut request: Request = original_request.clone();
         let is_delete = matches!(request.query.node, Delete { .. });
 
         // eliminate the sub_selects and also select back
@@ -249,7 +249,7 @@ impl Backend {
         Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
     }
 
-    pub fn fmt_sqlite_second_stage_select(&self, original_request: Request, ids: JsValue, env: JsValue) -> Result<Vec<JsValue>, JsError> {
+    pub fn fmt_sqlite_second_stage_select(&self, original_request: &Request, ids: JsValue, env: JsValue) -> Result<Vec<JsValue>, JsError> {
         let db_type = self.db_type.as_str();
         let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
@@ -333,7 +333,7 @@ fn parameters_to_js_array(rust_parameters: Vec<&(dyn ToParam + Sync)>) -> JsArra
     let parameters = JsArray::new_with_length(rust_parameters.len() as u32);
     for (i, p) in rust_parameters.into_iter().enumerate() {
         let v = match p.to_param() {
-            LV(ListVal(v, _)) => to_js_value(&v).unwrap_or_default(),
+            LV(ListVal(v, _)) => to_js_value(&serde_json::to_string(v).unwrap_or_default()).unwrap_or_default(),
             SV(SingleVal(v, _)) => to_js_value(&v).unwrap_or_default(),
             PL(Payload(v, _)) => to_js_value(&v).unwrap_or_default(),
             TV(v) => to_js_value(&v).unwrap_or_default(),
