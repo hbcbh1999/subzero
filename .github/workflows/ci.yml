@@ -1,3 +1,4 @@
+# workflow to build and test the project
 name: ci
 
 on:
@@ -60,7 +61,7 @@ jobs:
 
             - uses: ./.github/actions/cargo-cache
 
-            - run: cargo build
+            - run: cargo build --workspace --exclude subzero-wasm
 
             - run: wasm-pack build --target nodejs
               working-directory: subzero-wasm
@@ -68,8 +69,8 @@ jobs:
             - run: npm ci
               working-directory: subzero-node
 
-            - run: cargo test sqlite
-            - run: cargo test postgresql -- --test-threads=1
+            - run: cargo test --workspace --exclude subzero-wasm sqlite
+            - run: cargo test --workspace --exclude subzero-wasm postgresql -- --test-threads=1
 
             - run: npm test
               working-directory: subzero-node
