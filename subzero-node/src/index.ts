@@ -19,8 +19,8 @@ export type Env = ([string, string])[];
 export class Subzero {
     private backend: Backend;
 
-    constructor(dbType: DbType, schema: any) {
-        this.backend = Backend.init(JSON.stringify(schema), dbType);
+    constructor(dbType: DbType, schema: any, allowed_select_functions?: string[] ) {
+        this.backend = Backend.init(JSON.stringify(schema), dbType, allowed_select_functions);
     }
 
     async parse(schemaName: string, urlPrefix: string, role: string, request: Request): Promise<SubzeroRequest> {

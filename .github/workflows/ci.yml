@@ -1,72 +1,73 @@
-name: CI
+name: ci
 
 on:
-  push:
-    branches:
-      - main
+    push:
+        branches:
+            - main
 defaults:
-  run:
-    shell: bash
+    run:
+        shell: bash
 
 env:
-  RUSTFLAGS: -Dwarnings
-  RUST_BACKTRACE: 1
-  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-  CARGO_HOME: .cargo
-  SCCACHE_CACHE_SIZE: 2G
-  RUSTUP_HOME: .rustup
-  RUSTC_WRAPPER: sccache
-  SCCACHE_DIR: ${{ github.workspace }}/.sccache
+    RUST_BACKTRACE: 1
+    CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    SCCACHE_CACHE_SIZE: 2G
+    RUSTC_WRAPPER: sccache
+    SCCACHE_DIR: ${{ github.workspace }}/.sccache
+    RUST_TOOLCHAIN: nightly
+    NODE_VERSION: 18
+    POSTGRES_USER: postgrest_test_authenticator
+    POSTGRES_PASSWORD: pass
+    POSTGRES_DB: app
+    
 jobs:
-  rustfmt:
-    env:
-      RUSTC_WRAPPER: sccache
-    name: rustfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-        if: ${{ !env.ACT }}
-      - uses: ./.github/actions/rust-install
-        if: ${{ env.ACT }}
-      - uses: ./.github/actions/rustup
-        if: ${{ !env.ACT }}
-      - uses: ./.github/actions/rustfmt
-  
-  clippy:
-    name: clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-        if: ${{ !env.ACT }}
-      - uses: ./.github/actions/rust-install
-        if: ${{ env.ACT }}
-      - uses: ./.github/actions/rustup
-        if: ${{ !env.ACT }}
-      - uses: ./.github/actions/cargo-cache
-      - run: cargo clippy --all-targets
+    build-test:
+        name: build-test
+        runs-on: ubuntu-latest
+        env:
+            POSTGRESQL_DB_URI: postgres://${{ env.POSTGRES_USER }}:${{ env.POSTGRES_PASSWORD }}@localhost:5432/${{ env.POSTGRES_DB }}
+        steps:
+            - uses: actions/checkout@v2
+              if: ${{ !env.ACT }}
+           
+            - name: Bring up db services
+              run: docker-compose --file .github/docker-compose.yml up -d
 
-  test:
-    name: test
-    runs-on: ubuntu-latest
-    env:
-      RUSTC_WRAPPER: sccache
-    steps:
-      - uses: actions/checkout@v2
-        if: ${{ !env.ACT }}
-      - uses: ./.github/actions/cargo-cache
-      - uses: ./.github/actions/rust-install
-        if: ${{ env.ACT }}
-      - uses: ./.github/actions/rustup
-        if: ${{ !env.ACT }}
-      # - name: Install PostgreSQL
-      #   run: |
-      #     apt-get update
-      #     apt-get install --yes postgresql
-      # - name: Install Dependencies
-      #   run: |
-      #     sudo apt-get update
-      #     sudo apt-get install --yes sqlite3
-      - run: cargo build
-      - run: sccache --show-stats
-      #- run: cargo test sqlite::basic::select::simple
+            - name: Update Rust
+              run: |
+                rustup update --no-self-update ${{ env.RUST_TOOLCHAIN }}
+                rustup default ${{ env.RUST_TOOLCHAIN }}
+            
+            - uses: actions/setup-node@v3
+              with:
+                node-version:  ${{ env.NODE_VERSION }}
 
+            - name: Install Dependencies
+              run: |
+                sudo apt-key adv --refresh-keys --keyserver keyserver.ubuntu.com
+                sudo apt-get update
+                sudo apt-get install --yes sqlite3
+                curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+            - run: cargo fmt --all -- --check
+
+            - uses: ./.github/actions/cargo-cache
+
+            - run: cargo build
+
+            - run: wasm-pack build --target nodejs
+              working-directory: subzero-wasm
+
+            - run: npm ci
+              working-directory: subzero-node
+
+            # - run: cargo test sqlite
+            # - run: cargo test postgresql -- --test-threads=1
+
+            - run: npm test
+              working-directory: subzero-node
+
+            - run: sccache --show-stats
+            
+            - name: Bring down db services
+              run: docker-compose --file .github/docker-compose.yml down

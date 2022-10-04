@@ -26,30 +26,37 @@ pub fn setup_db(init_db_once: &Once) {
     init_db_once.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
-        let tmp_pg_cmd = project_dir.join("tests/bin/pg_tmp.sh");
         let init_file = project_dir.join("tests/postgresql/fixtures/load.sql");
 
-        let output = Command::new(tmp_pg_cmd)
-            .arg("-t")
-            .arg("-u")
-            .arg("postgrest_test_authenticator")
-            .output()
-            .expect("failed to start temporary pg process");
-        if !output.status.success() {
-            println!("status: {}", output.status);
-            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-        }
+        let postgresql_db_uri = option_env!("POSTGRESQL_DB_URI");
+        let db_uri: String = match postgresql_db_uri {
+            Some(db_uri) => db_uri.to_owned(),
+            None => {
+                let tmp_pg_cmd = project_dir.join("tests/bin/pg_tmp.sh");
 
-        assert!(output.status.success());
+                let output = Command::new(tmp_pg_cmd)
+                    .arg("-t")
+                    .arg("-u")
+                    .arg("postgrest_test_authenticator")
+                    .output()
+                    .expect("failed to start temporary pg process");
+                if !output.status.success() {
+                    println!("status: {}", output.status);
+                    println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+                    println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+                }
 
-        let db_uri = String::from_utf8_lossy(&output.stdout);
+                assert!(output.status.success());
+
+                let db_uri = String::from_utf8_lossy(&output.stdout);
+                db_uri.into_owned()
+            }
+        };
 
         let output = Command::new("psql")
             .arg("-f")
             .arg(init_file.to_str().unwrap())
-            .arg(db_uri.clone().into_owned())
+            .arg(db_uri.as_str())
             .output()
             .expect("failed to execute process");
 
@@ -60,7 +67,7 @@ pub fn setup_db(init_db_once: &Once) {
         }
         assert!(output.status.success());
 
-        env::set_var("SUBZERO_DB_URI", &*db_uri);
+        env::set_var("SUBZERO_DB_URI", db_uri);
     });
 }
 

@@ -20,7 +20,3 @@ panic = "abort"
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"
 
-# [target.x86_64-unknown-linux-gnu]
-# rustflags = [
-#     "-C", "link-arg=-fuse-ld=lld",
-# ]
