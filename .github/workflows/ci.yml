@@ -47,8 +47,6 @@ jobs:
 
 
       - run: cargo fmt --all -- --check
-      - run: npm run lint
-        working-directory: subzero-node
 
       - name: Install Dependencies
         run: |
@@ -62,6 +60,8 @@ jobs:
         working-directory: subzero-wasm
 
       - run: npm ci
+        working-directory: subzero-node
+      - run: npm run lint
         working-directory: subzero-node
 
       - name: Bring up db services
