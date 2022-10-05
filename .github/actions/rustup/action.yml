@@ -8,6 +8,9 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - run: rustup update --no-self-update ${{ inputs.version }}
-    - run: rustup default ${{ inputs.version }}
-    - run: rustup component add rustfmt clippy
+    - name: Update Rust
+      shell: bash
+      run: |
+          rustup update --no-self-update ${{ inputs.version }}
+          rustup default ${{ inputs.version }}
+          rustup component add rustfmt

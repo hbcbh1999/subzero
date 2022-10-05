@@ -1,0 +1,56 @@
+# workflow compile release packages
+name: release
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - v*
+defaults:
+  run:
+    shell: bash
+env:
+  RUST_BACKTRACE: 1
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  SCCACHE_CACHE_SIZE: 2G
+  RUSTC_WRAPPER: sccache
+  # SCCACHE_DIR: ${{ github.workspace }}/.sccache
+  SCCACHE_BUCKET: subzero-sccache
+  RUST_TOOLCHAIN: nightly
+  NODE_VERSION: 18
+  POSTGRES_USER: postgrest_test_authenticator
+  POSTGRES_PASSWORD: pass
+  POSTGRES_DB: app
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: us-east-1
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: ./.github/actions/rustup
+        with:
+          version: ${{ env.RUST_TOOLCHAIN }}
+      - uses: ./.github/actions/cargo-cache
+      - name: Install node
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build executable
+        run: cargo build --package subzero-rocket --release
+
+      - name: Build wasm
+        working-directory: subzero-wasm
+        run: wasm-pack build --release --target nodejs
+
+      # note, this has to be after building wasm
+      - name: Build node
+        working-directory: subzero-node
+        run: |
+          npm ci
+          npm pack

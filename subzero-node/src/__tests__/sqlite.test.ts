@@ -1,9 +1,8 @@
-
 import { expect, test, beforeAll, afterAll, describe } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as sqlite3 from 'sqlite3'
-import { open, Database } from 'sqlite'
+import * as sqlite3 from 'sqlite3';
+import { open, Database } from 'sqlite';
 import { Subzero, Statement, get_introspection_query, Env } from '../index';
 
 // Declare global variables
@@ -11,133 +10,150 @@ sqlite3.verbose();
 let db: Database<sqlite3.Database>;
 let subzero: Subzero;
 
-function normalize_statement(s : Statement) {
-    return {
-        query: s.query.replace(/\s+/g, ' ').trim(),
-        parameters: s.parameters
-    };
+function normalize_statement(s: Statement) {
+  return {
+    query: s.query.replace(/\s+/g, ' ').trim(),
+    parameters: s.parameters,
+  };
 }
 const base_url = 'http://localhost:3000/rest';
 
 beforeAll(async () => {
-    db = await open({ filename: ':memory:', driver: sqlite3.Database });
-    // Read the init SQL file
-    const loadSql = fs.readFileSync(path.join(__dirname, 'load.sql')).toString().split(';');
-    
-    loadSql.forEach(async (sql) => await db.exec(sql));
+  db = await open({ filename: ':memory:', driver: sqlite3.Database });
+  // Read the init SQL file
+  const loadSql = fs.readFileSync(path.join(__dirname, 'load.sql')).toString().split(';');
 
-    // note: although we have a second parameter that lists the schemas
-    // in case of sqlite it is not used in the query (sqlite does not have the notion of schemas)
-    // that is why we don't read/use the `parameters` from the result
-    const permissions = JSON.parse(fs.readFileSync(path.join(__dirname, 'permissions.json')).toString());
-    const placeholder_values = new Map<string, any>([['permissions.json', permissions]]);
-    let { query } = get_introspection_query('sqlite', 'public', placeholder_values);
-    let result = await db.get(query);
-    let schema = JSON.parse(result.json_schema);
+  loadSql.forEach(async (sql) => await db.exec(sql));
 
-    //initialize the subzero instance
-    subzero = new Subzero('sqlite', schema);
+  // note: although we have a second parameter that lists the schemas
+  // in case of sqlite it is not used in the query (sqlite does not have the notion of schemas)
+  // that is why we don't read/use the `parameters` from the result
+  const permissions = JSON.parse(fs.readFileSync(path.join(__dirname, 'permissions.json')).toString());
+  const placeholder_values = new Map<string, any>([['permissions.json', permissions]]);
+  const { query } = get_introspection_query('sqlite', 'public', placeholder_values);
+  const result = await db.get(query);
+  const schema = JSON.parse(result.json_schema);
 
-    //let t = await db.all('select rowid as rowid from projects where id in (select value from json_each($1))', ['[1, 2, 3]']);
-    //console.log('test', t);
+  //initialize the subzero instance
+  subzero = new Subzero('sqlite', schema);
+
+  //let t = await db.all('select rowid as rowid from projects where id in (select value from json_each($1))', ['[1, 2, 3]']);
+  //console.log('test', t);
 });
 
 // execute teh queries for a given parsed request
-async function run(role:string, request: Request, env?: Env) {
-    const subzeroRequest = await subzero.parse('public', '/rest/', role, request);
-    env = env || [];
-    if (request.method == 'GET') {
-        let { query, parameters } = subzero.fmt_sqlite_mutate_query(subzeroRequest, env);
-        //console.log(query,"\n",parameters);
-        let result = await db.get(query, parameters);
-        //console.log(result);
-        return JSON.parse(result.body);
-    }
-    else {
-        let { query: mutate_query, parameters: mutate_parameters } = subzero.fmt_sqlite_mutate_query(subzeroRequest, env);
-        //console.log(mutate_query,"\n",mutate_parameters);
-        let result = await db.all(mutate_query, mutate_parameters);
-        //console.log(result);
-        let ids = result.map(r => r[Object.keys(r)[0]].toString());
-        //console.log('ids',ids);
-        let { query: select_query, parameters: select_parameters } = subzero.fmt_sqlite_second_stage_select(subzeroRequest, ids, env);
-        //console.log(select_query,"\n",select_parameters);
-        let result2 = await db.get(select_query, select_parameters);
-        //console.log(result2);
-        return JSON.parse(result2.body);
-    }
+async function run(role: string, request: Request, env?: Env) {
+  const subzeroRequest = await subzero.parse('public', '/rest/', role, request);
+  env = env || [];
+  if (request.method == 'GET') {
+    const { query, parameters } = subzero.fmt_sqlite_mutate_query(subzeroRequest, env);
+    //console.log(query,"\n",parameters);
+    const result = await db.get(query, parameters);
+    //console.log(result);
+    return JSON.parse(result.body);
+  } else {
+    const { query: mutate_query, parameters: mutate_parameters } = subzero.fmt_sqlite_mutate_query(subzeroRequest, env);
+    //console.log(mutate_query,"\n",mutate_parameters);
+    const result = await db.all(mutate_query, mutate_parameters);
+    //console.log(result);
+    const ids = result.map((r) => r[Object.keys(r)[0]].toString());
+    //console.log('ids',ids);
+    const { query: select_query, parameters: select_parameters } = subzero.fmt_sqlite_second_stage_select(
+      subzeroRequest,
+      ids,
+      env,
+    );
+    //console.log(select_query,"\n",select_parameters);
+    const result2 = await db.get(select_query, select_parameters);
+    //console.log(result2);
+    return JSON.parse(result2.body);
+  }
 }
 
 describe('permissions', () => {
-    test('alice can select public rows and her private rows', async () => {
-        expect(await run(
-            'alice',
-            new Request(`${base_url}/permissions_check?select=id,value,hidden,public,role`),
-            [['request.jwt.claims', JSON.stringify({role: 'alice'})]]
-        ))
-        .toStrictEqual([
-            { "id": 1, "value": "One Alice Public", "hidden": "Hidden", "public": 1, "role": "alice" },
-            { "id": 2, "value": "Two Bob Public", "hidden": "Hidden", "public": 1, "role": "bob" },
-            { "id": 3, "value": "Three Charlie Public", "hidden": "Hidden", "public": 1, "role": "charlie" },
-            { "id": 10, "value": "Ten Alice Private", "hidden": "Hidden", "public": 0, "role": "alice" }
-        ]);
-    });
+  test('alice can select public rows and her private rows', async () => {
+    expect(
+      await run('alice', new Request(`${base_url}/permissions_check?select=id,value,hidden,public,role`), [
+        ['request.jwt.claims', JSON.stringify({ role: 'alice' })],
+      ]),
+    ).toStrictEqual([
+      { id: 1, value: 'One Alice Public', hidden: 'Hidden', public: 1, role: 'alice' },
+      { id: 2, value: 'Two Bob Public', hidden: 'Hidden', public: 1, role: 'bob' },
+      { id: 3, value: 'Three Charlie Public', hidden: 'Hidden', public: 1, role: 'charlie' },
+      { id: 10, value: 'Ten Alice Private', hidden: 'Hidden', public: 0, role: 'alice' },
+    ]);
+  });
 });
 describe('select', () => {
+  test('simple', async () => {
+    expect(await run('anonymous', new Request(`${base_url}/tbl1?select=one,two`))).toStrictEqual([
+      { one: 'hello!', two: 10 },
+      { one: 'goodbye', two: 20 },
+    ]);
+  });
 
-    test('simple', async () => {
-        expect(await run('anonymous', new Request(`${base_url}/tbl1?select=one,two`)))
-        .toStrictEqual([
-            {"one":"hello!","two":10},
-            {"one":"goodbye","two":20}
-        ])
-    });
+  test('with cast', async () => {
+    expect(await run('anonymous', new Request(`${base_url}/tbl1?select=one,two::text`))).toStrictEqual([
+      { one: 'hello!', two: '10' },
+      { one: 'goodbye', two: '20' },
+    ]);
+  });
 
-    test('with cast', async () => {
-        expect(await run('anonymous', new Request(`${base_url}/tbl1?select=one,two::text`)))
-        .toStrictEqual([
-            {"one":"hello!","two":"10"},
-            {"one":"goodbye","two":"20"}
-        ])
-    });
+  test('filter with in', async () => {
+    expect(await run('anonymous', new Request(`${base_url}/projects?select=id&id=in.(1,2)`))).toStrictEqual([
+      { id: 1 },
+      { id: 2 },
+    ]);
+  });
 
-    test("filter with in", async () => {
-        expect(await run('anonymous', new Request(`${base_url}/projects?select=id&id=in.(1,2)`)))
-        .toStrictEqual([
-            { "id": 1 },
-            { "id": 2 }
-        ])
-    });
-
-    test("children and parent", async () => {
-        expect(await run('anonymous', new Request(`${base_url}/projects?select=id,name,client:clients(id,name),tasks(id,name)&id=in.(1,2)`)))
-        .toStrictEqual([
-            { "id": 1, "name": "Windows 7", "tasks": [{ "id": 1, "name": "Design w7" }, { "id": 2, "name": "Code w7" }], "client": { "id": 1, "name": "Microsoft" } },
-            { "id": 2, "name": "Windows 10", "tasks": [{ "id": 3, "name": "Design w10" }, { "id": 4, "name": "Code w10" }], "client": { "id": 1, "name": "Microsoft" } }
-        ])
-    });
+  test('children and parent', async () => {
+    expect(
+      await run(
+        'anonymous',
+        new Request(`${base_url}/projects?select=id,name,client:clients(id,name),tasks(id,name)&id=in.(1,2)`),
+      ),
+    ).toStrictEqual([
+      {
+        id: 1,
+        name: 'Windows 7',
+        tasks: [
+          { id: 1, name: 'Design w7' },
+          { id: 2, name: 'Code w7' },
+        ],
+        client: { id: 1, name: 'Microsoft' },
+      },
+      {
+        id: 2,
+        name: 'Windows 10',
+        tasks: [
+          { id: 3, name: 'Design w10' },
+          { id: 4, name: 'Code w10' },
+        ],
+        client: { id: 1, name: 'Microsoft' },
+      },
+    ]);
+  });
 });
 
 describe('insert', () => {
-    test('insert query', async () => {
-        const request = await subzero.parse('public', '/rest/', 'anonymous', new Request(
-            `${base_url}/clients?select=id,name`,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Prefer':'return=representation,count=exact'
-                },
-                body: JSON.stringify({name:'new client'})
-            }
-        ));
+  test('insert query', async () => {
+    const request = await subzero.parse(
+      'public',
+      '/rest/',
+      'anonymous',
+      new Request(`${base_url}/clients?select=id,name`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation,count=exact',
+        },
+        body: JSON.stringify({ name: 'new client' }),
+      }),
+    );
 
-        expect(
-            normalize_statement(subzero.fmt_sqlite_mutate_query(request,[["env_var", "env_value"]]))
-        )
-        .toStrictEqual(
-            normalize_statement({
-                query: `
+    expect(normalize_statement(subzero.fmt_sqlite_mutate_query(request, [['env_var', 'env_value']]))).toStrictEqual(
+      normalize_statement({
+        query: `
                 with
                     env as materialized (select $1 as "env_var") ,
                     subzero_payload as ( select $2 as json_data ),
@@ -150,16 +166,15 @@ describe('insert', () => {
                 where true
                 returning "rowid", ((true)) as _subzero_check__constraint
                 `,
-                parameters: ["env_value",'{"name":"new client"}']
-            })
-        );
+        parameters: ['env_value', '{"name":"new client"}'],
+      }),
+    );
 
-        expect(
-            normalize_statement(subzero.fmt_sqlite_second_stage_select(request,['1'],[["env_var", "env_value"]]))
-        )
-        .toStrictEqual(
-            normalize_statement({
-                query: `
+    expect(
+      normalize_statement(subzero.fmt_sqlite_second_stage_select(request, ['1'], [['env_var', 'env_value']])),
+    ).toStrictEqual(
+      normalize_statement({
+        query: `
                 with 
                     env as materialized (select $1 as "env_var"),
                     _subzero_query as (
@@ -179,63 +194,84 @@ describe('insert', () => {
                     null as response_status
                 from ( select * from _subzero_query ) _subzero_t
                 `,
-                parameters: ['env_value', '["1"]','["1"]']
-            })
-        );
-    });
+        parameters: ['env_value', '["1"]', '["1"]'],
+      }),
+    );
+  });
 });
 
 describe('update', () => {
-    test('update query', async () => {
-    });
-    test('basic no representation', async () => {
-        expect(await run('anonymous', new Request(`${base_url}/tasks?id=eq.1`,
-            {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({"name":"Design w7 updated"})
-            }
-        )))
-        .toStrictEqual([{}]);
-    });
-    test('basic with representation', async () => {
-        expect(await run('anonymous', new Request(`${base_url}/tasks?select=id,name&id=in.(1,3)`,
-            {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation, count=exact' },
-                body: JSON.stringify({"name":"updated"})
-            }
-        )))
-        .toStrictEqual([{"id":1,"name":"updated"},{"id":3,"name":"updated"}]);
-    });
-    test('with embedding', async () => {
-        expect(await run('anonymous', new Request(`${base_url}/projects?select=id,name,client:clients(id),tasks(id)&id=in.(1,3)`,
-            {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation, count=exact' },
-                body: JSON.stringify({"name":"updated"})
-            }
-        )))
-        .toStrictEqual([
-            { "id": 1, "name": "updated", "client": { "id": 1 }, "tasks": [{ "id": 1 }, { "id": 2 }] },
-            { "id": 3, "name": "updated", "client": { "id": 2 }, "tasks": [{ "id": 5 }, { "id": 6 }] }
-        ]);
-    });
-    test('with embedding many to many', async () => {
-        expect(await run('anonymous', new Request(`${base_url}/tasks?select=id,name,project:projects(id),users(id,name)&id=in.(1,3)`,
-        {
-            method: 'PATCH',
-            headers: { 'Accept': 'application/json','Content-Type': 'application/json', 'Prefer': 'return=representation, count=exact' },
-            body: JSON.stringify({name:"updated"})
-        }
-        )))
-        .toStrictEqual([
-            {"id":1,"name":"updated","project":{"id":1},"users":[{"id":1,"name":"Angela Martin"},{"id":3,"name":"Dwight Schrute"}]},
-            {"id":3,"name":"updated","project":{"id":2},"users":[{"id":1,"name":"Angela Martin"}]}
-        ]);
-    });
+  test('basic no representation', async () => {
+    expect(
+      await run(
+        'anonymous',
+        new Request(`${base_url}/tasks?id=eq.1`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Design w7 updated' }),
+        }),
+      ),
+    ).toStrictEqual([{}]);
+  });
+  test('basic with representation', async () => {
+    expect(
+      await run(
+        'anonymous',
+        new Request(`${base_url}/tasks?select=id,name&id=in.(1,3)`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Prefer: 'return=representation, count=exact' },
+          body: JSON.stringify({ name: 'updated' }),
+        }),
+      ),
+    ).toStrictEqual([
+      { id: 1, name: 'updated' },
+      { id: 3, name: 'updated' },
+    ]);
+  });
+  test('with embedding', async () => {
+    expect(
+      await run(
+        'anonymous',
+        new Request(`${base_url}/projects?select=id,name,client:clients(id),tasks(id)&id=in.(1,3)`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Prefer: 'return=representation, count=exact' },
+          body: JSON.stringify({ name: 'updated' }),
+        }),
+      ),
+    ).toStrictEqual([
+      { id: 1, name: 'updated', client: { id: 1 }, tasks: [{ id: 1 }, { id: 2 }] },
+      { id: 3, name: 'updated', client: { id: 2 }, tasks: [{ id: 5 }, { id: 6 }] },
+    ]);
+  });
+  test('with embedding many to many', async () => {
+    expect(
+      await run(
+        'anonymous',
+        new Request(`${base_url}/tasks?select=id,name,project:projects(id),users(id,name)&id=in.(1,3)`, {
+          method: 'PATCH',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Prefer: 'return=representation, count=exact',
+          },
+          body: JSON.stringify({ name: 'updated' }),
+        }),
+      ),
+    ).toStrictEqual([
+      {
+        id: 1,
+        name: 'updated',
+        project: { id: 1 },
+        users: [
+          { id: 1, name: 'Angela Martin' },
+          { id: 3, name: 'Dwight Schrute' },
+        ],
+      },
+      { id: 3, name: 'updated', project: { id: 2 }, users: [{ id: 1, name: 'Angela Martin' }] },
+    ]);
+  });
 });
 
 afterAll(async () => {
-    await db.close();
+  await db.close();
 });

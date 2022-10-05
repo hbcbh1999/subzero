@@ -1,5 +1,15 @@
 #WARNING! outdated
 
+## update version for all cargo packages
+needs `cargo install cargo-edit`
+```
+cargo set-version 0.1.1
+```
+
+```
+npm version 0.1.1
+```
+
 ## Start a demo in docker
 This will also build the images locally
 ```
@@ -25,7 +35,7 @@ docker build -t subzero .
 ## Create temporary database
 
 ```
-export url=$(bin/tests/bin/pg_tmp.sh -t -u authenticator -w 3600) && psql -f demo/db/pg_init.sql $url
+export url=$(subzero-rocket/tests/bin/pg_tmp.sh -t -u authenticator -w 3600) && psql -f demo/db/pg_init.sql $url
 ```
 
 

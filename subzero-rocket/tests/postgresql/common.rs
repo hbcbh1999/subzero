@@ -87,7 +87,7 @@ where
         env::set_var("SUBZERO_URL_PREFIX", "/rest");
         env::set_var(
             "SUBZERO_DB_SCHEMA_STRUCTURE",
-            "{sql_file=../bin/tests/postgresql/custom_introspection/postgresql_introspection_query.sql}",
+            "{sql_file=../subzero-rocket/tests/postgresql/custom_introspection/postgresql_introspection_query.sql}",
         );
         env::remove_var("SUBZERO_DB_MAX_ROWS");
         lazy_static::initialize(client);
