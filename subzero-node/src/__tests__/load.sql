@@ -1,1 +1,1 @@
-../../../bin/tests/sqlite/fixtures/load.sql
+../../../subzero-rocket/tests/sqlite/fixtures/load.sql
