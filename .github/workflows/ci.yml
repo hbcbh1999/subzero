@@ -45,8 +45,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - run: npm ci
-        working-directory: subzero-node
 
       - run: cargo fmt --all -- --check
       - run: npm run lint
@@ -57,12 +55,14 @@ jobs:
           sudo apt-key adv --refresh-keys --keyserver keyserver.ubuntu.com
           sudo apt-get update
           sudo apt-get install --yes sqlite3
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - run: cargo build --workspace --exclude subzero-wasm
 
       - run: wasm-pack build --dev --target nodejs
         working-directory: subzero-wasm
+
+      - run: npm ci
+        working-directory: subzero-node
 
       - name: Bring up db services
         run: docker-compose --file .github/docker-compose.yml up -d
