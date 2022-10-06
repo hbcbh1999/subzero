@@ -282,4 +282,4 @@ jobs:
 
       - run: npm publish subzerocloud-${{ env.PACKAGE_VERSION }}.tgz
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
