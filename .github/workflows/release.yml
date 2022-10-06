@@ -102,9 +102,9 @@ jobs:
           - arch: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             file: subzero-${{ github.ref_name }}.linux-amd64
-          - arch: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            file: subzero-${{ github.ref_name }}.linux-arm64
+          # - arch: aarch64-unknown-linux-gnu
+          #   os: ubuntu-latest
+          #   file: subzero-${{ github.ref_name }}.linux-arm64
           # - arch: x86_64-pc-windows-msvc
           #   os: windows-latest
           #   file: subzero-${{ github.ref_name }}.windows-amd64
@@ -190,17 +190,18 @@ jobs:
           name: subzero-${{ github.ref_name }}.linux-amd64
           path: .github/docker/amd64
 
-      - name: Download arm64 binary
-        uses: actions/download-artifact@v3
-        with:
-          name: subzero-${{ github.ref_name }}.linux-arm64
-          path: .github/docker/arm64
+      # - name: Download arm64 binary
+      #   uses: actions/download-artifact@v3
+      #   with:
+      #     name: subzero-${{ github.ref_name }}.linux-arm64
+      #     path: .github/docker/arm64
 
       - name: Set file permissions
         working-directory: .github/docker
         shell: bash
         run: |
-          chmod +x amd64/subzero arm64/subzero
+          # chmod +x amd64/subzero arm64/subzero
+          chmod +x amd64/subzero
 
       # - name: Configure DockerHub
       #   uses: docker/login-action@v2
@@ -226,8 +227,8 @@ jobs:
           context: .github/docker
           push: false
           #platforms: linux/amd64,linux/arm64
-          platforms: linux/arm64
-          outputs: type=docker,dest=docker-arm64
+          platforms: linux/amd64
+          outputs: type=docker,dest=docker-amd64
           tags: subzerocloud/subzero:latest,subzerocloud/subzero:${{ env.VERSION_TAG }}
 
       - name: Upload artifacts
@@ -235,4 +236,4 @@ jobs:
         with:
           name: docker
           path: |
-            docker-arm64
+            docker-amd64
