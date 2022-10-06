@@ -199,7 +199,6 @@ jobs:
 
       - name: Set file permissions
         working-directory: .github/docker
-        shell: bash
         run: |
           # chmod +x amd64/subzero arm64/subzero
           chmod +x amd64/subzero
@@ -217,10 +216,13 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Configure tag
-        shell: bash
         run: |
           VERSION=${{ github.ref_name }}
           echo "VERSION=${VERSION:1}" >> $GITHUB_ENV
+
+      - name: Copy files to build context
+        run: |
+          cp -R ../../introspection introspection
 
       - name: Build and Push
         uses: docker/build-push-action@v3
