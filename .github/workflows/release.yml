@@ -274,6 +274,9 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm whoami
 
       - name: Set package version as env var
         run: |
@@ -282,4 +285,4 @@ jobs:
 
       - run: npm publish subzerocloud-${{ env.PACKAGE_VERSION }}.tgz
         env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
