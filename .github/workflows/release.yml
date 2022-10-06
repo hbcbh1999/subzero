@@ -75,7 +75,7 @@ jobs:
       - name: Set package version as env var
         working-directory: subzero-node
         run: |
-          echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+          echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
       
 
@@ -175,9 +175,8 @@ jobs:
 
       - run: sccache --show-stats
 
-
   docker:
-    name: Docker
+    name: Docker build and push
     needs: [build-executable]
     runs-on: ubuntu-latest
     steps:
@@ -257,3 +256,26 @@ jobs:
           files: |
             LICENSE.txt
             **/*.tgz
+  
+  npm-release:
+    name: NPM Release
+    needs: [build-node]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Install node
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set package version as env var
+        working-directory: subzero-node
+        run: |
+          echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
+          echo "PACKAGE_VERSION: $PACKAGE_VERSION"
+
+      - run: npm publish subzerocloud-${{ env.PACKAGE_VERSION }}.tgz
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,1 +1,1 @@
-Subzero's library for Node.js
+https://subzero.cloud library for Node.js
