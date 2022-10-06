@@ -85,6 +85,8 @@ jobs:
           name: npm-package-${{ env.VERSION_TAG }}
           path: |
             subzero-node/subzerocloud-${{ env.PACKAGE_VERSION }}.tgz
+      
+      - run: sccache --show-stats
 
   build-executable:
     name: build ${{ matrix.arch }}
@@ -169,3 +171,5 @@ jobs:
           path: |
             target/${{ matrix.arch }}/release/${{ matrix.file }}.tgz
             target/${{ matrix.arch }}/release/${{ matrix.file }}.txt
+
+      - run: sccache --show-stats
