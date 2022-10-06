@@ -221,6 +221,7 @@ jobs:
           echo "VERSION=${VERSION:1}" >> $GITHUB_ENV
 
       - name: Copy files to build context
+        working-directory: .github/docker
         run: |
           cp -R ../../introspection introspection
 
