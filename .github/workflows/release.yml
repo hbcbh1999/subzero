@@ -84,7 +84,7 @@ jobs:
         with:
           name: npm-package-${{ env.VERSION_TAG }}
           path: |
-            subzero-node/subzerocloud-$PACKAGE_VERSION.tgz
+            subzero-node/subzerocloud-${{ env.PACKAGE_VERSION }}.tgz
 
   build-executable:
     name: build ${{ matrix.arch }}
