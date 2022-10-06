@@ -276,8 +276,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: 'https://registry.npmjs.org'
 
-      - run: npm whoami
-
       - name: Set package version as env var
         run: |
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
