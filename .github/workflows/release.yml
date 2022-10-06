@@ -266,7 +266,9 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: npm-package-${{ env.VERSION_TAG }}
-          path: npm-package
+          path: .
+      
+      - run: ls -la
 
       - name: Install node
         uses: actions/setup-node@v3
@@ -278,6 +280,6 @@ jobs:
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
 
-      - run: npm publish npm-package/subzerocloud-${{ env.PACKAGE_VERSION }}.tgz
+      - run: npm publish subzerocloud-${{ env.PACKAGE_VERSION }}.tgz
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
