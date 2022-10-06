@@ -169,6 +169,7 @@ jobs:
         with:
           name: ${{ matrix.file }}
           path: |
+            target/${{ matrix.arch }}/release/subzero
             target/${{ matrix.arch }}/release/${{ matrix.file }}.tgz
             target/${{ matrix.arch }}/release/${{ matrix.file }}.txt
 
