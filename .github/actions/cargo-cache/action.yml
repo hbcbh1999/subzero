@@ -4,7 +4,7 @@ description: "cache directories created by cargo"
 runs:
     using: "composite"
     steps:
-        - name: Install sccache (ubuntu-latest)
+        - name: Install sccache
           shell: bash
           env:
               LINK: https://github.com/mozilla/sccache/releases/download
@@ -17,19 +17,6 @@ runs:
               chmod +x  $HOME/.local/bin/sccache
               echo "$HOME/.local/bin" >> $GITHUB_PATH
               # echo "SCCACHE_DIR=$GITHUB_WORKSPACE/.sccache" >> $GITHUB_ENV
-        # - name: Set up cargo cache
-        #   if: ${{ !env.ACT }}
-        #   uses: actions/cache@v3
-        #   continue-on-error: false
-        #   with:
-        #       path: |
-        #           ~/.cargo/bin/
-        #           ~/.cargo/registry/index/
-        #           ~/.cargo/registry/cache/
-        #           ~/.cargo/git/db/
-        #           target/
-        #       key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        #       restore-keys: ${{ runner.os }}-cargo-
         - uses: actions/cache@v3
           if: ${{ !env.ACT }}
           with:
@@ -39,17 +26,17 @@ runs:
                 ~/.cargo/registry/cache/
                 ~/.cargo/git/db/
                 target/
-            key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-            restore-keys: ${{ runner.os }}-cargo-
+            key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
         # - name: Save sccache
         #   if: ${{ !env.ACT }}
         #   uses: actions/cache@v2
         #   continue-on-error: false
         #   with:
         #       path: ${{ env.SCCACHE_DIR }}
-        #       key: ${{ runner.os }}-sccache-${{ hashFiles('**/Cargo.lock') }}
+        #       key: ${{ runner.os }}-${{ runner.arch }}-sccache-${{ hashFiles('**/Cargo.lock') }}
         #       restore-keys: |
-        #           ${{ runner.os }}-sccache-
+        #           ${{ runner.os }}-${{ runner.arch }}-sccache-
         - name: Start sccache server
           shell: bash
           run: sccache --start-server || true

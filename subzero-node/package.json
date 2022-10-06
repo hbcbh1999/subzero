@@ -1,5 +1,5 @@
 {
-  "name": "subzero",
+  "name": "subzerocloud",
   "version": "0.1.0",
   "description": "Automated REST and GraphQL api for your database",
   "main": "lib/index.js",

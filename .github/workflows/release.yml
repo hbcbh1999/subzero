@@ -1,4 +1,5 @@
 # workflow compile release packages
+# example https://github.com/surrealdb/surrealdb/blob/main/.github/workflows/release.yml
 name: release
 on:
   push:
@@ -22,33 +23,139 @@ env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_REGION: us-east-1
+  VERSION_TAG: ${{ github.ref_name }}
 
 jobs:
-  build:
-    name: build
+  build-node:
+    name: build node package
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
 
+      - uses: ./.github/actions/cargo-cache
+      
+      # update rust and install wasm-pack
       - uses: ./.github/actions/rustup
         with:
           version: ${{ env.RUST_TOOLCHAIN }}
-      - uses: ./.github/actions/cargo-cache
+      - name: Output package versions
+        run: cargo version ; rustc --version
+
+      
       - name: Install node
         uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Build executable
-        run: cargo build --package subzero-rocket --release
+      - name: Check package version the same as tag
+        working-directory: subzero-node
+        run: |
+          echo "VERSION_TAG: $VERSION_TAG"
+          echo "PACKAGE_VERSION: $(node -p "require('./package.json').version")"
+          if [ "$VERSION_TAG" != "v$(node -p "require('./package.json').version")" ]; then
+            echo "Version tag $VERSION_TAG does not match package version $(node -p "require('./package.json').version")"
+            exit 1
+          fi  
 
-      - name: Build wasm
+      - name: Build subzero-wasm 
         working-directory: subzero-wasm
         run: wasm-pack build --release --target nodejs
 
       # note, this has to be after building wasm
-      - name: Build node
+      - name: Build subzero-node
         working-directory: subzero-node
         run: |
           npm ci
           npm pack
+
+      - name: Set package version as env var
+        working-directory: subzero-node
+        run: |
+          echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+          echo "PACKAGE_VERSION: $PACKAGE_VERSION"
+      
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: npm-package-${{ env.VERSION_TAG }}
+          path: |
+            subzero-node/subzerocloud-$PACKAGE_VERSION.tgz
+
+  build-executable:
+    name: build ${{ matrix.arch }}
+    strategy:
+      matrix:
+        include:
+          # - arch: x86_64-apple-darwin
+          #   os: macos-latest
+          #   file: subzero-${{ env.VERSION_TAG }}.darwin-amd64
+          # - arch: aarch64-apple-darwin
+          #   os: macos-latest
+          #   file: subzero-${{ env.VERSION_TAG }}.darwin-arm64
+          - arch: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            file: subzero-${{ env.VERSION_TAG }}.linux-amd64
+          # - arch: aarch64-unknown-linux-gnu
+          #   os: ubuntu-latest
+          #   file: subzero-${{ env.VERSION_TAG }}.linux-arm64
+          # - arch: x86_64-pc-windows-msvc
+          #   os: windows-latest
+          #   file: subzero-${{ env.VERSION_TAG }}.windows-amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+
+      # - uses: ./.github/actions/rustup
+      #   with:
+      #     version: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: ./.github/actions/cargo-cache
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          override: true
+          target: ${{ matrix.arch }}
+      - name: Output package versions
+        run: cargo version ; rustc --version
+
+      
+      # - name: Install node
+      #   uses: actions/setup-node@v3
+      #   with:
+      #     node-version: ${{ env.NODE_VERSION }}
+
+      # - name: Build executable
+      #   run: cargo build --package subzero-rocket --release
+
+      - name: Run cargo build
+        run: cargo build --package subzero-rocket --release --target ${{ matrix.arch }}
+
+      # - name: Build wasm
+      #   working-directory: subzero-wasm
+      #   run: wasm-pack build --release --target nodejs
+
+      # # note, this has to be after building wasm
+      # - name: Build node
+      #   working-directory: subzero-node
+      #   run: |
+      #     npm ci
+      #     npm pack
+
+      - name: Package binaries
+        if: ${{ !contains(matrix.arch, 'windows') }}
+        run: |
+          cd target/${{ matrix.arch }}/release
+          chmod +x subzero
+          tar -zcvf ${{ matrix.file }}.tgz subzero
+          echo $(shasum -a 256 ${{ matrix.file }}.tgz | cut -f1 -d' ') > ${{ matrix.file }}.txt
+          cd -
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ matrix.file }}
+          path: |
+            target/${{ matrix.arch }}/release/${{ matrix.file }}.tgz
+            target/${{ matrix.arch }}/release/${{ matrix.file }}.txt
