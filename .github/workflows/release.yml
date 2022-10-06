@@ -1,10 +1,8 @@
 # workflow compile release packages
 # example https://github.com/surrealdb/surrealdb/blob/main/.github/workflows/release.yml
 name: release
-on:
-  push:
-    tags:
-      - v*
+on: workflow_dispatch
+
 defaults:
   run:
     shell: bash
@@ -30,6 +28,12 @@ jobs:
     name: build node package
     runs-on: ubuntu-latest
     steps:
+      # check that the workflow was triggered by a tag
+      - name: Check that the workflow was triggered by a tag
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          echo "This workflow was not triggered by a tag. Exiting."
+          exit 1
       - uses: actions/checkout@v2
 
       - uses: ./.github/actions/cargo-cache
@@ -104,6 +108,12 @@ jobs:
           #   file: subzero-${{ github.ref_name }}.windows-amd64
     runs-on: ${{ matrix.os }}
     steps:
+      # check that the workflow was triggered by a tag
+      - name: Check that the workflow was triggered by a tag
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          echo "This workflow was not triggered by a tag. Exiting."
+          exit 1
       - uses: actions/checkout@v2
 
       # - uses: ./.github/actions/rustup
