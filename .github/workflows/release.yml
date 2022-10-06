@@ -271,7 +271,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Set package version as env var
-        working-directory: subzero-node
         run: |
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
