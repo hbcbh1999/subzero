@@ -55,7 +55,7 @@ pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_
         accept_content_type,
         &query.node,
     ) {
-        (false, _, _) => "''",
+        (false, _, _) => Ok("''"),
         (
             true,
             SingularJSON,
@@ -72,7 +72,7 @@ pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_
                 is_scalar: true,
                 ..
             },
-        ) => "coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')",
+        ) => Ok("coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')"),
         (
             true,
             ApplicationJSON,
@@ -82,7 +82,7 @@ pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_
                 is_scalar: true,
                 ..
             },
-        ) => "coalesce((json_agg(_subzero_t.subzero_scalar))::text, '[]')",
+        ) => Ok("coalesce((json_agg(_subzero_t.subzero_scalar))::text, '[]')"),
         (
             true,
             SingularJSON,
@@ -99,12 +99,12 @@ pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_
                 is_scalar: false,
                 ..
             },
-        ) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
+        ) => Ok("coalesce((json_agg(_subzero_t)->0)::text, 'null')"),
 
-        (true, ApplicationJSON, _) => "coalesce(json_agg(_subzero_t), '[]')::character varying",
-        (true, SingularJSON, _) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
+        (true, ApplicationJSON, _) => Ok("coalesce(json_agg(_subzero_t), '[]')::character varying"),
+        (true, SingularJSON, _) => Ok("coalesce((json_agg(_subzero_t)->0)::text, 'null')"),
         (true, TextCSV, _) => {
-            r#"
+            Ok(r#"
             (SELECT coalesce(string_agg(a.k, ','), '')
               FROM (
                 SELECT json_object_keys(r)::text as k
@@ -115,9 +115,12 @@ pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_
             )
             || chr(10) ||
             coalesce(string_agg(substring(_subzero_t::text, 2, length(_subzero_t::text) - 2), chr(10)), '')
-        "#
-        }
-    };
+        "#)
+        },
+        (_,Other(t),_) => Err(Error::ContentTypeError {
+            message: format!("None of these Content-Types are available: {}", t),
+        }),
+    }?;
 
     //let env = env_map.iter().map(|(k,v)| (k.to_string(), v.to_string())).collect::<HashMap<_,_>>();
     Ok(

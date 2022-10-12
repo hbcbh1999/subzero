@@ -113,6 +113,7 @@ pub enum ContentType {
     ApplicationJSON,
     SingularJSON,
     TextCSV,
+    Other(String),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]

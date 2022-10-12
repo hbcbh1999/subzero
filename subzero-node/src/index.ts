@@ -1,7 +1,15 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { Backend, Request as SubzeroRequest } from 'subzero-wasm';
-export { Request } from 'subzero-wasm';
+import {default as sqlite_introspection_query } from '../introspection/sqlite_introspection_query.sql';
+import {default as postgresql_introspection_query } from '../introspection/postgresql_introspection_query.sql';
+import {default as clickhouse_introspection_query } from '../introspection/clickhouse_introspection_query.sql';
+
+import { default as wasmbin } from '../../subzero-wasm/pkg/subzero_wasm_bg.wasm';
+import /*init, */{ initSync, Backend, Request as SubzeroRequest } from '../../subzero-wasm/pkg/subzero_wasm.js';
+
+/* tslint:disable */
+/* eslint-disable */
+initSync(wasmbin);
+//init(wasmbin);
+
 export type DbType = 'postgresql' | 'sqlite' | 'clickhouse';
 export type Query = string;
 export type Parameters = (string | number | boolean | null | (string | number | boolean | null)[])[];
@@ -13,9 +21,14 @@ export type Headers = [string, string][];
 export type Cookies = [string, string][];
 export type Env = [string, string][];
 
+// export async function init_wasm() {
+//   await init();
+// }
+
 export class Subzero {
   private backend: Backend;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(dbType: DbType, schema: any, allowed_select_functions?: string[]) {
     this.backend = Backend.init(JSON.stringify(schema), dbType, allowed_select_functions);
   }
@@ -54,7 +67,17 @@ export class Subzero {
 }
 
 export function get_raw_introspection_query(dbType: DbType): Query {
-  return fs.readFileSync(path.join(__dirname, `../introspection/${dbType}_introspection_query.sql`), 'utf8');
+  switch (dbType) {
+    case 'postgresql':
+      return postgresql_introspection_query;
+    case 'sqlite':
+      return sqlite_introspection_query;
+    case 'clickhouse':
+      return clickhouse_introspection_query;
+    default:
+      throw new Error(`Unknown dbType: ${dbType}`);
+  }
+  // return fs.readFileSync(path.join(__dirname, `../introspection/${dbType}_introspection_query.sql`), 'utf8');
 }
 
 /**
@@ -67,9 +90,11 @@ export function get_raw_introspection_query(dbType: DbType): Query {
 export function get_introspection_query(
   dbType: DbType,
   schemas: string | string[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   placeholder_values?: Map<string, any>,
 ): Statement {
   const re = new RegExp(`{@([^#}]+)(#([^}]+))?}`, 'g');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const placeholder_values_map = placeholder_values || new Map<string, any>();
   const raw_query = get_raw_introspection_query(dbType);
   const parts = raw_query.split(re);
@@ -85,9 +110,9 @@ export function get_introspection_query(
       }
       if (placeholder_values_map.has(file_to_include)) {
         query += JSON.stringify(placeholder_values_map.get(file_to_include));
-      } else if (fs.existsSync(file_to_include)) {
-        const file_content = fs.readFileSync(file_to_include, 'utf8');
-        query += file_content;
+      // } else if (fs.existsSync(file_to_include)) {
+      //   const file_content = fs.readFileSync(file_to_include, 'utf8');
+      //   query += file_content;
       } else {
         query += default_value;
       }

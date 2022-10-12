@@ -1,4 +1,3 @@
-
 with
 schemas as (
     select 'public' as schema_name

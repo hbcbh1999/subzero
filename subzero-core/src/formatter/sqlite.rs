@@ -67,7 +67,7 @@ pub fn fmt_main_query_internal<'a>(
 
     let return_representation = return_representation(method, query, preferences);
     let body_snippet = match (return_representation, accept_content_type, &query.node) {
-        (false, _, _) => "''",
+        (false, _, _) => Ok("''"),
         (true, SingularJSON, FunctionCall { is_scalar: true, .. })
         | (
             true,
@@ -78,7 +78,7 @@ pub fn fmt_main_query_internal<'a>(
                 is_scalar: true,
                 ..
             },
-        ) => "coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')",
+        ) => Ok("coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')"),
         (
             true,
             ApplicationJSON,
@@ -88,7 +88,7 @@ pub fn fmt_main_query_internal<'a>(
                 is_scalar: true,
                 ..
             },
-        ) => "coalesce((json_agg(_subzero_t.subzero_scalar))::text, '[]')",
+        ) => Ok("coalesce((json_agg(_subzero_t.subzero_scalar))::text, '[]')"),
         (true, SingularJSON, FunctionCall { is_scalar: false, .. })
         | (
             true,
@@ -99,12 +99,12 @@ pub fn fmt_main_query_internal<'a>(
                 is_scalar: false,
                 ..
             },
-        ) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
+        ) => Ok("coalesce((json_agg(_subzero_t)->0)::text, 'null')"),
 
-        (true, ApplicationJSON, _) => "json_group_array(json(_subzero_t.row))",
-        (true, SingularJSON, _) => "coalesce((json_agg(_subzero_t)->0)::text, 'null')",
+        (true, ApplicationJSON, _) => Ok("json_group_array(json(_subzero_t.row))"),
+        (true, SingularJSON, _) => Ok("coalesce((json_agg(_subzero_t)->0)::text, 'null')"),
         (true, TextCSV, _) => {
-            r#"
+            Ok(r#"
             (SELECT coalesce(string_agg(a.k, ','), '')
               FROM (
                 SELECT json_object_keys(r)::text as k
@@ -115,9 +115,12 @@ pub fn fmt_main_query_internal<'a>(
             )
             || chr(10) ||
             coalesce(string_agg(substring(_subzero_t::text, 2, length(_subzero_t::text) - 2), chr(10)), '')
-        "#
-        }
-    };
+        "#)
+        },
+        (_,Other(t),_) => Err(Error::ContentTypeError {
+            message: format!("None of these Content-Types are available: {}", t),
+        }),
+    }?;
 
     let run_unwrapped_query = matches!(query.node, Insert { .. } | Update { .. } | Delete { .. });
     let has_payload_cte = matches!(query.node, Insert { .. } | Update { .. });

@@ -532,7 +532,10 @@ pub fn parse<'a>(
                         serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserialize)?,
                         header.iter().map(|h| h.to_string()).collect(),
                     ))
-                }
+                },
+                (Other(t), _) => Err(Error::ContentTypeError {
+                    message: format!("None of these Content-Types are available: {}", t),
+                }),
             }?;
 
             let on_conflict = match &preferences {
@@ -680,6 +683,9 @@ pub fn parse<'a>(
                         header.iter().map(|h| h.to_string()).collect(),
                     ))
                 }
+                (Other(t), _) => Err(Error::ContentTypeError {
+                    message: format!("None of these Content-Types are available: {}", t),
+                }),
             }?;
             let mut q = Query {
                 node: Update {
@@ -781,6 +787,9 @@ pub fn parse<'a>(
                         header.iter().map(|h| h.to_string()).collect(),
                     ))
                 }
+                (Other(t), _) => Err(Error::ContentTypeError {
+                    message: format!("None of these Content-Types are available: {}", t),
+                }),
             }?;
 
             // check all the required filters are there for the PUT request to be valid
@@ -1455,13 +1464,34 @@ fn content_type<Input>() -> impl Parser<Input, Output = ContentType>
 where
     Input: Stream<Token = char>,
 {
-    choice((
-        string("*/*").map(|_| ApplicationJSON),
-        attempt(string("application/json")).map(|_| ApplicationJSON),
-        attempt(string("application/vnd.pgrst.object")).map(|_| SingularJSON),
-        attempt(string("application/vnd.pgrst.object+json")).map(|_| SingularJSON),
-        string("text/csv").map(|_| TextCSV),
-    ))
+    sep_by1(many1(none_of(",".chars())), char(','))
+    .and_then(|v:Vec<String>| {
+        let vv = v.iter().map(|t| {
+            let tt = t.trim().split(';').collect::<Vec<_>>();
+            match tt.first() {
+                Some(&"*/*") => ApplicationJSON,
+                Some(&"application/json") => ApplicationJSON,
+                Some(&"application/vnd.pgrst.object") => SingularJSON,
+                Some(&"application/vnd.pgrst.object+json") => SingularJSON,
+                Some(&"text/csv") => TextCSV,
+                Some(o) => Other(o.to_string()),
+                None => Other(t.to_string())
+            }
+        })
+        // remove unknown content types
+        .filter(|t| !matches!(t, Other(_))).collect::<Vec<_>>();
+        match vv.first() {
+            Some(ct) => Ok(ct.clone()),
+            None => Err(StreamErrorFor::<Input>::message_static_message("unknown operator"))
+        }
+    })
+    // choice((
+    //     string("*/*").map(|_| ApplicationJSON),
+    //     attempt(string("application/json")).map(|_| ApplicationJSON),
+    //     attempt(string("application/vnd.pgrst.object")).map(|_| SingularJSON),
+    //     attempt(string("application/vnd.pgrst.object+json")).map(|_| SingularJSON),
+    //     string("text/csv").map(|_| TextCSV),
+    // ))
 }
 
 fn preferences<Input>() -> impl Parser<Input, Output = Preferences>

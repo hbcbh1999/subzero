@@ -1,21 +1,16 @@
-// #![no_std]
 use serde::{Serialize, Deserialize};
-use wasm_bindgen::{prelude::*};
 use js_sys::{Array as JsArray};
-// use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use serde_wasm_bindgen::from_value as from_js_value;
 use serde_wasm_bindgen::to_value as to_js_value;
 use serde_wasm_bindgen::Error as JsError;
-use wasm_bindgen::{JsValue};
 mod utils;
-
 use utils::{
     set_panic_hook,
     cast_core_err,
     cast_serde_err,
     //console_log, log,
 };
-//use subzero_core::schema::DbSchema;
 use subzero_core::{
     parser::postgrest::parse,
     schema::DbSchema,
@@ -57,11 +52,6 @@ pub struct Backend {
     allowed_select_functions: Vec<String>,
 }
 
-// #[wasm_bindgen]
-// pub struct Statement {
-//     pub statement: String,
-//     pub parameters: Vec<JsValue>,
-// }
 #[wasm_bindgen]
 impl Backend {
     pub fn init(s: &str, dt: &str, allowed_select_functions: JsValue) -> Backend {

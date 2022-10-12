@@ -21,8 +21,8 @@ use frontend::postgrest;
 mod config;
 use config::VhostConfig;
 use subzero_core::{
-    error::{GucStatusError},
-    api::ContentType::{SingularJSON, TextCSV, ApplicationJSON},
+    error::{GucStatusError, Error as CoreError},
+    api::ContentType::{SingularJSON, TextCSV, ApplicationJSON, Other},
 };
 mod error;
 use error::{Error, Core};
@@ -116,10 +116,13 @@ async fn handle_request(
     .map_err(RocketError)?;
 
     let http_content_type = match response_content_type {
-        SingularJSON => SINGLE_CONTENT_TYPE.clone(),
-        TextCSV => HTTPContentType::CSV,
-        ApplicationJSON => HTTPContentType::JSON,
-    };
+        SingularJSON => Ok(SINGLE_CONTENT_TYPE.clone()),
+        TextCSV => Ok(HTTPContentType::CSV),
+        ApplicationJSON => Ok(HTTPContentType::JSON),
+        Other(t) => Err(CoreError::ContentTypeError {
+            message: format!("None of these Content-Types are available: {}", t),
+        }),
+    }.context(Core).map_err(RocketError)?;
 
     Ok(ApiResponse {
         response: (

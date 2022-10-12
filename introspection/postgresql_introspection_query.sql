@@ -60,16 +60,16 @@ with view_source_columns as (
             -- -----------------------------------------------
             -- pattern           | replacement         | flags
             -- -----------------------------------------------
-            -- `<>` in pg_node_tree is the same as `null` in JSON, but due to very poor performance of json_typeof
+            -- '<>' in pg_node_tree is the same as 'null' in JSON, but due to very poor performance of json_typeof
             -- we need to make this an empty array here to prevent json_array_elements from throwing an error
             -- when the targetList is null.
             -- We'll need to put it first, to make the node protection below work for node lists that start with
-            -- null: `(<> ...`, too. This is the case for coldefexprs, when the first column does not have a default value.
+            -- null: '(<> ...', too. This is the case for coldefexprs, when the first column does not have a default value.
                '<>'              , '()'
-            -- `,` is not part of the pg_node_tree format, but used in the regex.
-            -- This removes all `,` that might be part of column names.
+            -- ',' is not part of the pg_node_tree format, but used in the regex.
+            -- This removes all ',' that might be part of column names.
             ), ','               , ''
-            -- The same applies for `{` and `}`, although those are used a lot in pg_node_tree.
+            -- The same applies for '{' and '}', although those are used a lot in pg_node_tree.
             -- We remove the escaped ones, which might be part of column names again.
             ), E'\\{'            , ''
             ), E'\\}'            , ''
@@ -78,30 +78,30 @@ with view_source_columns as (
             ), ' :resno '        , ',"resno":'
             ), ' :resorigtbl '   , ',"resorigtbl":'
             ), ' :resorigcol '   , ',"resorigcol":'
-            -- Make the regex also match the node type, e.g. `{QUERY ...`, to remove it in one pass.
+            -- Make the regex also match the node type, e.g. '{QUERY ...', to remove it in one pass.
             ), '{'               , '{ :'
-            -- Protect node lists, which start with `({` or `((` from the greedy regex.
-            -- The extra `{` is removed again later.
+            -- Protect node lists, which start with '({' or '((' from the greedy regex.
+            -- The extra '{' is removed again later.
             ), '(('              , '{(('
             ), '({'              , '{({'
             -- This regex removes all unused fields to avoid the need to format all of them correctly.
             -- This leads to a smaller json result as well.
-            -- Removal stops at `,` for used fields (see above) and `}` for the end of the current node.
-            -- Nesting can't be parsed correctly with a regex, so we stop at `{` as well and
+            -- Removal stops at ',' for used fields (see above) and '}' for the end of the current node.
+            -- Nesting can't be parsed correctly with a regex, so we stop at '{' as well and
             -- add an empty key for the followig node.
             ), ' :[^}{,]+'       , ',"":'              , 'g'
-            -- For performance, the regex also added those empty keys when hitting a `,` or `}`.
+            -- For performance, the regex also added those empty keys when hitting a ',' or '}'.
             -- Those are removed next.
             ), ',"":}'           , '}'
             ), ',"":,'           , ','
             -- This reverses the "node list protection" from above.
             ), '{('              , '('
-            -- Every key above has been added with a `,` so far. The first key in an object doesn't need it.
+            -- Every key above has been added with a ',' so far. The first key in an object doesn't need it.
             ), '{,'              , '{'
-            -- pg_node_tree has `()` around lists, but JSON uses `[]`
+            -- pg_node_tree has '()' around lists, but JSON uses '[]'
             ), '('               , '['
             ), ')'               , ']'
-            -- pg_node_tree has ` ` between list items, but JSON uses `,`
+            -- pg_node_tree has ' ' between list items, but JSON uses ','
             ), ' '             , ','
           )::json as view_definition
         from views
@@ -254,8 +254,8 @@ tables as (
 
         and pg_relation_is_updatable(c.oid, true) & 8 = 8
 
-        -- The function `pg_relation_is_updateable` returns a bitmask where 8
-        -- corresponds to `1 << CMD_INSERT` in the PostgreSQL source code, i.e.
+        -- The function 'pg_relation_is_updateable' returns a bitmask where 8
+        -- corresponds to '1 << CMD_INSERT' in the PostgreSQL source code, i.e.
         -- it's possible to insert into the relation.
         or exists (
           select 1
@@ -263,7 +263,7 @@ tables as (
           where
             pg_trigger.tgrelid = c.oid
             and (pg_trigger.tgtype::integer & 69) = 69
-            -- The trigger type `tgtype` is a bitmask where 69 corresponds to
+            -- The trigger type 'tgtype' is a bitmask where 69 corresponds to
             -- TRIGGER_TYPE_ROW + TRIGGER_TYPE_INSTEAD + TRIGGER_TYPE_INSERT
             -- in the PostgreSQL source code.
         )

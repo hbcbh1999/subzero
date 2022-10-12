@@ -56,7 +56,7 @@ jobs:
 
       - run: cargo build --workspace --exclude subzero-wasm
 
-      - run: wasm-pack build --dev --target nodejs
+      - run: wasm-pack build --dev --target web
         working-directory: subzero-wasm
 
       - run: npm ci

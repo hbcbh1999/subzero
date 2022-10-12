@@ -63,7 +63,7 @@ jobs:
 
       - name: Build subzero-wasm 
         working-directory: subzero-wasm
-        run: wasm-pack build --release --target nodejs
+        run: wasm-pack build --release --target web
 
       # note, this has to be after building wasm
       - name: Build subzero-node

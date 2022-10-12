@@ -8,7 +8,7 @@ use super::base::{
 use std::collections::HashMap;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
-use crate::error::Result;
+use crate::error::{Result, Error};
 use super::{ToParam, Snippet, SqlParam};
 generate_fn!();
 fmt_main_query_internal!();

@@ -1,7 +1,23 @@
 {
     "transform": {
-        "^.+\\.tsx?$": "ts-jest"
+        "^.+\\.tsx?$": "ts-jest",
+        "^.+\\.wasm$": "./wasmTransformer.js",
+        "^.+\\.sql$": "./sqlTransformer.js",
+        "^.+subzero_wasm\\.js$": ["ts-jest", {
+            "diagnostics": {
+                "ignoreCodes": [1343]
+            },
+            "astTransformers": {
+                "before": [
+                    {
+                        "path": "node_modules/ts-jest-mock-import-meta"
+                        ,"options": { "metaObjectReplacement": { "url": "file://" } }
+                    }
+                ]
+            }
+        }]
     },
+    
     "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$",
     "moduleFileExtensions": [
         "ts",
