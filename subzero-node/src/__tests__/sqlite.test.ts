@@ -29,6 +29,7 @@ beforeAll(async () => {
   // in case of sqlite it is not used in the query (sqlite does not have the notion of schemas)
   // that is why we don't read/use the `parameters` from the result
   const permissions = JSON.parse(fs.readFileSync(path.join(__dirname, 'permissions.json')).toString());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const placeholder_values = new Map<string, any>([['permissions.json', permissions]]);
   const { query } = get_introspection_query('sqlite', 'public', placeholder_values);
   const result = await db.get(query);

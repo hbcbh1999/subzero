@@ -103,8 +103,7 @@ pub fn fmt_main_query_internal<'a>(
 
         (true, ApplicationJSON, _) => Ok("json_group_array(json(_subzero_t.row))"),
         (true, SingularJSON, _) => Ok("coalesce((json_agg(_subzero_t)->0)::text, 'null')"),
-        (true, TextCSV, _) => {
-            Ok(r#"
+        (true, TextCSV, _) => Ok(r#"
             (SELECT coalesce(string_agg(a.k, ','), '')
               FROM (
                 SELECT json_object_keys(r)::text as k
@@ -115,9 +114,8 @@ pub fn fmt_main_query_internal<'a>(
             )
             || chr(10) ||
             coalesce(string_agg(substring(_subzero_t::text, 2, length(_subzero_t::text) - 2), chr(10)), '')
-        "#)
-        },
-        (_,Other(t),_) => Err(Error::ContentTypeError {
+        "#),
+        (_, Other(t), _) => Err(Error::ContentTypeError {
             message: format!("None of these Content-Types are available: {}", t),
         }),
     }?;

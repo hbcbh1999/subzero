@@ -122,7 +122,9 @@ async fn handle_request(
         Other(t) => Err(CoreError::ContentTypeError {
             message: format!("None of these Content-Types are available: {}", t),
         }),
-    }.context(Core).map_err(RocketError)?;
+    }
+    .context(Core)
+    .map_err(RocketError)?;
 
     Ok(ApiResponse {
         response: (
