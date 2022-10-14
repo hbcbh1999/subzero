@@ -2173,7 +2173,7 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "subzero-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "combine",
  "csv",
@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-rocket"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "async_once",
@@ -2226,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-wasm"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",

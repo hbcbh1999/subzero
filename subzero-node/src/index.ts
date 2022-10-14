@@ -20,17 +20,49 @@ export type Body = string | undefined;
 export type Headers = [string, string][];
 export type Cookies = [string, string][];
 export type Env = [string, string][];
+export class SubzeroError extends Error {
+  message: string;
+  status: number;
+  description: string | null;
+  constructor(msg: string, status = 500, description?: string) {
+      super(msg);
+      this.message = msg;
+      this.status = status;
+      this.description = description || null;
+      // Set the prototype explicitly.
+      Object.setPrototypeOf(this, SubzeroError.prototype);
+  }
+  statusCode():number {
+      return this.status
+  }
+  toJSONString():string {
+    let { message, description } = this;
+    return JSON.stringify({ message, description });
+  }
+}
 
 // export async function init_wasm() {
 //   await init();
 // }
-
+function toSubzeroError(err: any) {
+  let wasm_err: string = err.message;
+  try {
+    let ee: any = JSON.parse(wasm_err);
+    return new SubzeroError(ee.message, ee.status, ee.description);
+  } catch(e) {
+    return new SubzeroError(wasm_err);
+  }
+}
 export class Subzero {
   private backend: Backend;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(dbType: DbType, schema: any, allowed_select_functions?: string[]) {
-    this.backend = Backend.init(JSON.stringify(schema), dbType, allowed_select_functions);
+    try {
+      this.backend = Backend.init(JSON.stringify(schema), dbType, allowed_select_functions);
+    } catch (e:any) {
+      throw toSubzeroError(e);
+    }
   }
 
   async parse(schemaName: string, urlPrefix: string, role: string, request: Request): Promise<SubzeroRequest> {
@@ -44,25 +76,41 @@ export class Subzero {
     const headers: Headers = [];
     request.headers.forEach((value, key) => headers.push([key, value]));
     const get: GetParameters = Array.from(url.searchParams.entries());
-    return this.backend.parse(schemaName, entity, method, path, get, body, role, headers, cookies);
+    try {
+      return this.backend.parse(schemaName, entity, method, path, get, body, role, headers, cookies);
+    } catch (e: any) {
+      throw toSubzeroError(e);
+    }
   }
 
   fmt_main_query(request: SubzeroRequest, env: Env): Statement {
-    const [query, parameters] = this.backend.fmt_main_query(request, env);
-    //const query = _query.replaceAll('rarray(', 'carray(');
-    return { query, parameters };
+    try {
+      const [query, parameters] = this.backend.fmt_main_query(request, env);
+      //const query = _query.replaceAll('rarray(', 'carray(');
+      return { query, parameters };
+    } catch (e: any) {
+      throw toSubzeroError(e);
+    }
   }
 
   fmt_sqlite_mutate_query(request: SubzeroRequest, env: Env): Statement {
-    const [query, parameters] = this.backend.fmt_sqlite_mutate_query(request, env);
-    //const query = _query.replaceAll('rarray(', 'carray(');
-    return { query, parameters };
+    try {
+      const [query, parameters] = this.backend.fmt_sqlite_mutate_query(request, env);
+      //const query = _query.replaceAll('rarray(', 'carray(');
+      return { query, parameters };
+    } catch (e: any) {
+      throw toSubzeroError(e);
+    }
   }
 
   fmt_sqlite_second_stage_select(request: SubzeroRequest, ids: string[], env: Env): Statement {
-    const [query, parameters] = this.backend.fmt_sqlite_second_stage_select(request, ids, env);
-    //const query = _query.replaceAll('rarray(', 'carray(');
-    return { query, parameters };
+    try {
+      const [query, parameters] = this.backend.fmt_sqlite_second_stage_select(request, ids, env);
+      //const query = _query.replaceAll('rarray(', 'carray(');
+      return { query, parameters };
+    } catch (e: any) {
+      throw toSubzeroError(e);
+    }
   }
 }
 

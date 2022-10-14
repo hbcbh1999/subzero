@@ -39,7 +39,17 @@ macro_rules! console_log {
 pub(super) use console_log;
 
 pub fn cast_core_err(err: subzero_core::error::Error) -> JsError {
-    JsError::new(err.json_body().get("message").unwrap().as_str().unwrap_or("internal error"))
+    // we can pass only strings between wasm and js
+    // so we pass the error in json string format
+    let mut err_json = err.json_body();
+    if let Some(obj) = err_json.as_object_mut() {
+        obj.insert("status".to_string(), serde_json::Number::from(err.status_code()).into());
+    }
+    JsError::new(
+        serde_json::to_string(&err_json)
+            .unwrap_or_else(|_| r#"{"message":"internal error","status":500}"#.to_string())
+            .as_str(),
+    )
 }
 
 pub fn cast_serde_err(err: serde_wasm_bindgen::Error) -> JsError { JsError::new(err.to_string().as_str()) }
