@@ -44,7 +44,7 @@ require('esbuild').build({
     platform: 'neutral',
     mainFields: ['module', 'main'],
     outfile: 'dist/index.js',
-    minify: false,
+    minify: true,
     sourcemap: true,
     banner: {
         js: file_header,

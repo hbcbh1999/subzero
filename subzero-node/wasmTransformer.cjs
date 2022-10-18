@@ -7,7 +7,6 @@ module.exports = {
     process(sourceText, sourcePath, options) {
         const bytes = fs.readFileSync(sourcePath);
         const base64 = bytes.toString('base64');
-       
         return {
             code: `
                 let buff = Buffer.from('${base64}', 'base64');

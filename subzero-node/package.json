@@ -1,16 +1,17 @@
 {
   "name": "subzerocloud",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Automated REST and GraphQL api for your database",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "type": "module",
   "files": [
     "dist/**/*",
     "LICENSE.txt",
     "README.md"
   ],
   "scripts": {
-    "build": "node esbuild.config.js && tsc --emitDeclarationOnly --outDir dist",
+    "build": "node esbuild.config.cjs && tsc --emitDeclarationOnly --outDir dist",
     "test": "jest --config jestconfig.json",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "eslint src",

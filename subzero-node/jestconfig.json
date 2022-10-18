@@ -1,8 +1,8 @@
 {
     "transform": {
         "^.+\\.tsx?$": "ts-jest",
-        "^.+\\.wasm$": "./wasmTransformer.js",
-        "^.+\\.sql$": "./sqlTransformer.js",
+        "^.+\\.wasm$": "./wasmTransformer.cjs",
+        "^.+\\.sql$": "./sqlTransformer.cjs",
         "^.+subzero_wasm\\.js$": ["ts-jest", {
             "diagnostics": {
                 "ignoreCodes": [1343]
