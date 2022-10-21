@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
-import { Subzero, Statement, get_introspection_query, Env } from '../index';
+import { Subzero, Statement, getIntrospectionQuery, Env } from '../index';
 
 // Declare global variables
 sqlite3.verbose();
@@ -31,7 +31,7 @@ beforeAll(async () => {
   const permissions = JSON.parse(fs.readFileSync(path.join(__dirname, 'permissions.json')).toString());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const placeholder_values = new Map<string, any>([['permissions.json', permissions]]);
-  const { query } = get_introspection_query('sqlite', 'public', placeholder_values);
+  const { query } = getIntrospectionQuery('sqlite', 'public', placeholder_values);
   const result = await db.get(query);
   const schema = JSON.parse(result.json_schema);
 
@@ -47,19 +47,19 @@ async function run(role: string, request: Request, env?: Env) {
   const subzeroRequest = await subzero.parse('public', '/rest/', role, request);
   env = env || [];
   if (request.method == 'GET') {
-    const { query, parameters } = subzero.fmt_sqlite_mutate_query(subzeroRequest, env);
+    const { query, parameters } = subzero.fmtSqliteMutateQuery(subzeroRequest, env);
     //console.log(query,"\n",parameters);
     const result = await db.get(query, parameters);
     //console.log(result);
     return JSON.parse(result.body);
   } else {
-    const { query: mutate_query, parameters: mutate_parameters } = subzero.fmt_sqlite_mutate_query(subzeroRequest, env);
+    const { query: mutate_query, parameters: mutate_parameters } = subzero.fmtSqliteMutateQuery(subzeroRequest, env);
     //console.log(mutate_query,"\n",mutate_parameters);
     const result = await db.all(mutate_query, mutate_parameters);
     //console.log(result);
     const ids = result.map((r) => r[Object.keys(r)[0]].toString());
     //console.log('ids',ids);
-    const { query: select_query, parameters: select_parameters } = subzero.fmt_sqlite_second_stage_select(
+    const { query: select_query, parameters: select_parameters } = subzero.fmtSqliteSecondStageSelect(
       subzeroRequest,
       ids,
       env,
@@ -152,7 +152,7 @@ describe('insert', () => {
       }),
     );
 
-    expect(normalize_statement(subzero.fmt_sqlite_mutate_query(request, [['env_var', 'env_value']]))).toStrictEqual(
+    expect(normalize_statement(subzero.fmtSqliteMutateQuery(request, [['env_var', 'env_value']]))).toStrictEqual(
       normalize_statement({
         query: `
                 with
@@ -172,7 +172,7 @@ describe('insert', () => {
     );
 
     expect(
-      normalize_statement(subzero.fmt_sqlite_second_stage_select(request, ['1'], [['env_var', 'env_value']])),
+      normalize_statement(subzero.fmtSqliteSecondStageSelect(request, ['1'], [['env_var', 'env_value']])),
     ).toStrictEqual(
       normalize_statement({
         query: `

@@ -1,4 +1,7 @@
 /* eslint-disable */
+
+const replacePlugin = require('esbuild-plugin-replace-regex');
+
 let wasmPlugin = {
     name: 'wasm',
     setup(build) {
@@ -52,7 +55,15 @@ require('esbuild').build({
     loader: {
         '.sql': 'text',
     },
-    plugins: [wasmPlugin],
+    plugins: [
+        wasmPlugin,
+        replacePlugin({
+            filter: /subzero_wasm\.js/,
+            patterns: [
+                ['init.__wbindgen_wasm_module = module;', '//init.__wbindgen_wasm_module = module;'],
+            ]
+        })
+    ],
 }).catch(err => {
     process.stderr.write(err.stderr);
     process.exit(1)

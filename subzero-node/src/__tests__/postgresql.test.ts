@@ -96,7 +96,7 @@ test('main query', async () => {
   );
   expect(
     normalize_statement(
-      subzero.fmt_main_query(
+      subzero.fmtMainQuery(
         request,
         [
           ['role', 'admin'],
