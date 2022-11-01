@@ -985,9 +985,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "0.14.20"
+version = "0.14.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02c929dc5c39e335a03c405292728118860721b10190d98c2a0f0efd5baafbac"
+checksum = "abfba89e19b959ca163c7752ba59d737c1ceea53a5d31a149c805446fc958064"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -1966,7 +1966,7 @@ dependencies = [
  "either",
  "futures",
  "http",
- "hyper 0.14.20",
+ "hyper 0.14.22",
  "indexmap",
  "log 0.4.17",
  "memchr",
@@ -2287,7 +2287,7 @@ dependencies = [
  "figment",
  "formdata",
  "http",
- "hyper 0.14.20",
+ "hyper 0.14.22",
  "jsonpath_lib",
  "jsonwebtoken",
  "lazy_static",
