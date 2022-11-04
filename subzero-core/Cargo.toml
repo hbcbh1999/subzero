@@ -12,7 +12,7 @@ lazy_static = "1.4.0"
 serde = { version = "1.0", features = ["derive"], default-features = false }
 serde_json = "1.0.68"
 csv = "1.1.6"
-snafu = "0.6.10"
+snafu = "0.7.3"
 
 [features]
 default = []
