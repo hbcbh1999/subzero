@@ -21,11 +21,11 @@ use frontend::postgrest;
 mod config;
 use config::VhostConfig;
 use subzero_core::{
-    error::{GucStatusError, Error as CoreError},
+    error::{GucStatusSnafu, Error as CoreError},
     api::ContentType::{SingularJSON, TextCSV, ApplicationJSON, Other},
 };
 mod error;
-use error::{Error, Core};
+use error::{Error, CoreSnafu};
 
 mod backend;
 use backend::{Backend};
@@ -123,12 +123,12 @@ async fn handle_request(
             message: format!("None of these Content-Types are available: {}", t),
         }),
     }
-    .context(Core)
+    .context(CoreSnafu)
     .map_err(RocketError)?;
 
     Ok(ApiResponse {
         response: (
-            Status::from_code(status).context(GucStatusError).context(Core).map_err(RocketError)?,
+            Status::from_code(status).context(GucStatusSnafu).context(CoreSnafu).map_err(RocketError)?,
             (http_content_type, response_body),
         ),
         headers: response_headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),

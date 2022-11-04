@@ -8,7 +8,7 @@ use crate::error::{Result, *};
 use crate::config::{VhostConfig, SchemaStructure::*};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, SingleVal, Payload, ListVal},
-    error::{Error, JsonDeserialize},
+    error::{Error, JsonDeserializeSnafu},
     schema::{DbSchema},
     formatter::{
         Param::*,
@@ -61,7 +61,7 @@ async fn execute<'a>(
     let uri = &o.0;
     let base_url = &o.1;
     let client = &o.2;
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(Core)?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu)?);
     debug!("main_statement {}", main_statement);
     let mut parameters = vec![("query".to_string(), main_statement)];
     for (k, v) in main_parameters.iter().enumerate() {
@@ -95,18 +95,18 @@ async fn execute<'a>(
         );
     }
 
-    let http_req = http_request.body(Body::from(http_body)).context(HttpRequest)?;
+    let http_req = http_request.body(Body::from(http_body)).context(HttpRequestSnafu)?;
     let http_response = match client.request(http_req).await {
         Ok(r) => Ok(r),
         Err(e) => Err(Error::InternalError { message: e.to_string() }),
     }
-    .context(Core)?;
+    .context(CoreSnafu)?;
     let (parts, body) = http_response.into_parts();
     let status = parts.status.as_u16();
     let headers = parts.headers;
     debug!("status {:?}", status);
     debug!("headers {:?}", headers);
-    let bytes = hyper::body::to_bytes(body).await.context(Hyper)?;
+    let bytes = hyper::body::to_bytes(body).await.context(HyperSnafu)?;
     let body = String::from_utf8(bytes.to_vec()).unwrap_or_default();
     let page_total = match headers.get("x-clickhouse-summary") {
         Some(s) => match serde_json::from_str::<JsonValue>(s.to_str().unwrap_or("")) {
@@ -205,32 +205,32 @@ impl Backend for ClickhouseBackend {
                             );
                         }
 
-                        let http_req = http_request.body(Body::from(http_body)).context(HttpRequest)?;
+                        let http_req = http_request.body(Body::from(http_body)).context(HttpRequestSnafu)?;
                         let http_response = match client.request(http_req).await {
                             Ok(r) => Ok(r),
                             Err(e) => Err(Error::InternalError { message: e.to_string() }),
                         }
-                        .context(Core)?;
+                        .context(CoreSnafu)?;
                         let (parts, body) = http_response.into_parts();
 
                         let _status = parts.status.as_u16();
                         let _headers = parts.headers;
-                        let bytes = hyper::body::to_bytes(body).await.context(Hyper)?;
+                        let bytes = hyper::body::to_bytes(body).await.context(HyperSnafu)?;
                         let s = String::from_utf8(bytes.to_vec()).unwrap_or_default();
                         //println!("json schema:\n{:?}", s);
                         //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;
                         //println!("schema {:?}", schema);
-                        serde_json::from_str::<DbSchema>(&s).context(JsonDeserialize).context(Core)
+                        serde_json::from_str::<DbSchema>(&s).context(JsonDeserializeSnafu).context(CoreSnafu)
                     }
-                    Err(e) => Err(e).context(ClickhouseDbPool),
+                    Err(e) => Err(e).context(ClickhouseDbPoolSnafu),
                 },
-                Err(e) => Err(e).context(ReadFile { path: f }),
+                Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(Core),
-                Err(e) => Err(e).context(ReadFile { path: f }),
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserializeSnafu).context(CoreSnafu),
+                Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(Core),
+            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserializeSnafu).context(CoreSnafu),
         }?;
 
         Ok(ClickhouseBackend { config, pool, db_schema })

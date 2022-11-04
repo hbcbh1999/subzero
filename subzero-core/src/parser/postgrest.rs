@@ -68,10 +68,10 @@ pub fn parse<'a>(
     headers: HashMap<&'a str, &'a str>, cookies: HashMap<&'a str, &'a str>, max_rows: Option<u32>,
 ) -> Result<ApiRequest<'a>> {
     let body = body.map(|b| b.to_string());
-    let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchema {
+    let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchemaSnafu {
         schemas: vec![schema.to_owned()],
     })?;
-    let root_obj = schema_obj.objects.get(root).context(NotFound { target: root })?;
+    let root_obj = schema_obj.objects.get(root).context(NotFoundSnafu { target: root })?;
 
     //let mut select_items = vec![SelectItem::Star];
     let mut limits = vec![];
@@ -327,7 +327,7 @@ pub fn parse<'a>(
                             args.insert(n, v.to_string().into());
                         }
                     }
-                    let payload = serde_json::to_string(&args).context(JsonSerialize)?;
+                    let payload = serde_json::to_string(&args).context(JsonSerializeSnafu)?;
                     let params = match (parameters.len(), parameters.get(0)) {
                         (1, Some(p)) if p.name.is_empty() => CallParams::OnePosParam(p.clone()),
                         _ => {
@@ -357,15 +357,15 @@ pub fn parse<'a>(
                     Ok((payload, params))
                 }
                 "POST" => {
-                    let payload = body.context(InvalidBody {
+                    let payload = body.context(InvalidBodySnafu {
                         message: "body not available".to_string(),
                     })?;
                     let params = match (parameters.len(), parameters.get(0)) {
                         (1, Some(p)) if p.name.is_empty() && (p.type_ == "json" || p.type_ == "jsonb") => CallParams::OnePosParam(p.clone()),
                         _ => {
                             let json_payload = match (payload.len(), content_type) {
-                                (0, _) => serde_json::from_str("{}").context(JsonDeserialize),
-                                (_, _) => serde_json::from_str(&payload).context(JsonDeserialize),
+                                (0, _) => serde_json::from_str("{}").context(JsonDeserializeSnafu),
+                                (_, _) => serde_json::from_str(&payload).context(JsonDeserializeSnafu),
                             }?;
                             let argument_keys = match (json_payload, columns_) {
                                 (JsonValue::Object(o), None) => o.keys().cloned().collect(),
@@ -467,7 +467,7 @@ pub fn parse<'a>(
             Ok(q)
         }
         ("POST", _) => {
-            let _body = body.context(InvalidBody {
+            let _body = body.context(InvalidBodySnafu {
                 message: "body not available".to_string(),
             })?;
 
@@ -508,14 +508,14 @@ pub fn parse<'a>(
                     let mut res: Vec<JsonValue> = vec![];
                     let header: StringRecord = match cols {
                         Some(c) => Ok(StringRecord::from(c)),
-                        None => Ok((rdr.headers().context(CsvDeserialize)?).clone()),
+                        None => Ok((rdr.headers().context(CsvDeserializeSnafu)?).clone()),
                     }?;
                     for record in rdr.records() {
                         res.push(
                             header
                                 .clone()
                                 .into_iter()
-                                .zip(record.context(CsvDeserialize)?.into_iter())
+                                .zip(record.context(CsvDeserializeSnafu)?.into_iter())
                                 .map(|(k, v)| {
                                     (
                                         k,
@@ -529,7 +529,7 @@ pub fn parse<'a>(
                         );
                     }
                     Ok((
-                        serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserialize)?,
+                        serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserializeSnafu)?,
                         header.iter().map(|h| h.to_string()).collect(),
                     ))
                 }
@@ -617,7 +617,7 @@ pub fn parse<'a>(
             Ok(q)
         }
         ("PATCH", _) => {
-            let _body = body.context(InvalidBody {
+            let _body = body.context(InvalidBodySnafu {
                 message: "body not available".to_string(),
             })?;
 
@@ -658,14 +658,14 @@ pub fn parse<'a>(
                     let mut res: Vec<JsonValue> = vec![];
                     let header: StringRecord = match cols {
                         Some(c) => Ok(StringRecord::from(c)),
-                        None => Ok((rdr.headers().context(CsvDeserialize)?).clone()),
+                        None => Ok((rdr.headers().context(CsvDeserializeSnafu)?).clone()),
                     }?;
                     for record in rdr.records() {
                         res.push(
                             header
                                 .clone()
                                 .into_iter()
-                                .zip(record.context(CsvDeserialize)?.into_iter())
+                                .zip(record.context(CsvDeserializeSnafu)?.into_iter())
                                 .map(|(k, v)| {
                                     (
                                         k,
@@ -679,7 +679,7 @@ pub fn parse<'a>(
                         );
                     }
                     Ok((
-                        serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserialize)?,
+                        serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserializeSnafu)?,
                         header.iter().map(|h| h.to_string()).collect(),
                     ))
                 }
@@ -721,7 +721,7 @@ pub fn parse<'a>(
             Ok(q)
         }
         ("PUT", _) => {
-            let _body = body.context(InvalidBody {
+            let _body = body.context(InvalidBodySnafu {
                 message: "body not available".to_string(),
             })?;
 
@@ -762,14 +762,14 @@ pub fn parse<'a>(
                     let mut res: Vec<JsonValue> = vec![];
                     let header: StringRecord = match cols {
                         Some(c) => Ok(StringRecord::from(c)),
-                        None => Ok((rdr.headers().context(CsvDeserialize)?).clone()),
+                        None => Ok((rdr.headers().context(CsvDeserializeSnafu)?).clone()),
                     }?;
                     for record in rdr.records() {
                         res.push(
                             header
                                 .clone()
                                 .into_iter()
-                                .zip(record.context(CsvDeserialize)?.into_iter())
+                                .zip(record.context(CsvDeserializeSnafu)?.into_iter())
                                 .map(|(k, v)| {
                                     (
                                         k,
@@ -783,7 +783,7 @@ pub fn parse<'a>(
                         );
                     }
                     Ok((
-                        serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserialize)?,
+                        serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserializeSnafu)?,
                         header.iter().map(|h| h.to_string()).collect(),
                     ))
                 }
@@ -947,7 +947,7 @@ pub fn parse<'a>(
                 }
             });
             if star_removed {
-                let table_obj = schema_obj.objects.get(table_name).context(NotFound { target: table_name.clone() })?;
+                let table_obj = schema_obj.objects.get(table_name).context(NotFoundSnafu { target: table_name.clone() })?;
                 for col in table_obj.columns.keys() {
                     select.push(SelectItem::Simple {
                         field: Field {

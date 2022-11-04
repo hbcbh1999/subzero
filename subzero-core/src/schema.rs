@@ -85,11 +85,11 @@ pub struct DbSchema {
 
 impl DbSchema {
     pub fn get_join(&self, current_schema: &String, origin: &String, target: &String, hint: &Option<String>) -> Result<Join> {
-        let schema = self.schemas.get(current_schema).context(UnacceptableSchema {
+        let schema = self.schemas.get(current_schema).context(UnacceptableSchemaSnafu {
             schemas: vec![current_schema.to_owned()],
         })?;
 
-        let origin_table = schema.objects.get(origin).context(UnknownRelation { relation: origin.to_owned() })?;
+        let origin_table = schema.objects.get(origin).context(UnknownRelationSnafu { relation: origin.to_owned() })?;
 
         match origin_table
             .foreign_keys
@@ -324,10 +324,10 @@ impl DbSchema {
 
     fn has_privileges(&self, role: &Role, action: &Action, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()> {
         debug!("has_privileges: {:?} {:?} {:?} {:?} {:?}", role, action, current_schema, origin, columns);
-        let schema = self.schemas.get(current_schema).context(UnacceptableSchema {
+        let schema = self.schemas.get(current_schema).context(UnacceptableSchemaSnafu {
             schemas: vec![current_schema.to_owned()],
         })?;
-        let origin_table = schema.objects.get(origin).context(UnknownRelation { relation: origin.to_owned() })?;
+        let origin_table = schema.objects.get(origin).context(UnknownRelationSnafu { relation: origin.to_owned() })?;
         let grants = &origin_table.permissions.grants;
         let all_privileges = [
             grants.get(&(role.clone(), action.clone())),

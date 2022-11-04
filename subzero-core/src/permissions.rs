@@ -447,7 +447,7 @@ pub fn insert_policy_conditions(db_schema: &DbSchema, current_schema: &String, r
     if !db_schema.use_internal_permissions {
         return Ok(());
     }
-    let schema = db_schema.schemas.get(current_schema).context(UnacceptableSchema {
+    let schema = db_schema.schemas.get(current_schema).context(UnacceptableSchemaSnafu {
         schemas: vec![current_schema.to_owned()],
     })?;
     // by looking at the query node we determine the relevant command type (policy types that need to be applied)
@@ -465,7 +465,7 @@ pub fn insert_policy_conditions(db_schema: &DbSchema, current_schema: &String, r
         } => (origin, Action::Update, !returning.is_empty(), false),
         Delete { from: origin, returning, .. } => (origin, Action::Delete, !returning.is_empty(), false),
     };
-    let rel = schema.objects.get(origin).context(UnknownRelation { relation: origin.to_owned() })?;
+    let rel = schema.objects.get(origin).context(UnknownRelationSnafu { relation: origin.to_owned() })?;
 
     let (security_quals, with_check_options) = get_row_security_policies(rel, role, action, apply_select_policies, has_on_conflict_update);
 

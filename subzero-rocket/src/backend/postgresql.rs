@@ -18,7 +18,7 @@ use subzero_core::{
         postgresql::{fmt_main_query, generate},
         ToParam, Snippet, SqlParam,
     },
-    error::{JsonDeserialize},
+    error::{JsonDeserializeSnafu},
 };
 use subzero_core::dynamic_statement::{param, sql, JoinIterator};
 use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
@@ -95,8 +95,8 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
 async fn execute<'a>(
     pool: &'a Pool, authenticated: bool, request: &ApiRequest<'a>, env: &'a HashMap<&'a str, &'a str>, config: &VhostConfig,
 ) -> Result<ApiResponse> {
-    let mut client = pool.get().await.context(PgDbPool)?;
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(Core)?);
+    let mut client = pool.get().await.context(PgDbPoolSnafu)?;
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu)?);
 
     let transaction = client
         .build_transaction()
@@ -104,10 +104,10 @@ async fn execute<'a>(
         .read_only(request.read_only)
         .start()
         .await
-        .context(PgDb { authenticated })?;
+        .context(PgDbSnafu { authenticated })?;
     let (env_query, env_parameters, _) = generate(fmt_env_query(env));
     debug!("env_query: {}\n{:?}", env_query, env_parameters);
-    let env_stm = transaction.prepare_cached(env_query.as_str()).await.context(PgDb { authenticated })?;
+    let env_stm = transaction.prepare_cached(env_query.as_str()).await.context(PgDbSnafu { authenticated })?;
     transaction
         .query(
             &env_stm,
@@ -121,7 +121,7 @@ async fn execute<'a>(
                 .as_slice(),
         )
         .await
-        .context(PgDb { authenticated })?;
+        .context(PgDbSnafu { authenticated })?;
     if let Some((s, f)) = &config.db_pre_request {
         let fn_schema = match s.as_str() {
             "" => request.schema_name,
@@ -133,8 +133,8 @@ async fn execute<'a>(
         let pre_request_stm = transaction
             .prepare_cached(pre_request_statement.as_str())
             .await
-            .context(PgDb { authenticated })?;
-        transaction.query(&pre_request_stm, &[]).await.context(PgDb { authenticated })?;
+            .context(PgDbSnafu { authenticated })?;
+        transaction.query(&pre_request_stm, &[]).await.context(PgDbSnafu { authenticated })?;
     }
 
     debug!("main_statement {}\n{:?}", main_statement, main_parameters);
@@ -142,7 +142,7 @@ async fn execute<'a>(
     let main_stm = transaction
         .prepare_cached(main_statement.as_str())
         .await
-        .context(PgDb { authenticated })?;
+        .context(PgDbSnafu { authenticated })?;
 
     let rows = transaction
         .query(
@@ -157,11 +157,11 @@ async fn execute<'a>(
                 .as_slice(),
         )
         .await
-        .context(PgDb { authenticated })?;
+        .context(PgDbSnafu { authenticated })?;
 
     let constraints_satisfied: bool = rows[0].get("constraints_satisfied");
     if !constraints_satisfied {
-        transaction.rollback().await.context(PgDb { authenticated })?;
+        transaction.rollback().await.context(PgDbSnafu { authenticated })?;
         return Err(to_core_error(PermissionDenied {
             details: "check constraint of an insert/update permission has failed".to_string(),
         }));
@@ -177,7 +177,7 @@ async fn execute<'a>(
     };
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
-        transaction.rollback().await.context(PgDb { authenticated })?;
+        transaction.rollback().await.context(PgDbSnafu { authenticated })?;
         return Err(to_core_error(SingularityError {
             count: api_response.page_total,
             content_type: "application/vnd.pgrst.object+json".to_string(),
@@ -189,14 +189,14 @@ async fn execute<'a>(
         // e.g. PUT /items?id=eq.1 { "id" : 1, .. } is accepted,
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
-        transaction.rollback().await.context(PgDb { authenticated })?;
+        transaction.rollback().await.context(PgDbSnafu { authenticated })?;
         return Err(to_core_error(PutMatchingPkError));
     }
 
     if config.db_tx_rollback {
-        transaction.rollback().await.context(PgDb { authenticated })?;
+        transaction.rollback().await.context(PgDbSnafu { authenticated })?;
     } else {
-        transaction.commit().await.context(PgDb { authenticated })?;
+        transaction.commit().await.context(PgDbSnafu { authenticated })?;
     }
 
     Ok(api_response)
@@ -253,29 +253,29 @@ impl Backend for PostgreSQLBackend {
                             .read_only(true)
                             .start()
                             .await
-                            .context(PgDb { authenticated })?;
+                            .context(PgDbSnafu { authenticated })?;
                         let _ = transaction.query("set local schema ''", &[]).await;
                         match transaction.query(&query, &[&config.db_schemas]).await {
                             Ok(rows) => {
-                                transaction.commit().await.context(PgDb { authenticated })?;
+                                transaction.commit().await.context(PgDbSnafu { authenticated })?;
                                 //println!("db schema loaded: {}", rows[0].get::<usize, &str>(0));
-                                serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserialize).context(Core)
+                                serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserializeSnafu).context(CoreSnafu)
                             }
                             Err(e) => {
-                                transaction.rollback().await.context(PgDb { authenticated })?;
-                                Err(e).context(PgDb { authenticated })
+                                transaction.rollback().await.context(PgDbSnafu { authenticated })?;
+                                Err(e).context(PgDbSnafu { authenticated })
                             }
                         }
                     }
-                    Err(e) => Err(e).context(PgDbPool),
+                    Err(e) => Err(e).context(PgDbPoolSnafu),
                 },
-                Err(e) => Err(e).context(ReadFile { path: f }),
+                Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(Core),
-                Err(e) => Err(e).context(ReadFile { path: f }),
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserializeSnafu).context(CoreSnafu),
+                Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserialize).context(Core),
+            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserializeSnafu).context(CoreSnafu),
         }?;
 
         Ok(PostgreSQLBackend { config, pool, db_schema })
