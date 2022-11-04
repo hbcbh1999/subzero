@@ -108,9 +108,9 @@ test('main query', async () => {
     normalize_statement({
       query: `
             with 
-            env as materialized (select set_config($1, $2, true), $3 as "request",set_config($4, $5, true), $6 as "role")
+            env as materialized (select $1 as "request",$2 as "role")
             , _subzero_query as (
-                select "public"."tasks"."id", "public"."tasks"."name" from "public"."tasks", env where "public"."tasks"."id" = $7
+                select "public"."tasks"."id", "public"."tasks"."name" from "public"."tasks", env where "public"."tasks"."id" = $3
             )
             , _subzero_count_query AS (select 1)
             select
@@ -122,7 +122,7 @@ test('main query', async () => {
                 nullif(current_setting('response.status', true), '') as response_status
             from ( select * from _subzero_query ) _subzero_t
             `,
-      parameters: ['request', '{"method":"GET"}', '{"method":"GET"}', 'role', 'admin', 'admin', '1'],
+      parameters: ['{"method":"GET"}', 'admin', '1'],
     }),
   );
 });

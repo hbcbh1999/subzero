@@ -69,9 +69,14 @@ impl Backend {
             allowed_select_functions,
         }
     }
+    pub fn set_schema(&mut self, s: &str) {
+        let schema = serde_json::from_str(s).expect("invalid schema json");
+        self.db_schema = schema
+    }
     #[allow(clippy::too_many_arguments)]
     pub fn parse(
         &self, schema_name: &str, root: &str, method: &str, path: &str, get: JsValue, body: &str, role: &str, headers: JsValue, cookies: JsValue,
+        max_rows: Option<u32>,
     ) -> Result<Request, JsError> {
         if !["GET", "POST", "PUT", "DELETE", "PATCH"].contains(&method) {
             return Err(JsError::new("invalid method"));
@@ -87,7 +92,7 @@ impl Backend {
         let schema_name_string = schema_name.to_owned();
         let role = role.to_owned();
         let body = if body.is_empty() { None } else { Some(body) };
-        let max_rows = None;
+        //let max_rows = None;
 
         let mut rust_request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, max_rows).map_err(cast_core_err)?;
         // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges

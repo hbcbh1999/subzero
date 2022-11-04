@@ -15,11 +15,12 @@ use subzero_core::{
     formatter::{
         Param,
         Param::*,
-        postgresql::{fmt_main_query, generate, fmt_env_query},
-        ToParam,
+        postgresql::{fmt_main_query, generate},
+        ToParam, Snippet, SqlParam,
     },
     error::{JsonDeserialize},
 };
+use subzero_core::dynamic_statement::{param, sql, JoinIterator};
 use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};
 use crate::error::{Result, *};
 use async_trait::async_trait;
@@ -81,6 +82,16 @@ impl ToSql for WrapParam<'_> {
 fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> { WrapParam(p.to_param()) }
 fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) { p as &(dyn ToSql + Sync) }
 
+pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
+    "select "
+        + if env.is_empty() {
+            sql("null")
+        } else {
+            env.iter()
+                .map(|(k, v)| "set_config(" + param(k as &SqlParam) + ", " + param(v as &SqlParam) + ", true)")
+                .join(",")
+        }
+}
 async fn execute<'a>(
     pool: &'a Pool, authenticated: bool, request: &ApiRequest<'a>, env: &'a HashMap<&'a str, &'a str>, config: &VhostConfig,
 ) -> Result<ApiResponse> {
@@ -94,39 +105,36 @@ async fn execute<'a>(
         .start()
         .await
         .context(PgDb { authenticated })?;
-
+    let (env_query, env_parameters, _) = generate(fmt_env_query(env));
+    debug!("env_query: {}\n{:?}", env_query, env_parameters);
+    let env_stm = transaction.prepare_cached(env_query.as_str()).await.context(PgDb { authenticated })?;
+    transaction
+        .query(
+            &env_stm,
+            env_parameters
+                .into_iter()
+                .map(wrap_param)
+                .collect::<Vec<_>>()
+                .iter()
+                .map(cast_param)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        )
+        .await
+        .context(PgDb { authenticated })?;
     if let Some((s, f)) = &config.db_pre_request {
         let fn_schema = match s.as_str() {
             "" => request.schema_name,
             _ => s.as_str(),
         };
-        let (env_query, env_parameters, _) = generate(fmt_env_query(env));
 
-        let pre_request_statement = format!(
-            r#"
-            with env as materialized({})
-            select "{}".* from "{}"."{}"(), env"#,
-            env_query, f, fn_schema, f
-        );
-        debug!("pre_statement {}\n{:?}", pre_request_statement, env_parameters);
+        let pre_request_statement = format!(r#"select "{}".* from "{}"."{}"()"#, f, fn_schema, f);
+        debug!("pre_statement {}", pre_request_statement);
         let pre_request_stm = transaction
             .prepare_cached(pre_request_statement.as_str())
             .await
             .context(PgDb { authenticated })?;
-        transaction
-            .query(
-                &pre_request_stm,
-                env_parameters
-                    .into_iter()
-                    .map(wrap_param)
-                    .collect::<Vec<_>>()
-                    .iter()
-                    .map(cast_param)
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-            )
-            .await
-            .context(PgDb { authenticated })?;
+        transaction.query(&pre_request_stm, &[]).await.context(PgDb { authenticated })?;
     }
 
     debug!("main_statement {}\n{:?}", main_statement, main_parameters);

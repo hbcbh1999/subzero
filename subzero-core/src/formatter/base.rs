@@ -182,14 +182,12 @@ macro_rules! fmt_env_query {
                 } else {
                     env.iter()
                         .map(|(k, v)| {
-                            "set_config("
-                                + param(k as &SqlParam)
-                                + ", "
-                                + param(v as &SqlParam)
-                                + ", true), "
-                                + param(v as &SqlParam)
-                                + " as "
-                                + fmt_identity(&String::from(*k))
+                            // "set_config("
+                            //     + param(k as &SqlParam)
+                            //     + ", "
+                            //     + param(v as &SqlParam)
+                            //     + ", true), "
+                            param(v as &SqlParam) + " as " + fmt_identity(&String::from(*k))
                         })
                         .join(",")
                 }

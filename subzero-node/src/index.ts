@@ -80,7 +80,14 @@ export class Subzero {
     }
   }
 
-  async parse(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest): Promise<SubzeroRequest> {
+  setSchema(schema: any) {
+    try {
+      this.backend.set_schema(JSON.stringify(schema))
+    } catch (e: any) {
+      throw toSubzeroError(e)
+    }
+  }
+  async parse(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest, maxRows?: number): Promise<SubzeroRequest> {
     // try to accomodate for different request types
 
     if (request instanceof Request) {
@@ -122,7 +129,8 @@ export class Subzero {
         request.textBody !== undefined ? request.textBody : (request.body || ''), // body
         role,
         request.headersSequence,
-        [] // cookies
+        [], // cookies
+        maxRows,
       )
     } catch (e: any) {
       throw toSubzeroError(e)
@@ -229,4 +237,54 @@ export function parseRangeHeader(headerValue: string): { first: number; last: nu
 export function fmtContentRangeHeader(lower: number, upper: number, total?: number): string {
   const range_string = (total != 0 && lower <= upper) ? `${lower}-${upper}` : '*'
   return total ? `${range_string}/${total}` : `${range_string}/*`
+}
+
+export function fmtPostgreSqlEnv(env: Env): Statement {
+  let parameters = env.flat()
+  let query = 'select ' + parameters.reduce((acc:string[], _, i) => {
+      if (i % 2 !== 0) {
+        acc.push(`set_config(\$${i}, \$${i+1}, true)`)
+      }
+      return acc
+    }
+    , []
+  ).join(', ')
+  return { query, parameters }
+}
+
+export function statusFromPgErrorCode(code: string, authenticated = false) : number {
+    let responseCode
+    switch (true) {
+        case /^08/.test(code): responseCode = 503; break;            // pg connection err
+        case /^09/.test(code): responseCode = 500; break;            // triggered action exception
+        case /^0L/.test(code): responseCode = 403; break;            // invalid grantor
+        case /^0P/.test(code): responseCode = 403; break;            // invalid role specification
+        case /^23503/.test(code): responseCode = 409; break;         // foreign_key_violation
+        case /^23505/.test(code): responseCode = 409; break;         // unique_violation
+        case /^25006/.test(code): responseCode = 405; break;         // read_only_sql_transaction
+        case /^25/.test(code): responseCode = 500; break;            // invalid tx state
+        case /^28/.test(code): responseCode = 403; break;            // invalid auth specification
+        case /^2D/.test(code): responseCode = 500; break;            // invalid tx termination
+        case /^38/.test(code): responseCode = 500; break;            // external routine exception
+        case /^39/.test(code): responseCode = 500; break;            // external routine invocation
+        case /^3B/.test(code): responseCode = 500; break;            // savepoint exception
+        case /^40/.test(code): responseCode = 500; break;            // tx rollback
+        case /^53/.test(code): responseCode = 503; break;            // insufficient resources
+        case /^54/.test(code): responseCode = 413; break;            // too complex
+        case /^55/.test(code): responseCode = 500; break;            // obj not on prereq state
+        case /^57/.test(code): responseCode = 500; break;            // operator intervention
+        case /^58/.test(code): responseCode = 500; break;            // system error
+        case /^F0/.test(code): responseCode = 500; break;            // conf file error
+        case /^HV/.test(code): responseCode = 500; break;            // foreign data wrapper error
+        case /^P0001/.test(code): responseCode = 400; break;         // default code for "raise"
+        case /^P0/.test(code): responseCode = 500; break;            // PL/pgSQL Error
+        case /^XX/.test(code): responseCode = 500; break;            // internal Error
+        case /^42883/.test(code): responseCode = 404; break;         // undefined function
+        case /^42P01/.test(code): responseCode = 404; break;         // undefined table
+        case /^42501/.test(code): responseCode = authenticated?403:401; break; // insufficient privilege{
+        case /^PT/.test(code): responseCode = Number(code.substr(2,3)) || 500; break;
+        default: responseCode = 400; break;
+    }
+
+    return responseCode
 }
