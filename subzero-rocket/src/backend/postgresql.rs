@@ -107,7 +107,10 @@ async fn execute<'a>(
         .context(PgDbSnafu { authenticated })?;
     let (env_query, env_parameters, _) = generate(fmt_env_query(env));
     debug!("env_query: {}\n{:?}", env_query, env_parameters);
-    let env_stm = transaction.prepare_cached(env_query.as_str()).await.context(PgDbSnafu { authenticated })?;
+    let env_stm = transaction
+        .prepare_cached(env_query.as_str())
+        .await
+        .context(PgDbSnafu { authenticated })?;
     transaction
         .query(
             &env_stm,
@@ -259,7 +262,9 @@ impl Backend for PostgreSQLBackend {
                             Ok(rows) => {
                                 transaction.commit().await.context(PgDbSnafu { authenticated })?;
                                 //println!("db schema loaded: {}", rows[0].get::<usize, &str>(0));
-                                serde_json::from_str::<DbSchema>(rows[0].get(0)).context(JsonDeserializeSnafu).context(CoreSnafu)
+                                serde_json::from_str::<DbSchema>(rows[0].get(0))
+                                    .context(JsonDeserializeSnafu)
+                                    .context(CoreSnafu)
                             }
                             Err(e) => {
                                 transaction.rollback().await.context(PgDbSnafu { authenticated })?;
@@ -272,10 +277,14 @@ impl Backend for PostgreSQLBackend {
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserializeSnafu).context(CoreSnafu),
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str())
+                    .context(JsonDeserializeSnafu)
+                    .context(CoreSnafu),
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserializeSnafu).context(CoreSnafu),
+            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str())
+                .context(JsonDeserializeSnafu)
+                .context(CoreSnafu),
         }?;
 
         Ok(PostgreSQLBackend { config, pool, db_schema })

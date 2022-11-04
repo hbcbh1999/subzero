@@ -217,7 +217,8 @@ pub async fn handle<'a>(
     }
 
     // parse request and generate the query
-    let mut request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(CoreSnafu)?;
+    let mut request =
+        parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(CoreSnafu)?;
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
     check_privileges(db_schema, schema_name, role.unwrap_or(&String::default()), &request).map_err(to_core_error)?;

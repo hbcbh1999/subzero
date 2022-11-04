@@ -128,7 +128,10 @@ async fn handle_request(
 
     Ok(ApiResponse {
         response: (
-            Status::from_code(status).context(GucStatusSnafu).context(CoreSnafu).map_err(RocketError)?,
+            Status::from_code(status)
+                .context(GucStatusSnafu)
+                .context(CoreSnafu)
+                .map_err(RocketError)?,
             (http_content_type, response_body),
         ),
         headers: response_headers.into_iter().map(|(n, v)| Header::new(n, v)).collect::<Vec<_>>(),

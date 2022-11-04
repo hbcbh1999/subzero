@@ -160,16 +160,22 @@ fn execute(
             }
             //debug!("mutated request query: {:?}", mutate_request.query);
             let env1 = env.clone();
-            let (mutate_statement, mutate_parameters, _) =
-                generate(fmt_main_query(request.schema_name, &mutate_request, &env1).context(CoreSnafu).map_err(|e| {
+            let (mutate_statement, mutate_parameters, _) = generate(
+                fmt_main_query(request.schema_name, &mutate_request, &env1)
+                    .context(CoreSnafu)
+                    .map_err(|e| {
+                        let _ = conn.execute_batch("ROLLBACK");
+                        e
+                    })?,
+            );
+            debug!("pre_statement: {}\n{:?}", mutate_statement, mutate_parameters);
+            let mut mutate_stmt = conn
+                .prepare(mutate_statement.as_str())
+                .context(SqliteDbSnafu { authenticated })
+                .map_err(|e| {
                     let _ = conn.execute_batch("ROLLBACK");
                     e
-                })?);
-            debug!("pre_statement: {}\n{:?}", mutate_statement, mutate_parameters);
-            let mut mutate_stmt = conn.prepare(mutate_statement.as_str()).context(SqliteDbSnafu { authenticated }).map_err(|e| {
-                let _ = conn.execute_batch("ROLLBACK");
-                e
-            })?;
+                })?;
             let mutate_params = params_from_iter(mutate_parameters.into_iter().map(wrap_param));
             let mut rows = mutate_stmt.query(mutate_params).context(SqliteDbSnafu { authenticated }).map_err(|e| {
                 let _ = conn.execute_batch("ROLLBACK");
@@ -318,10 +324,11 @@ fn execute(
             })?
         }
         _ => {
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu).map_err(|e| {
-                let _ = conn.execute_batch("ROLLBACK");
-                e
-            })?);
+            let (main_statement, main_parameters, _) =
+                generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu).map_err(|e| {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    e
+                })?);
             debug!("main_statement: {}\n{:?}", main_statement, main_parameters);
             let mut main_stm = conn
                 .prepare_cached(main_statement.as_str())
@@ -437,10 +444,14 @@ impl Backend for SQLiteBackend {
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserializeSnafu).context(CoreSnafu),
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str())
+                    .context(JsonDeserializeSnafu)
+                    .context(CoreSnafu),
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserializeSnafu).context(CoreSnafu),
+            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str())
+                .context(JsonDeserializeSnafu)
+                .context(CoreSnafu),
         }?;
         debug!("db_schema: {:?}", db_schema);
         Ok(SQLiteBackend { config, pool, db_schema })

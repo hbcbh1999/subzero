@@ -227,10 +227,14 @@ impl Backend for ClickhouseBackend {
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserializeSnafu).context(CoreSnafu),
+                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str())
+                    .context(JsonDeserializeSnafu)
+                    .context(CoreSnafu),
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str()).context(JsonDeserializeSnafu).context(CoreSnafu),
+            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str())
+                .context(JsonDeserializeSnafu)
+                .context(CoreSnafu),
         }?;
 
         Ok(ClickhouseBackend { config, pool, db_schema })
