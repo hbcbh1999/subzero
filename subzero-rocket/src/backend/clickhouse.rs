@@ -54,8 +54,8 @@ impl managed::Manager for Manager {
     async fn recycle(&self, _: &mut HttpClient) -> managed::RecycleResult<HttpError> { Ok(()) }
 }
 
-async fn execute<'a>(
-    pool: &'a Pool, _authenticated: bool, request: &ApiRequest<'a>, env: &'a HashMap<&str, &str>, _config: &VhostConfig,
+async fn execute(
+    pool: &Pool, _authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, _config: &VhostConfig,
 ) -> Result<ApiResponse> {
     let o = pool.get().await.unwrap(); //.context(ClickhouseDbPoolError)?;
     let uri = &o.0;

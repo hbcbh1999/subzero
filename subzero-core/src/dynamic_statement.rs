@@ -156,8 +156,8 @@ macro_rules! generate_fn {
                             (sql, params, pos)
                         }
                         SqlSnippetChunk::Param(p) => {
-                            let data_type:&Option<String> = generate_fn!(@get_data_type p $use_data_type);
-                            sql.push_str(format!(param_placeholder_format!(), pos=pos, data_type=data_type.clone().unwrap_or(default.clone())).as_str());
+                            let data_type:&Option<&str> = generate_fn!(@get_data_type p $use_data_type);
+                            sql.push_str(format!(param_placeholder_format!(), pos=pos, data_type=data_type.clone().unwrap_or(default.as_str())).as_str());
                             params.push(p);
                             (sql, params, pos + 1)
                         }

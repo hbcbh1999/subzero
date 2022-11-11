@@ -50,17 +50,18 @@ mod tests {
     use regex::Regex;
     use super::*;
     generate_fn!();
-    fn s(s: &str) -> String { s.to_string() }
+    fn s(s: &str) -> &str { s }
+    fn ss(s: &str) -> String { s.to_string() }
 
     #[test]
     fn test_fmt_function_query() {
         let payload = r#"{"id":"10"}"#.to_string();
         let q = Query {
             node: FunctionCall {
-                fn_name: Qi(s("api"), s("myfunction")),
+                fn_name: Qi("api", "myfunction"),
                 parameters: CallParams::KeyParams(vec![ProcParam {
-                    name: s("id"),
-                    type_: s("integer"),
+                    name: "id",
+                    type_: "integer",
                     required: true,
                     variadic: false,
                 }]),
@@ -82,7 +83,7 @@ mod tests {
             sub_selects: vec![],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
+        let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
         let p = Payload(payload, None);
         let pp: Vec<&SqlParam> = vec![&p];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
@@ -181,7 +182,7 @@ mod tests {
                                         json_path: None,
                                     },
                                     filter: Filter::Col(
-                                        Qi(s(""), s("subzero_source")),
+                                        Qi("", "subzero_source"),
                                         Field {
                                             name: s("client_id"),
                                             json_path: None,
@@ -196,11 +197,11 @@ mod tests {
                     alias: None,
                     hint: None,
                     join: Some(Parent(ForeignKey {
-                        name: s("client_id_fk"),
-                        table: Qi(s("api"), s("projects")),
-                        columns: vec![s("client_id")],
-                        referenced_table: Qi(s("api"), s("clients")),
-                        referenced_columns: vec![s("id")],
+                        name: "client_id_fk",
+                        table: Qi("api", "projects"),
+                        columns: vec!["client_id"],
+                        referenced_table: Qi("api", "clients"),
+                        referenced_columns: vec!["id"],
                     })),
                 },
                 SubSelect {
@@ -229,7 +230,7 @@ mod tests {
                                             json_path: None,
                                         },
                                         filter: Filter::Col(
-                                            Qi(s(""), s("subzero_source")),
+                                            Qi("", "subzero_source"),
                                             Field {
                                                 name: s("id"),
                                                 json_path: None,
@@ -261,17 +262,17 @@ mod tests {
                     hint: None,
                     alias: None,
                     join: Some(Child(ForeignKey {
-                        name: s("project_id_fk"),
-                        table: Qi(s("api"), s("tasks")),
-                        columns: vec![s("project_id")],
-                        referenced_table: Qi(s("api"), s("projects")),
-                        referenced_columns: vec![s("id")],
+                        name: "project_id_fk",
+                        table: Qi("api", "tasks"),
+                        columns: vec!["project_id"],
+                        referenced_table: Qi("api", "projects"),
+                        referenced_columns: vec!["id"],
                     })),
                 },
             ],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
+        let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
         let p0: &SqlParam = &ListVal(vec![s("51"), s("52")], None);
         let p1: &SqlParam = &SingleVal(s("50"), None);
         let p = Payload(payload, None);
@@ -410,7 +411,7 @@ mod tests {
                                         json_path: None,
                                     },
                                     filter: Filter::Col(
-                                        Qi(s("api"), s("projects")),
+                                        Qi("api", "projects"),
                                         Field {
                                             name: s("client_id"),
                                             json_path: None,
@@ -425,11 +426,11 @@ mod tests {
                     alias: None,
                     hint: None,
                     join: Some(Parent(ForeignKey {
-                        name: s("client_id_fk"),
-                        table: Qi(s("api"), s("projects")),
-                        columns: vec![s("client_id")],
-                        referenced_table: Qi(s("api"), s("clients")),
-                        referenced_columns: vec![s("id")],
+                        name: "client_id_fk",
+                        table: Qi("api", "projects"),
+                        columns: vec!["client_id"],
+                        referenced_table: Qi("api", "clients"),
+                        referenced_columns: vec!["id"],
                     })),
                 },
                 SubSelect {
@@ -458,7 +459,7 @@ mod tests {
                                             json_path: None,
                                         },
                                         filter: Filter::Col(
-                                            Qi(s("api"), s("projects")),
+                                            Qi("api", "projects"),
                                             Field {
                                                 name: s("id"),
                                                 json_path: None,
@@ -490,17 +491,17 @@ mod tests {
                     hint: None,
                     alias: None,
                     join: Some(Child(ForeignKey {
-                        name: s("project_id_fk"),
-                        table: Qi(s("api"), s("tasks")),
-                        columns: vec![s("project_id")],
-                        referenced_table: Qi(s("api"), s("projects")),
-                        referenced_columns: vec![s("id")],
+                        name: "project_id_fk",
+                        table: Qi("api", "tasks"),
+                        columns: vec!["project_id"],
+                        referenced_table: Qi("api", "projects"),
+                        referenced_columns: vec!["id"],
                     })),
                 },
             ],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
+        let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
         assert_eq!(
             format!("{:?}", parameters),
             "[SingleVal(\"50\", None), ListVal([\"51\", \"52\"], None), SingleVal(\"5\", None), SingleVal(\"10\", None)]"
@@ -550,7 +551,7 @@ mod tests {
                 "{:?}",
                 generate(
                     fmt_condition_tree(
-                        &Qi(s("schema"), s("table")),
+                        &Qi("schema", "table"),
                         &ConditionTree {
                             operator: And,
                             conditions: vec![
@@ -612,7 +613,7 @@ mod tests {
                 "{:?}",
                 generate(
                     fmt_condition(
-                        &Qi(s("schema"), s("table")),
+                        &Qi("schema", "table"),
                         &Single {
                             field: Field {
                                 name: s("name"),
@@ -636,7 +637,7 @@ mod tests {
                 "{:?}",
                 generate(
                     fmt_condition(
-                        &Qi(s("schema"), s("table")),
+                        &Qi("schema", "table"),
                         &Single {
                             field: Field {
                                 name: s("name"),
@@ -679,7 +680,7 @@ mod tests {
                 "{:?}",
                 generate(
                     fmt_filter(&Col(
-                        Qi(s("api"), s("projects")),
+                        Qi("api", "projects"),
                         Field {
                             name: s("id"),
                             json_path: None
@@ -713,21 +714,21 @@ mod tests {
             alias: Some(s("alias")),
             cast: None,
         };
-        let select_item = fmt_select_item(&Qi(s("schema"), s("table")), &select).unwrap();
+        let select_item = fmt_select_item(&Qi("schema", "table"), &select).unwrap();
         let (query_str, _, _) = generate(select_item);
         assert_eq!(query_str, s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 as \"alias\""));
     }
 
     #[test]
     fn test_fmt_qi() {
-        assert_eq!(fmt_qi(&Qi(s("schema"), s("table"))), s("\"schema\".\"table\""));
+        assert_eq!(fmt_qi(&Qi("schema", "table")), s("\"schema\".\"table\""));
     }
 
     #[test]
     fn test_fmt_field() {
         assert_eq!(
             fmt_field(
-                &Qi(s("a"), s("b")),
+                &Qi("a", "b"),
                 &Field {
                     name: s("name"),
                     json_path: None
@@ -738,7 +739,7 @@ mod tests {
         );
         assert_eq!(
             fmt_field(
-                &Qi(s("a"), s("b")),
+                &Qi("a", "b"),
                 &Field {
                     name: s("name"),
                     json_path: Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])

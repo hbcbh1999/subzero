@@ -102,7 +102,7 @@ fn execute(
             //sqlite does not support returining in CTEs so we must do a two step process
             let primary_key_column = "rowid"; //every table has this (TODO!!! check)
             let primary_key_field = Field {
-                name: primary_key_column.to_string(),
+                name: primary_key_column,
                 json_path: None,
             };
             let is_delete = matches!(node, Delete { .. });
@@ -135,18 +135,18 @@ fn execute(
                 } => {
                     //return only the primary key column
                     returning.clear();
-                    returning.push(primary_key_column.to_string());
+                    returning.push(primary_key_column);
                     select.clear();
                     select.push(SelectItem::Simple {
                         field: primary_key_field.clone(),
-                        alias: Some(primary_key_column.to_string()),
+                        alias: Some(primary_key_column),
                         cast: None,
                     });
 
                     if !is_delete {
                         select.push(SelectItem::Simple {
                             field: Field {
-                                name: "_subzero_check__constraint".to_string(),
+                                name: "_subzero_check__constraint",
                                 json_path: None,
                             },
                             alias: None,
@@ -258,7 +258,7 @@ fn execute(
             // set the request query to be a select
             select_request.query = Query {
                 node: Select {
-                    from: (table.to_owned(), Some("subzero_source".to_string())),
+                    from: (table.to_owned(), Some("subzero_source")),
                     join_tables: vec![], //todo!! this should probably not be empty
                     where_: select_where,
                     select: select.to_vec(),

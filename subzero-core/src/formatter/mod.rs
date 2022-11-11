@@ -12,31 +12,31 @@ pub mod sqlite;
 
 #[derive(Debug)]
 pub enum Param<'a> {
-    LV(&'a ListVal),
-    SV(&'a SingleVal),
-    PL(&'a Payload),
+    LV(&'a ListVal<'a>),
+    SV(&'a SingleVal<'a>),
+    PL(&'a Payload<'a>),
     TV(&'a str),
 }
 // helper type aliases
 pub trait ToParam: fmt::Debug {
     fn to_param(&self) -> Param;
-    fn to_data_type(&self) -> &Option<String>;
+    fn to_data_type(&self) -> &Option<&str>;
 }
 
 pub type SqlParam<'a> = (dyn ToParam + Sync + 'a);
 pub type Snippet<'a> = SqlSnippet<'a, SqlParam<'a>>;
 
-impl ToParam for ListVal {
+impl<'a> ToParam for ListVal<'a> {
     fn to_param(&self) -> Param { Param::LV(self) }
-    fn to_data_type(&self) -> &Option<String> {
+    fn to_data_type(&self) -> &Option<&str> {
         //println!("to_data_type {:?}", &self);
         &self.1
     }
 }
 
-impl ToParam for SingleVal {
+impl<'a> ToParam for SingleVal<'a> {
     fn to_param(&self) -> Param { Param::SV(self) }
-    fn to_data_type(&self) -> &Option<String> {
+    fn to_data_type(&self) -> &Option<&str> {
         //println!("to_data_type {:?}", &self);
         &self.1
     }
@@ -44,12 +44,12 @@ impl ToParam for SingleVal {
 
 impl<'a> ToParam for &'a str {
     fn to_param(&self) -> Param { Param::TV(self) }
-    fn to_data_type(&self) -> &Option<String> { &None }
+    fn to_data_type(&self) -> &Option<&str> { &None }
 }
 
-impl ToParam for Payload {
+impl<'a> ToParam for Payload<'a> {
     fn to_param(&self) -> Param { Param::PL(self) }
-    fn to_data_type(&self) -> &Option<String> {
+    fn to_data_type(&self) -> &Option<&str> {
         //println!("to_data_type {:?}", &self);
         &self.1
     }

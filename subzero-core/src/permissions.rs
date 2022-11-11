@@ -1,16 +1,16 @@
 use std::collections::HashSet;
 
-use crate::api::{ColumnName, ConditionTree};
+use crate::api::{ConditionTree};
 use crate::api::{ApiRequest, FunctionParam, Query, SubSelect, QueryNode::*, SelectItem::Func, SelectItem, Qi, Condition, LogicOperator::*};
 use crate::error::*;
 use crate::schema::{Role, DbSchema, ColumnPermissions::*, ColumnPermissions, Action, Policy, Object};
 use snafu::OptionExt;
 use log::debug;
 
-fn get_select_columns_in_params(params: &[FunctionParam]) -> Vec<ColumnName> {
+fn get_select_columns_in_params<'a>(params: &[FunctionParam<'a>]) -> Vec<&'a str> {
     params.iter().fold(vec![], |mut acc, p| {
         match p {
-            FunctionParam::Fld(f) => acc.push(f.name.clone()),
+            FunctionParam::Fld(f) => acc.push(f.name),
             FunctionParam::Func { parameters, .. } => acc.extend(get_select_columns_in_params(parameters)),
             _ => {}
         }
@@ -18,12 +18,12 @@ fn get_select_columns_in_params(params: &[FunctionParam]) -> Vec<ColumnName> {
     })
 }
 
-fn get_select_columns(select: &[SelectItem]) -> ColumnPermissions {
+fn get_select_columns<'a>(select: &[SelectItem<'a>]) -> ColumnPermissions<'a> {
     select.iter().fold(Specific(vec![]), |cols, s| match cols {
         All => All,
         Specific(mut acc) => match s {
             SelectItem::Simple { field, .. } => {
-                acc.push(field.name.clone());
+                acc.push(field.name);
                 Specific(acc)
             }
             SelectItem::Func { parameters, .. } => {
@@ -36,9 +36,9 @@ fn get_select_columns(select: &[SelectItem]) -> ColumnPermissions {
 }
 
 fn get_policies_for_relation<'a>(
-    object: &'a Object, action: Action, role: &Role, permissive_policies: &mut Vec<&'a Policy>, restrictive_policies: &mut Vec<&'a Policy>,
+    object: &'a Object, action: Action, role: &'a Role<'a>, permissive_policies: &mut Vec<&'a Policy<'a>>, restrictive_policies: &mut Vec<&'a Policy<'a>>,
 ) {
-    if let Some(policies) = object.permissions.policies.get(&(role.clone(), action.clone())) {
+    if let Some(policies) = object.permissions.policies.get(&(role, action.clone())) {
         for p in policies {
             match p.restrictive {
                 false => permissive_policies.push(p),
@@ -46,7 +46,7 @@ fn get_policies_for_relation<'a>(
             }
         }
     }
-    if let Some(policies) = object.permissions.policies.get(&("public".to_string(), action.clone())) {
+    if let Some(policies) = object.permissions.policies.get(&("public", action.clone())) {
         for p in policies {
             match p.restrictive {
                 false => permissive_policies.push(p),
@@ -62,7 +62,7 @@ fn get_policies_for_relation<'a>(
             }
         }
     }
-    if let Some(policies) = object.permissions.policies.get(&("public".to_string(), Action::All)) {
+    if let Some(policies) = object.permissions.policies.get(&("public", Action::All)) {
         for p in policies {
             match p.restrictive {
                 false => permissive_policies.push(p),
@@ -76,7 +76,7 @@ fn get_policies_for_relation<'a>(
     );
 }
 
-fn add_security_quals(security_quals: &mut Vec<Condition>, restrictive_policies: &Vec<&Policy>, permissive_policies: &Vec<&Policy>) {
+fn add_security_quals<'a>(security_quals: &mut Vec<Condition<'a>>, restrictive_policies: &Vec<&Policy<'a>>, permissive_policies: &Vec<&Policy<'a>>) {
     /*
      * First collect up the permissive quals.  If we do not find any
      * permissive policies then no rows are visible (this is handled below).
@@ -120,7 +120,7 @@ fn add_security_quals(security_quals: &mut Vec<Condition>, restrictive_policies:
          * Therefore, if there were no permissive policies found, return a
          * single always-false clause.
          */
-        security_quals.push(Condition::Raw { sql: "false".to_string() });
+        security_quals.push(Condition::Raw { sql: "false" });
     }
 }
 
@@ -135,8 +135,8 @@ macro_rules! QUAL_FOR_WCO {
     };
 }
 
-fn add_with_check_options(
-    with_check_options: &mut Vec<Condition>, restrictive_policies: &Vec<&Policy>, permissive_policies: &Vec<&Policy>, force_using: bool,
+fn add_with_check_options<'a>(
+    with_check_options: &mut Vec<Condition<'a>>, restrictive_policies: &Vec<&Policy<'a>>, permissive_policies: &Vec<&Policy<'a>>, force_using: bool,
 ) {
     let mut permissive_quals = vec![];
     /*
@@ -192,13 +192,13 @@ fn add_with_check_options(
          * always-false WCO (a default-deny policy).
          */
 
-        with_check_options.push(Condition::Raw { sql: "false".to_string() });
+        with_check_options.push(Condition::Raw { sql: "false" });
     }
 }
 
-fn get_row_security_policies(
-    rel: &Object, role: &Role, action: Action, apply_select_policies: bool, has_on_conflict_update: bool,
-) -> (Option<Condition>, Option<Condition>) {
+fn get_row_security_policies<'a>(
+    rel: &'a Object<'a>, role: &'a Role<'a>, action: Action, apply_select_policies: bool, has_on_conflict_update: bool,
+) -> (Option<Condition<'a>>, Option<Condition<'a>>) {
     let mut security_quals = vec![];
     let mut with_check_options = vec![];
     let mut permissive_policies = vec![];
@@ -443,7 +443,7 @@ fn get_row_security_policies(
     (security_qual_condition, with_check_option_condition)
 }
 
-pub fn insert_policy_conditions(db_schema: &DbSchema, current_schema: &String, role: &Role, query: &mut Query) -> Result<()> {
+pub fn insert_policy_conditions<'d: 'a, 'a>(db_schema: &'d DbSchema, current_schema: &'a str, role: &'a Role<'a>, query: &mut Query<'a>) -> Result<()> {
     if !db_schema.use_internal_permissions {
         return Ok(());
     }
@@ -452,18 +452,18 @@ pub fn insert_policy_conditions(db_schema: &DbSchema, current_schema: &String, r
     })?;
     // by looking at the query node we determine the relevant command type (policy types that need to be applied)
     let (origin, action, apply_select_policies, has_on_conflict_update) = match &query.node {
-        FunctionCall { fn_name: Qi(_, origin), .. } => (origin, Action::Execute, false, false),
-        Select { from: (origin, _), .. } => (origin, Action::Select, false, false),
+        FunctionCall { fn_name: Qi(_, origin), .. } => (*origin, Action::Execute, false, false),
+        Select { from: (origin, _), .. } => (*origin, Action::Select, false, false),
         Insert {
             into: origin,
             returning,
             on_conflict,
             ..
-        } => (origin, Action::Insert, !returning.is_empty(), on_conflict.is_some()),
+        } => (*origin, Action::Insert, !returning.is_empty(), on_conflict.is_some()),
         Update {
             table: origin, returning, ..
-        } => (origin, Action::Update, !returning.is_empty(), false),
-        Delete { from: origin, returning, .. } => (origin, Action::Delete, !returning.is_empty(), false),
+        } => (*origin, Action::Update, !returning.is_empty(), false),
+        Delete { from: origin, returning, .. } => (*origin, Action::Delete, !returning.is_empty(), false),
     };
     let rel = schema.objects.get(origin).context(UnknownRelationSnafu { relation: origin.to_owned() })?;
 
@@ -574,22 +574,22 @@ pub fn insert_policy_conditions(db_schema: &DbSchema, current_schema: &String, r
     // Ok(())
 }
 
-pub fn check_privileges(db_schema: &DbSchema, current_schema: &String, user: &Role, request: &ApiRequest) -> Result<()> {
+pub fn check_privileges<'a>(db_schema: &'a DbSchema<'a>, current_schema: &'a str, user: &'a Role<'a>, request: &'a ApiRequest<'a>) -> Result<()> {
     if db_schema.use_internal_permissions {
         for (_path, n) in &request.query {
             // check specific privileges for the node
             match n {
                 FunctionCall { fn_name: Qi(_, origin), .. } => {
-                    db_schema.has_execute_privileges(user, current_schema, origin)?;
+                    db_schema.has_execute_privileges(user, current_schema, *origin)?;
                 }
                 Insert { columns, into: origin, .. } => {
-                    db_schema.has_insert_privileges(user, current_schema, origin, &Specific(columns.clone()))?;
+                    db_schema.has_insert_privileges(user, current_schema, *origin, &Specific(columns.clone()))?;
                 }
                 Update { columns, table: origin, .. } => {
-                    db_schema.has_update_privileges(user, current_schema, origin, &Specific(columns.clone()))?;
+                    db_schema.has_update_privileges(user, current_schema, *origin, &Specific(columns.clone()))?;
                 }
                 Delete { from: origin, .. } => {
-                    db_schema.has_delete_privileges(user, current_schema, origin)?;
+                    db_schema.has_delete_privileges(user, current_schema, *origin)?;
                 }
                 _ => {}
             };
@@ -600,16 +600,16 @@ pub fn check_privileges(db_schema: &DbSchema, current_schema: &String, user: &Ro
                     select,
                     fn_name: Qi(_, origin),
                     ..
-                }
-                | Select {
+                } => (select, origin),
+                Select {
                     select, from: (origin, _), ..
                 }
                 | Insert { select, into: origin, .. }
                 | Update { select, table: origin, .. }
                 | Delete { select, from: origin, .. } => (select, origin),
             };
-            let columns = get_select_columns(select);
-            db_schema.has_select_privileges(user, current_schema, origin, &columns)?;
+            let columns = get_select_columns(&select);
+            db_schema.has_select_privileges(user, current_schema, *origin, &columns)?;
         }
         Ok(())
     } else {
@@ -617,10 +617,10 @@ pub fn check_privileges(db_schema: &DbSchema, current_schema: &String, user: &Ro
     }
 }
 
-fn validate_fn_param(safe_functions: &Vec<String>, p: &FunctionParam) -> Result<()> {
+fn validate_fn_param<'a>(safe_functions: &'a Vec<&'a str>, p: &'a FunctionParam<'a>) -> Result<()> {
     match p {
         FunctionParam::Func { fn_name, parameters } => {
-            if !safe_functions.contains(fn_name) {
+            if !safe_functions.contains(&fn_name) {
                 return Err(Error::ParseRequestError {
                     details: format!("calling: '{}' is not allowed", fn_name),
                     message: "Unsafe functions called".to_string(),
@@ -636,7 +636,7 @@ fn validate_fn_param(safe_functions: &Vec<String>, p: &FunctionParam) -> Result<
 }
 
 // check only safe functions are called
-pub fn check_safe_functions(request: &ApiRequest, safe_functions: &Vec<String>) -> Result<()> {
+pub fn check_safe_functions<'a>(request: &'a ApiRequest<'a>, safe_functions: &'a Vec<&'a str>) -> Result<()> {
     for (_path, n) in &request.query {
         match n {
             FunctionCall { select, .. } | Select { select, .. } | Insert { select, .. } | Update { select, .. } | Delete { select, .. } => {

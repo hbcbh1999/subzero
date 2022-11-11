@@ -28,8 +28,8 @@ pub enum Error {
     #[snafu(display("NoRelBetween {} {}", origin, target))]
     NoRelBetween { origin: String, target: String },
 
-    #[snafu(display("AmbiguousRelBetween {} {} {:?}", origin, target, relations))]
-    AmbiguousRelBetween { origin: String, target: String, relations: Vec<Join> },
+    #[snafu(display("AmbiguousRelBetween {} {} {:?}", origin, target, rel_hint))]
+    AmbiguousRelBetween { origin: String, target: String, rel_hint: String, compressed_rel: JsonValue },
 
     #[snafu(display("InvalidFilters"))]
     InvalidFilters,
@@ -97,7 +97,7 @@ pub enum Error {
     PermissionDenied { details: String },
 }
 
-impl Error {
+impl<'a> Error {
     pub fn headers(&self) -> Vec<(String, String)> {
         match self {
             Error::JwtTokenInvalid { message } => vec![
@@ -179,9 +179,9 @@ impl Error {
                         origin, target
                     )
             }),
-            Error::AmbiguousRelBetween { origin, target, relations } => json!({
-                "details": relations.iter().map(compressed_rel).collect::<JsonValue>(),
-                "hint":     format!("Try changing '{}' to one of the following: {}. Find the desired relationship in the 'details' key.",target, rel_hint(relations)),
+            Error::AmbiguousRelBetween { origin, target, rel_hint, compressed_rel } => json!({
+                "details": compressed_rel, //relations.iter().map(compressed_rel).collect::<JsonValue>(),
+                "hint":     format!("Try changing '{}' to one of the following: {}. Find the desired relationship in the 'details' key.",target, rel_hint),
                 "message":  format!("Could not embed because more than one relationship was found for '{}' and '{}'", origin, target),
             }),
             Error::InvalidFilters => {
@@ -234,7 +234,7 @@ impl Error {
     }
 }
 
-fn rel_hint(joins: &[Join]) -> String {
+pub fn rel_hint(joins: &Vec<Join>) -> String {
     joins
         .iter()
         .map(|j| match j {
@@ -246,7 +246,7 @@ fn rel_hint(joins: &[Join]) -> String {
         .join(", ")
 }
 
-fn compressed_rel(join: &Join) -> JsonValue {
+pub fn compressed_rel(join: &Join) -> JsonValue {
     match join {
         Child(fk) => json!({
             "cardinality": "one-to-many",
