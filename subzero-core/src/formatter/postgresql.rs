@@ -5,10 +5,12 @@ use super::base::{
     fmt_select_name, fmt_sub_select_item, return_representation, simple_select_item_format, star_select_item_format, fmt_function_param,
     fmt_select_item_function, fmt_function_call, fmt_env_query,
 };
+use std::borrow::Cow;
 use std::collections::HashMap;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
-use crate::error::{Result, Error};
+use crate::error::{Result, Error, JsonDeserializeSnafu};
+use snafu::ResultExt;
 use super::{ToParam, Snippet, SqlParam};
 generate_fn!();
 fmt_main_query_internal!();
@@ -49,13 +51,15 @@ mod tests {
     use pretty_assertions::assert_eq;
     use regex::Regex;
     use super::*;
+    use std::borrow::Cow;
+    fn cow<'a>(s: &'a str) -> Cow<'a, str> { Cow::Borrowed(s) }
     generate_fn!();
     fn s(s: &str) -> &str { s }
     fn ss(s: &str) -> String { s.to_string() }
 
     #[test]
     fn test_fmt_function_query() {
-        let payload = r#"{"id":"10"}"#.to_string();
+        let payload = r#"{"id":"10"}"#;
         let q = Query {
             node: FunctionCall {
                 fn_name: Qi("api", "myfunction"),
@@ -65,7 +69,8 @@ mod tests {
                     required: true,
                     variadic: false,
                 }]),
-                payload: Payload(payload.clone(), None),
+                //parameter_values: ParamValues::Raw(payload),
+                payload: Payload(Cow::Borrowed(payload), None),
                 is_scalar: true,
                 returns_single: false,
                 is_multiple_call: false,
@@ -84,7 +89,7 @@ mod tests {
         };
 
         let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
-        let p = Payload(payload, None);
+        let p = Payload(Cow::Borrowed(payload), None);
         let pp: Vec<&SqlParam> = vec![&p];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
         let re = Regex::new(r"\s+").unwrap();
@@ -118,7 +123,7 @@ mod tests {
 
     #[test]
     fn test_fmt_insert_query() {
-        let payload = r#"[{"id":10, "a":"a field"}]"#.to_string();
+        let payload = r#"[{"id":10, "a":"a field"}]"#;
         let q = Query {
             node: Insert {
                 on_conflict: None,
@@ -153,7 +158,7 @@ mod tests {
                     ],
                 },
                 columns: vec![s("id"), s("a")],
-                payload: Payload(payload.clone(), None),
+                payload: Payload(Cow::Borrowed(payload), None),
                 returning: vec![s("id"), s("a")],
             },
             sub_selects: vec![
@@ -239,7 +244,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: Op(s(">"), SingleVal(s("50"), None)),
+                                        filter: Op(s(">"), SingleVal(cow("50"), None)),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -247,7 +252,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: In(ListVal(vec![s("51"), s("52")], None)),
+                                        filter: In(ListVal(vec![cow("51"), cow("52")], None)),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -273,9 +278,9 @@ mod tests {
         };
 
         let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
-        let p0: &SqlParam = &ListVal(vec![s("51"), s("52")], None);
-        let p1: &SqlParam = &SingleVal(s("50"), None);
-        let p = Payload(payload, None);
+        let p0: &SqlParam = &ListVal(vec![cow("51"), cow("52")], None);
+        let p1: &SqlParam = &SingleVal(cow("50"), None);
+        let p = Payload(Cow::Borrowed(payload), None);
         let pp: Vec<&SqlParam> = vec![&p, p1, p0];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
         let re = Regex::new(r"\s+").unwrap();
@@ -367,7 +372,7 @@ mod tests {
                     operator: And,
                     conditions: vec![
                         Single {
-                            filter: Op(s(">="), SingleVal(s("5"), None)),
+                            filter: Op(s(">="), SingleVal(cow("5"), None)),
                             field: Field {
                                 name: s("id"),
                                 json_path: None,
@@ -375,7 +380,7 @@ mod tests {
                             negate: false,
                         },
                         Single {
-                            filter: Op(s("<"), SingleVal(s("10"), None)),
+                            filter: Op(s("<"), SingleVal(cow("10"), None)),
                             field: Field {
                                 name: s("id"),
                                 json_path: None,
@@ -468,7 +473,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: Op(s(">"), SingleVal(s("50"), None)),
+                                        filter: Op(s(">"), SingleVal(cow("50"), None)),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -476,7 +481,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: In(ListVal(vec![s("51"), s("52")], None)),
+                                        filter: In(ListVal(vec![cow("51"), cow("52")], None)),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -560,7 +565,7 @@ mod tests {
                                         name: s("name"),
                                         json_path: Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])
                                     },
-                                    filter: Op(s(">"), SingleVal(s("2"), None)),
+                                    filter: Op(s(">"), SingleVal(cow("2"), None)),
                                     negate: false
                                 },
                                 Group {
@@ -573,7 +578,7 @@ mod tests {
                                                     name: s("name"),
                                                     json_path: None
                                                 },
-                                                filter: Op(s(">"), SingleVal(s("2"), None)),
+                                                filter: Op(s(">"), SingleVal(cow("2"), None)),
                                                 negate: false
                                             },
                                             Single {
@@ -581,7 +586,7 @@ mod tests {
                                                     name: s("name"),
                                                     json_path: None
                                                 },
-                                                filter: Op(s("<"), SingleVal(s("5"), None)),
+                                                filter: Op(s("<"), SingleVal(cow("5"), None)),
                                                 negate: false
                                             }
                                         ]
@@ -599,7 +604,7 @@ mod tests {
                     s(
                         "to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1 and (\"schema\".\"table\".\"name\" > $2 and \"schema\".\"table\".\"name\" < $3)"
                     ),
-                    vec![SingleVal(s("2"), None), SingleVal(s("2"), None), SingleVal(s("5"), None)],
+                    vec![SingleVal(cow("2"), None), SingleVal(cow("2"), None), SingleVal(cow("5"), None)],
                     4
                 )
             )
@@ -619,7 +624,7 @@ mod tests {
                                 name: s("name"),
                                 json_path: Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])
                             },
-                            filter: Op(s(">"), SingleVal(s("2"), None)),
+                            filter: Op(s(">"), SingleVal(cow("2"), None)),
                             negate: false
                         }
                     )
@@ -628,7 +633,7 @@ mod tests {
             ),
             format!(
                 "{:?}",
-                (s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1"), vec![&SingleVal(s("2"), None)], 2)
+                (s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1"), vec![&SingleVal(cow("2"), None)], 2)
             )
         );
 
@@ -643,7 +648,7 @@ mod tests {
                                 name: s("name"),
                                 json_path: None
                             },
-                            filter: In(ListVal(vec![s("5"), s("6")], None)),
+                            filter: In(ListVal(vec![cow("5"), cow("6")], None)),
                             negate: true
                         }
                     )
@@ -652,7 +657,7 @@ mod tests {
             ),
             format!(
                 "{:?}",
-                (s("not(\"schema\".\"table\".\"name\" = any ($1))"), vec![ListVal(vec![s("5"), s("6")], None)], 2)
+                (s("not(\"schema\".\"table\".\"name\" = any ($1))"), vec![ListVal(vec![cow("5"), cow("6")], None)], 2)
             )
         );
     }
@@ -660,17 +665,17 @@ mod tests {
     #[test]
     fn test_fmt_filter() {
         assert_eq!(
-            format!("{:?}", generate(fmt_filter(&Op(s(">"), SingleVal(s("2"), None))).unwrap())),
-            format!("{:?}", (&s("> $1"), vec![SingleVal(s("2"), None)], 2))
+            format!("{:?}", generate(fmt_filter(&Op(s(">"), SingleVal(cow("2"), None))).unwrap())),
+            format!("{:?}", (&s("> $1"), vec![SingleVal(cow("2"), None)], 2))
         );
         assert_eq!(
-            format!("{:?}", generate(fmt_filter(&In(ListVal(vec![s("5"), s("6")], None))).unwrap())),
-            format!("{:?}", (&s("= any ($1)"), vec![ListVal(vec![s("5"), s("6")], None)], 2))
+            format!("{:?}", generate(fmt_filter(&In(ListVal(vec![cow("5"), cow("6")], None))).unwrap())),
+            format!("{:?}", (&s("= any ($1)"), vec![ListVal(vec![cow("5"), cow("6")], None)], 2))
         );
         assert_eq!(
             format!(
                 "{:?}",
-                generate(fmt_filter(&Fts(s("@@ to_tsquery"), Some(SingleVal(s("eng"), None)), SingleVal(s("2"), None))).unwrap())
+                generate(fmt_filter(&Fts(s("@@ to_tsquery"), Some(SingleVal(cow("eng"), None)), SingleVal(cow("2"), None))).unwrap())
             ),
             r#"("@@ to_tsquery ($1,$2)", [SingleVal("eng", None), SingleVal("2", None)], 3)"#.to_string()
         );

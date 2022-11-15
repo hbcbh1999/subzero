@@ -39,6 +39,7 @@ use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
 use crate::error::{Result, Error};
 use super::{ToParam, Snippet, SqlParam};
+use std::borrow::Cow;
 generate_fn!();
 macro_rules! simple_select_item_format {
     () => {

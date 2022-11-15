@@ -7,6 +7,7 @@ use std::iter::FromIterator;
 use log::debug;
 use ColumnPermissions::*;
 
+
 pub type Role<'a> = &'a str;
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -876,8 +877,12 @@ mod tests {
     use crate::error::Error as AppError;
     use serde_json::Value as JsonValue;
     use pretty_assertions::assert_eq;
+    use std::borrow::Cow;
+    fn cow<'a>(s: &'a str) -> Cow<'a, str> { Cow::Borrowed(s) }
     fn s(s: &str) -> String { s.to_string() }
+    
     fn t<T>((k, v): (&str, T)) -> (String, T) { (k.to_string(), v) }
+   
     #[test]
     fn deserialize_db_schema() {
         let db_schema = DbSchema {
@@ -972,7 +977,7 @@ mod tests {
                                                     name: "id",
                                                     json_path: None,
                                                 },
-                                                filter: Filter::Op("eq", SingleVal("10", Some("int"))),
+                                                filter: Filter::Op("eq", SingleVal(cow("10"), Some(cow("int")))),
                                                 negate: false,
                                             }]),
                                             check: None,
@@ -1138,17 +1143,17 @@ mod tests {
             Single {
                 field: field.clone(),
                 negate,
-                filter: Op("eq", SingleVal("hello", None)),
+                filter: Op("eq", SingleVal(cow("hello"), None)),
             },
             Single {
                 field: field.clone(),
                 negate,
-                filter: Op("eq", SingleVal("hello", Some("text"))),
+                filter: Op("eq", SingleVal(cow("hello"), Some(cow("text")))),
             },
             Single {
                 field: field.clone(),
                 negate,
-                filter: In(ListVal(vec!["1", "2", "3"], None)),
+                filter: In(ListVal(vec![cow("1"), cow("2"), cow("3")], None)),
             },
             Single {
                 field: field.clone(),
@@ -1158,7 +1163,7 @@ mod tests {
             Single {
                 field: field.clone(),
                 negate: true,
-                filter: Fts("eq", None, SingleVal("hello", None)),
+                filter: Fts("eq", None, SingleVal(cow("hello"), None)),
             },
             Group {
                 negate: false,
@@ -1168,12 +1173,12 @@ mod tests {
                         Single {
                             field: field.clone(),
                             negate,
-                            filter: Op("eq", SingleVal("hello", None)),
+                            filter: Op("eq", SingleVal(cow("hello"), None)),
                         },
                         Single {
                             field,
                             negate,
-                            filter: In(ListVal(vec!["1", "2", "3"], None)),
+                            filter: In(ListVal(vec![cow("1"), cow("2"), cow("3")], None)),
                         },
                     ],
                 },

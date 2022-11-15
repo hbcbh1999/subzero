@@ -1,29 +1,15 @@
 //use core::slice::SlicePattern;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter::{zip, FromIterator};
+use std::borrow::Cow;
+use serde::Serialize;
 
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, LogicOperator::*, QueryNode::*, SelectItem::*, SelectKind::*, *};
 use crate::error::*;
 use crate::schema::{ObjectType::*, PgType::*, ProcReturnType::*, *};
 
-// use combine::{
-//     easy::{Error as ParserError, Info, ParseError},
-//     error::StreamError,
-//     look_ahead,
-//     parser::{
-//         char::{char, digit, letter, spaces, string},
-//         choice::{choice, optional},
-//         combinator::{attempt, not_followed_by},
-//         repeat::many,
-//         repeat::{many1, sep_by, sep_by1},
-//         sequence::between,
-//         token::{any, eof, none_of, one_of},
-//     },
-//     stream::StreamErrorFor,
-//     EasyParser, Parser, Stream,
-// };
-use csv::{Reader, StringRecord};
-use serde_json::Value as JsonValue;
+use csv::{Reader, StringRecord, ByteRecord};
+use serde_json::{Value as JsonValue, value::{RawValue as JsonRawValue}};
 use snafu::{OptionExt, ResultExt};
 
 use nom::{
@@ -75,12 +61,77 @@ lazy_static! {
     };
 }
 
+fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Option<Vec<&'a str>>) -> Result<(Vec<&'a str>, &'a str)> {
+    let (columns, body) =  match (content_type, columns_param) {
+        (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((c, _body)),
+        (ApplicationJSON, None) | (SingularJSON, None) => {
+            // first nonempty char in body
+            let c = _body.chars().skip_while(|c| c.is_whitespace()).next();
+            match c {
+                Some('{') => {
+                    let json = serde_json::from_str::<HashMap<&str, &JsonRawValue>>(_body).context(JsonDeserializeSnafu)?;
+                    let columns = json.keys().map(|&k| k).collect::<Vec<_>>();
+                    Ok((columns, _body))
+                }
+                Some('[') => {
+                    let json = serde_json::from_str::<Vec<HashMap<&str, &JsonRawValue>>>(_body).context(JsonDeserializeSnafu)?;
+                    let columns = match json.get(0) {
+                        Some(row) => row.keys().map(|&k| k).collect::<Vec<_>>(),
+                        None => vec![]
+                    };
+                    Ok((columns, _body))
+                }
+                _ => Err(Error::InvalidBody { message: format!("Failed to parse json body")}),
+            }
+        }
+        // (TextCSV, cols) => {
+        //     let mut rdr = Reader::from_reader(_body.as_bytes());
+        //             let mut res: Vec<JsonValue> = vec![];
+        //             let header: StringRecord = match cols {
+        //                 Some(c) => Ok(StringRecord::from(c)),
+        //                 None => Ok((rdr.headers().context(CsvDeserializeSnafu)?).clone()),
+        //             }?;
+        //             for record in rdr.records() {
+        //                 res.push(
+        //                     header
+        //                         .clone()
+        //                         .into_iter()
+        //                         .zip(record.context(CsvDeserializeSnafu)?.into_iter())
+        //                         .map(|(k, v)| {
+        //                             (
+        //                                 k,
+        //                                 match v {
+        //                                     "NULL" => JsonValue::Null,
+        //                                     _ => JsonValue::String(v.to_string()),
+        //                                 },
+        //                             )
+        //                         })
+        //                         .collect(),
+        //                 );
+        //             }
+        //             Ok((
+        //                 header.iter().map(|h| Cow::Owned(String::from(h))).collect(),
+        //                 Cow::Owned(serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserializeSnafu)?),
+        //             ))
+        // }
+        (Other(t), _) => Err(Error::ContentTypeError {
+            message: format!("None of these Content-Types are available: {}", t),
+        }),
+        _ => Err(Error::ContentTypeError {
+            message: format!("None of these Content-Types are available"),
+        }),
+    }?;
+    Ok((columns, body))
+}
+
+
+
 #[allow(clippy::too_many_arguments)]
 pub fn parse<'a>(
     schema: &'a str, root: &'a str, db_schema: &'a DbSchema<'a>, method: &'a str, path: &'a str, get: Vec<(&'a str, &'a str)>, body: Option<&'a str>,
-    headers: HashMap<&'a str, &'a str>, cookies: HashMap<&'a str, &'a str>, max_rows: Option<u32>,
+    headers: HashMap<&'a str, &'a str>, cookies: HashMap<&'a str, &'a str>, max_rows: Option<&'a str>,
 ) -> Result<ApiRequest<'a>> {
-    let body = body.map(|b| b.to_string());
+    //let body = body.map(|b| b.to_string());
     let schema_obj = db_schema.schemas.get(schema).context(UnacceptableSchemaSnafu {
         schemas: vec![schema.to_owned()],
     })?;
@@ -253,7 +304,7 @@ pub fn parse<'a>(
                             conditions.push((tp, Condition::Single { field, filter, negate }));
                         } else {
                             //this is a function parameter
-                            fn_arguments.push((k, v));
+                            fn_arguments.push((*k, *v));
                         }
                     }
                     _ => {
@@ -332,33 +383,33 @@ pub fn parse<'a>(
     };
 
     let (node_select, sub_selects) = split_select(select_items);
-    let mut query = match (method, root_obj.kind.clone()) {
-        (method, Function { return_type, parameters, .. }) => {
+    let mut query = match (method, root_obj.kind.clone(), body) {
+        (method, Function { return_type, parameters, .. }, _body) => {
             let parameters_map = parameters.iter().map(|p| (p.name, p)).collect::<HashMap<_, _>>();
             let required_params: HashSet<&str> = HashSet::from_iter(parameters.iter().filter(|p| p.required).map(|p| p.name));
             let all_params: HashSet<&str> = HashSet::from_iter(parameters.iter().map(|p| p.name));
-            let (payload, params) = match method {
-                "GET" => {
-                    let mut args: HashMap<&str, JsonValue> = HashMap::new();
+            let (parameter_values, params) = match (method, _body) {
+                ("GET",None) => {
+                    let mut args: HashMap<&str, ParamValue> = HashMap::new();
                     for (n, v) in fn_arguments {
-                        if let Some(p) = parameters_map.get(*n) {
+                        if let Some(&p) = parameters_map.get(n) {
                             if p.variadic {
                                 if let Some(e) = args.get_mut(n) {
-                                    if let JsonValue::Array(a) = e {
-                                        a.push(v.to_string().into());
+                                    if let ParamValue::Variadic(a) = e {
+                                        a.push(serde_json::from_str(v).context(JsonDeserializeSnafu)?);
                                     }
                                 } else {
-                                    args.insert(n, JsonValue::Array(vec![v.to_string().into()]));
+                                    args.insert(n, ParamValue::Variadic(vec![serde_json::from_str(v).context(JsonDeserializeSnafu)?]));
                                 }
                             } else {
-                                args.insert(n, v.to_string().into());
+                                args.insert(n, ParamValue::Single(serde_json::from_str(v).context(JsonDeserializeSnafu)?));
                             }
                         } else {
                             //this is an unknown param, we still add it but bellow we'll return an error because of it
-                            args.insert(n, v.to_string().into());
+                            args.insert(n, ParamValue::Single(serde_json::from_str(v).context(JsonDeserializeSnafu)?));
                         }
                     }
-                    let payload = serde_json::to_string(&args).context(JsonSerializeSnafu)?;
+                    //let payload = serde_json::to_string(&args).context(JsonSerializeSnafu)?;
                     let params = match (parameters.len(), parameters.get(0)) {
                         (1, Some(p)) if p.name.is_empty() => CallParams::OnePosParam(p.clone()),
                         _ => {
@@ -385,23 +436,19 @@ pub fn parse<'a>(
                         }
                     };
 
-                    Ok((payload, params))
+                    Ok((ParamValues::Parsed(args), params))
                 }
-                "POST" => {
-                    let payload = body.context(InvalidBodySnafu {
-                        message: "body not available".to_string(),
-                    })?;
+                ("POST", Some(payload)) => {
                     let params = match (parameters.len(), parameters.get(0)) {
                         (1, Some(p)) if p.name.is_empty() && (p.type_ == "json" || p.type_ == "jsonb") => CallParams::OnePosParam(p.clone()),
                         _ => {
-                            let json_payload = match (payload.len(), content_type) {
+                            let json_payload:HashMap<&str, &JsonRawValue> = match (payload.len(), content_type) {
                                 (0, _) => serde_json::from_str("{}").context(JsonDeserializeSnafu),
                                 (_, _) => serde_json::from_str(&payload).context(JsonDeserializeSnafu),
                             }?;
-                            let argument_keys = match (json_payload, columns_) {
-                                (JsonValue::Object(o), None) => o.keys().map(String::as_str).collect(),
-                                (JsonValue::Object(o), Some(c)) => o.keys().filter(|&k| c.contains(&k.as_str())).map(String::as_str).collect(),
-                                _ => vec![],
+                            let argument_keys:Vec<&str> = match columns_ {
+                                None => json_payload.keys().map(|&k| k).collect(),
+                                Some(c) => json_payload.keys().map(|&k| k).filter(|k| c.contains(k)).collect(),
                             };
                             let specified_parameters: HashSet<&str> = HashSet::from_iter(argument_keys.iter().map(|k| *k));
 
@@ -425,17 +472,19 @@ pub fn parse<'a>(
                         }
                     };
 
-                    Ok((payload, params))
+                    Ok((ParamValues::Raw(payload), params))
                 }
                 _ => Err(Error::UnsupportedVerb),
             }?;
+            let payload = serde_json::to_string(&parameter_values).context(JsonDeserializeSnafu)?;
             let mut q = Query {
                 node: FunctionCall {
                     fn_name: Qi(schema, root),
                     parameters: params,
 
                     //CallParams::KeyParams(vec![]),
-                    payload: Payload(payload, None),
+                    payload: Payload(Cow::Owned(payload), None),
+                    //parameter_values,
 
                     is_scalar: matches!(return_type, One(Scalar) | SetOf(Scalar)),
                     returns_single: match return_type {
@@ -477,7 +526,7 @@ pub fn parse<'a>(
             // }
             Ok(q)
         }
-        ("GET", _) => {
+        ("GET", _, None) => {
             let mut q = Query {
                 node: Select {
                     select: node_select,
@@ -497,77 +546,13 @@ pub fn parse<'a>(
             add_join_info(&mut q, schema, db_schema, 0)?;
             Ok(q)
         }
-        ("POST", _) => {
+        ("POST", _, Some(_body)) => {
             let _body = body.context(InvalidBodySnafu {
                 message: "body not available".to_string(),
             })?;
 
-            let (payload, columns) = match (content_type, columns_) {
-                (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((_body, c)),
-                (ApplicationJSON, None) | (SingularJSON, None) => {
-                    let json_payload: Result<JsonValue, serde_json::Error> = serde_json::from_str(&_body);
-                    let columns = match json_payload {
-                        Ok(j) => match j {
-                            JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
-                            JsonValue::Array(v) => match v.get(0) {
-                                Some(JsonValue::Object(m)) => {
-                                    let canonical_set: HashSet<&String> = HashSet::from_iter(m.keys());
-                                    let all_keys_match = v.iter().all(|vv| match vv {
-                                        JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
-                                        _ => false,
-                                    });
-                                    if all_keys_match {
-                                        Ok(m.keys().cloned().collect())
-                                    } else {
-                                        Err(Error::InvalidBody {
-                                            message: "All object keys must match".to_string(),
-                                        })
-                                    }
-                                }
-                                _ => Ok(vec![]),
-                            },
-                            _ => Ok(vec![]),
-                        },
-                        Err(e) => Err(Error::InvalidBody {
-                            message: format!("Failed to parse json body: {}", e),
-                        }),
-                    }?;
-                    Ok((_body, columns.iter().map(String::as_str).collect()))
-                }
-                (TextCSV, cols) => {
-                    let mut rdr = Reader::from_reader(_body.as_bytes());
-                    let mut res: Vec<JsonValue> = vec![];
-                    let header: StringRecord = match cols {
-                        Some(c) => Ok(StringRecord::from(c)),
-                        None => Ok((rdr.headers().context(CsvDeserializeSnafu)?).clone()),
-                    }?;
-                    for record in rdr.records() {
-                        res.push(
-                            header
-                                .clone()
-                                .into_iter()
-                                .zip(record.context(CsvDeserializeSnafu)?.into_iter())
-                                .map(|(k, v)| {
-                                    (
-                                        k,
-                                        match v {
-                                            "NULL" => JsonValue::Null,
-                                            _ => JsonValue::String(v.to_string()),
-                                        },
-                                    )
-                                })
-                                .collect(),
-                        );
-                    }
-                    Ok((
-                        serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserializeSnafu)?,
-                        header.iter().collect(),
-                    ))
-                }
-                (Other(t), _) => Err(Error::ContentTypeError {
-                    message: format!("None of these Content-Types are available: {}", t),
-                }),
-            }?;
+            let (columns, payload) = get_payload(content_type, _body, columns_)?;
+            //let columns = _columns.iter().map(|c| c.as_str()).collect();
 
             let on_conflict = match &preferences {
                 Some(Preferences { resolution: Some(r), .. }) => {
@@ -588,7 +573,7 @@ pub fn parse<'a>(
                 node: Insert {
                     into: root,
                     columns,
-                    payload: Payload(payload, None),
+                    payload: Payload(Cow::Borrowed(payload), None),
                     check: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -604,21 +589,10 @@ pub fn parse<'a>(
                 sub_selects,
             };
             add_join_info(&mut q, schema, db_schema, 0)?;
-            //we populate the returing becasue it relies on the "join" information
-            // if let Query {
-            //     node: Insert {
-            //         ref mut returning,
-            //         ref select,
-            //         ..
-            //     },
-            //     ref sub_selects,
-            // } = q
-            // {
-            //     returning.extend(get_returning(select, sub_selects)?);
-            // }
+            
             Ok(q)
         }
-        ("DELETE", _) => {
+        ("DELETE", _, None) => {
             let mut q = Query {
                 node: Delete {
                     from: root,
@@ -632,96 +606,21 @@ pub fn parse<'a>(
                 sub_selects,
             };
             add_join_info(&mut q, schema, db_schema, 0)?;
-            //we populate the returing because it relies on the "join" information
-            // if let Query {
-            //     node: Delete {
-            //         ref mut returning,
-            //         ref select,
-            //         ..
-            //     },
-            //     ref sub_selects,
-            // } = q
-            // {
-            //     returning.extend(get_returning(select, sub_selects)?);
-            // }
+            
             Ok(q)
         }
-        ("PATCH", _) => {
+        ("PATCH", _, Some(_body)) => {
             let _body = body.context(InvalidBodySnafu {
                 message: "body not available".to_string(),
             })?;
 
-            let (payload, columns) = match (content_type, columns_) {
-                (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((_body, c)),
-                (ApplicationJSON, None) | (SingularJSON, None) => {
-                    let json_payload: Result<JsonValue, serde_json::Error> = serde_json::from_str(&_body);
-                    let columns = match json_payload {
-                        Ok(j) => match j {
-                            JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
-                            JsonValue::Array(v) => match v.get(0) {
-                                Some(JsonValue::Object(m)) => {
-                                    let canonical_set: HashSet<&String> = HashSet::from_iter(m.keys());
-                                    let all_keys_match = v.iter().all(|vv| match vv {
-                                        JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
-                                        _ => false,
-                                    });
-                                    if all_keys_match {
-                                        Ok(m.keys().cloned().collect())
-                                    } else {
-                                        Err(Error::InvalidBody {
-                                            message: "All object keys must match".to_string(),
-                                        })
-                                    }
-                                }
-                                _ => Ok(vec![]),
-                            },
-                            _ => Ok(vec![]),
-                        },
-                        Err(e) => Err(Error::InvalidBody {
-                            message: format!("Failed to parse json body: {}", e),
-                        }),
-                    }?;
-                    Ok((_body, columns.iter().map(String::as_str).collect()))
-                }
-                (TextCSV, cols) => {
-                    let mut rdr = Reader::from_reader(_body.as_bytes());
-                    let mut res: Vec<JsonValue> = vec![];
-                    let header: StringRecord = match cols {
-                        Some(c) => Ok(StringRecord::from(c)),
-                        None => Ok((rdr.headers().context(CsvDeserializeSnafu)?).clone()),
-                    }?;
-                    for record in rdr.records() {
-                        res.push(
-                            header
-                                .clone()
-                                .into_iter()
-                                .zip(record.context(CsvDeserializeSnafu)?.into_iter())
-                                .map(|(k, v)| {
-                                    (
-                                        k,
-                                        match v {
-                                            "NULL" => JsonValue::Null,
-                                            _ => JsonValue::String(v.to_string()),
-                                        },
-                                    )
-                                })
-                                .collect(),
-                        );
-                    }
-                    Ok((
-                        serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserializeSnafu)?,
-                        header.iter().collect(),
-                    ))
-                }
-                (Other(t), _) => Err(Error::ContentTypeError {
-                    message: format!("None of these Content-Types are available: {}", t),
-                }),
-            }?;
+            let (columns, payload) = get_payload(content_type, _body, columns_)?;
+            //let columns = _columns.iter().map(|c| c.as_str()).collect();
             let mut q = Query {
                 node: Update {
                     table: root,
                     columns,
-                    payload: Payload(payload, None),
+                    payload: Payload(Cow::Borrowed(payload), None),
                     check: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -736,91 +635,16 @@ pub fn parse<'a>(
                 sub_selects,
             };
             add_join_info(&mut q, schema, db_schema, 0)?;
-            //we populate the returing becasue it relies on the "join" information
-            // if let Query {
-            //     node: Update {
-            //         ref mut returning,
-            //         ref select,
-            //         ..
-            //     },
-            //     ref sub_selects,
-            // } = q
-            // {
-            //     returning.extend(get_returning(select, sub_selects)?);
-            // }
+            
             Ok(q)
         }
-        ("PUT", _) => {
+        ("PUT", _, Some(_body)) => {
             let _body = body.context(InvalidBodySnafu {
                 message: "body not available".to_string(),
             })?;
 
-            let (payload, columns) = match (content_type, columns_) {
-                (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((_body, c)),
-                (ApplicationJSON, None) | (SingularJSON, None) => {
-                    let json_payload: Result<JsonValue, serde_json::Error> = serde_json::from_str(&_body);
-                    let columns = match json_payload {
-                        Ok(j) => match j {
-                            JsonValue::Object(m) => Ok(m.keys().cloned().collect()),
-                            JsonValue::Array(v) => match v.get(0) {
-                                Some(JsonValue::Object(m)) => {
-                                    let canonical_set: HashSet<&String> = HashSet::from_iter(m.keys());
-                                    let all_keys_match = v.iter().all(|vv| match vv {
-                                        JsonValue::Object(mm) => canonical_set == HashSet::from_iter(mm.keys()),
-                                        _ => false,
-                                    });
-                                    if all_keys_match {
-                                        Ok(m.keys().cloned().collect())
-                                    } else {
-                                        Err(Error::InvalidBody {
-                                            message: "All object keys must match".to_string(),
-                                        })
-                                    }
-                                }
-                                _ => Ok(vec![]),
-                            },
-                            _ => Ok(vec![]),
-                        },
-                        Err(e) => Err(Error::InvalidBody {
-                            message: format!("Failed to parse json body: {}", e),
-                        }),
-                    }?;
-                    Ok((_body, columns.iter().map(String::as_str).collect()))
-                }
-                (TextCSV, cols) => {
-                    let mut rdr = Reader::from_reader(_body.as_bytes());
-                    let mut res: Vec<JsonValue> = vec![];
-                    let header: StringRecord = match cols {
-                        Some(c) => Ok(StringRecord::from(c)),
-                        None => Ok((rdr.headers().context(CsvDeserializeSnafu)?).clone()),
-                    }?;
-                    for record in rdr.records() {
-                        res.push(
-                            header
-                                .clone()
-                                .into_iter()
-                                .zip(record.context(CsvDeserializeSnafu)?.into_iter())
-                                .map(|(k, v)| {
-                                    (
-                                        k,
-                                        match v {
-                                            "NULL" => JsonValue::Null,
-                                            _ => JsonValue::String(v.to_string()),
-                                        },
-                                    )
-                                })
-                                .collect(),
-                        );
-                    }
-                    Ok((
-                        serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserializeSnafu)?,
-                        header.iter().collect(),
-                    ))
-                }
-                (Other(t), _) => Err(Error::ContentTypeError {
-                    message: format!("None of these Content-Types are available: {}", t),
-                }),
-            }?;
+            let (columns, payload) = get_payload(content_type, _body, columns_)?;
+            //let columns = _columns.iter().map(|c| c.as_str()).collect();
 
             // check all the required filters are there for the PUT request to be valid
             let eq = &"=".to_string();
@@ -853,7 +677,7 @@ pub fn parse<'a>(
                 node: Insert {
                     into: root,
                     columns,
-                    payload: Payload(payload, None),
+                    payload: Payload(Cow::Borrowed(payload), None),
                     check: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -869,24 +693,13 @@ pub fn parse<'a>(
                 sub_selects,
             };
             add_join_info(&mut q, schema, db_schema, 0)?;
-            //we populate the returing becasue it relies on the "join" information
-            // if let Query {
-            //     node: Insert {
-            //         ref mut returning,
-            //         ref select,
-            //         ..
-            //     },
-            //     ref sub_selects,
-            // } = q
-            // {
-            //     returning.extend(get_returning(select, sub_selects)?);
-            // }
+            
             Ok(q)
         }
         _ => Err(Error::UnsupportedVerb),
     }?;
 
-    //insert_join_conditions(&mut query, schema)?;
+    insert_join_conditions(&mut query, schema)?;
 
     query.insert_conditions(conditions)?;
 
@@ -932,9 +745,53 @@ pub fn parse<'a>(
         Ok(())
     })?;
 
+    // replace select * with all the columns
+    //replace_start(&mut query, schema_obj)?;
+
     // enforce max rows limit for each node
-    if let Some(max) = max_rows {
-        for (_, node) in &mut query {
+    //enforce_max_rows(&mut query, max_rows);
+    // let none = &mut None;
+    // if let Some(max_str) = max_rows {
+    //     let max = max_str.parse::<u32>().unwrap_or(1000);
+    //     for (_, node) in &mut query {
+            
+    //         let limit = match node {
+    //             FunctionCall { limit, .. } => limit,
+    //             Select { limit, .. } => limit,
+    //             Insert { .. } => none,
+    //             Delete { .. } => none,
+    //             Update { .. } => none,
+    //         };
+    //         match limit {
+    //             Some(SingleVal(l, ..)) => match l.parse::<u32>() {
+    //                 Ok(ll) if ll > max => *limit = Some(SingleVal(max_str, None)),
+    //                 _ => *limit = Some(SingleVal(max_str, None)),
+    //             },
+    //             None => *limit = Some(SingleVal(max_str, None)),
+    //         }
+    //     }
+    // }
+    
+    
+    Ok(ApiRequest {
+        schema_name: schema,
+        read_only: matches!(method, "GET"),
+        preferences,
+        method,
+        path,
+        query,
+        accept_content_type,
+        headers,
+        cookies,
+        get,
+    })
+}
+
+// enforce max rows
+fn enforce_max_rows<'a>(query: &'a mut Query<'a>, max_rows: Option<&'a str>){
+    if let Some(max_str) = max_rows {
+        let max = max_str.parse::<u32>().unwrap_or(1000);
+        for (_, node) in query {
             let none = &mut None;
             let limit = match node {
                 FunctionCall { limit, .. } => limit,
@@ -945,16 +802,18 @@ pub fn parse<'a>(
             };
             match limit {
                 Some(SingleVal(l, ..)) => match l.parse::<u32>() {
-                    Ok(ll) if ll > max => *limit = Some(SingleVal(max.to_string().as_str(), None)),
-                    _ => *limit = Some(SingleVal(max.to_string().as_str(), None)),
+                    Ok(ll) if ll > max => *limit = Some(SingleVal(Cow::Borrowed(max_str), None)),
+                    _ => *limit = Some(SingleVal(Cow::Borrowed(max_str), None)),
                 },
-                None => *limit = Some(SingleVal(max.to_string().as_str(), None)),
+                None => *limit = Some(SingleVal(Cow::Borrowed(max_str), None)),
             }
         }
     }
+}
 
-    // replace select * with all the columns
-    for (_, node) in &mut query {
+// replace star with all columns
+fn replace_start<'a, 'b: 'a>(query: &'b mut Query<'a>, schema_obj: &Schema<'a>)-> Result<()> {
+    for (_, node) in query {
         let (select, o_table_name) = match node {
             Select {
                 select, from: (table, _), ..
@@ -990,22 +849,9 @@ pub fn parse<'a>(
             }
         }
     }
-
-    insert_join_conditions(&mut query, schema)?;
-
-    Ok(ApiRequest {
-        schema_name: schema,
-        read_only: matches!(method, "GET"),
-        preferences,
-        method,
-        path,
-        query,
-        accept_content_type,
-        headers,
-        cookies,
-        get,
-    })
+    Ok(())
 }
+
 
 // // parser functions
 // fn lex<Input, P>(p: P) -> impl Parser<Input, Output = P::Output>
@@ -1393,7 +1239,14 @@ fn select_item(i: &str) -> Parsed<SelectKind> {
 // }
 
 fn single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<SingleVal> {
-    Ok(("",SingleVal(i, *data_type)))
+    let v = match data_type {
+        Some(dt) => SingleVal(Cow::Borrowed(i), Some(Cow::Borrowed(*dt))),
+        None => SingleVal(Cow::Borrowed(i), None)
+    };
+    Ok((
+        "",
+        v
+    ))
 }
 
 //done
@@ -1818,17 +1671,16 @@ fn is_self_join(join: &Join) -> bool {
     }
 }
 
-fn add_join_info<'a>(query: &'a mut Query<'a>, schema: &'a str, db_schema: &'a DbSchema<'a>, depth: u16) -> Result<()> {
-    let mut dummy_source = "subzero_source";
-    let mut dummy_returing = vec![];
-    let (parent_table, returning, select) = match &mut query.node {
-        Select { from: (table, _),  select, .. } => (table, &mut dummy_returing, select),
-        Insert { into, returning, select, .. } => (into, returning, select),
-        Delete { from, returning, select, .. } => (from, returning, select),
-        Update { table, returning, select, .. } => (table, returning, select),
+fn add_join_info<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str, db_schema: &'a DbSchema<'a>, depth: u16) -> Result<()> {
+    let dummy_source = "subzero_source";
+    let (parent_table, returning, select): (&'a str, Option<&'b mut Vec<&'a str>>, &'b mut Vec<SelectItem<'a>>) = match &mut query.node {
+        Select { from: (table, _),  select, .. } => (*table, None, select),
+        Insert { into, returning, select, .. } => (*into, Some(returning), select),
+        Delete { from, returning, select, .. } => (*from, Some(returning), select),
+        Update { table, returning, select, .. } => (*table, Some(returning), select),
         FunctionCall { return_table_type, returning, select, .. } => match return_table_type {
-            Some(q) => (&mut q.1, returning, select),
-            None => (&mut dummy_source, returning, select),
+            Some(q) => (q.1, Some(returning), select),
+            None => (dummy_source, Some(returning), select),
         },
     };
 
@@ -1842,39 +1694,32 @@ fn add_join_info<'a>(query: &'a mut Query<'a>, schema: &'a str, db_schema: &'a D
         } = &mut q.node
         {
             let al = format!("{}_{}", child_table, depth);
-            let new_join = db_schema.get_join(schema, parent_table, child_table, hint)?;
+            let new_join:Join<'a> = db_schema.get_join(schema, parent_table, child_table, hint)?;
             if is_self_join(&new_join) {
-                *table_alias = Some(al.as_str());
+                *table_alias = Some(Cow::Owned(al));
             }
             match &new_join {
                 Parent(fk) if &fk.referenced_table.1 != child_table => {
                     if alias.is_none() {
-                        *alias = Some(child_table.clone());
+                        *alias = Some(child_table);
                     }
                     *child_table = fk.referenced_table.1;
                 }
                 _ => {}
             }
             *join = Some(new_join);
-            add_join_info(q, schema, db_schema, depth + 1)?
+            add_join_info(q, schema, db_schema, depth + 1)?;
         }
     }
     
-    // if let Query {
-    //     node: FunctionCall {
-    //         ref mut returning,
-    //         ref select,
-    //         ..
-    //     },
-    //     ref sub_selects,
-    // } = q
-    // {
-    returning.extend(get_returning(select, query.sub_selects.as_slice())?);
-    // }
+    if let Some(r) = returning {
+        r.extend(get_returning(select, &query.sub_selects)?);
+    }
+    
     Ok(())
 }
 
-fn insert_join_conditions<'a>(query: &'a mut Query<'a>, schema: &'a str) -> Result<()> {
+fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> Result<()> {
     let subzero_source = "subzero_source";
     
     let parent_qi: Qi = match &query.node {
@@ -1882,7 +1727,7 @@ fn insert_join_conditions<'a>(query: &'a mut Query<'a>, schema: &'a str) -> Resu
             from: (table, table_alias), ..
         } => match table_alias {
             Some(a) => Qi("", a),
-            None => Qi(schema, table),
+            None => Qi(schema, *table),
         },
         Insert { .. } => Qi("", subzero_source),
         Update { .. } => Qi("", subzero_source),
@@ -1906,7 +1751,7 @@ fn insert_join_conditions<'a>(query: &'a mut Query<'a>, schema: &'a str) -> Resu
                                     json_path: None,
                                 },
                                 filter: Col(
-                                    parent_qi.clone(),
+                                    Qi(parent_qi.0, parent_qi.1),
                                     Field {
                                         name: *col,
                                         json_path: None,

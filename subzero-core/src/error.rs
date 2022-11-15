@@ -1,6 +1,7 @@
 use crate::api::{ContentType, ContentType::*, Join, Join::*};
 use snafu::Snafu;
 use serde_json::{json, Value as JsonValue, Error as SerdeError};
+use std::str::Utf8Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -65,6 +66,9 @@ pub enum Error {
 
     #[snafu(display("Failed to deserialize csv: {}", source))]
     CsvDeserialize { source: csv::Error },
+
+    #[snafu(display("Failed to deserialize utf8: {}", source))]
+    Utf8Deserialize { source: Utf8Error },
 
     #[snafu(display("Failed to serialize json: {}", source))]
     JsonSerialize { source: serde_json::Error },
@@ -138,6 +142,7 @@ impl<'a> Error {
             Error::LimitOffsetNotAllowedError => 400,
             Error::OrderNotAllowedError => 400,
             Error::CsvDeserialize { .. } => 400,
+            Error::Utf8Deserialize { .. } => 400,
             Error::PutMatchingPkError => 400,
             Error::JsonSerialize { .. } => 500,
             Error::SingularityError { .. } => 406,
@@ -225,6 +230,7 @@ impl<'a> Error {
             }
             Error::JsonDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::CsvDeserialize { .. } => json!({ "message": format!("{}", self) }),
+            Error::Utf8Deserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::JsonSerialize { .. } => json!({ "message": format!("{}", self) }),
             Error::SingularityError { count, content_type } => json!({
                 "message": "JSON object requested, multiple (or no) rows returned",

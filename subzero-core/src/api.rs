@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize, Deserializer, Serializer, ser::SerializeStruct, ser::SerializeSeq};
+use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 use serde_json::Value as JsonValue;
+use serde_json::value::RawValue as JsonRawValue;
 use crate::error::Result;
 use QueryNode::*;
 
@@ -84,7 +86,7 @@ pub struct Preferences {
     pub count: Option<Count>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Clone)]
 pub struct ApiRequest<'a> {
     pub method: &'a str,
     pub path: &'a str,
@@ -131,21 +133,23 @@ pub enum CallParams<'a> {
     OnePosParam(ProcParam<'a>),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Query<'a> {
     #[serde(borrow)]
     pub node: QueryNode<'a>,
     pub sub_selects: Vec<SubSelect<'a>>,
 }
 
-pub struct Iter<'a, T>(VecDeque<Vec<&'a str>>, VecDeque<T>);
+pub struct Iter<T>(VecDeque<Vec<String>>, VecDeque<T>);
 
-pub struct Visitor<'a, F>(VecDeque<Vec<&'a str>>, VecDeque<&'a mut Query<'a>>, F);
+pub struct Visitor<'a, F>(VecDeque<Vec<String>>, VecDeque<&'a mut Query<'a>>, F);
 
 impl<'a> Query<'a> {
-    pub fn insert_conditions(&mut self, conditions: Vec<(Vec<&'a str>, Condition<'a>)>) -> Result<()> {
+    pub fn insert_conditions<'b>(&'b mut self, conditions: Vec<(Vec<&'a str>, Condition<'a>)>) -> Result<()> {
         self.insert_properties(conditions, |q, p| {
-            let query_conditions: &mut Vec<Condition> = match &mut q.node {
+            let query_conditions: &mut Vec<Condition<'a>> = match &mut q.node {
                 Select { where_, .. } => where_.conditions.as_mut(),
                 Insert { where_, .. } => where_.conditions.as_mut(),
                 Update { where_, .. } => where_.conditions.as_mut(),
@@ -156,7 +160,7 @@ impl<'a> Query<'a> {
             Ok(())
         })
     }
-    pub fn insert_properties<T>(&mut self, mut properties: Vec<(Vec<&str>, T)>, f: fn(&mut Query, Vec<T>) -> Result<()>) -> Result<()> {
+    pub fn insert_properties<T>(&mut self, mut properties: Vec<(Vec<&str>, T)>, f: fn(&mut Query<'a>, Vec<T>) -> Result<()>) -> Result<()> {
         let node_properties = properties.drain_filter(|(path, _)| path.is_empty()).map(|(_, c)| c).collect::<Vec<_>>();
         if !node_properties.is_empty() {
             f(self, node_properties)?
@@ -182,13 +186,14 @@ impl<'a> Query<'a> {
         }
         Ok(())
     }
-    pub fn visit<R, F: FnMut(Vec<&'a str>, &mut Self) -> R>(&mut self, f: F) -> Visitor<F> {
-        Visitor(VecDeque::from([vec![self.node.name()]]), VecDeque::from([self]), f)
+
+    pub fn visit<R, F: FnMut(Vec<String>, &'a mut Self) -> R>(&'a mut self, f: F) -> Visitor<'a, F> {
+        Visitor(VecDeque::from([vec![String::from(self.node.name())]]), VecDeque::from([self]), f)
     }
 }
 
-impl<'a> Iterator for Iter<'a, &'a Query<'a>> {
-    type Item = (Vec<&'a str>, &'a QueryNode<'a>);
+impl<'a> Iterator for Iter<&'a Query<'a>> {
+    type Item = (Vec<String>, &'a QueryNode<'a>);
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
@@ -199,8 +204,8 @@ impl<'a> Iterator for Iter<'a, &'a Query<'a>> {
                     |SubSelect {
                          query: Query { node, .. }, ..
                      }| {
-                        let mut p = current_path;
-                        p.push(node.name());
+                        let mut p = current_path.clone();
+                        p.push(node.name().to_string());
                         p
                     },
                 ));
@@ -212,22 +217,34 @@ impl<'a> Iterator for Iter<'a, &'a Query<'a>> {
     }
 }
 
-impl<'a> Iterator for Iter<'a, &'a mut Query<'a>> {
-    type Item = (Vec<&'a str>, &'a mut QueryNode<'a>);
+impl<'a, 'b> Iterator for Iter<&'a mut Query<'b>> {
+    type Item = (Vec<String>, &'a mut QueryNode<'b>);
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
             (Some(current_path), Some(Query { node, sub_selects, .. })) => {
-                path.extend(sub_selects.iter().map(
+                sub_selects.iter_mut().for_each(|SubSelect { query, .. }| {
+                    
+                    let mut p = current_path.clone();
+                    p.push(query.node.name().to_string());
+                    path.push_back(p);
+
+                    stack.push_back(query);
+                });
+                let stack_extend = sub_selects.iter_mut().map(|SubSelect { query, .. }| query).collect::<Vec<_>>();
+                stack_extend.into_iter().for_each(|q| stack.push_back(q));
+                let path_extend = sub_selects.iter().map(
                     |SubSelect {
                          query: Query { node, .. }, ..
                      }| {
-                        let mut p = current_path;
-                        p.push(node.name());
+                        let mut p = current_path.clone();
+                        p.push(node.name().to_string());
                         p
                     },
-                ));
-                stack.extend(sub_selects.iter_mut().map(|SubSelect { query, .. }| query));
+                ).collect::<Vec<_>>();
+                
+                path.extend(path_extend);
+                
                 Some((current_path, &mut *node))
             }
             _ => None,
@@ -235,8 +252,8 @@ impl<'a> Iterator for Iter<'a, &'a mut Query<'a>> {
     }
 }
 
-impl<'a> Iterator for Iter<'a, Query<'a>> {
-    type Item = (Vec<&'a str>, QueryNode<'a>);
+impl<'a> Iterator for Iter<Query<'a>> {
+    type Item = (Vec<String>, QueryNode<'a>);
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
@@ -245,8 +262,8 @@ impl<'a> Iterator for Iter<'a, Query<'a>> {
                     |SubSelect {
                          query: Query { node, .. }, ..
                      }| {
-                        let mut p = current_path;
-                        p.push(node.name());
+                        let mut p = current_path.clone();
+                        p.push(node.name().to_string());
                         p
                     },
                 ));
@@ -260,25 +277,25 @@ impl<'a> Iterator for Iter<'a, Query<'a>> {
 
 impl<'a> IntoIterator for &'a Query<'a> {
     type Item = <Self::IntoIter as Iterator>::Item;
-    type IntoIter = Iter<'a, Self>;
-    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name()]]), VecDeque::from([self])) }
+    type IntoIter = Iter<Self>;
+    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self])) }
 }
 
 impl<'a> IntoIterator for &'a mut Query<'a> {
     type Item = <Self::IntoIter as Iterator>::Item;
-    type IntoIter = Iter<'a, Self>;
-    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name()]]), VecDeque::from([self])) }
+    type IntoIter = Iter<Self>;
+    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self])) }
 }
 
 impl<'a> IntoIterator for Query<'a> {
     type Item = <Self::IntoIter as Iterator>::Item;
-    type IntoIter = Iter<'a, Self>;
-    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name()]]), VecDeque::from([self])) }
+    type IntoIter = Iter<Self>;
+    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self])) }
 }
 
-impl<R, F> Iterator for Visitor<'_, F>
+impl<'a, R, F> Iterator for Visitor<'a, F>
 where
-    F: FnMut(Vec<&'_ str>, &mut Query) -> R,
+    F: FnMut(Vec<String>, &'a mut Query<'a>) -> R,
 {
     type Item = R;
     fn next(&mut self) -> Option<Self::Item> {
@@ -290,8 +307,8 @@ where
                     |SubSelect {
                          query: Query { node, .. }, ..
                      }| {
-                        let mut p = current_path;
-                        p.push(node.name());
+                        let mut p = current_path.clone();
+                        p.push(node.name().to_string());
                         p
                     },
                 ));
@@ -303,57 +320,107 @@ where
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum ParamValue<'a> {
+    #[serde(borrow)]
+    Variadic(Vec<&'a JsonRawValue>),
+
+    #[serde(borrow)]
+    Single(&'a JsonRawValue),
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ParamValues<'a> {
+    Parsed(HashMap<&'a str, ParamValue<'a>>),
+    Raw(&'a str)
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum QueryNode<'a> {
     FunctionCall {
+        #[serde(borrow)]
         fn_name: Qi<'a>,
+        #[serde(borrow)]
         parameters: CallParams<'a>,
+        #[serde(borrow)]
         payload: Payload<'a>,
+        //parameter_values: ParamValues<'a>,
+        #[serde(borrow)]
         return_table_type: Option<Qi<'a>>,
         is_scalar: bool,
         returns_single: bool,
         is_multiple_call: bool,
+        #[serde(borrow)]
         returning: Vec<&'a str>,
+        #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
+        #[serde(borrow)]
         where_: ConditionTree<'a>,
+        #[serde(borrow)]
         limit: Option<SingleVal<'a>>,
+        #[serde(borrow)]
         offset: Option<SingleVal<'a>>,
+        #[serde(borrow)]
         order: Vec<OrderTerm<'a>>,
     },
     Select {
+        #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
-        from: (&'a str, Option<&'a str>),
+        #[serde(borrow)]
+        from: (&'a str, /*alias*/ Option<Cow<'a, str>>),
+        #[serde(borrow)]
         join_tables: Vec<&'a str>,
+        #[serde(borrow)]
         where_: ConditionTree<'a>,
+        #[serde(borrow)]
         limit: Option<SingleVal<'a>>,
+        #[serde(borrow)]
         offset: Option<SingleVal<'a>>,
+        #[serde(borrow)]
         order: Vec<OrderTerm<'a>>,
+        #[serde(borrow)]
         groupby: Vec<GroupByTerm<'a>>,
     },
     Insert {
         into: &'a str,
+        #[serde(borrow)]
         columns: Vec<ColumnName<'a>>,
+        #[serde(borrow)]
         payload: Payload<'a>,
+        #[serde(borrow)]
         check: ConditionTree<'a>,
+        #[serde(borrow)]
         where_: ConditionTree<'a>, //used only for put
+        #[serde(borrow)]
         returning: Vec<&'a str>,
+        #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
+        #[serde(borrow)]
         on_conflict: Option<(Resolution, Vec<&'a str>)>,
     },
     Delete {
         from: &'a str,
+        #[serde(borrow)]
         where_: ConditionTree<'a>,
+        #[serde(borrow)]
         returning: Vec<&'a str>,
+        #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
     },
 
     Update {
         table: &'a str,
+        #[serde(borrow)]
         columns: Vec<ColumnName<'a>>,
+        #[serde(borrow)]
         payload: Payload<'a>,
+        #[serde(borrow)]
         check: ConditionTree<'a>,
+        #[serde(borrow)]
         where_: ConditionTree<'a>,
+        #[serde(borrow)]
         returning: Vec<&'a str>,
+        #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
     },
 }
@@ -399,13 +466,17 @@ impl<'a> QueryNode<'a> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct OrderTerm<'a> {
+    #[serde(borrow)]
     pub term: Field<'a>,
     pub direction: Option<OrderDirection>,
     pub null_order: Option<OrderNulls>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct GroupByTerm<'a>(pub Field<'a>);
+pub struct GroupByTerm<'a>(
+    #[serde(borrow)]
+    pub Field<'a>
+);
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum OrderDirection {
@@ -427,9 +498,13 @@ pub struct Qi<'a>(pub &'a str, pub &'a str);
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
 pub struct ForeignKey<'a> {
     pub name: &'a str,
+    #[serde(borrow)]
     pub table: Qi<'a>,
+    #[serde(borrow)]
     pub columns: Vec<&'a str>,
+    #[serde(borrow)]
     pub referenced_table: Qi<'a>,
+    #[serde(borrow)]
     pub referenced_columns: Vec<&'a str>,
 }
 
@@ -438,11 +513,19 @@ pub struct ForeignKey<'a> {
 pub enum Join<'a> {
     #[serde(borrow)]
     Child(ForeignKey<'a>),
+    #[serde(borrow)]
     Parent(ForeignKey<'a>),
-    Many(Qi<'a>, ForeignKey<'a>, ForeignKey<'a>),
+    Many(
+        #[serde(borrow)]
+        Qi<'a>, 
+        #[serde(borrow)]
+        ForeignKey<'a>,
+        #[serde(borrow)]
+        ForeignKey<'a>
+    ),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum SelectKind<'a> {
     Item(SelectItem<'a>),
     Sub(Box<SubSelect<'a>>), //TODO! check performance implications for using box
@@ -450,9 +533,14 @@ pub enum SelectKind<'a> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum FunctionParam<'a> {
+    #[serde(borrow)]
     Fld(Field<'a>),
     Val(SingleVal<'a>, Option<&'a str>),
-    Func { fn_name: &'a str, parameters: Vec<FunctionParam<'a>> },
+    Func { 
+        fn_name: &'a str, 
+        #[serde(borrow)]
+        parameters: Vec<FunctionParam<'a>>
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -460,24 +548,36 @@ pub enum SelectItem<'a> {
     //TODO!!! better name
     Star,
     Simple {
+        #[serde(borrow)]
         field: Field<'a>,
+        #[serde(borrow)]
         alias: Option<&'a str>,
+        #[serde(borrow)]
         cast: Option<&'a str>,
     },
     Func {
+        #[serde(borrow)]
         fn_name: &'a str,
+        #[serde(borrow)]
         parameters: Vec<FunctionParam<'a>>,
+        #[serde(borrow)]
         partitions: Vec<Field<'a>>,
+        #[serde(borrow)]
         orders: Vec<OrderTerm<'a>>,
+        #[serde(borrow)]
         alias: Option<&'a str>,
     },
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubSelect<'a> {
+    #[serde(borrow)]
     pub query: Query<'a>,
+    #[serde(borrow)]
     pub alias: Option<&'a str>,
+    #[serde(borrow)]
     pub hint: Option<JoinHint<'a>>,
+    #[serde(borrow)]
     pub join: Option<Join<'a>>,
 }
 
@@ -485,6 +585,7 @@ pub struct SubSelect<'a> {
 pub struct ConditionTree<'a> {
     #[serde(rename = "logic_op")]
     pub operator: LogicOperator,
+    #[serde(borrow)]
     pub conditions: Vec<Condition<'a>>,
 }
 
@@ -494,18 +595,21 @@ pub enum Condition<'a> {
     Group {
         #[serde(default, skip_serializing_if = "is_default")]
         negate: Negate,
+        #[serde(borrow)]
         tree: ConditionTree<'a>,
     },
     Single {
-        #[serde(flatten)]
+        #[serde(borrow, flatten)]
         field: Field<'a>,
-        #[serde(flatten,borrow)]
+        #[serde(borrow, flatten)]
         filter: Filter<'a>,
         #[serde(default, skip_serializing_if = "is_default")]
         negate: Negate,
     },
     Foreign {
+        #[serde(borrow)]
         left: (Qi<'a>, Field<'a>),
+        #[serde(borrow)]
         right: (Qi<'a>, Field<'a>),
     },
     Raw {
@@ -561,7 +665,7 @@ pub struct EnvVar<'a> {
     pub var: &'a str,
     #[serde(rename = "env_part")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
+    #[serde(borrow, default)]
     pub part: Option<&'a str>,
 }
 
@@ -624,13 +728,13 @@ impl<'a, 'de: 'a> Deserialize<'de> for Filter<'a> {
 #[serde(rename_all = "snake_case", untagged)]
 enum FilterHelper<'a> {
     Op {
-        #[serde(rename = "op")]
+        #[serde(borrow, rename = "op")]
         operator: Operator<'a>,
-        #[serde(rename = "val")]
+        #[serde(borrow, rename = "val")]
         value: SingleVal<'a>,
     },
     In {
-        #[serde(rename = "in")]
+        #[serde(borrow, rename = "in")]
         value: ListVal<'a>,
     },
     Is {
@@ -638,40 +742,42 @@ enum FilterHelper<'a> {
         value: TrileanVal,
     },
     Fts {
-        #[serde(rename = "fts_op")]
+        #[serde(borrow, rename = "fts_op")]
         operator: Operator<'a>,
-        #[serde(default, skip_serializing_if = "is_default")]
+        #[serde(borrow, default, skip_serializing_if = "is_default")]
         language: Option<Language<'a>>,
-        #[serde(rename = "val")]
+        #[serde(borrow, rename = "val")]
         value: SingleVal<'a>,
     },
 
     Env {
         #[serde(borrow, rename = "op")]
         operator: Operator<'a>,
-        #[serde(flatten)]
+        #[serde(borrow, flatten)]
         var: EnvVar<'a>,
     },
     Col {
+        #[serde(borrow)]
         qi: Qi<'a>,
+        #[serde(borrow)]
         field: Field<'a>,
     },
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct Field<'a> {
-    #[serde(rename = "column")]
+    #[serde(borrow, rename = "column")]
     pub name: ColumnName<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
+    #[serde(borrow, default)]
     pub json_path: Option<Vec<JsonOperation<'a>>>, //TODO!! should contain some info about the data type so that fmt_field function could make better decisions
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub enum JsonOperation<'a> {
-    #[serde(rename = "->")]
+    #[serde(borrow, rename = "->")]
     JArrow(JsonOperand<'a>),
-    #[serde(rename = "->>")]
+    #[serde(borrow, rename = "->>")]
     J2Arrow(JsonOperand<'a>),
 }
 
@@ -696,7 +802,10 @@ impl<'a, 'de: 'a> serde::Deserialize<'de> for JsonOperand<'a> {
     where
         D: serde::Deserializer<'de>,
     {
-        let s = String::deserialize(deserializer)?;
+        //deserialize everything into a &str and then parse it
+        let s: &'de str = serde::Deserialize::deserialize(deserializer)?;
+        // trim white spaces
+        let s = s.trim();
         if s.starts_with('\'') && s.ends_with('\'') {
             Ok(Self::JKey(&s[1..s.len() - 1]))
         } else {
@@ -711,10 +820,10 @@ pub type Language<'a> = SingleVal<'a>;
 pub type ColumnName<'a> = &'a str;
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct Payload<'a>(pub String, pub Option<&'a str>);
+pub struct Payload<'a>(pub Cow<'a, str>, pub Option<Cow<'a, str>>);
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct SingleVal<'a>(pub &'a str, pub Option<&'a str>);
+pub struct SingleVal<'a>(pub Cow<'a, str>, pub Option<Cow<'a, str>>);
 impl<'a> Serialize for SingleVal<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -736,11 +845,31 @@ impl<'a, 'de: 'a> Deserialize<'de> for SingleVal<'a> {
     where
         D: Deserializer<'de>,
     {
+        
+        // // deserialize everything into a &str and then parse it
+        // let v: &'de str = serde::Deserialize::deserialize(deserializer)?;
+        // // trim white spaces
+        // let v = v.trim();
+        // if v.starts_with('{') && v.ends_with('}') {
+        //     let mut iter = v[1..v.len() - 1].split(',');
+        //     let v = match iter.next() {
+        //         Some(vv) => Ok(vv.trim().trim_matches('"')),
+        //         None => Err(serde::de::Error::custom("missing v field")),
+        //     }?;
+        //     let t = match iter.next() {
+        //         Some(tt) => Ok(Some(tt.trim().trim_matches('"'))),
+        //         None => Ok(None),
+        //     }?;
+            
+        //     Ok(SingleVal(v, t))
+        // } else {
+        //     Ok(SingleVal(v.trim().trim_matches('"'), None))
+        // }
         let v = JsonValue::deserialize(deserializer)?;
         match v {
-            JsonValue::String(s) => Ok(Self(&s, None)),
+            JsonValue::String(s) => Ok(Self(Cow::Owned(s), None)),
             JsonValue::Object(o) => match (o.get("v"), o.get("t")) {
-                (Some(JsonValue::String(v)), Some(JsonValue::String(t))) => Ok(SingleVal(v, Some(t))),
+                (Some(JsonValue::String(v)), Some(JsonValue::String(t))) => Ok(SingleVal(Cow::Owned(*v), Some(Cow::Owned(*t)))),
                 _ => Err(serde::de::Error::custom("Invalid SingleVal")),
             },
             _ => Err(serde::de::Error::custom("Invalid SingleVal")),
@@ -749,7 +878,7 @@ impl<'a, 'de: 'a> Deserialize<'de> for SingleVal<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct ListVal<'a>(pub Vec<&'a str>, pub Option<&'a str>);
+pub struct ListVal<'a>(pub Vec<Cow<'a, str>>, pub Option<Cow<'a, str>>);
 
 impl<'a> Serialize for ListVal<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -780,12 +909,12 @@ impl<'a, 'de: 'a> Deserialize<'de> for ListVal<'a> {
         D: Deserializer<'de>,
     {
         // TODO!!! flatten will eliminate None and we need to treat it as an error
-        let to_str_vec = |v: &Vec<JsonValue>| v.iter().filter_map(|v: &JsonValue| v.as_str()).collect();
+        let to_str_vec = |v: &Vec<JsonValue>| v.iter().filter_map(|v: &JsonValue| v.as_str()).map(|s| Cow::Owned(s.to_string())).collect();
         let v = JsonValue::deserialize(deserializer)?;
         match v {
             JsonValue::Array(v) => Ok(Self(to_str_vec(&v), None)),
             JsonValue::Object(o) => match (o.get("v"), o.get("t")) {
-                (Some(JsonValue::Array(v)), Some(JsonValue::String(t))) => Ok(Self(to_str_vec(v), Some(t))),
+                (Some(JsonValue::Array(v)), Some(JsonValue::String(t))) => Ok(Self(to_str_vec(v), Some(Cow::Owned(*t)))),
                 _ => Err(serde::de::Error::custom("Invalid SingleVal")),
             },
             _ => Err(serde::de::Error::custom("Invalid SingleVal")),
@@ -807,24 +936,24 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
     fn ss(s: &str) -> String { s.to_string() }
-    fn s(s: &str) -> &str { s }
+    fn cow<'a>(s: &'a str) -> Cow<'a, str> { Cow::Borrowed(s) }
     #[test]
     fn serialize() {
         assert_eq!(r#"["schema","table"]"#, serde_json::to_string(&Qi("schema", "table")).unwrap());
         assert_eq!(serde_json::from_str::<Qi>(r#"["schema","table"]"#).unwrap(), Qi("schema", "table"));
         assert_eq!(r#""and""#, serde_json::to_string(&LogicOperator::And).unwrap());
         assert_eq!(serde_json::from_str::<LogicOperator>(r#""and""#).unwrap(), LogicOperator::And);
-        assert_eq!(r#""10""#, serde_json::to_string(&SingleVal(s("10"), None)).unwrap());
-        assert_eq!(serde_json::from_str::<SingleVal>(r#""10""#).unwrap(), SingleVal(s("10"), None));
-        assert_eq!(r#"["1","2","3"]"#, serde_json::to_string(&ListVal(vec![s("1"), s("2"), s("3")], None)).unwrap());
+        assert_eq!(r#""10""#, serde_json::to_string(&SingleVal(cow("10"), None)).unwrap());
+        assert_eq!(serde_json::from_str::<SingleVal>(r#""10""#).unwrap(), SingleVal(cow("10"), None));
+        assert_eq!(r#"["1","2","3"]"#, serde_json::to_string(&ListVal(vec![cow("1"), cow("2"), cow("3")], None)).unwrap());
         assert_eq!(
             serde_json::from_str::<ListVal>(r#"["1","2","3"]"#).unwrap(),
-            ListVal(vec![s("1"), s("2"), s("3")], None)
+            ListVal(vec![cow("1"), cow("2"), cow("3")], None)
         );
         assert_eq!(
             r#"{"column":"id"}"#,
             serde_json::to_string(&Field {
-                name: s("id"),
+                name: "id",
                 json_path: None
             })
             .unwrap()
@@ -832,25 +961,25 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Field>(r#"{"column":"id"}"#).unwrap(),
             Field {
-                name: s("id"),
+                name: "id",
                 json_path: None
             }
         );
         assert_eq!(
             r#"{"op":"eq","val":"10"}"#,
-            serde_json::to_string(&Filter::Op(s("eq"), SingleVal(s("10"), None))).unwrap()
+            serde_json::to_string(&Filter::Op("eq", SingleVal(cow("10"), None))).unwrap()
         );
         assert_eq!(
             serde_json::from_str::<Filter>(r#"{"op":"eq","val":"10"}"#).unwrap(),
-            Filter::Op(s("eq"), SingleVal(s("10"), None))
+            Filter::Op("eq", SingleVal(cow("10"), None))
         );
         assert_eq!(
             r#"{"column":"id","json_path":[{"->":"'id'"},{"->>":"0"}]}"#,
             serde_json::to_string(&Field {
-                name: s("id"),
+                name: "id",
                 json_path: Some(vec![
-                    JsonOperation::JArrow(JsonOperand::JKey(s("id"))),
-                    JsonOperation::J2Arrow(JsonOperand::JIdx(s("0")))
+                    JsonOperation::JArrow(JsonOperand::JKey("id")),
+                    JsonOperation::J2Arrow(JsonOperand::JIdx("0"))
                 ])
             })
             .unwrap()
@@ -858,10 +987,10 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Field>(r#"{"column":"id","json_path":[{"->":"'id'"},{"->>":"0"}]}"#).unwrap(),
             Field {
-                name: s("id"),
+                name: "id",
                 json_path: Some(vec![
-                    JsonOperation::JArrow(JsonOperand::JKey(s("id"))),
-                    JsonOperation::J2Arrow(JsonOperand::JIdx(s("0")))
+                    JsonOperation::JArrow(JsonOperand::JKey("id")),
+                    JsonOperation::J2Arrow(JsonOperand::JIdx("0"))
                 ])
             }
         );
@@ -869,10 +998,10 @@ mod tests {
             r#"{"column":"id","op":"eq","val":"10"}"#,
             serde_json::to_string(&Condition::Single {
                 field: Field {
-                    name: s("id"),
+                    name: "id",
                     json_path: None
                 },
-                filter: Filter::Op(s("eq"), SingleVal(s("10"), None)),
+                filter: Filter::Op("eq", SingleVal(cow("10"), None)),
                 negate: false,
             })
             .unwrap()
@@ -881,10 +1010,10 @@ mod tests {
             serde_json::from_str::<Condition>(r#"{"column":"id","op":"eq","val":"10"}"#).unwrap(),
             Condition::Single {
                 field: Field {
-                    name: s("id"),
+                    name: "id",
                     json_path: None
                 },
-                filter: Filter::Op(s("eq"), SingleVal(s("10"), None)),
+                filter: Filter::Op("eq", SingleVal(cow("10"), None)),
                 negate: false,
             }
         );
@@ -896,10 +1025,10 @@ mod tests {
                     operator: LogicOperator::And,
                     conditions: vec![Condition::Single {
                         field: Field {
-                            name: s("id"),
+                            name: "id",
                             json_path: None
                         },
-                        filter: Filter::Op(s("eq"), SingleVal(s("10"), None)),
+                        filter: Filter::Op("eq", SingleVal(cow("10"), None)),
                         negate: false,
                     },],
                 }
@@ -913,10 +1042,10 @@ mod tests {
                     operator: LogicOperator::And,
                     conditions: vec![Condition::Single {
                         field: Field {
-                            name: s("id"),
+                            name: "id",
                             json_path: None
                         },
-                        filter: Filter::Op(s("eq"), SingleVal(s("10"), None)),
+                        filter: Filter::Op("eq", SingleVal(cow("10"), None)),
                         negate: false,
                     },],
                 }

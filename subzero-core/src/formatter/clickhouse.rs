@@ -14,7 +14,7 @@ use crate::api::{
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn};
 use crate::error::{Result, *};
 use super::{ToParam, Snippet, SqlParam};
-
+use std::borrow::Cow;
 macro_rules! fmt_field_format {
     () => {
         "JSON_VALUE({}{}{}, '${}')"
@@ -473,6 +473,8 @@ mod tests {
     use regex::Regex;
     use crate::api::{ContentType::*};
     use super::*;
+    use std::borrow::Cow;
+    fn cow<'a>(s: &'a str) -> Cow<'a, str> { Cow::Borrowed(s) }
     macro_rules! param_placeholder_format {
         () => {
             "{{p{pos}:{data_type}}}"
@@ -512,7 +514,7 @@ mod tests {
                 where_: ConditionTree {
                     operator: And,
                     conditions: vec![Single {
-                        filter: Op(s(">="), SingleVal(s("5"), Some(s("Int32")))),
+                        filter: Op(s(">="), SingleVal(cow("5"), Some(cow("Int32")))),
                         field: Field {
                             name: s("id"),
                             json_path: None,
@@ -624,7 +626,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: Op(s(">"), SingleVal(s("50"), Some(s("Int32")))),
+                                        filter: Op(s(">"), SingleVal(cow("50"), Some(cow("Int32")))),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -632,7 +634,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: In(ListVal(vec![s("51"), s("52")], Some(s("Array(Int32)")))),
+                                        filter: In(ListVal(vec![cow("51"), cow("52")], Some(cow("Array(Int32)")))),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,

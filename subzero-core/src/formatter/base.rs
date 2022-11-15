@@ -222,12 +222,14 @@ pub fn fmt_query<'a>(
             order,
             ..
         } => {
-            let bb: &SqlParam = payload;
             let (params_cte, arg_frag): (Snippet<'a>, Snippet<'a>) = match &parameters {
-                CallParams::OnePosParam(_p) => (sql(" "), param(bb)),
+                CallParams::OnePosParam(_p) => {
+                    let bb: &SqlParam = payload;
+                    (sql(" "), param(bb))
+                },
                 CallParams::KeyParams(p) if p.len() == 0 => (sql(" "), sql("")),
                 CallParams::KeyParams(prms) => (
-                    fmt_body(&payload)
+                    fmt_body(payload)
                         + ", subzero_args as ( "
                         + "select * from json_to_recordset((select val from subzero_body)) as _("
                         + prms

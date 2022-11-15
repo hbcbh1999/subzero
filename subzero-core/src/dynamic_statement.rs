@@ -1,5 +1,6 @@
 use std::ops::Add;
 
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum SqlSnippetChunk<'a, T: ?Sized> {
     Sql(String),
@@ -141,7 +142,7 @@ macro_rules! param_placeholder_format {
 pub(super) use param_placeholder_format;
 #[allow(unused_macros)]
 macro_rules! generate_fn {
-    (@get_data_type $pp:ident false) => { &None };
+    (@get_data_type $pp:ident false) => { &None as &Option<Cow<str>>};
     (@get_data_type $pp:ident true) => { $pp.to_data_type() };
 
     (@generate $use_data_type:tt $default_data_type:tt) => {
@@ -156,8 +157,11 @@ macro_rules! generate_fn {
                             (sql, params, pos)
                         }
                         SqlSnippetChunk::Param(p) => {
-                            let data_type:&Option<&str> = generate_fn!(@get_data_type p $use_data_type);
-                            sql.push_str(format!(param_placeholder_format!(), pos=pos, data_type=data_type.clone().unwrap_or(default.as_str())).as_str());
+                            let data_type:&str = match generate_fn!(@get_data_type p $use_data_type) {
+                                Some(s) => &*s,
+                                None => &default,
+                            };
+                            sql.push_str(format!(param_placeholder_format!(), pos=pos, data_type=data_type).as_str());
                             params.push(p);
                             (sql, params, pos + 1)
                         }
