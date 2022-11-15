@@ -334,7 +334,7 @@ pub fn fmt_query<'a>(
         }
         Select {
             select,
-            from: (table, table_alias),
+            from: (table, table_alias_suffix),
             join_tables,
             where_,
             limit,
@@ -342,20 +342,22 @@ pub fn fmt_query<'a>(
             order,
             groupby,
         } => {
-            let (_qi, from_snippet) = match table_alias {
-                Some(a) => (
+            let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
+            let (_qi, from_snippet) = match table_alias.as_str() {
+                "" => (
+                    Qi(schema, table),
+                    fmt_qi(&Qi(schema, table)),
+                ),
+                a => (
                     Qi("", a),
                     // format!(
                     //     "{} as {}",
                     //     fmt_qi(&Qi(schema.clone(), table.clone())),
                     //     fmt_identity(&a)
                     // ),
-                    vec![fmt_qi(&Qi(schema, table)), fmt_identity(&a)].join(" as "),
+                    vec![fmt_qi(&Qi(schema, table)), fmt_identity(a)].join(" as "),
                 ),
-                None => (
-                    Qi(schema, table),
-                    fmt_qi(&Qi(schema, table)),
-                ),
+                
             };
             let qi = &_qi;
             let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi, s)).collect::<Result<Vec<_>>>()?;

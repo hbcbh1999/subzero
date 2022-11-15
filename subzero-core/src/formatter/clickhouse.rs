@@ -89,7 +89,7 @@ pub fn fmt_query<'a>(
     let (cte_snippet, query_snippet) = match &q.node {
         Select {
             select,
-            from: (table, table_alias),
+            from: (table, table_alias_suffix),
             join_tables,
             where_,
             limit,
@@ -97,12 +97,14 @@ pub fn fmt_query<'a>(
             order,
             groupby,
         } => {
-            let (_qi, from_snippet) = match table_alias {
-                Some(a) => (
+            let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
+            let (_qi, from_snippet) = match table_alias.as_str() {
+                "" => (Qi(schema, table), fmt_qi(&Qi(schema, table))),
+                a => (
                     Qi("", a),
                     format!("{} as {}", fmt_qi(&Qi(schema, table)), fmt_identity(a)),
                 ),
-                None => (Qi(schema, table), fmt_qi(&Qi(schema, table))),
+                
             };
             let qi = &_qi;
 

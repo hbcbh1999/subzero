@@ -175,7 +175,7 @@ pub fn fmt_query<'a>(
         }
         Select {
             select,
-            from: (table, table_alias),
+            from: (table, table_alias_suffix),
             join_tables,
             where_,
             limit,
@@ -183,12 +183,14 @@ pub fn fmt_query<'a>(
             order,
             groupby,
         } => {
-            let (qi, from_snippet) = match table_alias {
-                Some(a) => (
+            let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
+            let (qi, from_snippet) = match table_alias.as_str() {
+                "" => (Qi(schema, table), fmt_qi(&Qi(schema, table))),
+                a => (
                     Qi("", a),
                     format!("{} as {}", fmt_qi(&Qi(schema, table)), fmt_identity(a)),
                 ),
-                None => (Qi(schema, table), fmt_qi(&Qi(schema, table))),
+                
             };
             if select.iter().any(|s| matches!( s, Star)) {
                 return Err(Error::UnsupportedFeature {message: "'select *' not supported, use explicit select parameters".to_string()})

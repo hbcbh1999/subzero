@@ -133,8 +133,6 @@ pub enum CallParams<'a> {
     OnePosParam(ProcParam<'a>),
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Query<'a> {
     #[serde(borrow)]
@@ -217,33 +215,39 @@ impl<'a> Iterator for Iter<&'a Query<'a>> {
     }
 }
 
-impl<'a, 'b> Iterator for Iter<&'a mut Query<'b>> {
-    type Item = (Vec<String>, &'a mut QueryNode<'b>);
+impl<'a, 'b> Iterator for Iter<&'b mut Query<'a>> {
+    type Item = (Vec<String>, &'b mut QueryNode<'a>);
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
             (Some(current_path), Some(Query { node, sub_selects, .. })) => {
-                sub_selects.iter_mut().for_each(|SubSelect { query, .. }| {
+                // sub_selects.iter_mut().for_each(|SubSelect { query, .. }| {
                     
+                //     let mut p = current_path.clone();
+                //     p.push(query.node.name().to_string());
+                //     path.push_back(p);
+
+                //     stack.push_back(query);
+                // });
+                // let stack_extend = sub_selects.iter_mut().map(|SubSelect { query, .. }| query).collect::<Vec<_>>();
+                // stack_extend.into_iter().for_each(|q| stack.push_back(q));
+                // let path_extend = sub_selects.iter().map(
+                //     |SubSelect {
+                //          query: Query { node, .. }, ..
+                //      }| {
+                //         let mut p = current_path.clone();
+                //         p.push(node.name().to_string());
+                //         p
+                //     },
+                // ).collect::<Vec<_>>();
+                
+                // path.extend(path_extend);
+                sub_selects.iter_mut().for_each(|SubSelect { query, .. }| {
                     let mut p = current_path.clone();
                     p.push(query.node.name().to_string());
                     path.push_back(p);
-
                     stack.push_back(query);
                 });
-                let stack_extend = sub_selects.iter_mut().map(|SubSelect { query, .. }| query).collect::<Vec<_>>();
-                stack_extend.into_iter().for_each(|q| stack.push_back(q));
-                let path_extend = sub_selects.iter().map(
-                    |SubSelect {
-                         query: Query { node, .. }, ..
-                     }| {
-                        let mut p = current_path.clone();
-                        p.push(node.name().to_string());
-                        p
-                    },
-                ).collect::<Vec<_>>();
-                
-                path.extend(path_extend);
                 
                 Some((current_path, &mut *node))
             }
@@ -293,32 +297,39 @@ impl<'a> IntoIterator for Query<'a> {
     fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self])) }
 }
 
-impl<'a, R, F> Iterator for Visitor<'a, F>
-where
-    F: FnMut(Vec<String>, &'a mut Query<'a>) -> R,
-{
-    type Item = R;
-    fn next(&mut self) -> Option<Self::Item> {
-        let Self(path, stack, f) = self;
-        match (path.pop_front(), stack.pop_front()) {
-            (Some(current_path), Some(query)) => {
-                let r = (f)(current_path, query);
-                path.extend(query.sub_selects.iter().map(
-                    |SubSelect {
-                         query: Query { node, .. }, ..
-                     }| {
-                        let mut p = current_path.clone();
-                        p.push(node.name().to_string());
-                        p
-                    },
-                ));
-                stack.extend(query.sub_selects.iter_mut().map(|SubSelect { query, .. }| query));
-                Some(r)
-            }
-            _ => None,
-        }
-    }
-}
+// impl<'a, R, F> Iterator for Visitor<'a, F>
+// where
+//     F: FnMut(Vec<String>, &'a mut Query<'a>) -> R,
+// {
+//     type Item = R;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         let Self(path, stack, f) = self;
+//         match (path.pop_front(), stack.pop_front()) {
+//             (Some(current_path), Some(query)) => {
+                
+//                 query.sub_selects.iter_mut().for_each(|SubSelect { query, .. }| {
+//                     let mut p = current_path.clone();
+//                     p.push(query.node.name().to_string());
+//                     path.push_back(p);
+//                     stack.push_back(query);
+//                 });
+//                 let r = (f)(current_path, query);
+//                 // path.extend(query.sub_selects.iter().map(
+//                 //     |SubSelect {
+//                 //          query: Query { node, .. }, ..
+//                 //      }| {
+//                 //         let mut p = current_path.clone();
+//                 //         p.push(node.name().to_string());
+//                 //         p
+//                 //     },
+//                 // ));
+//                 // stack.extend(query.sub_selects.iter_mut().map(|SubSelect { query, .. }| query));
+//                 Some(r)
+//             }
+//             _ => None,
+//         }
+//     }
+// }
 
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -367,7 +378,7 @@ pub enum QueryNode<'a> {
         #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
         #[serde(borrow)]
-        from: (&'a str, /*alias*/ Option<Cow<'a, str>>),
+        from: (&'a str, /*alias_sufix*/ Option<&'a str>),
         #[serde(borrow)]
         join_tables: Vec<&'a str>,
         #[serde(borrow)]
@@ -453,15 +464,15 @@ impl<'a> QueryNode<'a> {
             | Self::FunctionCall { where_, .. } => where_,
         }
     }
-    pub fn where_as_mut(&mut self) -> &mut ConditionTree {
-        match self {
-            Self::Select { where_, .. }
-            | Self::Update { where_, .. }
-            | Self::Insert { where_, .. }
-            | Self::Delete { where_, .. }
-            | Self::FunctionCall { where_, .. } => where_,
-        }
-    }
+    // pub fn where_as_mut(&mut self) -> &mut ConditionTree {
+    //     match self {
+    //         Self::Select { where_, .. }
+    //         | Self::Update { where_, .. }
+    //         | Self::Insert { where_, .. }
+    //         | Self::Delete { where_, .. }
+    //         | Self::FunctionCall { where_, .. } => where_,
+    //     }
+    // }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
@@ -869,7 +880,7 @@ impl<'a, 'de: 'a> Deserialize<'de> for SingleVal<'a> {
         match v {
             JsonValue::String(s) => Ok(Self(Cow::Owned(s), None)),
             JsonValue::Object(o) => match (o.get("v"), o.get("t")) {
-                (Some(JsonValue::String(v)), Some(JsonValue::String(t))) => Ok(SingleVal(Cow::Owned(*v), Some(Cow::Owned(*t)))),
+                (Some(JsonValue::String(v)), Some(JsonValue::String(t))) => Ok(SingleVal(Cow::Owned(v.clone()), Some(Cow::Owned(t.clone())))),
                 _ => Err(serde::de::Error::custom("Invalid SingleVal")),
             },
             _ => Err(serde::de::Error::custom("Invalid SingleVal")),
@@ -914,7 +925,7 @@ impl<'a, 'de: 'a> Deserialize<'de> for ListVal<'a> {
         match v {
             JsonValue::Array(v) => Ok(Self(to_str_vec(&v), None)),
             JsonValue::Object(o) => match (o.get("v"), o.get("t")) {
-                (Some(JsonValue::Array(v)), Some(JsonValue::String(t))) => Ok(Self(to_str_vec(v), Some(Cow::Owned(*t)))),
+                (Some(JsonValue::Array(v)), Some(JsonValue::String(t))) => Ok(Self(to_str_vec(v), Some(Cow::Owned(t.clone())))),
                 _ => Err(serde::de::Error::custom("Invalid SingleVal")),
             },
             _ => Err(serde::de::Error::custom("Invalid SingleVal")),

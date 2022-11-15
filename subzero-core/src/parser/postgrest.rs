@@ -24,6 +24,7 @@ use nom::{
 use nom::{Err, error::{ErrorKind, Error as NomError}};
 type Parsed<'a, T> = IResult<&'a str, T>;
 const STAR: &str = "*";
+const ALIAS_SUFIXES: [&str; 10] = ["_0", "_1", "_2", "_3", "_4", "_5", "_6", "_7", "_8", "_9"];
 lazy_static! {
     // static ref STAR: String = "*".to_string();
     static ref OPERATORS: HashMap<&'static str, &'static str> = [
@@ -1693,10 +1694,17 @@ fn add_join_info<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str, db_schema: &
             ..
         } = &mut q.node
         {
-            let al = format!("{}_{}", child_table, depth);
+            //let al = format!("{}_{}", child_table, depth);
+            if depth > 9
+            {
+                return Err(Error::ParseRequestError{
+                    message: format!("Maximum depth of 10 exceeded. Please check your query for circular references."),
+                    details: format!("")
+                });
+            }
             let new_join:Join<'a> = db_schema.get_join(schema, parent_table, child_table, hint)?;
             if is_self_join(&new_join) {
-                *table_alias = Some(Cow::Owned(al));
+                *table_alias = Some(ALIAS_SUFIXES[depth as usize]);
             }
             match &new_join {
                 Parent(fk) if &fk.referenced_table.1 != child_table => {
@@ -1722,17 +1730,17 @@ fn add_join_info<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str, db_schema: &
 fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> Result<()> {
     let subzero_source = "subzero_source";
     
-    let parent_qi: Qi = match &query.node {
+    let (parent_qi_1, parent_qi_2):(&'a str, &'a str) = match &query.node {
         Select {
             from: (table, table_alias), ..
         } => match table_alias {
-            Some(a) => Qi("", a),
-            None => Qi(schema, *table),
+            Some(a) => ("", a),
+            None => (schema, *table),
         },
-        Insert { .. } => Qi("", subzero_source),
-        Update { .. } => Qi("", subzero_source),
-        Delete { .. } => Qi("", subzero_source),
-        FunctionCall { .. } => Qi("", subzero_source),
+        Insert { .. } => ("", subzero_source),
+        Update { .. } => ("", subzero_source),
+        Delete { .. } => ("", subzero_source),
+        FunctionCall { .. } => ("", subzero_source),
     };
     for SubSelect { query: q, join, .. } in query.sub_selects.iter_mut() {
         if let (Select { join_tables, .. }, Some(join)) = (&mut q.node, join) {
@@ -1751,7 +1759,7 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                                     json_path: None,
                                 },
                                 filter: Col(
-                                    Qi(parent_qi.0, parent_qi.1),
+                                    Qi(parent_qi_1, parent_qi_2),
                                     Field {
                                         name: *col,
                                         json_path: None,
@@ -1772,7 +1780,7 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                                     json_path: None,
                                 },
                                 filter: Col(
-                                    parent_qi.clone(),
+                                    Qi(parent_qi_1, parent_qi_2),
                                     Field {
                                         name: *ref_col,
                                         json_path: None,
@@ -1791,14 +1799,14 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                                 vec![],
                                 Foreign {
                                     left: (
-                                        parent_qi.clone(),
+                                        Qi(parent_qi_1, parent_qi_2),
                                         Field {
                                             name: *ref_col,
                                             json_path: None,
                                         },
                                     ),
                                     right: (
-                                        Qi(join_table.0.clone(), join_table.1.clone()),
+                                        Qi(join_table.0, join_table.1),
                                         Field {
                                             name: *col,
                                             json_path: None,
