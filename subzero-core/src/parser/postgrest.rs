@@ -128,8 +128,8 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
 
 
 #[allow(clippy::too_many_arguments)]
-pub fn parse<'a>(
-    schema: &'a str, root: &'a str, db_schema: &'a DbSchema<'a>, method: &'a str, path: &'a str, get: Vec<(&'a str, &'a str)>, body: Option<&'a str>,
+pub fn parse<'a, 'b>(
+    schema: &'a str, root: &'a str, db_schema: &'b DbSchema<'a>, method: &'a str, path: &'a str, get: Vec<(&'a str, &'a str)>, body: Option<&'a str>,
     headers: HashMap<&'a str, &'a str>, cookies: HashMap<&'a str, &'a str>, max_rows: Option<&'a str>,
 ) -> Result<ApiRequest<'a>> {
     //let body = body.map(|b| b.to_string());

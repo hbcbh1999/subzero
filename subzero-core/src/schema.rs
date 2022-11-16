@@ -313,23 +313,23 @@ impl<'a> DbSchema<'a> {
         }
     }
 
-    pub fn has_select_privileges(&self, role: &Role, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
+    pub fn has_select_privileges(&self, role: Role, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
         self.has_privileges(role, &Action::Select, current_schema, origin, columns)
     }
-    pub fn has_insert_privileges(&self, role: &Role, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
+    pub fn has_insert_privileges(&self, role: Role, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
         self.has_privileges(role, &Action::Insert, current_schema, origin, columns)
     }
-    pub fn has_update_privileges(&self, role: &Role, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
+    pub fn has_update_privileges(&self, role: Role, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
         self.has_privileges(role, &Action::Update, current_schema, origin, columns)
     }
-    pub fn has_delete_privileges(&self, role: &Role, current_schema: &str, origin: &str) -> Result<()> {
+    pub fn has_delete_privileges(&self, role: Role, current_schema: &str, origin: &str) -> Result<()> {
         self.has_privileges(role, &Action::Delete, current_schema, origin, &All)
     }
-    pub fn has_execute_privileges(&self, role: &Role, current_schema: &str, origin: &str) -> Result<()> {
+    pub fn has_execute_privileges(&self, role: Role, current_schema: &str, origin: &str) -> Result<()> {
         self.has_privileges(role, &Action::Execute, current_schema, origin, &All)
     }
 
-    fn has_privileges(&self, role: &Role, action: &Action, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
+    fn has_privileges(&self, role: Role, action: &Action, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
         debug!("has_privileges: {:?} {:?} {:?} {:?} {:?}", role, action, current_schema, origin, columns);
         let schema = self.schemas.get(current_schema).context(UnacceptableSchemaSnafu {
             schemas: vec![current_schema.to_owned()],

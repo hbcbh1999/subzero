@@ -1,7 +1,7 @@
 // use std::collections::HashMap;
 
 use r2d2::Pool;
-
+use std::borrow::Cow;
 use r2d2_sqlite::SqliteConnectionManager;
 use rocket::log::private::debug;
 use crate::config::{VhostConfig, SchemaStructure::*};
@@ -51,8 +51,9 @@ impl ToSql for WrapParam<'_> {
             //WrapParam(LV(ListVal(v, ..))) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
             WrapParam(LV(ListVal(v, ..))) => Ok(ToSqlOutput::Owned(Text(serde_json::to_string(v).unwrap_or_default()))),
             WrapParam(SV(SingleVal(v, ..))) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
-            WrapParam(TV(v)) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
-            WrapParam(PL(Payload(v, ..))) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
+            WrapParam(Str(v)) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
+            WrapParam(StrOwned(v)) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
+            WrapParam(PL(Payload(v, ..))) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
         }
     }
 }
@@ -249,7 +250,7 @@ fn execute(
                 0,
                 Condition::Single {
                     field: primary_key_field,
-                    filter: Filter::In(ListVal(ids.iter().map(|(i, _)| i.to_string()).collect(), None)),
+                    filter: Filter::In(ListVal(ids.iter().map(|(i, _)| Cow::Owned(i.to_string())).collect(), None)),
                     negate: false,
                 },
             );
@@ -402,15 +403,15 @@ fn execute(
     Ok(api_response)
 }
 
-pub struct SQLiteBackend {
+pub struct SQLiteBackend<'a> {
     //vhost: String,
     config: VhostConfig,
     pool: Pool<SqliteConnectionManager>,
-    db_schema: DbSchema,
+    db_schema: DbSchema<'a>,
 }
 
 #[async_trait]
-impl Backend for SQLiteBackend {
+impl<'a> Backend for SQLiteBackend<'a> {
     async fn init(_vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
         let db_file = config.db_uri.clone();

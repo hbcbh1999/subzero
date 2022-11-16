@@ -36,7 +36,7 @@ fn get_select_columns<'a>(select: &[SelectItem<'a>]) -> ColumnPermissions<'a> {
 }
 
 fn get_policies_for_relation<'a>(
-    object: &'a Object, action: Action, role: &'a Role<'a>, permissive_policies: &mut Vec<&'a Policy<'a>>, restrictive_policies: &mut Vec<&'a Policy<'a>>,
+    object: &'a Object, action: Action, role: Role<'a>, permissive_policies: &mut Vec<&'a Policy<'a>>, restrictive_policies: &mut Vec<&'a Policy<'a>>,
 ) {
     if let Some(policies) = object.permissions.policies.get(&(role, action.clone())) {
         for p in policies {
@@ -197,7 +197,7 @@ fn add_with_check_options<'a>(
 }
 
 fn get_row_security_policies<'a>(
-    rel: &'a Object<'a>, role: &'a Role<'a>, action: Action, apply_select_policies: bool, has_on_conflict_update: bool,
+    rel: &'a Object<'a>, role: Role<'a>, action: Action, apply_select_policies: bool, has_on_conflict_update: bool,
 ) -> (Option<Condition<'a>>, Option<Condition<'a>>) {
     let mut security_quals = vec![];
     let mut with_check_options = vec![];
@@ -443,7 +443,7 @@ fn get_row_security_policies<'a>(
     (security_qual_condition, with_check_option_condition)
 }
 
-pub fn insert_policy_conditions<'d: 'a, 'a>(db_schema: &'d DbSchema, current_schema: &'a str, role: &'a Role<'a>, query: &mut Query<'a>) -> Result<()> {
+pub fn insert_policy_conditions<'d: 'a, 'a>(db_schema: &'d DbSchema, current_schema: &'a str, role: Role<'a>, query: &mut Query<'a>) -> Result<()> {
     if !db_schema.use_internal_permissions {
         return Ok(());
     }
@@ -574,7 +574,7 @@ pub fn insert_policy_conditions<'d: 'a, 'a>(db_schema: &'d DbSchema, current_sch
     // Ok(())
 }
 
-pub fn check_privileges<'a>(db_schema: &'a DbSchema<'a>, current_schema: &'a str, user: &'a Role<'a>, request: &'a ApiRequest<'a>) -> Result<()> {
+pub fn check_privileges<'a>(db_schema: &'a DbSchema<'a>, current_schema: &'a str, user: Role<'a>, request: &'a ApiRequest<'a>) -> Result<()> {
     if db_schema.use_internal_permissions {
         for (_path, n) in &request.query {
             // check specific privileges for the node

@@ -49,11 +49,11 @@ fn get_current_timestamp() -> u64 {
 //     }
 // }
 
-fn get_env(role: Option<&String>, request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
+fn get_env(role: Option<&str>, request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
     let mut env = HashMap::new();
     let search_path = &[String::from(request.schema_name)];
     if let Some(r) = role {
-        env.insert("role".to_string(), r.clone());
+        env.insert("role".to_string(), r.to_string());
     }
 
     env.insert("request.method".to_string(), request.method.to_string());
@@ -63,7 +63,7 @@ fn get_env(role: Option<&String>, request: &ApiRequest, jwt_claims: &Option<Json
     env.insert("search_path".to_string(), search_path.join(", "));
     if use_legacy_gucs {
         if let Some(r) = role {
-            env.insert("request.jwt.claim.role".to_string(), r.clone());
+            env.insert("request.jwt.claim.role".to_string(), r.to_string());
         }
 
         env.extend(
@@ -216,17 +216,25 @@ pub async fn handle<'a>(
         }));
     }
 
+    //TODO!!!: eliminate the following 3 iterations
+    let max_rows = config.db_max_rows.iter().map(|m| m.to_string()).next();
+    let max_rows = max_rows.iter().map(|m| m.as_str()).next();
+    let db_allowed_select_functions = config.db_allowed_select_functions.iter().map(|m| m.as_str()).collect::<Vec<_>>();
+    let role = match role {
+        Some(r) => r,
+        None => "",
+    };
     // parse request and generate the query
     let mut request =
-        parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, config.db_max_rows).context(CoreSnafu)?;
+        parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, max_rows).context(CoreSnafu)?;
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
-    check_privileges(db_schema, schema_name, role.unwrap_or(&String::default()), &request).map_err(to_core_error)?;
-    check_safe_functions(&request, &config.db_allowed_select_functions).map_err(to_core_error)?;
-    insert_policy_conditions(db_schema, schema_name, role.unwrap_or(&String::default()), &mut request.query).map_err(to_core_error)?;
+    check_privileges(db_schema, schema_name, role, &request).map_err(to_core_error)?;
+    check_safe_functions(&request, &db_allowed_select_functions).map_err(to_core_error)?;
+    insert_policy_conditions(db_schema, schema_name, role, &mut request.query).map_err(to_core_error)?;
 
     // when using internal privileges not switch "current_role"
-    let env_role = if db_schema.use_internal_permissions { None } else { role };
+    let env_role = if db_schema.use_internal_permissions { None } else { Some(role) };
 
     let _env = get_env(env_role, &request, &jwt_claims, config.db_use_legacy_gucs);
     let env = _env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();

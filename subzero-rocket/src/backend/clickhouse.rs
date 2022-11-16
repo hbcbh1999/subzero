@@ -69,7 +69,8 @@ async fn execute(
             SV(SingleVal(v, _)) => v.to_string(),
             LV(ListVal(v, _)) => format!("[{}]", v.join(",")),
             PL(Payload(v, _)) => v.to_string(),
-            TV(v) => v.to_string(),
+            StrOwned(v) => v.clone(),
+            Str(v) => v.to_string(),
         };
         parameters.push((format!("param_p{}", k + 1), p));
     }
@@ -154,14 +155,14 @@ async fn execute(
     Ok(api_response)
 }
 
-pub struct ClickhouseBackend {
+pub struct ClickhouseBackend<'a> {
     config: VhostConfig,
     pool: Pool,
-    db_schema: DbSchema,
+    db_schema: DbSchema<'a>,
 }
 
 #[async_trait]
-impl Backend for ClickhouseBackend {
+impl<'a> Backend for ClickhouseBackend<'a> {
     async fn init(_vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
         let mgr = Manager { uri: config.db_uri.clone() };

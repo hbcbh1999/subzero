@@ -1,9 +1,11 @@
-use serde::{Serialize, Deserialize};
 use js_sys::{Array as JsArray};
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
+use ouroboros::self_referencing;
 use serde_wasm_bindgen::from_value as from_js_value;
 use serde_wasm_bindgen::to_value as to_js_value;
 use serde_wasm_bindgen::Error as JsError;
+use std::borrow::BorrowMut;
+use std::borrow::Cow;
 mod utils;
 use utils::{
     set_panic_hook,
@@ -34,45 +36,87 @@ use subzero_core::formatter::sqlite;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
+#[derive(Clone)]
+struct RequestData {
+    schema_name: String,
+    root: String,
+    method: String,
+    path: String,
+    get: Vec<(String, String)>,
+    body: Option<String>,
+    role: String,
+    headers: Vec<(String, String)>,
+    cookies: Vec<(String, String)>,
+    max_rows: Option<String>,
+}
+
 #[wasm_bindgen]
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Request {
+#[self_referencing]
+pub struct Request{
+    data: Box<RequestData>,
+    #[covariant]
+    #[borrows(data)]
+    inner: Result<R<'this>, JsError>,
+}
+#[derive(Clone)]
+pub struct R<'a> {
+    //data: &'a RequestData,
     schema_name: String,
     method: String,
-    query: Query,
+    query: Query<'a>,
     preferences: Option<Preferences>,
     accept_content_type: ContentType,
 }
 
-#[wasm_bindgen]
-#[derive(Serialize, Deserialize)]
-pub struct Backend {
-    db_schema: DbSchema,
+struct BackendData {
+    db_schema: String,
     db_type: String,
     allowed_select_functions: Vec<String>,
+}
+#[wasm_bindgen]
+#[self_referencing]
+pub struct Backend{
+    data: Box<BackendData>,
+    #[covariant]
+    #[borrows(data)]
+    inner: B<'this>,
+}
+
+pub struct B<'a> {
+    data: &'a Box<BackendData>,
+    db_schema: DbSchema<'a>,
+    db_type: &'a str,
+    allowed_select_functions: Vec<&'a str>,
 }
 
 #[wasm_bindgen]
 impl Backend {
     pub fn init(s: &str, dt: &str, allowed_select_functions: JsValue) -> Backend {
         set_panic_hook();
-        let db_schema = serde_json::from_str(s).expect("invalid schema json");
-        let db_type = dt.to_owned();
+        //let db_schema = serde_json::from_str(&s).expect("invalid schema json");
+        //let db_type = dt.to_owned();
         let allowed_select_functions = from_js_value::<Option<Vec<String>>>(allowed_select_functions).unwrap_or_default();
         let allowed_select_functions = match allowed_select_functions {
             Some(v) => v,
             None => DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
         };
-        Backend {
-            db_schema,
-            db_type,
-            allowed_select_functions,
-        }
+        Backend::new(
+            Box::new(BackendData{db_schema: s.to_owned(), db_type: dt.to_owned(), allowed_select_functions}), 
+            |data_ref| B {
+                data: data_ref,
+                db_schema: serde_json::from_str(data_ref.db_schema.as_str()).expect("invalid schema json"), 
+                db_type: data_ref.db_type.as_str(), 
+                allowed_select_functions: data_ref.allowed_select_functions.iter().map(|s| s.as_str()).collect(),
+            }
+        )
+        //Backend(B { db_schema, db_type, allowed_select_functions })
     }
-    pub fn set_schema(&mut self, s: &str) {
-        let schema = serde_json::from_str(s).expect("invalid schema json");
-        self.db_schema = schema
-    }
+    // pub fn set_schema(&mut self, s: &str){
+    //     self.with_inner_mut(|inner| {
+    //         inner.data.db_schema = s.to_owned();
+    //         inner.db_schema = serde_json::from_str(inner.data.db_schema.as_str()).expect("invalid schema json");
+    //     });
+    // }
     #[allow(clippy::too_many_arguments)]
     pub fn parse(
         &self, schema_name: &str, root: &str, method: &str, path: &str, get: JsValue, body: &str, role: &str, headers: JsValue, cookies: JsValue,
@@ -83,115 +127,166 @@ impl Backend {
         }
 
         let get = from_js_value::<Vec<(String, String)>>(get).map_err(cast_serde_err)?;
-        let get = get.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        
         let headers = from_js_value::<Vec<(String, String)>>(headers).map_err(cast_serde_err)?;
-        let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+        
         let cookies = from_js_value::<Vec<(String, String)>>(cookies).map_err(cast_serde_err)?;
-        let cookies = cookies.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let db_schema = &self.db_schema;
-        let schema_name_string = schema_name.to_owned();
+        
+        let backend_inner = self.borrow_inner();
+        let db_schema = &backend_inner.db_schema;
+        
         let role = role.to_owned();
-        let body = if body.is_empty() { None } else { Some(body) };
-        //let max_rows = None;
+        let body = if body.is_empty() { None } else { Some(body.to_owned()) };
+        let max_rows = match max_rows {
+            Some(v) => Some(v.to_string()),
+            None => None,
+        };
 
-        let mut rust_request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, max_rows).map_err(cast_core_err)?;
-        // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
-        // of the "authenticator" role unless the DbSchema has internal privileges set
+        Ok(Request::new(
+            Box::new(RequestData {
+                schema_name: schema_name.to_owned(),
+                root: root.to_owned(),
+                method: method.to_owned(),
+                path: path.to_owned(),
+                get,
+                body,
+                role,
+                headers,
+                cookies,
+                max_rows,
+            }),
+            |data_ref| {
+                match &**data_ref {
+                    RequestData {schema_name, root, method, path, get, body, headers, cookies, max_rows, role} => {
+                        let get = get.into_iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                        let headers = headers.into_iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                        let cookies = cookies.into_iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                        let mut rust_request = parse(
+                            schema_name,
+                            root,
+                            db_schema,
+                            method,
+                            path,
+                            get,
+                            body.iter().map(|s| s.as_str()).next(),
+                            headers,
+                            cookies,
+                            max_rows.iter().map(|s| s.as_str()).next(),
+                        ).map_err(cast_core_err)?;
 
-        check_privileges(db_schema, &schema_name_string, &role, &rust_request).map_err(cast_core_err)?;
-        check_safe_functions(&rust_request, &self.allowed_select_functions).map_err(cast_core_err)?;
-        insert_policy_conditions(db_schema, &schema_name_string, &role, &mut rust_request.query).map_err(cast_core_err)?;
+                        // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
+                        // of the "authenticator" role unless the DbSchema has internal privileges set
+                
+                        check_privileges(db_schema, &schema_name, &role, &rust_request).map_err(cast_core_err)?;
+                        check_safe_functions(&rust_request, &self.borrow_inner().allowed_select_functions).map_err(cast_core_err)?;
+                        insert_policy_conditions(db_schema, &schema_name, &role, &mut rust_request.query).map_err(cast_core_err)?;
+                
+                        Ok(R{
+                            //data: data_ref,
+                            method: rust_request.method.to_string(),
+                            schema_name: rust_request.schema_name.to_string(),
+                            query: rust_request.query,
+                            preferences: rust_request.preferences,
+                            accept_content_type: rust_request.accept_content_type,
+                        })
+                    }
+                }
+                
+                
+            }
+        ))
 
-        Ok(Request {
-            method: rust_request.method.to_string(),
-            schema_name: rust_request.schema_name.to_string(),
-            query: rust_request.query,
-            preferences: rust_request.preferences,
-            accept_content_type: rust_request.accept_content_type,
-        })
+        
     }
 
     pub fn fmt_main_query(&self, request: &Request, env: JsValue) -> Result<Vec<JsValue>, JsError> {
-        let db_type = self.db_type.as_str();
+        let db_type = self.borrow_inner().db_type;
         let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let (main_statement, main_parameters, _) = match db_type {
-            #[cfg(feature = "postgresql")]
-            "postgresql" => {
-                let query = postgresql::fmt_main_query_internal(
-                    request.schema_name.as_str(),
-                    &request.method,
-                    &request.accept_content_type,
-                    &request.query,
-                    &request.preferences,
-                    &env,
-                )
-                .map_err(cast_core_err)?;
-                Ok(postgresql::generate(query))
+        let (main_statement, main_parameters, _) = match request.borrow_inner() {
+            Ok(r) => {
+                match db_type {
+                    #[cfg(feature = "postgresql")]
+                    "postgresql" => {
+                        let query = postgresql::fmt_main_query_internal(
+                            r.schema_name.as_str(),
+                            &r.method,
+                            &r.accept_content_type,
+                            &r.query,
+                            &r.preferences,
+                            &env,
+                        )
+                        .map_err(cast_core_err)?;
+                        Ok(postgresql::generate(query))
+                    }
+                    #[cfg(feature = "clickhouse")]
+                    "clickhouse" => {
+                        let query = clickhouse::fmt_main_query_internal(
+                            r.schema_name.as_str(),
+                            &r.method,
+                            &r.accept_content_type,
+                            &r.query,
+                            &r.preferences,
+                            &env,
+                        )
+                        .map_err(cast_core_err)?;
+                        Ok(clickhouse::generate(query))
+                    }
+                    #[cfg(feature = "sqlite")]
+                    "sqlite" => {
+                        let query = sqlite::fmt_main_query_internal(
+                            r.schema_name.as_str(),
+                            &r.method,
+                            &r.accept_content_type,
+                            &r.query,
+                            &r.preferences,
+                            &env,
+                        )
+                        .map_err(cast_core_err)?;
+                        Ok(sqlite::generate(query))
+                    }
+                    _ => Err(JsError::new("unsupported database type")),
+                }
             }
-            #[cfg(feature = "clickhouse")]
-            "clickhouse" => {
-                let query = clickhouse::fmt_main_query_internal(
-                    request.schema_name.as_str(),
-                    &request.method,
-                    &request.accept_content_type,
-                    &request.query,
-                    &request.preferences,
-                    &env,
-                )
-                .map_err(cast_core_err)?;
-                Ok(clickhouse::generate(query))
-            }
-            #[cfg(feature = "sqlite")]
-            "sqlite" => {
-                let query = sqlite::fmt_main_query_internal(
-                    request.schema_name.as_str(),
-                    &request.method,
-                    &request.accept_content_type,
-                    &request.query,
-                    &request.preferences,
-                    &env,
-                )
-                .map_err(cast_core_err)?;
-                Ok(sqlite::generate(query))
-            }
-            _ => Err(JsError::new("unsupported database type")),
+            Err(e) => Err(*e),
         }?;
+        
         Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
     }
 
     pub fn fmt_sqlite_mutate_query(&self, original_request: &Request, env: JsValue) -> Result<Vec<JsValue>, JsError> {
-        let db_type = self.db_type.as_str();
+        let db_type = self.borrow_inner().db_type;
         let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         //sqlite does not support returining in CTEs so we must do a two step process
         let primary_key_column = "rowid"; //every table has this (TODO!!! check)
         let primary_key_field = Field {
-            name: primary_key_column.to_string(),
+            name: primary_key_column,
             json_path: None,
         };
 
         // create a clone of the request
-        let mut request: Request = original_request.clone();
+        let inner = original_request.borrow_inner().map_err(|e| e)?;
+        let mut request: R = inner.clone();
         let is_delete = matches!(request.query.node, Delete { .. });
 
         // eliminate the sub_selects and also select back
         match &mut request {
-            Request {
+            R {
                 query: Query {
                     sub_selects,
                     node: Insert { returning, select, .. },
                 },
                 ..
             }
-            | Request {
+            | R {
                 query: Query {
                     sub_selects,
                     node: Delete { returning, select, .. },
                 },
                 ..
             }
-            | Request {
+            | R {
                 query: Query {
                     sub_selects,
                     node: Update { returning, select, .. },
@@ -200,18 +295,18 @@ impl Backend {
             } => {
                 //return only the primary key column
                 returning.clear();
-                returning.push(primary_key_column.to_string());
+                returning.push(primary_key_column);
                 select.clear();
                 select.push(SelectItem::Simple {
                     field: primary_key_field,
-                    alias: Some(primary_key_column.to_string()),
+                    alias: Some(primary_key_column),
                     cast: None,
                 });
 
                 if !is_delete {
                     select.push(SelectItem::Simple {
                         field: Field {
-                            name: "_subzero_check__constraint".to_string(),
+                            name: "_subzero_check__constraint",
                             json_path: None,
                         },
                         alias: None,
@@ -245,13 +340,15 @@ impl Backend {
     }
 
     pub fn fmt_sqlite_second_stage_select(&self, original_request: &Request, ids: JsValue, env: JsValue) -> Result<Vec<JsValue>, JsError> {
-        let db_type = self.db_type.as_str();
+        let db_type = self.borrow_inner().db_type;
         let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         let ids = from_js_value::<Vec<String>>(ids).map_err(cast_serde_err)?;
         // create a clone of the request
-        let mut request: Request = original_request.clone();
-        match &original_request.query {
+        let inner = original_request.borrow_inner().map_err(|e| e)?;
+        let mut request: R = inner.clone();
+        
+        match &inner.query {
             Query {
                 node: Insert {
                     into: table, where_, select, ..
@@ -270,7 +367,7 @@ impl Backend {
             } => {
                 let primary_key_column = "rowid"; //every table has this (TODO!!! check)
                 let primary_key_field = Field {
-                    name: primary_key_column.to_string(),
+                    name: primary_key_column,
                     json_path: None,
                 };
 
@@ -280,7 +377,7 @@ impl Backend {
                     0,
                     Condition::Single {
                         field: primary_key_field,
-                        filter: Filter::In(ListVal(ids, None)),
+                        filter: Filter::In(ListVal(ids.into_iter().map(Cow::Owned).collect(), None)),
                         negate: false,
                     },
                 );
@@ -288,7 +385,7 @@ impl Backend {
                 // set the request query to be a select
                 request.query = Query {
                     node: Select {
-                        from: (table.to_owned(), Some("subzero_source".to_string())),
+                        from: (table.to_owned(), Some("subzero_source")),
                         join_tables: vec![], //todo!! this should probably not be empty
                         where_: select_where,
                         select: select.to_vec(),
@@ -331,7 +428,8 @@ fn parameters_to_js_array(rust_parameters: Vec<&(dyn ToParam + Sync)>) -> JsArra
             LV(ListVal(v, _)) => to_js_value(&serde_json::to_string(v).unwrap_or_default()).unwrap_or_default(),
             SV(SingleVal(v, _)) => to_js_value(&v).unwrap_or_default(),
             PL(Payload(v, _)) => to_js_value(&v).unwrap_or_default(),
-            TV(v) => to_js_value(&v).unwrap_or_default(),
+            Str(v) => to_js_value(&v).unwrap_or_default(),
+            StrOwned(v) => to_js_value(&v).unwrap_or_default(),
         };
         parameters.set(i as u32, v);
     }

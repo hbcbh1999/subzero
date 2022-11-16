@@ -39,15 +39,19 @@ impl ToSql for WrapParam<'_> {
     fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
         match self {
             WrapParam(SV(SingleVal(v, ..))) => {
-                out.put_slice(v.as_str().as_bytes());
+                out.put_slice(v.as_bytes());
                 Ok(IsNull::No)
             }
-            WrapParam(TV(v)) => {
+            WrapParam(Str(v)) => {
+                out.put_slice(v.as_bytes());
+                Ok(IsNull::No)
+            }
+            WrapParam(StrOwned(v)) => {
                 out.put_slice(v.as_bytes());
                 Ok(IsNull::No)
             }
             WrapParam(PL(Payload(v, ..))) => {
-                out.put_slice(v.as_str().as_bytes());
+                out.put_slice(v.as_bytes());
                 Ok(IsNull::No)
             }
             WrapParam(LV(ListVal(v, ..))) => {
@@ -205,15 +209,15 @@ async fn execute(
     Ok(api_response)
 }
 
-pub struct PostgreSQLBackend {
+pub struct PostgreSQLBackend<'a> {
     //vhost: String,
     config: VhostConfig,
     pool: Pool,
-    db_schema: DbSchema,
+    db_schema: DbSchema<'a>,
 }
 
 #[async_trait]
-impl Backend for PostgreSQLBackend {
+impl<'a> Backend for PostgreSQLBackend<'a> {
     async fn init(vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
         let pg_uri = config.db_uri.clone();

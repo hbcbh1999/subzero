@@ -16,8 +16,8 @@ pub enum Param<'a> {
     LV(&'a ListVal<'a>),
     SV(&'a SingleVal<'a>),
     PL(&'a Payload<'a>),
-    s(&'a str),
-    S(&'a String),
+    Str(&'a str),
+    StrOwned(&'a String),
 }
 // helper type aliases
 pub trait ToParam: fmt::Debug {
@@ -45,12 +45,12 @@ impl<'a> ToParam for SingleVal<'a> {
 }
 
 impl<'a> ToParam for &'a str {
-    fn to_param(&self) -> Param { Param::s(self) }
+    fn to_param(&self) -> Param { Param::Str(self) }
     fn to_data_type(&self) -> &Option<Cow<str>> { &None }
 }
 
 impl<'a> ToParam for String {
-    fn to_param(&self) -> Param { Param::S(self) }
+    fn to_param(&self) -> Param { Param::StrOwned(self) }
     fn to_data_type(&self) -> &Option<Cow<str>> { &None }
 }
 
