@@ -8,19 +8,25 @@ use crate::error::*;
 use crate::schema::{ObjectType::*, PgType::*, ProcReturnType::*, *};
 
 // use csv::{Reader, StringRecord, ByteRecord};
-use serde_json::{value::{RawValue as JsonRawValue}};
+use serde_json::{
+    value::{RawValue as JsonRawValue},
+};
 use snafu::{OptionExt, ResultExt};
 
 use nom::{
-    IResult, error::ParseError,
+    IResult,
+    error::ParseError,
     combinator::{peek, recognize, eof, map, map_res, opt, value},
     sequence::{delimited, terminated, preceded, tuple},
-    bytes::complete::{tag,  is_not},
+    bytes::complete::{tag, is_not},
     character::complete::{multispace0, char, alpha1, digit1, one_of},
-    multi::{many1, separated_list1, },
+    multi::{many1, separated_list1},
     branch::{alt},
 };
-use nom::{Err, error::{ErrorKind}};
+use nom::{
+    Err,
+    error::{ErrorKind},
+};
 //use nom::error::Error as NomError;
 type Parsed<'a, T> = IResult<&'a str, T>;
 const STAR: &str = "*";
@@ -63,7 +69,7 @@ lazy_static! {
 }
 
 fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Option<Vec<&'a str>>) -> Result<(Vec<&'a str>, &'a str)> {
-    let (columns, body) =  match (content_type, columns_param) {
+    let (columns, body) = match (content_type, columns_param) {
         (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((c, _body)),
         (ApplicationJSON, None) | (SingularJSON, None) => {
             // first nonempty char in body
@@ -81,7 +87,9 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
                     };
                     Ok(columns)
                 }
-                _ => Err(Error::InvalidBody { message: "Failed to parse json body".to_string()}),
+                _ => Err(Error::InvalidBody {
+                    message: "Failed to parse json body".to_string(),
+                }),
             }?;
             Ok((columns, _body))
         }
@@ -125,8 +133,6 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
     Ok((columns, body))
 }
 
-
-
 #[allow(clippy::too_many_arguments)]
 pub fn parse<'a>(
     schema: &'a str, root: &'a str, db_schema: &'a DbSchema<'a>, method: &'a str, path: &'a str, get: Vec<(&'a str, &'a str)>, body: Option<&'a str>,
@@ -144,8 +150,8 @@ pub fn parse<'a>(
     let mut orders = vec![];
     let mut groupbys = vec![];
     let mut conditions = vec![];
-    let mut columns_:Option<Vec<&str>> = None;
-    let mut on_conflict_:Option<Vec<&str>> = None;
+    let mut columns_: Option<Vec<&str>> = None;
+    let mut on_conflict_: Option<Vec<&str>> = None;
     //let mut
     let mut fn_arguments = vec![];
     let accept_content_type = match headers.get("accept") {
@@ -232,7 +238,7 @@ pub fn parse<'a>(
                 //     .message("failed to parser logic tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let (tp, n, lo):(Vec<&str>, bool, LogicOperator) = todo!();
+                let (tp, n, lo): (Vec<&str>, bool, LogicOperator) = todo!();
 
                 let ns = if n { "not." } else { "" };
                 let los = if lo == And { "and" } else { "or" };
@@ -291,7 +297,7 @@ pub fn parse<'a>(
                 //     .message("failed to parser filter tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let (tp, field):(Vec<&str>, Field) = todo!();
+                let (tp, field): (Vec<&str>, Field) = todo!();
                 let data_type = root_obj.columns.get(field.name).map(|c| c.data_type);
                 match root_obj.kind {
                     Function { .. } => {
@@ -390,7 +396,7 @@ pub fn parse<'a>(
             let required_params: HashSet<&str> = HashSet::from_iter(parameters.iter().filter(|p| p.required).map(|p| p.name));
             let all_params: HashSet<&str> = HashSet::from_iter(parameters.iter().map(|p| p.name));
             let (parameter_values, params) = match (method, _body) {
-                ("GET",None) => {
+                ("GET", None) => {
                     let mut args: HashMap<&str, ParamValue> = HashMap::new();
                     for (n, v) in fn_arguments {
                         if let Some(&p) = parameters_map.get(n) {
@@ -443,11 +449,11 @@ pub fn parse<'a>(
                     let params = match (parameters.len(), parameters.get(0)) {
                         (1, Some(p)) if p.name.is_empty() && (p.type_ == "json" || p.type_ == "jsonb") => CallParams::OnePosParam(p.clone()),
                         _ => {
-                            let json_payload:HashMap<&str, &JsonRawValue> = match (payload.len(), content_type) {
+                            let json_payload: HashMap<&str, &JsonRawValue> = match (payload.len(), content_type) {
                                 (0, _) => serde_json::from_str("{}").context(JsonDeserializeSnafu),
                                 (_, _) => serde_json::from_str(payload).context(JsonDeserializeSnafu),
                             }?;
-                            let argument_keys:Vec<&str> = match columns_ {
+                            let argument_keys: Vec<&str> = match columns_ {
                                 None => json_payload.keys().copied().collect(),
                                 Some(c) => json_payload.keys().copied().filter(|k| c.contains(k)).collect(),
                             };
@@ -486,7 +492,6 @@ pub fn parse<'a>(
                     //CallParams::KeyParams(vec![]),
                     payload: Payload(Cow::Owned(payload), None),
                     //parameter_values,
-
                     is_scalar: matches!(return_type, One(Scalar) | SetOf(Scalar)),
                     returns_single: match return_type {
                         One(_) => true,
@@ -590,7 +595,7 @@ pub fn parse<'a>(
                 sub_selects,
             };
             add_join_info(&mut q, schema, db_schema, 0)?;
-            
+
             Ok(q)
         }
         ("DELETE", _, None) => {
@@ -607,7 +612,7 @@ pub fn parse<'a>(
                 sub_selects,
             };
             add_join_info(&mut q, schema, db_schema, 0)?;
-            
+
             Ok(q)
         }
         ("PATCH", _, Some(_body)) => {
@@ -636,7 +641,7 @@ pub fn parse<'a>(
                 sub_selects,
             };
             add_join_info(&mut q, schema, db_schema, 0)?;
-            
+
             Ok(q)
         }
         ("PUT", _, Some(_body)) => {
@@ -694,7 +699,7 @@ pub fn parse<'a>(
                 sub_selects,
             };
             add_join_info(&mut q, schema, db_schema, 0)?;
-            
+
             Ok(q)
         }
         _ => Err(Error::UnsupportedVerb),
@@ -755,7 +760,7 @@ pub fn parse<'a>(
     // if let Some(max_str) = max_rows {
     //     let max = max_str.parse::<u32>().unwrap_or(1000);
     //     for (_, node) in &mut query {
-            
+
     //         let limit = match node {
     //             FunctionCall { limit, .. } => limit,
     //             Select { limit, .. } => limit,
@@ -772,8 +777,7 @@ pub fn parse<'a>(
     //         }
     //     }
     // }
-    
-    
+
     Ok(ApiRequest {
         schema_name: schema,
         read_only: matches!(method, "GET"),
@@ -789,7 +793,7 @@ pub fn parse<'a>(
 }
 
 // enforce max rows
-fn enforce_max_rows<'a>(query: &'a mut Query<'a>, max_rows: Option<&'a str>){
+fn enforce_max_rows<'a>(query: &'a mut Query<'a>, max_rows: Option<&'a str>) {
     if let Some(max_str) = max_rows {
         let max = max_str.parse::<u32>().unwrap_or(1000);
         for (_, node) in query {
@@ -813,7 +817,7 @@ fn enforce_max_rows<'a>(query: &'a mut Query<'a>, max_rows: Option<&'a str>){
 }
 
 // replace star with all columns
-fn replace_start<'a, 'b: 'a>(query: &'b mut Query<'a>, schema_obj: &Schema<'a>)-> Result<()> {
+fn replace_start<'a, 'b: 'a>(query: &'b mut Query<'a>, schema_obj: &Schema<'a>) -> Result<()> {
     for (_, node) in query {
         let (select, o_table_name) = match node {
             Select {
@@ -836,13 +840,12 @@ fn replace_start<'a, 'b: 'a>(query: &'b mut Query<'a>, schema_obj: &Schema<'a>)-
                 }
             });
             if star_removed {
-                let table_obj = schema_obj.objects.get(table_name).context(NotFoundSnafu { target: table_name.to_string() })?;
+                let table_obj = schema_obj.objects.get(table_name).context(NotFoundSnafu {
+                    target: table_name.to_string(),
+                })?;
                 for col in table_obj.columns.keys() {
                     select.push(SelectItem::Simple {
-                        field: Field {
-                            name: *col,
-                            json_path: None,
-                        },
+                        field: Field { name: *col, json_path: None },
                         alias: None,
                         cast: None,
                     });
@@ -853,7 +856,6 @@ fn replace_start<'a, 'b: 'a>(query: &'b mut Query<'a>, schema_obj: &Schema<'a>)-
     Ok(())
 }
 
-
 // // parser functions
 // fn lex<Input, P>(p: P) -> impl Parser<Input, Output = P::Output>
 // where
@@ -863,11 +865,13 @@ fn replace_start<'a, 'b: 'a>(query: &'b mut Query<'a>, schema_obj: &Schema<'a>)-
 //     p.skip(spaces())
 // }
 
-/// A combinator that takes a parser `inner` and produces a parser that also consumes both leading and 
+/// A combinator that takes a parser `inner` and produces a parser that also consumes both leading and
 /// trailing whitespace, returning the output of `inner`.
 fn ws<'a, F: 'a, O, E: ParseError<&'a str>>(inner: F) -> impl FnMut(&'a str) -> IResult<&'a str, O, E>
-where F: FnMut(&'a str) -> IResult<&'a str, O, E> {
-    delimited(multispace0,inner,multispace0)
+where
+    F: FnMut(&'a str) -> IResult<&'a str, O, E>,
+{
+    delimited(multispace0, inner, multispace0)
 }
 
 //done
@@ -885,11 +889,9 @@ where F: FnMut(&'a str) -> IResult<&'a str, O, E> {
 //         .map(|words: Vec<String>| words.join("-")),
 //     )))
 // }
-fn dash(i: &str) -> Parsed<&str> { terminated(tag("-"), peek(is_not(">")))(i)}
+fn dash(i: &str) -> Parsed<&str> { terminated(tag("-"), peek(is_not(">")))(i) }
 
-fn field_name(i: &str) -> Parsed<&str> {
-    recognize(separated_list1(dash, many1(alt((alpha1, digit1, tag("_") )))))(i)
-}
+fn field_name(i: &str) -> Parsed<&str> { recognize(separated_list1(dash, many1(alt((alpha1, digit1, tag("_"))))))(i) }
 
 //done
 // fn function_name<Input>() -> impl Parser<Input, Output = String>
@@ -906,9 +908,7 @@ fn field_name(i: &str) -> Parsed<&str> {
 //         .map(|words: Vec<String>| words.join("-")),
 //     )))
 // }
-fn function_name(i: &str) -> Parsed<&str> {
-    recognize(separated_list1(dash, many1(alt((alpha1, digit1, tag("_") )))))(i)
-}
+fn function_name(i: &str) -> Parsed<&str> { recognize(separated_list1(dash, many1(alt((alpha1, digit1, tag("_"))))))(i) }
 
 //done
 // fn quoted_value<Input>() -> impl Parser<Input, Output = String>
@@ -918,14 +918,7 @@ fn function_name(i: &str) -> Parsed<&str> {
 //     between(char('"'), char('"'), many(choice((none_of("\\\"".chars()), char('\\').and(any()).map(|(_, c)| c)))))
 // }
 
-fn quoted_value(i: &str) -> Parsed<&str> {
-    delimited(
-        char('"'), 
-        is_not("\""),
-        char('"')
-    )(i)
-}
-
+fn quoted_value(i: &str) -> Parsed<&str> { delimited(char('"'), is_not("\""), char('"'))(i) }
 
 //done
 // fn field<Input>() -> impl Parser<Input, Output = Field>
@@ -934,9 +927,7 @@ fn quoted_value(i: &str) -> Parsed<&str> {
 // {
 //     field_name().and(optional(json_path())).map(|(name, json_path)| Field { name, json_path })
 // }
-fn field(i: &str) -> Parsed<Field> {
-    map(tuple((field_name, opt(json_path))), |(name, json_path)| Field { name, json_path })(i) 
-}
+fn field(i: &str) -> Parsed<Field> { map(tuple((field_name, opt(json_path))), |(name, json_path)| Field { name, json_path })(i) }
 
 //done
 // fn json_path<Input>() -> impl Parser<Input, Output = Vec<JsonOperation>>
@@ -959,24 +950,21 @@ fn field(i: &str) -> Parsed<Field> {
 //     //many1(arrow.and(operand.and(end)).map(|((arrow,(operand,_)))| arrow(operand)))
 //     many1(arrow.and(operand).map(|(arrow, operand)| arrow(operand)))
 // }
-fn arrow(i: &str) -> Parsed<&str> {
-    alt((tag("->>"), tag("->")))(i)
-}
+fn arrow(i: &str) -> Parsed<&str> { alt((tag("->>"), tag("->")))(i) }
 fn json_path(i: &str) -> Parsed<Vec<JsonOperation>> {
-    many1(map(tuple((arrow, json_operand)), |(a, o)|
-        match a {
-            "->>" => JsonOperation::J2Arrow(o),
-            "->" => JsonOperation::JArrow(o),
-            &_ => unreachable!("error parsing json path"),
-        }
-    ))(i)
+    many1(map(tuple((arrow, json_operand)), |(a, o)| match a {
+        "->>" => JsonOperation::J2Arrow(o),
+        "->" => JsonOperation::JArrow(o),
+        &_ => unreachable!("error parsing json path"),
+    }))(i)
 }
 fn signed_number(i: &str) -> Parsed<&str> {
-    recognize(preceded(opt(char('-')), terminated(digit1, peek(alt((tag("->"), tag("::"), tag("."), tag(","), eof))))))(i)
+    recognize(preceded(
+        opt(char('-')),
+        terminated(digit1, peek(alt((tag("->"), tag("::"), tag("."), tag(","), eof)))),
+    ))(i)
 }
-fn json_operand(i: &str) -> Parsed<JsonOperand> {
-    alt((map(signed_number, |i| JsonOperand::JIdx(i) ), map(field_name, JsonOperand::JKey)))(i)
-}
+fn json_operand(i: &str) -> Parsed<JsonOperand> { alt((map(signed_number, |i| JsonOperand::JIdx(i)), map(field_name, JsonOperand::JKey)))(i) }
 //done
 // fn alias_separator<Input>() -> impl Parser<Input, Output = char>
 // where
@@ -998,9 +986,7 @@ fn alias_separator(i: &str) -> Parsed<&str> {
 //         .and(alias_separator())
 //         .map(|(a, _)| a)
 // }
-fn alias(i: &str) -> Parsed<&str> {
-    terminated(recognize(many1(alt((alpha1,digit1,recognize(one_of("@._")))))),alias_separator)(i)
-}
+fn alias(i: &str) -> Parsed<&str> { terminated(recognize(many1(alt((alpha1, digit1, recognize(one_of("@._")))))), alias_separator)(i) }
 
 //done
 // fn cast<Input>() -> impl Parser<Input, Output = String>
@@ -1009,9 +995,7 @@ fn alias(i: &str) -> Parsed<&str> {
 // {
 //     string("::").and(many1(choice((letter(), digit())))).map(|(_, c)| c)
 // }
-fn cast(i: &str) -> Parsed<&str> {
-    preceded(tag("::"), recognize(many1(alt((alpha1, digit1)))))(i)
-}
+fn cast(i: &str) -> Parsed<&str> { preceded(tag("::"), recognize(many1(alt((alpha1, digit1)))))(i) }
 
 //done
 // fn dot<Input>() -> impl Parser<Input, Output = char>
@@ -1020,10 +1004,7 @@ fn cast(i: &str) -> Parsed<&str> {
 // {
 //     char('.')
 // }
-fn dot(i: &str) -> Parsed<&str> {
-    tag(".")(i)
-}
-
+fn dot(i: &str) -> Parsed<&str> { tag(".")(i) }
 
 // fn tree_path<Input>() -> impl Parser<Input, Output = (Vec<String>, Field)>
 // where
@@ -1045,9 +1026,7 @@ fn dot(i: &str) -> Parsed<&str> {
 //             }
 //         })
 // }
-fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> {
-    todo!()
-}
+fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> { todo!() }
 
 // fn logic_tree_path<Input>() -> impl Parser<Input, Output = (Vec<String>, bool, LogicOperator)>
 // where
@@ -1074,9 +1053,7 @@ fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> {
 //         None => panic!("failed to parse logic tree path"),
 //     })
 // }
-fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> {
-    todo!()
-}
+fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> { todo!() }
 
 // fn select<Input>() -> impl Parser<Input, Output = Vec<SelectKind>>
 // where
@@ -1084,9 +1061,7 @@ fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> {
 // {
 //     sep_by1(select_item(), lex(char(','))).skip(eof())
 // }
-fn select(i: &str) -> Parsed<Vec<SelectKind>> {
-    todo!()
-}
+fn select(i: &str) -> Parsed<Vec<SelectKind>> { todo!() }
 
 //done
 // fn columns<Input>() -> impl Parser<Input, Output = Vec<String>>
@@ -1095,9 +1070,7 @@ fn select(i: &str) -> Parsed<Vec<SelectKind>> {
 // {
 //     sep_by1(field_name(), lex(char(','))).skip(eof())
 // }
-fn columns(i: &str) -> Parsed<Vec<&str>> {
-    terminated(separated_list1(tag(","), ws(field_name)),eof)(i)
-}
+fn columns(i: &str) -> Parsed<Vec<&str>> { terminated(separated_list1(tag(","), ws(field_name)), eof)(i) }
 
 //done
 // fn on_conflict<Input>() -> impl Parser<Input, Output = Vec<String>>
@@ -1106,9 +1079,7 @@ fn columns(i: &str) -> Parsed<Vec<&str>> {
 // {
 //     sep_by1(field_name(), lex(char(','))).skip(eof())
 // }
-fn on_conflict(i: &str) -> Parsed<Vec<&str>> {
-    terminated(separated_list1(tag(","), ws(field_name)),eof)(i)
-}
+fn on_conflict(i: &str) -> Parsed<Vec<&str>> { terminated(separated_list1(tag(","), ws(field_name)), eof)(i) }
 
 // fn function_param<Input>() -> impl Parser<Input, Output = FunctionParam>
 // where
@@ -1122,9 +1093,7 @@ fn on_conflict(i: &str) -> Parsed<Vec<&str>> {
 //             .map(|(v, c)| FunctionParam::Val(SingleVal(v, c.clone()), c))
 //     )
 // }
-fn function_param(i: &str) -> Parsed<FunctionParam> {
-    todo!()
-}
+fn function_param(i: &str) -> Parsed<FunctionParam> { todo!() }
 
 // We need to use `parser!` to break the recursive use of `function_call` to prevent the returned parser from containing itself
 // fn function_call<Input>() -> impl Parser<Input, Output = (String, Vec<FunctionParam>)>
@@ -1146,9 +1115,7 @@ fn function_param(i: &str) -> Parsed<FunctionParam> {
 //         .map(|(_, fn_name, parameters)| (fn_name,parameters))
 //     }
 // }
-fn function_call(i: &str) -> Parsed<(String, Vec<FunctionParam>)> {
-    todo!()
-}
+fn function_call(i: &str) -> Parsed<(String, Vec<FunctionParam>)> { todo!() }
 
 // We need to use `parser!` to break the recursive use of `select_item` to prevent the returned parser from containing itself
 // #[inline]
@@ -1226,9 +1193,7 @@ fn function_call(i: &str) -> Parsed<(String, Vec<FunctionParam>)> {
 //         )
 //     }
 // }
-fn select_item(i: &str) -> Parsed<SelectKind> {
-    todo!()
-}
+fn select_item(i: &str) -> Parsed<SelectKind> { todo!() }
 
 //done
 // fn single_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (String, Option<String>)>
@@ -1242,12 +1207,9 @@ fn select_item(i: &str) -> Parsed<SelectKind> {
 fn single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<SingleVal> {
     let v = match data_type {
         Some(dt) => SingleVal(Cow::Borrowed(i), Some(Cow::Borrowed(*dt))),
-        None => SingleVal(Cow::Borrowed(i), None)
+        None => SingleVal(Cow::Borrowed(i), None),
     };
-    Ok((
-        "",
-        v
-    ))
+    Ok(("", v))
 }
 
 //done
@@ -1269,9 +1231,7 @@ fn integer(i: &str) -> Parsed<(&str, Option<&str>)> {
 // {
 //     integer()
 // }
-fn limit(i: &str) -> Parsed<(&str, Option<&str>)> {
-    integer(i)
-}
+fn limit(i: &str) -> Parsed<(&str, Option<&str>)> { integer(i) }
 
 //done
 // fn offset<Input>() -> impl Parser<Input, Output = SingleVal>
@@ -1280,9 +1240,7 @@ fn limit(i: &str) -> Parsed<(&str, Option<&str>)> {
 // {
 //     integer()
 //}
-fn offset(i: &str) -> Parsed<(&str, Option<&str>)> {
-    integer(i)
-}
+fn offset(i: &str) -> Parsed<(&str, Option<&str>)> { integer(i) }
 
 // fn logic_single_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (String, Option<String>)>
 // where
@@ -1296,9 +1254,7 @@ fn offset(i: &str) -> Parsed<(&str, Option<&str>)> {
 //     ))
 //     .map(move |v| (v, dt.clone()))
 // }
-fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<SingleVal> {
-    todo!()
-}
+fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<SingleVal> { todo!() }
 
 // fn list_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (Vec<String>, Option<String>)>
 // where
@@ -1307,9 +1263,7 @@ fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<
 //     let dt = data_type.as_ref().map(|v| format!("Array({})", v)); //TODO!!! this is hardcoded for clickhouse
 //     lex(between(lex(char('(')), lex(char(')')), sep_by(list_element(), lex(char(','))))).map(move |v| (v, dt.clone()))
 // }
-fn list_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<ListVal> {
-    todo!()
-}
+fn list_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<ListVal> { todo!() }
 
 // fn list_element<Input>() -> impl Parser<Input, Output = String>
 // where
@@ -1317,9 +1271,7 @@ fn list_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<ListVal>
 // {
 //     attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))).or(many1(none_of(",)".chars())))
 // }
-fn list_element(i: &str) -> Parsed<&str> {
-    todo!()
-}
+fn list_element(i: &str) -> Parsed<&str> { todo!() }
 
 //done
 // fn operator<Input>() -> impl Parser<Input, Output = String>
@@ -1332,12 +1284,10 @@ fn list_element(i: &str) -> Parsed<&str> {
 //     })
 // }
 fn operator(i: &str) -> Parsed<&str> {
-    map_res(alpha1, |o: &str|
-        match OPERATORS.get(o) {
-            Some(&op) => Ok(op),
-            None => Err(Err::Error(("unknown operator", ErrorKind::Fail)))
-        }
-    )(i)
+    map_res(alpha1, |o: &str| match OPERATORS.get(o) {
+        Some(&op) => Ok(op),
+        None => Err(Err::Error(("unknown operator", ErrorKind::Fail))),
+    })(i)
 }
 
 //done
@@ -1351,12 +1301,10 @@ fn operator(i: &str) -> Parsed<&str> {
 //     })
 // }
 fn fts_operator(i: &str) -> Parsed<&str> {
-    map_res(alpha1, |o: &str|
-        match FTS_OPERATORS.get(o) {
-            Some(&op) => Ok(op),
-            None => Err(Err::Error(("unknown fts operator", ErrorKind::Fail)))
-        }
-    )(i)
+    map_res(alpha1, |o: &str| match FTS_OPERATORS.get(o) {
+        Some(&op) => Ok(op),
+        None => Err(Err::Error(("unknown fts operator", ErrorKind::Fail))),
+    })(i)
 }
 
 // fn negatable_filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (bool, Filter)>
@@ -1367,9 +1315,7 @@ fn fts_operator(i: &str) -> Parsed<&str> {
 //         .and(filter(data_type))
 //         .map(|(n, f)| (n.is_some(), f))
 // }
-fn negatable_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<(bool, Filter)> {
-    todo!()
-}
+fn negatable_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<(bool, Filter)> { todo!() }
 
 //TODO! filter and logic_filter parsers should be combined, they differ only in single_value parser type
 // fn filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
@@ -1408,9 +1354,7 @@ fn negatable_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<(b
 //     ))
 //     .and_then(|r| r)
 // }
-fn filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> {
-    todo!()
-}
+fn filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> { todo!() }
 
 // fn logic_filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
 // where
@@ -1448,9 +1392,7 @@ fn filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> {
 //     ))
 //     .and_then(|v| v)
 // }
-fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> {
-    todo!()
-}
+fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> { todo!() }
 
 //done
 // fn order<Input>() -> impl Parser<Input, Output = Vec<OrderTerm>>
@@ -1463,15 +1405,22 @@ fn order(i: &str) -> Parsed<Vec<OrderTerm>> {
     terminated(
         separated_list1(
             tag(","),
-            ws(
-                map(tuple((
+            ws(map(
+                tuple((
                     field,
-                    opt(preceded(dot, alt((value(OrderDirection::Asc, tag("asc")), value(OrderDirection::Desc, tag("desc")))))),
-                    opt(preceded(dot, alt((value(OrderNulls::NullsFirst, tag("nullsfirst")), value(OrderNulls::NullsLast, tag("nullslast")))))),
-                )), |(term, direction, null_order)| OrderTerm{term,direction,null_order})
-            )
+                    opt(preceded(
+                        dot,
+                        alt((value(OrderDirection::Asc, tag("asc")), value(OrderDirection::Desc, tag("desc")))),
+                    )),
+                    opt(preceded(
+                        dot,
+                        alt((value(OrderNulls::NullsFirst, tag("nullsfirst")), value(OrderNulls::NullsLast, tag("nullslast")))),
+                    )),
+                )),
+                |(term, direction, null_order)| OrderTerm { term, direction, null_order },
+            )),
         ),
-        eof
+        eof,
     )(i)
 }
 
@@ -1504,12 +1453,7 @@ fn order(i: &str) -> Parsed<Vec<OrderTerm>> {
 // {
 //     sep_by1(groupby_term(), lex(char(','))).skip(eof())
 // }
-fn groupby(i: &str) -> Parsed<Vec<Field>> {
-    terminated(
-        separated_list1(tag(","), ws(field)),
-        eof
-    )(i)
-}
+fn groupby(i: &str) -> Parsed<Vec<Field>> { terminated(separated_list1(tag(","), ws(field)), eof)(i) }
 
 //done
 // fn groupby_term<Input>() -> impl Parser<Input, Output = GroupByTerm>
@@ -1555,10 +1499,7 @@ fn groupby(i: &str) -> Parsed<Vec<Field>> {
 //     // ))
 // }
 
-fn content_type(i: &str) -> Parsed<ContentType> {
-    todo!()
-}
-
+fn content_type(i: &str) -> Parsed<ContentType> { todo!() }
 
 // fn preferences<Input>() -> impl Parser<Input, Output = Preferences>
 // where
@@ -1605,9 +1546,7 @@ fn content_type(i: &str) -> Parsed<ContentType> {
 //     })
 // }
 
-fn preferences(i: &str) -> Parsed<Preferences> {
-    todo!()
-}
+fn preferences(i: &str) -> Parsed<Preferences> { todo!() }
 
 // fn logic_condition<Input>() -> impl Parser<Input, Output = Condition>
 // where
@@ -1647,9 +1586,7 @@ fn preferences(i: &str) -> Parsed<Preferences> {
 //     }
 // }
 
-fn logic_condition(i: &str) -> Parsed<Condition> {
-    todo!()
-}
+fn logic_condition(i: &str) -> Parsed<Condition> { todo!() }
 
 // helper functions
 fn split_select(select: Vec<SelectKind>) -> (Vec<SelectItem>, Vec<SubSelect>) {
@@ -1675,11 +1612,20 @@ fn is_self_join(join: &Join) -> bool {
 fn add_join_info<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str, db_schema: &'a DbSchema<'a>, depth: u16) -> Result<()> {
     let dummy_source = "subzero_source";
     let (parent_table, returning, select): (&'a str, Option<&'b mut Vec<&'a str>>, &'b mut Vec<SelectItem<'a>>) = match &mut query.node {
-        Select { from: (table, _),  select, .. } => (*table, None, select),
+        Select {
+            from: (table, _), select, ..
+        } => (*table, None, select),
         Insert { into, returning, select, .. } => (*into, Some(returning), select),
         Delete { from, returning, select, .. } => (*from, Some(returning), select),
-        Update { table, returning, select, .. } => (*table, Some(returning), select),
-        FunctionCall { return_table_type, returning, select, .. } => match return_table_type {
+        Update {
+            table, returning, select, ..
+        } => (*table, Some(returning), select),
+        FunctionCall {
+            return_table_type,
+            returning,
+            select,
+            ..
+        } => match return_table_type {
             Some(q) => (q.1, Some(returning), select),
             None => (dummy_source, Some(returning), select),
         },
@@ -1695,14 +1641,13 @@ fn add_join_info<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str, db_schema: &
         } = &mut q.node
         {
             //let al = format!("{}_{}", child_table, depth);
-            if depth > 9
-            {
-                return Err(Error::ParseRequestError{
+            if depth > 9 {
+                return Err(Error::ParseRequestError {
                     message: "Maximum depth of 10 exceeded. Please check your query for circular references.".to_string(),
-                    details: String::new()
+                    details: String::new(),
                 });
             }
-            let new_join:Join<'a> = db_schema.get_join(schema, parent_table, child_table, hint)?;
+            let new_join: Join<'a> = db_schema.get_join(schema, parent_table, child_table, hint)?;
             if is_self_join(&new_join) {
                 *table_alias = Some(ALIAS_SUFIXES[depth as usize]);
             }
@@ -1719,18 +1664,18 @@ fn add_join_info<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str, db_schema: &
             add_join_info(q, schema, db_schema, depth + 1)?;
         }
     }
-    
+
     if let Some(r) = returning {
         r.extend(get_returning(select, &query.sub_selects)?);
     }
-    
+
     Ok(())
 }
 
 fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> Result<()> {
     let subzero_source = "subzero_source";
-    
-    let (parent_qi_1, parent_qi_2):(&'a str, &'a str) = match &query.node {
+
+    let (parent_qi_1, parent_qi_2): (&'a str, &'a str) = match &query.node {
         Select {
             from: (table, table_alias), ..
         } => match table_alias {
@@ -1758,13 +1703,7 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                                     name: ref_col,
                                     json_path: None,
                                 },
-                                filter: Col(
-                                    Qi(parent_qi_1, parent_qi_2),
-                                    Field {
-                                        name: col,
-                                        json_path: None,
-                                    },
-                                ),
+                                filter: Col(Qi(parent_qi_1, parent_qi_2), Field { name: col, json_path: None }),
                                 negate: false,
                             },
                         )
@@ -1775,10 +1714,7 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                         (
                             vec![],
                             Single {
-                                field: Field {
-                                    name: col,
-                                    json_path: None,
-                                },
+                                field: Field { name: col, json_path: None },
                                 filter: Col(
                                     Qi(parent_qi_1, parent_qi_2),
                                     Field {
@@ -1805,13 +1741,7 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                                             json_path: None,
                                         },
                                     ),
-                                    right: (
-                                        Qi(join_table.0, join_table.1),
-                                        Field {
-                                            name: col,
-                                            json_path: None,
-                                        },
-                                    ),
+                                    right: (Qi(join_table.0, join_table.1), Field { name: col, json_path: None }),
                                 },
                             )
                         })
@@ -1825,13 +1755,7 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                                             name: ref_col,
                                             json_path: None,
                                         },
-                                        filter: Col(
-                                            Qi(join_table.0, join_table.1),
-                                            Field {
-                                                name: col,
-                                                json_path: None,
-                                            },
-                                        ),
+                                        filter: Col(Qi(join_table.0, join_table.1), Field { name: col, json_path: None }),
                                         negate: false,
                                     },
                                 )
@@ -2057,7 +1981,7 @@ fn get_returning<'a>(selects: &[SelectItem<'a>], sub_selects: &[SubSelect<'a>]) 
 //                                         "columns":[
 //                                             { "name":"task_id", "data_type":"int", "primary_key":true },
 //                                             { "name":"user_id", "data_type":"int", "primary_key":true }
-                                            
+
 //                                         ],
 //                                         "foreign_keys":[
 //                                             {

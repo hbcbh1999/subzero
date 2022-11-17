@@ -12,9 +12,6 @@ use std::path::Path;
 // use log::{debug};
 use ouroboros::self_referencing;
 
-
-
-
 #[cfg(feature = "clickhouse")]
 pub mod clickhouse;
 #[cfg(feature = "postgresql")]
@@ -81,7 +78,7 @@ pub struct DbSchemaWrap {
     schema_string: String,
     #[covariant]
     #[borrows(schema_string)]
-    schema: Result<DbSchema<'this>>
+    schema: Result<DbSchema<'this>>,
 }
 
 #[cfg(test)]

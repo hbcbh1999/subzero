@@ -419,8 +419,13 @@ impl Backend for SQLiteBackend {
         let pool = Pool::builder().max_size(config.db_pool as u32).build(manager).unwrap();
 
         //read db schema
-        let db_schema:DbSchemaWrap = match config.db_schema_structure.clone() {
-            SqlFile(f) => match fs::read_to_string(vec![&f, &format!("sqlite_{}", f)].into_iter().find(|f| Path::new(f).exists()).unwrap_or(&f)) {
+        let db_schema: DbSchemaWrap = match config.db_schema_structure.clone() {
+            SqlFile(f) => match fs::read_to_string(
+                vec![&f, &format!("sqlite_{}", f)]
+                    .into_iter()
+                    .find(|f| Path::new(f).exists())
+                    .unwrap_or(&f),
+            ) {
                 Ok(q) => match pool.get() {
                     Ok(conn) => task::block_in_place(|| {
                         let authenticated = false;
@@ -431,13 +436,12 @@ impl Backend for SQLiteBackend {
                         match rows.next().context(SqliteDbSnafu { authenticated })? {
                             Some(r) => {
                                 //println!("json db_schema: {}", r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?.as_str());
-                                let s:String = r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?;
-                                Ok(DbSchemaWrap::new(
-                                   s,
-                                    |s| serde_json::from_str::<DbSchema>(s.as_str())
+                                let s: String = r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?;
+                                Ok(DbSchemaWrap::new(s, |s| {
+                                    serde_json::from_str::<DbSchema>(s.as_str())
                                         .context(JsonDeserializeSnafu)
                                         .context(CoreSnafu)
-                                ))
+                                }))
                             }
                             None => Err(Error::Internal {
                                 message: "sqlite structure query did not return any rows".to_string(),
@@ -449,24 +453,22 @@ impl Backend for SQLiteBackend {
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(&f) {
-                Ok(s) => Ok(DbSchemaWrap::new(
-                            s,
-                            |s| serde_json::from_str::<DbSchema>(s.as_str())
-                                .context(JsonDeserializeSnafu)
-                                .context(CoreSnafu)
-                        )),
+                Ok(s) => Ok(DbSchemaWrap::new(s, |s| {
+                    serde_json::from_str::<DbSchema>(s.as_str())
+                        .context(JsonDeserializeSnafu)
+                        .context(CoreSnafu)
+                })),
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => Ok(DbSchemaWrap::new(
-                                s,
-                                |s| serde_json::from_str::<DbSchema>(s.as_str())
-                                    .context(JsonDeserializeSnafu)
-                                    .context(CoreSnafu)
-                            )),
+            JsonString(s) => Ok(DbSchemaWrap::new(s, |s| {
+                serde_json::from_str::<DbSchema>(s.as_str())
+                    .context(JsonDeserializeSnafu)
+                    .context(CoreSnafu)
+            })),
         }?;
-        if let Err(e) =  db_schema.with_schema(|s| s.as_ref()) {
+        if let Err(e) = db_schema.with_schema(|s| s.as_ref()) {
             let message = format!("Backend init failed: {}", e);
-            return Err( crate::Error::Internal { message });
+            return Err(crate::Error::Internal { message });
         }
         Ok(SQLiteBackend { config, pool, db_schema })
     }

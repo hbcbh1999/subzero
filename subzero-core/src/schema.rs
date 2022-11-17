@@ -7,7 +7,6 @@ use std::iter::FromIterator;
 use log::debug;
 use ColumnPermissions::*;
 
-
 pub type Role<'a> = &'a str;
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -197,7 +196,7 @@ impl<'a> DbSchema<'a> {
                                         origin: origin.to_owned(),
                                         target: target.to_owned(),
                                         rel_hint: rel_hint(&joins),
-                                        compressed_rel: joins.iter().map(compressed_rel).collect()
+                                        compressed_rel: joins.iter().map(compressed_rel).collect(),
                                     })
                                 }
 
@@ -220,9 +219,7 @@ impl<'a> DbSchema<'a> {
                                     .foreign_keys
                                     .iter()
                                     .filter(|&fk| {
-                                        fk.referenced_table.0 == current_schema
-                                            && fk.referenced_table.1 == target
-                                            && fk.table != fk.referenced_table
+                                        fk.referenced_table.0 == current_schema && fk.referenced_table.1 == target && fk.table != fk.referenced_table
                                     })
                                     .map(|fk| Parent(fk.clone()))
                                     .collect::<Vec<_>>();
@@ -248,9 +245,8 @@ impl<'a> DbSchema<'a> {
                                             let product = fks1
                                                 .iter()
                                                 .flat_map(|&fk1| {
-                                                    fks2.iter().map(move |&fk2| {
-                                                        Many(Qi(current_schema, join_table.name), fk1.clone(), fk2.clone())
-                                                    })
+                                                    fks2.iter()
+                                                        .map(move |&fk2| Many(Qi(current_schema, join_table.name), fk1.clone(), fk2.clone()))
                                                 })
                                                 .collect::<Vec<Join>>();
                                             product
@@ -275,7 +271,7 @@ impl<'a> DbSchema<'a> {
                                         origin: origin.to_owned(),
                                         target: target.to_owned(),
                                         rel_hint: rel_hint(&joins),
-                                        compressed_rel: joins.iter().map(compressed_rel).collect()
+                                        compressed_rel: joins.iter().map(compressed_rel).collect(),
                                     })
                                 }
                             }
@@ -304,7 +300,7 @@ impl<'a> DbSchema<'a> {
                                 origin: origin.to_owned(),
                                 target: target.to_owned(),
                                 rel_hint: rel_hint(&joins),
-                                compressed_rel: joins.iter().map(compressed_rel).collect()
+                                compressed_rel: joins.iter().map(compressed_rel).collect(),
                             })
                         }
                     }
@@ -336,10 +332,7 @@ impl<'a> DbSchema<'a> {
         })?;
         let origin_table = schema.objects.get(origin).context(UnknownRelationSnafu { relation: origin.to_owned() })?;
         let grants = &origin_table.permissions.grants;
-        let all_privileges = [
-            grants.get(&(role, action.clone())),
-            grants.get(&("public", action.clone())),
-        ];
+        let all_privileges = [grants.get(&(role, action.clone())), grants.get(&("public", action.clone()))];
         let column_permissions = match all_privileges {
             [Some(Specific(a)), Some(Specific(b))] => Ok(Specific(a.iter().chain(b.iter()).cloned().collect::<Vec<_>>())),
             [Some(All), _] | [_, Some(All)] => Ok(All),
@@ -676,15 +669,12 @@ where
 
 // }
 
-fn deserialize_vec_procparam<'de: 'a, 'a,  D>(deserializer: D) -> Result<Vec<ProcParam<'a>>, D::Error>
+fn deserialize_vec_procparam<'de: 'a, 'a, D>(deserializer: D) -> Result<Vec<ProcParam<'a>>, D::Error>
 where
     D: Deserializer<'de>,
 {
     #[derive(Deserialize)]
-    struct Wrapper<'a>(
-        #[serde(borrow, with = "ProcParamDef")]
-        ProcParam<'a>
-    );
+    struct Wrapper<'a>(#[serde(borrow, with = "ProcParamDef")] ProcParam<'a>);
 
     let v = Vec::deserialize(deserializer)?;
     Ok(v.into_iter().map(|Wrapper(a)| a).collect())
@@ -880,7 +870,7 @@ mod tests {
     use std::borrow::Cow;
     fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
     fn s(s: &str) -> String { s.to_string() }
-    
+
     #[test]
     fn deserialize_db_schema() {
         let db_schema = DbSchema {
@@ -971,10 +961,7 @@ mod tests {
                                             name: None,
                                             restrictive: false,
                                             using: Some(vec![Condition::Single {
-                                                field: Field {
-                                                    name: "id",
-                                                    json_path: None,
-                                                },
+                                                field: Field { name: "id", json_path: None },
                                                 filter: Filter::Op("eq", SingleVal(cow("10"), Some(cow("int")))),
                                                 negate: false,
                                             }]),
@@ -988,7 +975,6 @@ mod tests {
                         ),
                     ]
                     .into_iter()
-                    
                     .collect(),
                     join_tables: [].iter().cloned().collect(),
                 },
@@ -1116,10 +1102,7 @@ mod tests {
 
     #[test]
     fn serialize_conditions() {
-        let field = Field {
-            name: "id",
-            json_path: None,
-        };
+        let field = Field { name: "id", json_path: None };
         let negate = false;
         let conditions = vec![
             Single {

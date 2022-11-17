@@ -1,6 +1,5 @@
 use std::ops::Add;
 
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum SqlSnippetChunk<'a, T: ?Sized> {
     Sql(String),

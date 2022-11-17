@@ -96,9 +96,7 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
                 .join(",")
         }
 }
-async fn execute(
-    pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, config: &VhostConfig,
-) -> Result<ApiResponse> {
+async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, config: &VhostConfig) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(PgDbPoolSnafu)?;
     let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu)?);
 
@@ -243,7 +241,7 @@ impl Backend for PostgreSQLBackend {
             .unwrap();
 
         //read db schema
-        let db_schema:DbSchemaWrap = match config.db_schema_structure.clone() {
+        let db_schema: DbSchemaWrap = match config.db_schema_structure.clone() {
             SqlFile(f) => match fs::read_to_string(
                 vec![&f, &format!("postgresql_{}", f)]
                     .into_iter()
@@ -267,12 +265,11 @@ impl Backend for PostgreSQLBackend {
                                 transaction.commit().await.context(PgDbSnafu { authenticated })?;
                                 //println!("db schema loaded: {}", rows[0].get::<usize, &str>(0));
                                 let s: String = rows[0].get(0);
-                                Ok(DbSchemaWrap::new(
-                                    s,
-                                    |s| serde_json::from_str::<DbSchema>(s.as_str())
+                                Ok(DbSchemaWrap::new(s, |s| {
+                                    serde_json::from_str::<DbSchema>(s.as_str())
                                         .context(JsonDeserializeSnafu)
                                         .context(CoreSnafu)
-                                ))
+                                }))
                             }
                             Err(e) => {
                                 transaction.rollback().await.context(PgDbSnafu { authenticated })?;
@@ -285,25 +282,23 @@ impl Backend for PostgreSQLBackend {
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(&f) {
-                Ok(s) => Ok(DbSchemaWrap::new(
-                            s,
-                            |s| serde_json::from_str::<DbSchema>(s.as_str())
-                                .context(JsonDeserializeSnafu)
-                                .context(CoreSnafu)
-                        )),
+                Ok(s) => Ok(DbSchemaWrap::new(s, |s| {
+                    serde_json::from_str::<DbSchema>(s.as_str())
+                        .context(JsonDeserializeSnafu)
+                        .context(CoreSnafu)
+                })),
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => Ok(DbSchemaWrap::new(
-                                s,
-                                |s| serde_json::from_str::<DbSchema>(s.as_str())
-                                    .context(JsonDeserializeSnafu)
-                                    .context(CoreSnafu)
-                            )),
+            JsonString(s) => Ok(DbSchemaWrap::new(s, |s| {
+                serde_json::from_str::<DbSchema>(s.as_str())
+                    .context(JsonDeserializeSnafu)
+                    .context(CoreSnafu)
+            })),
         }?;
 
-        if let Err(e) =  db_schema.with_schema(|s| s.as_ref()) {
+        if let Err(e) = db_schema.with_schema(|s| s.as_ref()) {
             let message = format!("Backend init failed: {}", e);
-            return Err( crate::Error::Internal { message });
+            return Err(crate::Error::Internal { message });
         }
 
         Ok(PostgreSQLBackend { config, pool, db_schema })

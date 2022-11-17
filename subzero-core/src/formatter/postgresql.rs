@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
-use crate::error::{Result, Error,};
+use crate::error::{Result, Error};
 
 use super::{ToParam, Snippet, SqlParam};
 generate_fn!();
@@ -55,7 +55,6 @@ mod tests {
     fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
     generate_fn!();
     fn s(s: &str) -> &str { s }
-    
 
     #[test]
     fn test_fmt_function_query() {

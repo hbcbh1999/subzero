@@ -30,7 +30,12 @@ pub enum Error {
     NoRelBetween { origin: String, target: String },
 
     #[snafu(display("AmbiguousRelBetween {} {} {:?}", origin, target, rel_hint))]
-    AmbiguousRelBetween { origin: String, target: String, rel_hint: String, compressed_rel: JsonValue },
+    AmbiguousRelBetween {
+        origin: String,
+        target: String,
+        rel_hint: String,
+        compressed_rel: JsonValue,
+    },
 
     #[snafu(display("InvalidFilters"))]
     InvalidFilters,
@@ -184,7 +189,12 @@ impl Error {
                         origin, target
                     )
             }),
-            Error::AmbiguousRelBetween { origin, target, rel_hint, compressed_rel } => json!({
+            Error::AmbiguousRelBetween {
+                origin,
+                target,
+                rel_hint,
+                compressed_rel,
+            } => json!({
                 "details": compressed_rel, //relations.iter().map(compressed_rel).collect::<JsonValue>(),
                 "hint":     format!("Try changing '{}' to one of the following: {}. Find the desired relationship in the 'details' key.",target, rel_hint),
                 "message":  format!("Could not embed because more than one relationship was found for '{}' and '{}'", origin, target),

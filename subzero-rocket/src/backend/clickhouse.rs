@@ -169,7 +169,7 @@ impl Backend for ClickhouseBackend {
         let pool = Pool::builder(mgr).max_size(config.db_pool).build().unwrap();
 
         //read db schema
-        let db_schema:DbSchemaWrap = match config.db_schema_structure.clone() {
+        let db_schema: DbSchemaWrap = match config.db_schema_structure.clone() {
             SqlFile(f) => match fs::read_to_string(
                 vec![&f, &format!("clickhouse_{}", f)]
                     .into_iter()
@@ -221,37 +221,34 @@ impl Backend for ClickhouseBackend {
                         //println!("json schema:\n{:?}", s);
                         //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;
                         //println!("schema {:?}", schema);
-                        Ok(DbSchemaWrap::new(
-                            s,
-                            |s| serde_json::from_str::<DbSchema>(s.as_str())
+                        Ok(DbSchemaWrap::new(s, |s| {
+                            serde_json::from_str::<DbSchema>(s.as_str())
                                 .context(JsonDeserializeSnafu)
                                 .context(CoreSnafu)
-                        ))
+                        }))
                     }
                     Err(e) => Err(e).context(ClickhouseDbPoolSnafu),
                 },
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonFile(f) => match fs::read_to_string(&f) {
-                Ok(s) => Ok(DbSchemaWrap::new(
-                    s,
-                    |s| serde_json::from_str::<DbSchema>(s.as_str())
+                Ok(s) => Ok(DbSchemaWrap::new(s, |s| {
+                    serde_json::from_str::<DbSchema>(s.as_str())
                         .context(JsonDeserializeSnafu)
                         .context(CoreSnafu)
-                )),
+                })),
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => Ok(DbSchemaWrap::new(
-                s,
-                |s| serde_json::from_str::<DbSchema>(s.as_str())
+            JsonString(s) => Ok(DbSchemaWrap::new(s, |s| {
+                serde_json::from_str::<DbSchema>(s.as_str())
                     .context(JsonDeserializeSnafu)
                     .context(CoreSnafu)
-            )),
+            })),
         }?;
 
-        if let Err(e) =  db_schema.with_schema(|s| s.as_ref()) {
+        if let Err(e) = db_schema.with_schema(|s| s.as_ref()) {
             let message = format!("Backend init failed: {}", e);
-            return Err( crate::Error::Internal { message });
+            return Err(crate::Error::Internal { message });
         }
 
         Ok(ClickhouseBackend { config, pool, db_schema })

@@ -32,7 +32,6 @@ pub fn fmt_main_query_internal<'a>(
     schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
     env: &'a HashMap<&'a str, &'a str>,
 ) -> Result<Snippet<'a>> {
-    
     let _count = match preferences {
         Some(Preferences {
             count: Some(Count::ExactCount),
@@ -99,11 +98,7 @@ pub fn fmt_query<'a>(
             let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
             let (_qi, from_snippet) = match table_alias.as_str() {
                 "" => (Qi(schema, table), fmt_qi(&Qi(schema, table))),
-                a => (
-                    Qi("", a),
-                    format!("{} as {}", fmt_qi(&Qi(schema, table)), fmt_identity(a)),
-                ),
-                
+                a => (Qi("", a), format!("{} as {}", fmt_qi(&Qi(schema, table)), fmt_identity(a))),
             };
             let qi = &_qi;
 
@@ -175,15 +170,16 @@ pub fn fmt_query<'a>(
                     let mut uniques = HashSet::new();
                     let mut terms = pks
                         .iter()
-                        .map(|&c| {
-                            GroupByTerm(Field {
-                                name: c,
-                                json_path: None,
-                            })
-                        })
+                        .map(|&c| GroupByTerm(Field { name: c, json_path: None }))
                         // append the other selected fields to the groupby
                         .chain(select.iter().filter_map(|s| match s {
-                            Simple { field: Field {name, json_path}, .. } => Some(GroupByTerm(Field {name, json_path: json_path.clone()})),
+                            Simple {
+                                field: Field { name, json_path },
+                                ..
+                            } => Some(GroupByTerm(Field {
+                                name,
+                                json_path: json_path.clone(),
+                            })),
                             _ => None,
                         }))
                         .collect::<Vec<_>>();
@@ -201,14 +197,7 @@ pub fn fmt_query<'a>(
                     + if add_env_tbl_to_from { ", env " } else { "" }
                     + " "
                     + if !join_tables.is_empty() {
-                        format!(
-                            ", {}",
-                            join_tables
-                                .iter()
-                                .map(|f| fmt_qi(&Qi(schema, f)))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        )
+                        format!(", {}", join_tables.iter().map(|f| fmt_qi(&Qi(schema, f))).collect::<Vec<_>>().join(", "))
                     } else {
                         String::new()
                     }

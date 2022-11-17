@@ -39,7 +39,7 @@ pub(super) use cast_select_item_format;
 #[allow(unused_macros)]
 macro_rules! fmt_main_query_internal { () => {
 pub fn fmt_main_query_internal<'a>(schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
-    
+
     let count = match preferences {
         Some(Preferences {
             count: Some(Count::ExactCount),
@@ -357,7 +357,7 @@ pub fn fmt_query<'a>(
                     // ),
                     vec![fmt_qi(&Qi(schema, table)), fmt_identity(a)].join(" as "),
                 ),
-                
+
             };
             let qi = &_qi;
             let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi, s)).collect::<Result<Vec<_>>>()?;
@@ -843,9 +843,10 @@ macro_rules! fmt_condition {
                     left: (l_qi, l_fld),
                     right: (r_qi, r_fld),
                 } =>
-                    //sql(format!("{} = {}", fmt_field(l_qi, l_fld)?, fmt_field(r_qi, r_fld)?)),
-                    sql(fmt_field(l_qi, l_fld)? + " = " + fmt_field(r_qi, r_fld)?.as_str()),
-                
+                //sql(format!("{} = {}", fmt_field(l_qi, l_fld)?, fmt_field(r_qi, r_fld)?)),
+                {
+                    sql(fmt_field(l_qi, l_fld)? + " = " + fmt_field(r_qi, r_fld)?.as_str())
+                }
 
                 Group { negate, tree } => {
                     if *negate {

@@ -52,7 +52,7 @@ struct RequestData {
 
 #[wasm_bindgen]
 #[self_referencing]
-pub struct Request{
+pub struct Request {
     data: Box<RequestData>,
     #[covariant]
     #[borrows(data)]
@@ -75,7 +75,7 @@ struct BackendData {
 }
 #[wasm_bindgen]
 #[self_referencing]
-pub struct Backend{
+pub struct Backend {
     data: Box<BackendData>,
     #[covariant]
     #[borrows(data)]
@@ -101,13 +101,17 @@ impl Backend {
             None => DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
         };
         Backend::new(
-            Box::new(BackendData{db_schema, db_type, allowed_select_functions}), 
+            Box::new(BackendData {
+                db_schema,
+                db_type,
+                allowed_select_functions,
+            }),
             |data_ref| B {
                 data: data_ref,
-                db_schema: serde_json::from_str(data_ref.db_schema.as_str()).expect("invalid schema json"), 
-                db_type: data_ref.db_type.as_str(), 
+                db_schema: serde_json::from_str(data_ref.db_schema.as_str()).expect("invalid schema json"),
+                db_type: data_ref.db_type.as_str(),
                 allowed_select_functions: data_ref.allowed_select_functions.iter().map(|s| s.as_str()).collect(),
-            }
+            },
         )
         //Backend(B { db_schema, db_type, allowed_select_functions })
     }
@@ -119,22 +123,18 @@ impl Backend {
     // }
     #[allow(clippy::too_many_arguments)]
     pub fn parse(
-        &self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue, cookies: JsValue,
-        max_rows: Option<u32>,
+        &self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue,
+        cookies: JsValue, max_rows: Option<u32>,
     ) -> Result<Request, JsError> {
         if !["GET", "POST", "PUT", "DELETE", "PATCH"].contains(&method.as_str()) {
             return Err(JsError::new("invalid method"));
         }
 
         let get = from_js_value::<Vec<(String, String)>>(get).map_err(cast_serde_err)?;
-        
         let headers = from_js_value::<Vec<(String, String)>>(headers).map_err(cast_serde_err)?;
-        
         let cookies = from_js_value::<Vec<(String, String)>>(cookies).map_err(cast_serde_err)?;
-        
         let backend_inner = self.borrow_inner();
         let db_schema = &backend_inner.db_schema;
-        
         let body = if body.is_empty() { None } else { Some(body) };
         let max_rows = match max_rows {
             Some(v) => Some(v.to_string()),
@@ -156,7 +156,18 @@ impl Backend {
             }),
             |data_ref| {
                 match data_ref.as_ref() {
-                    RequestData {schema_name, root, method, path, get, body, headers, cookies, max_rows, role} => {
+                    RequestData {
+                        schema_name,
+                        root,
+                        method,
+                        path,
+                        get,
+                        body,
+                        headers,
+                        cookies,
+                        max_rows,
+                        role,
+                    } => {
                         let get = get.into_iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
                         let headers = headers.into_iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
                         let cookies = cookies.into_iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
@@ -171,16 +182,17 @@ impl Backend {
                             headers,
                             cookies,
                             max_rows.iter().map(|s| s.as_str()).next(),
-                        ).map_err(cast_core_err)?;
+                        )
+                        .map_err(cast_core_err)?;
 
                         // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
                         // of the "authenticator" role unless the DbSchema has internal privileges set
-                
+
                         check_privileges(db_schema, &schema_name, &role, &rust_request).map_err(cast_core_err)?;
                         check_safe_functions(&rust_request, &self.borrow_inner().allowed_select_functions).map_err(cast_core_err)?;
                         insert_policy_conditions(db_schema, &schema_name, &role, &mut rust_request.query).map_err(cast_core_err)?;
-                
-                        Ok(R{
+
+                        Ok(R {
                             //data: data_ref,
                             method: method.clone(),
                             schema_name: schema_name.clone(),
@@ -190,10 +202,8 @@ impl Backend {
                         })
                     }
                 }
-            }
+            },
         ))
-
-        
     }
 
     pub fn fmt_main_query(&self, request: &Request, env: JsValue) -> Result<Vec<JsValue>, JsError> {
@@ -201,53 +211,45 @@ impl Backend {
         let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         let (main_statement, main_parameters, _) = match request.borrow_inner() {
-            Ok(r) => {
-                match db_type {
-                    #[cfg(feature = "postgresql")]
-                    "postgresql" => {
-                        let query = postgresql::fmt_main_query_internal(
-                            r.schema_name.as_str(),
-                            &r.method,
-                            &r.accept_content_type,
-                            &r.query,
-                            &r.preferences,
-                            &env,
-                        )
-                        .map_err(cast_core_err)?;
-                        Ok(postgresql::generate(query))
-                    }
-                    #[cfg(feature = "clickhouse")]
-                    "clickhouse" => {
-                        let query = clickhouse::fmt_main_query_internal(
-                            r.schema_name.as_str(),
-                            &r.method,
-                            &r.accept_content_type,
-                            &r.query,
-                            &r.preferences,
-                            &env,
-                        )
-                        .map_err(cast_core_err)?;
-                        Ok(clickhouse::generate(query))
-                    }
-                    #[cfg(feature = "sqlite")]
-                    "sqlite" => {
-                        let query = sqlite::fmt_main_query_internal(
-                            r.schema_name.as_str(),
-                            &r.method,
-                            &r.accept_content_type,
-                            &r.query,
-                            &r.preferences,
-                            &env,
-                        )
-                        .map_err(cast_core_err)?;
-                        Ok(sqlite::generate(query))
-                    }
-                    _ => Err(JsError::new("unsupported database type")),
+            Ok(r) => match db_type {
+                #[cfg(feature = "postgresql")]
+                "postgresql" => {
+                    let query = postgresql::fmt_main_query_internal(
+                        r.schema_name.as_str(),
+                        &r.method,
+                        &r.accept_content_type,
+                        &r.query,
+                        &r.preferences,
+                        &env,
+                    )
+                    .map_err(cast_core_err)?;
+                    Ok(postgresql::generate(query))
                 }
-            }
+                #[cfg(feature = "clickhouse")]
+                "clickhouse" => {
+                    let query = clickhouse::fmt_main_query_internal(
+                        r.schema_name.as_str(),
+                        &r.method,
+                        &r.accept_content_type,
+                        &r.query,
+                        &r.preferences,
+                        &env,
+                    )
+                    .map_err(cast_core_err)?;
+                    Ok(clickhouse::generate(query))
+                }
+                #[cfg(feature = "sqlite")]
+                "sqlite" => {
+                    let query =
+                        sqlite::fmt_main_query_internal(r.schema_name.as_str(), &r.method, &r.accept_content_type, &r.query, &r.preferences, &env)
+                            .map_err(cast_core_err)?;
+                    Ok(sqlite::generate(query))
+                }
+                _ => Err(JsError::new("unsupported database type")),
+            },
             Err(e) => Err(clone_err_ref(e)),
         }?;
-        
+
         Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
     }
 
@@ -344,7 +346,7 @@ impl Backend {
         // create a clone of the request
         let inner = original_request.borrow_inner().as_ref().map_err(|e| JsError::new(e.to_string()))?;
         let mut request: R = inner.clone();
-        
+
         match &inner.query {
             Query {
                 node: Insert {

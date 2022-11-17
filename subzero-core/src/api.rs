@@ -222,7 +222,7 @@ impl<'a, 'b> Iterator for Iter<&'b mut Query<'a>> {
         match (path.pop_front(), stack.pop_front()) {
             (Some(current_path), Some(Query { node, sub_selects, .. })) => {
                 // sub_selects.iter_mut().for_each(|SubSelect { query, .. }| {
-                    
+
                 //     let mut p = current_path.clone();
                 //     p.push(query.node.name().to_string());
                 //     path.push_back(p);
@@ -240,7 +240,7 @@ impl<'a, 'b> Iterator for Iter<&'b mut Query<'a>> {
                 //         p
                 //     },
                 // ).collect::<Vec<_>>();
-                
+
                 // path.extend(path_extend);
                 sub_selects.iter_mut().for_each(|SubSelect { query, .. }| {
                     let mut p = current_path.clone();
@@ -248,7 +248,7 @@ impl<'a, 'b> Iterator for Iter<&'b mut Query<'a>> {
                     path.push_back(p);
                     stack.push_back(query);
                 });
-                
+
                 Some((current_path, &mut *node))
             }
             _ => None,
@@ -306,7 +306,7 @@ impl<'a> IntoIterator for Query<'a> {
 //         let Self(path, stack, f) = self;
 //         match (path.pop_front(), stack.pop_front()) {
 //             (Some(current_path), Some(query)) => {
-                
+
 //                 query.sub_selects.iter_mut().for_each(|SubSelect { query, .. }| {
 //                     let mut p = current_path.clone();
 //                     p.push(query.node.name().to_string());
@@ -331,7 +331,6 @@ impl<'a> IntoIterator for Query<'a> {
 //     }
 // }
 
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(untagged)]
 pub enum ParamValue<'a> {
@@ -344,7 +343,7 @@ pub enum ParamValue<'a> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ParamValues<'a> {
     Parsed(HashMap<&'a str, ParamValue<'a>>),
-    Raw(&'a str)
+    Raw(&'a str),
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum QueryNode<'a> {
@@ -484,10 +483,7 @@ pub struct OrderTerm<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct GroupByTerm<'a>(
-    #[serde(borrow)]
-    pub Field<'a>
-);
+pub struct GroupByTerm<'a>(#[serde(borrow)] pub Field<'a>);
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub enum OrderDirection {
@@ -526,14 +522,7 @@ pub enum Join<'a> {
     Child(ForeignKey<'a>),
     #[serde(borrow)]
     Parent(ForeignKey<'a>),
-    Many(
-        #[serde(borrow)]
-        Qi<'a>, 
-        #[serde(borrow)]
-        ForeignKey<'a>,
-        #[serde(borrow)]
-        ForeignKey<'a>
-    ),
+    Many(#[serde(borrow)] Qi<'a>, #[serde(borrow)] ForeignKey<'a>, #[serde(borrow)] ForeignKey<'a>),
 }
 
 #[derive(Debug)]
@@ -547,10 +536,10 @@ pub enum FunctionParam<'a> {
     #[serde(borrow)]
     Fld(Field<'a>),
     Val(SingleVal<'a>, Option<&'a str>),
-    Func { 
-        fn_name: &'a str, 
+    Func {
+        fn_name: &'a str,
         #[serde(borrow)]
-        parameters: Vec<FunctionParam<'a>>
+        parameters: Vec<FunctionParam<'a>>,
     },
 }
 
@@ -710,10 +699,7 @@ impl<'a> Serialize for Filter<'a> {
                 qi: qi.clone(),
                 field: field.clone(),
             },
-            Filter::Env(operator, var) => FilterHelper::Env {
-                operator,
-                var: var.clone(),
-            },
+            Filter::Env(operator, var) => FilterHelper::Env { operator, var: var.clone() },
         }
         .serialize(serializer)
     }
@@ -856,7 +842,6 @@ impl<'a, 'de: 'a> Deserialize<'de> for SingleVal<'a> {
     where
         D: Deserializer<'de>,
     {
-        
         // // deserialize everything into a &str and then parse it
         // let v: &'de str = serde::Deserialize::deserialize(deserializer)?;
         // // trim white spaces
@@ -871,7 +856,7 @@ impl<'a, 'de: 'a> Deserialize<'de> for SingleVal<'a> {
         //         Some(tt) => Ok(Some(tt.trim().trim_matches('"'))),
         //         None => Ok(None),
         //     }?;
-            
+
         //     Ok(SingleVal(v, t))
         // } else {
         //     Ok(SingleVal(v.trim().trim_matches('"'), None))
@@ -920,7 +905,12 @@ impl<'a, 'de: 'a> Deserialize<'de> for ListVal<'a> {
         D: Deserializer<'de>,
     {
         // TODO!!! flatten will eliminate None and we need to treat it as an error
-        let to_str_vec = |v: &Vec<JsonValue>| v.iter().filter_map(|v: &JsonValue| v.as_str()).map(|s| Cow::Owned(s.to_string())).collect();
+        let to_str_vec = |v: &Vec<JsonValue>| {
+            v.iter()
+                .filter_map(|v: &JsonValue| v.as_str())
+                .map(|s| Cow::Owned(s.to_string()))
+                .collect()
+        };
         let v = JsonValue::deserialize(deserializer)?;
         match v {
             JsonValue::Array(v) => Ok(Self(to_str_vec(&v), None)),
@@ -956,26 +946,16 @@ mod tests {
         assert_eq!(serde_json::from_str::<LogicOperator>(r#""and""#).unwrap(), LogicOperator::And);
         assert_eq!(r#""10""#, serde_json::to_string(&SingleVal(cow("10"), None)).unwrap());
         assert_eq!(serde_json::from_str::<SingleVal>(r#""10""#).unwrap(), SingleVal(cow("10"), None));
-        assert_eq!(r#"["1","2","3"]"#, serde_json::to_string(&ListVal(vec![cow("1"), cow("2"), cow("3")], None)).unwrap());
+        assert_eq!(
+            r#"["1","2","3"]"#,
+            serde_json::to_string(&ListVal(vec![cow("1"), cow("2"), cow("3")], None)).unwrap()
+        );
         assert_eq!(
             serde_json::from_str::<ListVal>(r#"["1","2","3"]"#).unwrap(),
             ListVal(vec![cow("1"), cow("2"), cow("3")], None)
         );
-        assert_eq!(
-            r#"{"column":"id"}"#,
-            serde_json::to_string(&Field {
-                name: "id",
-                json_path: None
-            })
-            .unwrap()
-        );
-        assert_eq!(
-            serde_json::from_str::<Field>(r#"{"column":"id"}"#).unwrap(),
-            Field {
-                name: "id",
-                json_path: None
-            }
-        );
+        assert_eq!(r#"{"column":"id"}"#, serde_json::to_string(&Field { name: "id", json_path: None }).unwrap());
+        assert_eq!(serde_json::from_str::<Field>(r#"{"column":"id"}"#).unwrap(), Field { name: "id", json_path: None });
         assert_eq!(
             r#"{"op":"eq","val":"10"}"#,
             serde_json::to_string(&Filter::Op("eq", SingleVal(cow("10"), None))).unwrap()
@@ -1008,10 +988,7 @@ mod tests {
         assert_eq!(
             r#"{"column":"id","op":"eq","val":"10"}"#,
             serde_json::to_string(&Condition::Single {
-                field: Field {
-                    name: "id",
-                    json_path: None
-                },
+                field: Field { name: "id", json_path: None },
                 filter: Filter::Op("eq", SingleVal(cow("10"), None)),
                 negate: false,
             })
@@ -1020,10 +997,7 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Condition>(r#"{"column":"id","op":"eq","val":"10"}"#).unwrap(),
             Condition::Single {
-                field: Field {
-                    name: "id",
-                    json_path: None
-                },
+                field: Field { name: "id", json_path: None },
                 filter: Filter::Op("eq", SingleVal(cow("10"), None)),
                 negate: false,
             }
@@ -1035,10 +1009,7 @@ mod tests {
                 tree: ConditionTree {
                     operator: LogicOperator::And,
                     conditions: vec![Condition::Single {
-                        field: Field {
-                            name: "id",
-                            json_path: None
-                        },
+                        field: Field { name: "id", json_path: None },
                         filter: Filter::Op("eq", SingleVal(cow("10"), None)),
                         negate: false,
                     },],
@@ -1052,10 +1023,7 @@ mod tests {
                 tree: ConditionTree {
                     operator: LogicOperator::And,
                     conditions: vec![Condition::Single {
-                        field: Field {
-                            name: "id",
-                            json_path: None
-                        },
+                        field: Field { name: "id", json_path: None },
                         filter: Filter::Op("eq", SingleVal(cow("10"), None)),
                         negate: false,
                     },],

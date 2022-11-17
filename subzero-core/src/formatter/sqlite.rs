@@ -57,7 +57,6 @@ pub fn fmt_main_query_internal<'a>(
     schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
     env: &'a HashMap<&'a str, &'a str>,
 ) -> Result<Snippet<'a>> {
-
     let count = matches!(
         preferences,
         Some(Preferences {
@@ -190,7 +189,6 @@ pub fn fmt_query<'a>(
                     Qi("", a),
                     format!("{} as {}", fmt_qi(&Qi(schema, table)), fmt_identity(a)),
                 ),
-                
             };
             if select.iter().any(|s| matches!( s, Star)) {
                 return Err(Error::UnsupportedFeature {message: "'select *' not supported, use explicit select parameters".to_string()})
