@@ -11,6 +11,7 @@ use utils::{
     set_panic_hook,
     cast_core_err,
     cast_serde_err,
+    clone_err_ref,
     //console_log, log,
 };
 use subzero_core::{
@@ -248,7 +249,7 @@ impl Backend {
                     _ => Err(JsError::new("unsupported database type")),
                 }
             }
-            Err(e) => Err(*e),
+            Err(e) => Err(clone_err_ref(e)),
         }?;
         
         Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
@@ -266,7 +267,7 @@ impl Backend {
         };
 
         // create a clone of the request
-        let inner = original_request.borrow_inner().map_err(|e| e)?;
+        let inner = original_request.borrow_inner().as_ref().map_err(clone_err_ref)?;
         let mut request: R = inner.clone();
         let is_delete = matches!(request.query.node, Delete { .. });
 
@@ -345,7 +346,7 @@ impl Backend {
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         let ids = from_js_value::<Vec<String>>(ids).map_err(cast_serde_err)?;
         // create a clone of the request
-        let inner = original_request.borrow_inner().map_err(|e| e)?;
+        let inner = original_request.borrow_inner().as_ref().map_err(|e| JsError::new(e.to_string()))?;
         let mut request: R = inner.clone();
         
         match &inner.query {

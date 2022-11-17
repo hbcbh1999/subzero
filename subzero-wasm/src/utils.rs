@@ -53,3 +53,4 @@ pub fn cast_core_err(err: subzero_core::error::Error) -> JsError {
 }
 
 pub fn cast_serde_err(err: serde_wasm_bindgen::Error) -> JsError { JsError::new(err.to_string().as_str()) }
+pub fn clone_err_ref(err: &JsError) -> JsError { JsError::new(err.to_string()) }

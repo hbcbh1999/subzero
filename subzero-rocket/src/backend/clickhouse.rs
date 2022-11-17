@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use http::Error as HttpError;
 // use log::{debug};
-use super::{Backend, include_files};
+use super::{Backend, DbSchemaWrap, include_files};
 
 use std::{fs};
 use std::path::Path;
@@ -155,26 +155,26 @@ async fn execute(
     Ok(api_response)
 }
 
-pub struct ClickhouseBackend<'a> {
+pub struct ClickhouseBackend {
     config: VhostConfig,
     pool: Pool,
-    db_schema: DbSchema<'a>,
+    db_schema: DbSchemaWrap,
 }
 
 #[async_trait]
-impl<'a> Backend for ClickhouseBackend<'a> {
+impl<'a> Backend for ClickhouseBackend {
     async fn init(_vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
         let mgr = Manager { uri: config.db_uri.clone() };
         let pool = Pool::builder(mgr).max_size(config.db_pool).build().unwrap();
 
         //read db schema
-        let db_schema = match &config.db_schema_structure {
+        let db_schema:DbSchemaWrap = match config.db_schema_structure.clone() {
             SqlFile(f) => match fs::read_to_string(
-                vec![f, &format!("clickhouse_{}", f)]
+                vec![&f, &format!("clickhouse_{}", f)]
                     .into_iter()
                     .find(|f| Path::new(f).exists())
-                    .unwrap_or(f),
+                    .unwrap_or(&f),
             ) {
                 Ok(q) => match pool.get().await {
                     Ok(o) => {
@@ -221,28 +221,44 @@ impl<'a> Backend for ClickhouseBackend<'a> {
                         //println!("json schema:\n{:?}", s);
                         //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;
                         //println!("schema {:?}", schema);
-                        serde_json::from_str::<DbSchema>(&s).context(JsonDeserializeSnafu).context(CoreSnafu)
+                        Ok(DbSchemaWrap::new(
+                            Box::new(s),
+                            |s| serde_json::from_str::<DbSchema>(s.as_str())
+                                .context(JsonDeserializeSnafu)
+                                .context(CoreSnafu)
+                        ))
                     }
                     Err(e) => Err(e).context(ClickhouseDbPoolSnafu),
                 },
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str())
-                    .context(JsonDeserializeSnafu)
-                    .context(CoreSnafu),
+            JsonFile(f) => match fs::read_to_string(&f) {
+                Ok(s) => Ok(DbSchemaWrap::new(
+                    Box::new(s),
+                    |s| serde_json::from_str::<DbSchema>(s.as_str())
+                        .context(JsonDeserializeSnafu)
+                        .context(CoreSnafu)
+                )),
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str())
-                .context(JsonDeserializeSnafu)
-                .context(CoreSnafu),
+            JsonString(s) => Ok(DbSchemaWrap::new(
+                Box::new(s),
+                |s| serde_json::from_str::<DbSchema>(s.as_str())
+                    .context(JsonDeserializeSnafu)
+                    .context(CoreSnafu)
+            )),
         }?;
+
+        if let Err(e) =  db_schema.with_schema(|s| s.as_ref()) {
+            let message = format!("Backend init failed: {}", e);
+            return Err( crate::Error::Internal { message });
+        }
 
         Ok(ClickhouseBackend { config, pool, db_schema })
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
         execute(&self.pool, authenticated, request, env, &self.config).await
     }
-    fn db_schema(&self) -> &DbSchema { &self.db_schema }
+    fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
     fn config(&self) -> &VhostConfig { &self.config }
 }

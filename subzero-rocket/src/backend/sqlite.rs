@@ -32,7 +32,7 @@ use async_trait::async_trait;
 use rusqlite::vtab::array;
 use std::collections::HashMap;
 use std::{fs};
-use super::{Backend, include_files};
+use super::{Backend, include_files, DbSchemaWrap};
 use tokio::task;
 use rusqlite::{
     params_from_iter,
@@ -403,15 +403,15 @@ fn execute(
     Ok(api_response)
 }
 
-pub struct SQLiteBackend<'a> {
+pub struct SQLiteBackend {
     //vhost: String,
     config: VhostConfig,
     pool: Pool<SqliteConnectionManager>,
-    db_schema: DbSchema<'a>,
+    db_schema: DbSchemaWrap,
 }
 
 #[async_trait]
-impl<'a> Backend for SQLiteBackend<'a> {
+impl<'a> Backend for SQLiteBackend {
     async fn init(_vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
         let db_file = config.db_uri.clone();
@@ -419,8 +419,8 @@ impl<'a> Backend for SQLiteBackend<'a> {
         let pool = Pool::builder().max_size(config.db_pool as u32).build(manager).unwrap();
 
         //read db schema
-        let db_schema = match &config.db_schema_structure {
-            SqlFile(f) => match fs::read_to_string(vec![f, &format!("sqlite_{}", f)].into_iter().find(|f| Path::new(f).exists()).unwrap_or(f)) {
+        let db_schema:DbSchemaWrap = match config.db_schema_structure.clone() {
+            SqlFile(f) => match fs::read_to_string(vec![&f, &format!("sqlite_{}", f)].into_iter().find(|f| Path::new(f).exists()).unwrap_or(&f)) {
                 Ok(q) => match pool.get() {
                     Ok(conn) => task::block_in_place(|| {
                         let authenticated = false;
@@ -430,10 +430,14 @@ impl<'a> Backend for SQLiteBackend<'a> {
                         let mut rows = stmt.query([]).context(SqliteDbSnafu { authenticated })?;
                         match rows.next().context(SqliteDbSnafu { authenticated })? {
                             Some(r) => {
-                                println!("json db_schema: {}", r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?.as_str());
-                                serde_json::from_str::<DbSchema>(r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?.as_str())
-                                    .context(JsonDeserializeSnafu)
-                                    .context(CoreSnafu)
+                                //println!("json db_schema: {}", r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?.as_str());
+                                let s:String = r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?;
+                                Ok(DbSchemaWrap::new(
+                                    Box::new(s),
+                                    |s| serde_json::from_str::<DbSchema>(s.as_str())
+                                        .context(JsonDeserializeSnafu)
+                                        .context(CoreSnafu)
+                                ))
                             }
                             None => Err(Error::Internal {
                                 message: "sqlite structure query did not return any rows".to_string(),
@@ -444,22 +448,31 @@ impl<'a> Backend for SQLiteBackend<'a> {
                 },
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str())
-                    .context(JsonDeserializeSnafu)
-                    .context(CoreSnafu),
+            JsonFile(f) => match fs::read_to_string(&f) {
+                Ok(s) => Ok(DbSchemaWrap::new(
+                            Box::new(s),
+                            |s| serde_json::from_str::<DbSchema>(s.as_str())
+                                .context(JsonDeserializeSnafu)
+                                .context(CoreSnafu)
+                        )),
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str())
-                .context(JsonDeserializeSnafu)
-                .context(CoreSnafu),
+            JsonString(s) => Ok(DbSchemaWrap::new(
+                                Box::new(s),
+                                |s| serde_json::from_str::<DbSchema>(s.as_str())
+                                    .context(JsonDeserializeSnafu)
+                                    .context(CoreSnafu)
+                            )),
         }?;
-        debug!("db_schema: {:?}", db_schema);
+        if let Err(e) =  db_schema.with_schema(|s| s.as_ref()) {
+            let message = format!("Backend init failed: {}", e);
+            return Err( crate::Error::Internal { message });
+        }
         Ok(SQLiteBackend { config, pool, db_schema })
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
         execute(&self.pool, authenticated, request, env, &self.config)
     }
-    fn db_schema(&self) -> &DbSchema { &self.db_schema }
+    fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
     fn config(&self) -> &VhostConfig { &self.config }
 }

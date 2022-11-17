@@ -2364,6 +2364,7 @@ dependencies = [
  "jsonwebtoken",
  "lazy_static",
  "openssl",
+ "ouroboros",
  "postgres-openssl",
  "postgres-types",
  "pretty_assertions",
