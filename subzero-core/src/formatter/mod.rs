@@ -49,7 +49,7 @@ impl<'a> ToParam for &'a str {
     fn to_data_type(&self) -> &Option<Cow<str>> { &None }
 }
 
-impl<'a> ToParam for String {
+impl ToParam for String {
     fn to_param(&self) -> Param { Param::StrOwned(self) }
     fn to_data_type(&self) -> &Option<Cow<str>> { &None }
 }

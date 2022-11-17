@@ -9,8 +9,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
-use crate::error::{Result, Error, JsonDeserializeSnafu};
-use snafu::ResultExt;
+use crate::error::{Result, Error,};
+
 use super::{ToParam, Snippet, SqlParam};
 generate_fn!();
 fmt_main_query_internal!();
@@ -52,10 +52,10 @@ mod tests {
     use regex::Regex;
     use super::*;
     use std::borrow::Cow;
-    fn cow<'a>(s: &'a str) -> Cow<'a, str> { Cow::Borrowed(s) }
+    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
     generate_fn!();
     fn s(s: &str) -> &str { s }
-    fn ss(s: &str) -> String { s.to_string() }
+    
 
     #[test]
     fn test_fmt_function_query() {

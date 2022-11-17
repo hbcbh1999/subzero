@@ -2,26 +2,26 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter::{zip, FromIterator};
 use std::borrow::Cow;
-use serde::Serialize;
 
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, LogicOperator::*, QueryNode::*, SelectItem::*, SelectKind::*, *};
 use crate::error::*;
 use crate::schema::{ObjectType::*, PgType::*, ProcReturnType::*, *};
 
-use csv::{Reader, StringRecord, ByteRecord};
-use serde_json::{Value as JsonValue, value::{RawValue as JsonRawValue}};
+// use csv::{Reader, StringRecord, ByteRecord};
+use serde_json::{value::{RawValue as JsonRawValue}};
 use snafu::{OptionExt, ResultExt};
 
 use nom::{
     IResult, error::ParseError,
     combinator::{peek, recognize, eof, map, map_res, opt, value},
-    sequence::{delimited, terminated, separated_pair, preceded, tuple},
+    sequence::{delimited, terminated, preceded, tuple},
     bytes::complete::{tag,  is_not},
     character::complete::{multispace0, char, alpha1, digit1, one_of},
-    multi::{many0, many1, separated_list0, separated_list1, },
+    multi::{many1, separated_list1, },
     branch::{alt},
 };
-use nom::{Err, error::{ErrorKind, Error as NomError}};
+use nom::{Err, error::{ErrorKind}};
+//use nom::error::Error as NomError;
 type Parsed<'a, T> = IResult<&'a str, T>;
 const STAR: &str = "*";
 const ALIAS_SUFIXES: [&str; 10] = ["_0", "_1", "_2", "_3", "_4", "_5", "_6", "_7", "_8", "_9"];
@@ -67,23 +67,23 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
         (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((c, _body)),
         (ApplicationJSON, None) | (SingularJSON, None) => {
             // first nonempty char in body
-            let c = _body.chars().skip_while(|c| c.is_whitespace()).next();
-            match c {
+            let c = _body.chars().find(|c| !c.is_whitespace());
+            let columns = match c {
                 Some('{') => {
                     let json = serde_json::from_str::<HashMap<&str, &JsonRawValue>>(_body).context(JsonDeserializeSnafu)?;
-                    let columns = json.keys().map(|&k| k).collect::<Vec<_>>();
-                    Ok((columns, _body))
+                    Ok(json.keys().copied().collect::<Vec<_>>())
                 }
                 Some('[') => {
                     let json = serde_json::from_str::<Vec<HashMap<&str, &JsonRawValue>>>(_body).context(JsonDeserializeSnafu)?;
                     let columns = match json.get(0) {
-                        Some(row) => row.keys().map(|&k| k).collect::<Vec<_>>(),
-                        None => vec![]
+                        Some(row) => row.keys().copied().collect::<Vec<_>>(),
+                        None => vec![],
                     };
-                    Ok((columns, _body))
+                    Ok(columns)
                 }
-                _ => Err(Error::InvalidBody { message: format!("Failed to parse json body")}),
-            }
+                _ => Err(Error::InvalidBody { message: "Failed to parse json body".to_string()}),
+            }?;
+            Ok((columns, _body))
         }
         // (TextCSV, cols) => {
         //     let mut rdr = Reader::from_reader(_body.as_bytes());
@@ -119,7 +119,7 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
             message: format!("None of these Content-Types are available: {}", t),
         }),
         _ => Err(Error::ContentTypeError {
-            message: format!("None of these Content-Types are available"),
+            message: "None of these Content-Types are available".to_string(),
         }),
     }?;
     Ok((columns, body))
@@ -128,8 +128,8 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
 
 
 #[allow(clippy::too_many_arguments)]
-pub fn parse<'a, 'b>(
-    schema: &'a str, root: &'a str, db_schema: &'b DbSchema<'a>, method: &'a str, path: &'a str, get: Vec<(&'a str, &'a str)>, body: Option<&'a str>,
+pub fn parse<'a>(
+    schema: &'a str, root: &'a str, db_schema: &'a DbSchema<'a>, method: &'a str, path: &'a str, get: Vec<(&'a str, &'a str)>, body: Option<&'a str>,
     headers: HashMap<&'a str, &'a str>, cookies: HashMap<&'a str, &'a str>, max_rows: Option<&'a str>,
 ) -> Result<ApiRequest<'a>> {
     //let body = body.map(|b| b.to_string());
@@ -292,7 +292,7 @@ pub fn parse<'a, 'b>(
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
                 let (tp, field):(Vec<&str>, Field) = todo!();
-                let data_type = root_obj.columns.get(field.name).map(|c| c.data_type.clone());
+                let data_type = root_obj.columns.get(field.name).map(|c| c.data_type);
                 match root_obj.kind {
                     Function { .. } => {
                         if !tp.is_empty() || has_operator(v) {
@@ -445,13 +445,13 @@ pub fn parse<'a, 'b>(
                         _ => {
                             let json_payload:HashMap<&str, &JsonRawValue> = match (payload.len(), content_type) {
                                 (0, _) => serde_json::from_str("{}").context(JsonDeserializeSnafu),
-                                (_, _) => serde_json::from_str(&payload).context(JsonDeserializeSnafu),
+                                (_, _) => serde_json::from_str(payload).context(JsonDeserializeSnafu),
                             }?;
                             let argument_keys:Vec<&str> = match columns_ {
-                                None => json_payload.keys().map(|&k| k).collect(),
-                                Some(c) => json_payload.keys().map(|&k| k).filter(|k| c.contains(k)).collect(),
+                                None => json_payload.keys().copied().collect(),
+                                Some(c) => json_payload.keys().copied().filter(|k| c.contains(k)).collect(),
                             };
-                            let specified_parameters: HashSet<&str> = HashSet::from_iter(argument_keys.iter().map(|k| *k));
+                            let specified_parameters: HashSet<&str> = HashSet::from_iter(argument_keys.iter().copied());
 
                             if !specified_parameters.is_superset(&required_params) || !specified_parameters.is_subset(&all_params) {
                                 return Err(Error::NoRpc {
@@ -836,7 +836,7 @@ fn replace_start<'a, 'b: 'a>(query: &'b mut Query<'a>, schema_obj: &Schema<'a>)-
                 }
             });
             if star_removed {
-                let table_obj = schema_obj.objects.get(table_name).context(NotFoundSnafu { target: table_name.clone() })?;
+                let table_obj = schema_obj.objects.get(table_name).context(NotFoundSnafu { target: table_name.to_string() })?;
                 for col in table_obj.columns.keys() {
                     select.push(SelectItem::Simple {
                         field: Field {
@@ -975,7 +975,7 @@ fn signed_number(i: &str) -> Parsed<&str> {
     recognize(preceded(opt(char('-')), terminated(digit1, peek(alt((tag("->"), tag("::"), tag("."), tag(","), eof))))))(i)
 }
 fn json_operand(i: &str) -> Parsed<JsonOperand> {
-    alt((map(signed_number, |i| JsonOperand::JIdx(i) ), map(field_name, |k| JsonOperand::JKey(k))))(i)
+    alt((map(signed_number, |i| JsonOperand::JIdx(i) ), map(field_name, JsonOperand::JKey)))(i)
 }
 //done
 // fn alias_separator<Input>() -> impl Parser<Input, Output = char>
@@ -1317,7 +1317,7 @@ fn list_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<ListVal>
 // {
 //     attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))).or(many1(none_of(",)".chars())))
 // }
-fn list_element<'a>(i: &'a str) -> Parsed<&'a str> {
+fn list_element(i: &str) -> Parsed<&str> {
     todo!()
 }
 
@@ -1698,8 +1698,8 @@ fn add_join_info<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str, db_schema: &
             if depth > 9
             {
                 return Err(Error::ParseRequestError{
-                    message: format!("Maximum depth of 10 exceeded. Please check your query for circular references."),
-                    details: format!("")
+                    message: "Maximum depth of 10 exceeded. Please check your query for circular references.".to_string(),
+                    details: String::new()
                 });
             }
             let new_join:Join<'a> = db_schema.get_join(schema, parent_table, child_table, hint)?;
@@ -1755,13 +1755,13 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                             vec![],
                             Single {
                                 field: Field {
-                                    name: *ref_col,
+                                    name: ref_col,
                                     json_path: None,
                                 },
                                 filter: Col(
                                     Qi(parent_qi_1, parent_qi_2),
                                     Field {
-                                        name: *col,
+                                        name: col,
                                         json_path: None,
                                     },
                                 ),
@@ -1776,13 +1776,13 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                             vec![],
                             Single {
                                 field: Field {
-                                    name: *col,
+                                    name: col,
                                     json_path: None,
                                 },
                                 filter: Col(
                                     Qi(parent_qi_1, parent_qi_2),
                                     Field {
-                                        name: *ref_col,
+                                        name: ref_col,
                                         json_path: None,
                                     },
                                 ),
@@ -1801,14 +1801,14 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                                     left: (
                                         Qi(parent_qi_1, parent_qi_2),
                                         Field {
-                                            name: *ref_col,
+                                            name: ref_col,
                                             json_path: None,
                                         },
                                     ),
                                     right: (
                                         Qi(join_table.0, join_table.1),
                                         Field {
-                                            name: *col,
+                                            name: col,
                                             json_path: None,
                                         },
                                     ),
@@ -1822,13 +1822,13 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
                                     vec![],
                                     Single {
                                         field: Field {
-                                            name: *ref_col,
+                                            name: ref_col,
                                             json_path: None,
                                         },
                                         filter: Col(
-                                            Qi(join_table.0.clone(), join_table.1.clone()),
+                                            Qi(join_table.0, join_table.1),
                                             Field {
-                                                name: *col,
+                                                name: col,
                                                 json_path: None,
                                             },
                                         ),
@@ -1875,7 +1875,7 @@ fn has_operator(s: &str) -> bool { OPERATORS_START.iter().map(|op| s.starts_with
 //     }
 // }
 
-fn to_app_error<'a, T>(s: &'a str) -> impl Fn(nom::Err<T>) -> Error {
+fn to_app_error<T>(s: &str) -> impl Fn(nom::Err<T>) -> Error {
     move |_| {
         // let m = e.errors.drain_filter(|v| matches!(v, ParserError::Message(_))).collect::<Vec<_>>();
         // let position = e.position.translate_position(s);
@@ -1889,8 +1889,8 @@ fn to_app_error<'a, T>(s: &'a str) -> impl Fn(nom::Err<T>) -> Error {
         //     .replace('\n', " ")
         //     .trim()
         //     .to_string();
-        let message = format!("parser error");
-        let details = format!("no details");
+        let message = "parser error".to_string();
+        let details = "no details".to_string();
         Error::ParseRequestError { message, details }
     }
 }

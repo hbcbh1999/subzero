@@ -101,7 +101,7 @@ pub enum Error {
     PermissionDenied { details: String },
 }
 
-impl<'a> Error {
+impl Error {
     pub fn headers(&self) -> Vec<(String, String)> {
         match self {
             Error::JwtTokenInvalid { message } => vec![
@@ -240,7 +240,7 @@ impl<'a> Error {
     }
 }
 
-pub fn rel_hint(joins: &Vec<Join>) -> String {
+pub fn rel_hint(joins: &[Join]) -> String {
     joins
         .iter()
         .map(|j| match j {

@@ -124,7 +124,7 @@ pub fn fmt_main_query_internal<'a>(
     let run_unwrapped_query = matches!(query.node, Insert { .. } | Update { .. } | Delete { .. });
     let has_payload_cte = matches!(query.node, Insert { .. } | Update { .. });
     let wrap_cte_name = if run_unwrapped_query { None } else { Some("_subzero_query") };
-    let source_query = fmt_query(&schema, return_representation, wrap_cte_name, query, &None)?;
+    let source_query = fmt_query(schema, return_representation, wrap_cte_name, query, &None)?;
     let main_query = if run_unwrapped_query {
         "with env as materialized (" + fmt_env_query(env) + ") " + if has_payload_cte { ", " } else { "" } + source_query
     } else {
@@ -134,7 +134,7 @@ pub fn fmt_main_query_internal<'a>(
             + source_query
             + " , "
             + if count {
-                fmt_count_query(&schema, Some("_subzero_count_query"), query)?
+                fmt_count_query(schema, Some("_subzero_count_query"), query)?
             } else {
                 sql("_subzero_count_query as (select 1)")
             }
@@ -267,11 +267,11 @@ pub fn fmt_query<'a>(
             };
 
             let into_columns = if !columns.is_empty() {
-                format!("({})", columns.iter().map(|c| fmt_identity(*c)).collect::<Vec<_>>().join(","))
+                format!("({})", columns.iter().map(|c| fmt_identity(c)).collect::<Vec<_>>().join(","))
             } else {
                 String::new()
             };
-            let select_columns = columns.iter().map(|c| fmt_identity(*c)).collect::<Vec<_>>().join(",");
+            let select_columns = columns.iter().map(|c| fmt_identity(c)).collect::<Vec<_>>().join(",");
             (
                 None,
                 fmt_body(payload, columns) +
@@ -282,7 +282,7 @@ pub fn fmt_query<'a>(
                 if !where_.conditions.is_empty(){"where " + fmt_condition_tree(&Qi("", "_"), where_)?} else { sql(" where true ") } + 
                 match on_conflict {
                     Some((r,cols)) if !cols.is_empty() => {
-                        let on_c = format!("on conflict({})",cols.iter().map(|c| fmt_identity(*c)).collect::<Vec<_>>().join(", "));
+                        let on_c = format!("on conflict({})",cols.iter().map(|c| fmt_identity(c)).collect::<Vec<_>>().join(", "));
                         let on_do = match (r, columns.len()) {
                             (Resolution::IgnoreDuplicates, _) |
                             (_, 0) => "do nothing".to_string(),
@@ -498,7 +498,7 @@ fn fmt_sub_select_item<'a>(schema: &'a str, _qi: &Qi, i: &'a SubSelect) -> Resul
             }
             Child(fk) => {
                 let alias_or_name = format!("'{}'", alias.as_ref().unwrap_or(&fk.table.1));
-                let local_table_name = fmt_identity(&fk.table.1);
+                let local_table_name = fmt_identity(fk.table.1);
                 let subquery = fmt_query(schema, true, None, query, join)?;
                 Ok((
                     (sql(alias_or_name)
@@ -517,7 +517,7 @@ fn fmt_sub_select_item<'a>(schema: &'a str, _qi: &Qi, i: &'a SubSelect) -> Resul
             }
             Many(_table, _fk1, fk2) => {
                 let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
-                let local_table_name = fmt_identity(&fk2.referenced_table.1);
+                let local_table_name = fmt_identity(fk2.referenced_table.1);
                 let subquery = fmt_query(schema, true, None, query, join)?;
                 Ok((
                     (sql(alias_or_name)
@@ -546,7 +546,7 @@ fmt_identity!();
 fn fmt_qi(qi: &Qi) -> String {
     match (qi.0, qi.1) {
         ("", "") => String::new(),
-        _ => fmt_identity(&qi.1),
+        _ => fmt_identity(qi.1),
     }
 }
 macro_rules! fmt_field_format {

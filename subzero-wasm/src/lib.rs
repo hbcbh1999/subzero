@@ -4,7 +4,6 @@ use ouroboros::self_referencing;
 use serde_wasm_bindgen::from_value as from_js_value;
 use serde_wasm_bindgen::to_value as to_js_value;
 use serde_wasm_bindgen::Error as JsError;
-use std::borrow::BorrowMut;
 use std::borrow::Cow;
 mod utils;
 use utils::{
@@ -92,7 +91,7 @@ pub struct B<'a> {
 
 #[wasm_bindgen]
 impl Backend {
-    pub fn init(s: &str, dt: &str, allowed_select_functions: JsValue) -> Backend {
+    pub fn init(db_schema: String, db_type: String, allowed_select_functions: JsValue) -> Backend {
         set_panic_hook();
         //let db_schema = serde_json::from_str(&s).expect("invalid schema json");
         //let db_type = dt.to_owned();
@@ -102,7 +101,7 @@ impl Backend {
             None => DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
         };
         Backend::new(
-            Box::new(BackendData{db_schema: s.to_owned(), db_type: dt.to_owned(), allowed_select_functions}), 
+            Box::new(BackendData{db_schema, db_type, allowed_select_functions}), 
             |data_ref| B {
                 data: data_ref,
                 db_schema: serde_json::from_str(data_ref.db_schema.as_str()).expect("invalid schema json"), 
@@ -120,10 +119,10 @@ impl Backend {
     // }
     #[allow(clippy::too_many_arguments)]
     pub fn parse(
-        &self, schema_name: &str, root: &str, method: &str, path: &str, get: JsValue, body: &str, role: &str, headers: JsValue, cookies: JsValue,
+        &self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue, cookies: JsValue,
         max_rows: Option<u32>,
     ) -> Result<Request, JsError> {
-        if !["GET", "POST", "PUT", "DELETE", "PATCH"].contains(&method) {
+        if !["GET", "POST", "PUT", "DELETE", "PATCH"].contains(&method.as_str()) {
             return Err(JsError::new("invalid method"));
         }
 
@@ -136,8 +135,7 @@ impl Backend {
         let backend_inner = self.borrow_inner();
         let db_schema = &backend_inner.db_schema;
         
-        let role = role.to_owned();
-        let body = if body.is_empty() { None } else { Some(body.to_owned()) };
+        let body = if body.is_empty() { None } else { Some(body) };
         let max_rows = match max_rows {
             Some(v) => Some(v.to_string()),
             None => None,
@@ -145,10 +143,10 @@ impl Backend {
 
         Ok(Request::new(
             Box::new(RequestData {
-                schema_name: schema_name.to_owned(),
-                root: root.to_owned(),
-                method: method.to_owned(),
-                path: path.to_owned(),
+                schema_name,
+                root,
+                method,
+                path,
                 get,
                 body,
                 role,
@@ -157,7 +155,7 @@ impl Backend {
                 max_rows,
             }),
             |data_ref| {
-                match &**data_ref {
+                match data_ref.as_ref() {
                     RequestData {schema_name, root, method, path, get, body, headers, cookies, max_rows, role} => {
                         let get = get.into_iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
                         let headers = headers.into_iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
@@ -184,16 +182,14 @@ impl Backend {
                 
                         Ok(R{
                             //data: data_ref,
-                            method: rust_request.method.to_string(),
-                            schema_name: rust_request.schema_name.to_string(),
+                            method: method.clone(),
+                            schema_name: schema_name.clone(),
                             query: rust_request.query,
                             preferences: rust_request.preferences,
                             accept_content_type: rust_request.accept_content_type,
                         })
                     }
                 }
-                
-                
             }
         ))
 

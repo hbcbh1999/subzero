@@ -11,7 +11,7 @@ use std::{fs};
 use std::path::Path;
 // use log::{debug};
 use ouroboros::self_referencing;
-use std::ops::Deref;
+
 
 
 
@@ -78,9 +78,9 @@ pub trait Backend {
 
 #[self_referencing]
 pub struct DbSchemaWrap {
-    schemaString: Box<String>,
+    schema_string: String,
     #[covariant]
-    #[borrows(schemaString)]
+    #[borrows(schema_string)]
     schema: Result<DbSchema<'this>>
 }
 

@@ -54,7 +54,7 @@ fn get_policies_for_relation<'a>(
             }
         }
     }
-    if let Some(policies) = object.permissions.policies.get(&(role.clone(), Action::All)) {
+    if let Some(policies) = object.permissions.policies.get(&(role, Action::All)) {
         for p in policies {
             match p.restrictive {
                 false => permissive_policies.push(p),
@@ -580,16 +580,16 @@ pub fn check_privileges<'a>(db_schema: &'a DbSchema<'a>, current_schema: &'a str
             // check specific privileges for the node
             match n {
                 FunctionCall { fn_name: Qi(_, origin), .. } => {
-                    db_schema.has_execute_privileges(user, current_schema, *origin)?;
+                    db_schema.has_execute_privileges(user, current_schema, origin)?;
                 }
                 Insert { columns, into: origin, .. } => {
-                    db_schema.has_insert_privileges(user, current_schema, *origin, &Specific(columns.clone()))?;
+                    db_schema.has_insert_privileges(user, current_schema, origin, &Specific(columns.clone()))?;
                 }
                 Update { columns, table: origin, .. } => {
-                    db_schema.has_update_privileges(user, current_schema, *origin, &Specific(columns.clone()))?;
+                    db_schema.has_update_privileges(user, current_schema, origin, &Specific(columns.clone()))?;
                 }
                 Delete { from: origin, .. } => {
-                    db_schema.has_delete_privileges(user, current_schema, *origin)?;
+                    db_schema.has_delete_privileges(user, current_schema, origin)?;
                 }
                 _ => {}
             };
@@ -608,8 +608,8 @@ pub fn check_privileges<'a>(db_schema: &'a DbSchema<'a>, current_schema: &'a str
                 | Update { select, table: origin, .. }
                 | Delete { select, from: origin, .. } => (select, origin),
             };
-            let columns = get_select_columns(&select);
-            db_schema.has_select_privileges(user, current_schema, *origin, &columns)?;
+            let columns = get_select_columns(select);
+            db_schema.has_select_privileges(user, current_schema, origin, &columns)?;
         }
         Ok(())
     } else {
@@ -620,7 +620,7 @@ pub fn check_privileges<'a>(db_schema: &'a DbSchema<'a>, current_schema: &'a str
 fn validate_fn_param<'a>(safe_functions: &'a Vec<&'a str>, p: &'a FunctionParam<'a>) -> Result<()> {
     match p {
         FunctionParam::Func { fn_name, parameters } => {
-            if !safe_functions.contains(&fn_name) {
+            if !safe_functions.contains(fn_name) {
                 return Err(Error::ParseRequestError {
                     details: format!("calling: '{}' is not allowed", fn_name),
                     message: "Unsafe functions called".to_string(),

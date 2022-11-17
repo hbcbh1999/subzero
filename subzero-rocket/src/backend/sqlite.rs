@@ -411,7 +411,7 @@ pub struct SQLiteBackend {
 }
 
 #[async_trait]
-impl<'a> Backend for SQLiteBackend {
+impl Backend for SQLiteBackend {
     async fn init(_vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
         let db_file = config.db_uri.clone();
@@ -433,7 +433,7 @@ impl<'a> Backend for SQLiteBackend {
                                 //println!("json db_schema: {}", r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?.as_str());
                                 let s:String = r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?;
                                 Ok(DbSchemaWrap::new(
-                                    Box::new(s),
+                                   s,
                                     |s| serde_json::from_str::<DbSchema>(s.as_str())
                                         .context(JsonDeserializeSnafu)
                                         .context(CoreSnafu)
@@ -450,7 +450,7 @@ impl<'a> Backend for SQLiteBackend {
             },
             JsonFile(f) => match fs::read_to_string(&f) {
                 Ok(s) => Ok(DbSchemaWrap::new(
-                            Box::new(s),
+                            s,
                             |s| serde_json::from_str::<DbSchema>(s.as_str())
                                 .context(JsonDeserializeSnafu)
                                 .context(CoreSnafu)
@@ -458,7 +458,7 @@ impl<'a> Backend for SQLiteBackend {
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonString(s) => Ok(DbSchemaWrap::new(
-                                Box::new(s),
+                                s,
                                 |s| serde_json::from_str::<DbSchema>(s.as_str())
                                     .context(JsonDeserializeSnafu)
                                     .context(CoreSnafu)

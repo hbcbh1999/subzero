@@ -14,7 +14,6 @@ use crate::api::{
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn};
 use crate::error::{Result, *};
 use super::{ToParam, Snippet, SqlParam};
-use std::borrow::Cow;
 macro_rules! fmt_field_format {
     () => {
         "JSON_VALUE({}{}{}, '${}')"
@@ -51,7 +50,7 @@ pub fn fmt_main_query_internal<'a>(
         + ") "
         + if has_payload_cte { ", " } else { "" }
         + fmt_query(
-            &schema,
+            schema,
             return_representation,
             None, //Some("_subzero_query"),
             query,
@@ -176,7 +175,7 @@ pub fn fmt_query<'a>(
                     let mut uniques = HashSet::new();
                     let mut terms = pks
                         .iter()
-                        .map(|c| {
+                        .map(|&c| {
                             GroupByTerm(Field {
                                 name: c,
                                 json_path: None,
@@ -184,12 +183,12 @@ pub fn fmt_query<'a>(
                         })
                         // append the other selected fields to the groupby
                         .chain(select.iter().filter_map(|s| match s {
-                            Simple { field, .. } => Some(GroupByTerm(field.clone())),
+                            Simple { field: Field {name, json_path}, .. } => Some(GroupByTerm(Field {name, json_path: json_path.clone()})),
                             _ => None,
                         }))
                         .collect::<Vec<_>>();
                     //filter only qunique
-                    terms.retain(|GroupByTerm(Field { name, .. })| uniques.insert(name.clone()));
+                    terms.retain(|&GroupByTerm(Field { name, .. })| uniques.insert(name));
                     terms
                 });
 
@@ -409,7 +408,7 @@ fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect
             }
             Many(_table, _fk1, fk2) => {
                 let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
-                let local_table_name = fmt_identity(&fk2.referenced_table.1);
+                let local_table_name = fmt_identity(fk2.referenced_table.1);
                 let subquery = fmt_query(schema, true, None, query, join)?;
                 Ok((
                     ("coalesce((select json_agg("
@@ -476,7 +475,7 @@ mod tests {
     use crate::api::{ContentType::*};
     use super::*;
     use std::borrow::Cow;
-    fn cow<'a>(s: &'a str) -> Cow<'a, str> { Cow::Borrowed(s) }
+    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
     macro_rules! param_placeholder_format {
         () => {
             "{{p{pos}:{data_type}}}"
@@ -484,7 +483,7 @@ mod tests {
     }
     generate_fn!(true);
     fn s(s: &str) -> &str { s }
-    fn ss(s: &str) -> String { s.to_string() }
+    //fn ss(s: &str) -> String { s.to_string() }
     #[test]
     fn test_fmt_select_query() {
         let q = Query {
@@ -662,7 +661,7 @@ mod tests {
         };
         let emtpy_hashmap = HashMap::new();
 
-        let (query_str, _parameters, _) = generate(fmt_query(&"default", true, None, &q, &None).unwrap());
+        let (query_str, _parameters, _) = generate(fmt_query("default", true, None, &q, &None).unwrap());
         // assert_eq!(
         //     format!("{:?}", parameters),
         //     "[SingleVal(\"50\"), ListVal([\"51\", \"52\"]), SingleVal(\"5\"), SingleVal(\"10\")]"
@@ -726,7 +725,7 @@ mod tests {
             expected_query_str
         );
 
-        let (main_query_str, _parameters, _) = generate(fmt_main_query(&s("default"), &api_request, &HashMap::new()).unwrap());
+        let (main_query_str, _parameters, _) = generate(fmt_main_query("default", &api_request, &HashMap::new()).unwrap());
         assert_eq!(re.replace_all(main_query_str.as_str(), " "), re.replace_all(expected_main_query_str.as_str(), " "));
     }
 }

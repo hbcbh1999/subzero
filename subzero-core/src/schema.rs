@@ -229,7 +229,7 @@ impl<'a> DbSchema<'a> {
 
                                 // check many to many relations
                                 // users?select=tasks(*)
-                                let many_joins = match schema.join_tables.get(&(origin.clone(), target.clone())) {
+                                let many_joins = match schema.join_tables.get(&(origin, target)) {
                                     None => vec![],
                                     Some(jt) => jt
                                         .iter()
@@ -337,7 +337,7 @@ impl<'a> DbSchema<'a> {
         let origin_table = schema.objects.get(origin).context(UnknownRelationSnafu { relation: origin.to_owned() })?;
         let grants = &origin_table.permissions.grants;
         let all_privileges = [
-            grants.get(&(role.clone(), action.clone())),
+            grants.get(&(role, action.clone())),
             grants.get(&("public", action.clone())),
         ];
         let column_permissions = match all_privileges {
@@ -522,9 +522,9 @@ where
                         let actions_ = normalize_actions(&actions);
                         for a in actions_ {
                             if columns.is_empty() {
-                                grants.insert((p.role.clone(), a), All);
+                                grants.insert((p.role, a), All);
                             } else {
-                                let cols = grants.entry((p.role.clone(), a)).or_insert(Specific(Vec::new()));
+                                let cols = grants.entry((p.role, a)).or_insert(Specific(Vec::new()));
                                 if let Specific(cols) = cols {
                                     cols.extend(columns.iter());
                                 }
@@ -534,7 +534,7 @@ where
                     (Some(actions), None) => {
                         let actions_ = normalize_actions(&actions);
                         for a in actions_ {
-                            grants.insert((p.role.clone(), a), All);
+                            grants.insert((p.role, a), All);
                         }
                     }
                     _ => (),
@@ -553,28 +553,28 @@ where
                         };
 
                         for a in actions_ {
-                            let pols = policies.entry((p.role.clone(), a.clone())).or_insert_with(Vec::new);
+                            let pols = policies.entry((p.role, a.clone())).or_insert_with(Vec::new);
                             match (a, &check, &using) {
                                 (Action::Select, _, Some(u)) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: None,
                                     using: Some(u.clone()),
                                 }),
                                 (Action::Insert, Some(c), _) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: Some(c.clone()),
                                     using: None,
                                 }),
                                 (Action::Update, c, u) | (Action::All, c, u) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: c.clone(),
                                     using: u.clone(),
                                 }),
                                 (Action::Delete, _, Some(u)) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: None,
                                     using: Some(u.clone()),
@@ -597,36 +597,36 @@ where
                             None => vec![Action::All],
                         };
                         let check: Option<Vec<Condition>> = match check_str {
-                            Some(check_str) => Some(serde_json::from_str(&check_str).map_err(serde::de::Error::custom)?),
+                            Some(check_str) => Some(serde_json::from_str(check_str).map_err(serde::de::Error::custom)?),
                             None => None,
                         };
                         let using: Option<Vec<Condition>> = match using_str {
-                            Some(using_str) => Some(serde_json::from_str(&using_str).map_err(serde::de::Error::custom)?),
+                            Some(using_str) => Some(serde_json::from_str(using_str).map_err(serde::de::Error::custom)?),
                             None => None,
                         };
                         for a in actions_ {
-                            let pols = policies.entry((p.role.clone(), a.clone())).or_insert_with(Vec::new);
+                            let pols = policies.entry((p.role, a.clone())).or_insert_with(Vec::new);
                             match (a, &check, &using) {
                                 (Action::Select, _, Some(u)) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: None,
                                     using: Some(u.clone()),
                                 }),
                                 (Action::Insert, Some(c), _) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: Some(c.clone()),
                                     using: None,
                                 }),
                                 (Action::Update, c, u) | (Action::All, c, u) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: c.clone(),
                                     using: u.clone(),
                                 }),
                                 (Action::Delete, _, Some(u)) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: None,
                                     using: Some(u.clone()),
@@ -737,7 +737,7 @@ where
     let mut map = BTreeMap::new();
     for o in Vec::<ObjectDef>::deserialize(deserializer)? {
         map.insert(
-            o.name.clone(),
+            o.name,
             match o.kind {
                 "function" => Object {
                     kind: ObjectType::Function {
@@ -878,11 +878,9 @@ mod tests {
     use serde_json::Value as JsonValue;
     use pretty_assertions::assert_eq;
     use std::borrow::Cow;
-    fn cow<'a>(s: &'a str) -> Cow<'a, str> { Cow::Borrowed(s) }
+    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
     fn s(s: &str) -> String { s.to_string() }
     
-    fn t<T>((k, v): (&str, T)) -> (String, T) { (k.to_string(), v) }
-   
     #[test]
     fn deserialize_db_schema() {
         let db_schema = DbSchema {

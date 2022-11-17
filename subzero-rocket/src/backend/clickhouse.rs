@@ -162,7 +162,7 @@ pub struct ClickhouseBackend {
 }
 
 #[async_trait]
-impl<'a> Backend for ClickhouseBackend {
+impl Backend for ClickhouseBackend {
     async fn init(_vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
         let mgr = Manager { uri: config.db_uri.clone() };
@@ -222,7 +222,7 @@ impl<'a> Backend for ClickhouseBackend {
                         //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;
                         //println!("schema {:?}", schema);
                         Ok(DbSchemaWrap::new(
-                            Box::new(s),
+                            s,
                             |s| serde_json::from_str::<DbSchema>(s.as_str())
                                 .context(JsonDeserializeSnafu)
                                 .context(CoreSnafu)
@@ -234,7 +234,7 @@ impl<'a> Backend for ClickhouseBackend {
             },
             JsonFile(f) => match fs::read_to_string(&f) {
                 Ok(s) => Ok(DbSchemaWrap::new(
-                    Box::new(s),
+                    s,
                     |s| serde_json::from_str::<DbSchema>(s.as_str())
                         .context(JsonDeserializeSnafu)
                         .context(CoreSnafu)
@@ -242,7 +242,7 @@ impl<'a> Backend for ClickhouseBackend {
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonString(s) => Ok(DbSchemaWrap::new(
-                Box::new(s),
+                s,
                 |s| serde_json::from_str::<DbSchema>(s.as_str())
                     .context(JsonDeserializeSnafu)
                     .context(CoreSnafu)

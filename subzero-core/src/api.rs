@@ -167,7 +167,7 @@ impl<'a> Query<'a> {
         for SubSelect { query: q, alias, .. } in self.sub_selects.iter_mut() {
             if let QueryNode::Select { from: (table, _), .. } = &mut q.node {
                 let node_properties = properties
-                    .drain_filter(|(path, _)| match path.get(0) {
+                    .drain_filter(|(path, _)| match path.first() {
                         Some(&p) => {
                             if p == *table || Some(p) == *alias {
                                 path.remove(0);
@@ -696,13 +696,13 @@ impl<'a> Serialize for Filter<'a> {
     {
         match self {
             Filter::Op(operator, value) => FilterHelper::Op {
-                operator: operator.clone(),
+                operator,
                 value: value.clone(),
             },
             Filter::In(value) => FilterHelper::In { value: value.clone() },
             Filter::Is(value) => FilterHelper::Is { value: value.clone() },
             Filter::Fts(operator, language, value) => FilterHelper::Fts {
-                operator: operator.clone(),
+                operator,
                 language: language.clone(),
                 value: value.clone(),
             },
@@ -711,7 +711,7 @@ impl<'a> Serialize for Filter<'a> {
                 field: field.clone(),
             },
             Filter::Env(operator, var) => FilterHelper::Env {
-                operator: operator.clone(),
+                operator,
                 var: var.clone(),
             },
         }
@@ -820,7 +820,7 @@ impl<'a, 'de: 'a> serde::Deserialize<'de> for JsonOperand<'a> {
         if s.starts_with('\'') && s.ends_with('\'') {
             Ok(Self::JKey(&s[1..s.len() - 1]))
         } else {
-            Ok(Self::JIdx(&s))
+            Ok(Self::JIdx(s))
         }
     }
 }
@@ -946,8 +946,8 @@ fn is_default<T: Default + PartialEq>(t: &T) -> bool { t == &T::default() }
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
-    fn ss(s: &str) -> String { s.to_string() }
-    fn cow<'a>(s: &'a str) -> Cow<'a, str> { Cow::Borrowed(s) }
+    //fn ss(s: &str) -> String { s.to_string() }
+    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
     #[test]
     fn serialize() {
         assert_eq!(r#"["schema","table"]"#, serde_json::to_string(&Qi("schema", "table")).unwrap());

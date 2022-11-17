@@ -217,7 +217,7 @@ pub struct PostgreSQLBackend {
 }
 
 #[async_trait]
-impl<'a> Backend for PostgreSQLBackend {
+impl Backend for PostgreSQLBackend {
     async fn init(vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
         let pg_uri = config.db_uri.clone();
@@ -268,7 +268,7 @@ impl<'a> Backend for PostgreSQLBackend {
                                 //println!("db schema loaded: {}", rows[0].get::<usize, &str>(0));
                                 let s: String = rows[0].get(0);
                                 Ok(DbSchemaWrap::new(
-                                    Box::new(s),
+                                    s,
                                     |s| serde_json::from_str::<DbSchema>(s.as_str())
                                         .context(JsonDeserializeSnafu)
                                         .context(CoreSnafu)
@@ -286,7 +286,7 @@ impl<'a> Backend for PostgreSQLBackend {
             },
             JsonFile(f) => match fs::read_to_string(&f) {
                 Ok(s) => Ok(DbSchemaWrap::new(
-                            Box::new(s),
+                            s,
                             |s| serde_json::from_str::<DbSchema>(s.as_str())
                                 .context(JsonDeserializeSnafu)
                                 .context(CoreSnafu)
@@ -294,7 +294,7 @@ impl<'a> Backend for PostgreSQLBackend {
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
             JsonString(s) => Ok(DbSchemaWrap::new(
-                                Box::new(s),
+                                s,
                                 |s| serde_json::from_str::<DbSchema>(s.as_str())
                                     .context(JsonDeserializeSnafu)
                                     .context(CoreSnafu)
