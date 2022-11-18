@@ -101,7 +101,7 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
                 Some(c) => {
                     rdr.set_byte_headers(ByteRecord::from(c.clone()));
                     c
-                },
+                }
                 None => {
                     // parse the first row as headers manually
                     // we do this because of lifetime issues with the csv crate
@@ -113,15 +113,12 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
                         }),
                     }?;
                     // parse line as csv header row
-                    let columns:Vec<&'a str> = first_row.split(',')
-                        .map(str::trim)
-                        .map(|s| s.trim_matches('"'))
-                        .collect();
+                    let columns: Vec<&'a str> = first_row.split(',').map(str::trim).map(|s| s.trim_matches('"')).collect();
 
                     columns
-                },
+                }
             };
-            
+
             for record in rdr.byte_records() {
                 rows.push(record.context(CsvDeserializeSnafu)?);
             }
@@ -145,10 +142,7 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
             }
             body.pop();
             body.push(']');
-            Ok((
-                headers,
-                Cow::Owned(body),
-            ))
+            Ok((headers, Cow::Owned(body)))
         }
         (Other(t), _) => Err(Error::ContentTypeError {
             message: format!("None of these Content-Types are available: {}", t),
@@ -187,8 +181,7 @@ pub fn parse<'a>(
             //     .map_err(|_| Error::ContentTypeError {
             //         message: format!("None of these Content-Types are available: {}", accept_header),
             //     })?;
-            let (_, act) = content_type(accept_header)
-                .map_err(|e| to_app_error("failed to parse accept header", e))?;
+            let (_, act) = content_type(accept_header).map_err(|e| to_app_error("failed to parse accept header", e))?;
             Ok(act)
         }
         None => Ok(ApplicationJSON),
@@ -201,8 +194,7 @@ pub fn parse<'a>(
             //     .map_err(|_| Error::ContentTypeError {
             //         message: format!("None of these Content-Types are available: {}", t),
             //     })?;
-            let (_, act) = content_type(t)
-                .map_err(|e| to_app_error("failed to parse content-type header", e))?;
+            let (_, act) = content_type(t).map_err(|e| to_app_error("failed to parse content-type header", e))?;
             Ok(act)
         }
         None => Ok(ApplicationJSON),
@@ -213,8 +205,7 @@ pub fn parse<'a>(
             //     .message("failed to parse Prefer header ")
             //     .easy_parse(pref)
             //     .map_err(to_app_error(pref))?;
-            let (_, p) = preferences(pref)
-                .map_err(|e| to_app_error("failed to parse Prefer header", e))?;
+            let (_, p) = preferences(pref).map_err(|e| to_app_error("failed to parse Prefer header", e))?;
             Ok(Some(p))
         }
         None => Ok(None),
@@ -230,8 +221,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // select_items = parsed_value;
-                let (_, parsed_value) = select(v)
-                    .map_err(|e| to_app_error("failed to parse select parameter", e))?;
+                let (_, parsed_value) = select(v).map_err(|e| to_app_error("failed to parse select parameter", e))?;
                 select_items = parsed_value
             }
 
@@ -241,8 +231,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // columns_ = Some(parsed_value);
-                let (_, parsed_value) = columns(v)
-                    .map_err(|e| to_app_error("failed to parse columns parameter", e))?;
+                let (_, parsed_value) = columns(v).map_err(|e| to_app_error("failed to parse columns parameter", e))?;
                 columns_ = Some(parsed_value);
             }
             "groupby" => {
@@ -251,8 +240,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // groupbys = parsed_value;
-                let (_, parsed_value) = groupby(v)
-                    .map_err(|e| to_app_error("failed to parse groupby parameter", e))?;
+                let (_, parsed_value) = groupby(v).map_err(|e| to_app_error("failed to parse groupby parameter", e))?;
                 groupbys = parsed_value;
             }
             "on_conflict" => {
@@ -261,8 +249,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // on_conflict_ = Some(parsed_value);
-                let (_, parsed_value) = on_conflict(v)
-                    .map_err(|e| to_app_error("failed to parse on_conflict parameter", e))?;
+                let (_, parsed_value) = on_conflict(v).map_err(|e| to_app_error("failed to parse on_conflict parameter", e))?;
                 on_conflict_ = Some(parsed_value);
             }
 
@@ -272,8 +259,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
                 //let (tp, n, lo): (Vec<&str>, bool, LogicOperator) = todo!();
-                let (_, (tp, n, lo)) = logic_tree_path(k)
-                    .map_err(|e| to_app_error("failed to parser logic tree path", e))?;
+                let (_, (tp, n, lo)) = logic_tree_path(k).map_err(|e| to_app_error("failed to parser logic tree path", e))?;
 
                 // let ns = if n { "not." } else { "" };
                 // let los = if lo == And { "and" } else { "or" };
@@ -283,8 +269,7 @@ pub fn parse<'a>(
                 //     .message("failed to parse logic tree")
                 //     .easy_parse(s.as_str())
                 //     .map_err(to_app_error(&s))?;
-                let (_, c) = logic_condition(Some(n), Some(lo), v)
-                    .map_err(|e| to_app_error("failed to parse logic tree", e))?;
+                let (_, c) = logic_condition(Some(n), Some(lo), v).map_err(|e| to_app_error("failed to parse logic tree", e))?;
                 conditions.push((tp, c));
             }
 
@@ -293,14 +278,12 @@ pub fn parse<'a>(
                 //     .message("failed to parser limit tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let (_, (tp, _)) = tree_path(k)
-                    .map_err(|e| to_app_error("failed to parser limit tree path", e))?;
+                let (_, (tp, _)) = tree_path(k).map_err(|e| to_app_error("failed to parser limit tree path", e))?;
                 // let (parsed_value, _) = limit()
                 //     .message("failed to parse limit parameter")
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
-                let (_, parsed_value) = limit(v)
-                    .map_err(|e| to_app_error("failed to parse limit parameter", e))?;
+                let (_, parsed_value) = limit(v).map_err(|e| to_app_error("failed to parse limit parameter", e))?;
                 limits.push((tp, parsed_value));
             }
 
@@ -309,14 +292,12 @@ pub fn parse<'a>(
                 //     .message("failed to parser offset tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let (_, (tp, _)) = tree_path(k)
-                    .map_err(|e| to_app_error("failed to parser offset tree path", e))?;
+                let (_, (tp, _)) = tree_path(k).map_err(|e| to_app_error("failed to parser offset tree path", e))?;
                 // let (parsed_value, _) = offset()
                 //     .message("failed to parse limit parameter")
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
-                let (_, parsed_value) = offset(v)
-                    .map_err(|e| to_app_error("failed to parse limit parameter", e))?;
+                let (_, parsed_value) = offset(v).map_err(|e| to_app_error("failed to parse limit parameter", e))?;
                 offsets.push((tp, parsed_value));
             }
 
@@ -325,11 +306,9 @@ pub fn parse<'a>(
                 //     .message("failed to parser order tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let (_, (tp, _)) = tree_path(k)
-                    .map_err(|e| to_app_error("failed to parser order tree path", e))?;
+                let (_, (tp, _)) = tree_path(k).map_err(|e| to_app_error("failed to parser order tree path", e))?;
                 // let (parsed_value, _) = order().message("failed to parse order").easy_parse(*v).map_err(to_app_error(v))?;
-                let (_, parsed_value) = order(v)
-                    .map_err(|e| to_app_error("failed to parse order", e))?;
+                let (_, parsed_value) = order(v).map_err(|e| to_app_error("failed to parse order", e))?;
                 orders.push((tp, parsed_value));
             }
 
@@ -340,9 +319,8 @@ pub fn parse<'a>(
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
                 //let (tp, field): (Vec<&str>, Field) = todo!();
-                let (_, (tp, field)) = tree_path(k)
-                    .map_err(|e| to_app_error("failed to parser filter tree path", e))?;
-                
+                let (_, (tp, field)) = tree_path(k).map_err(|e| to_app_error("failed to parser filter tree path", e))?;
+
                 let data_type = root_obj.columns.get(field.name).map(|c| c.data_type);
                 match root_obj.kind {
                     Function { .. } => {
@@ -353,8 +331,7 @@ pub fn parse<'a>(
                             //     .easy_parse(*v)
                             //     .map_err(to_app_error(v))?;
                             //let (negate, filter) = todo!();
-                            let (_, (negate, filter)) = negatable_filter(data_type, v)
-                                .map_err(|e| to_app_error("failed to parse filter", e))?;
+                            let (_, (negate, filter)) = negatable_filter(data_type, v).map_err(|e| to_app_error("failed to parse filter", e))?;
                             conditions.push((tp, Condition::Single { field, filter, negate }));
                         } else {
                             //this is a function parameter
@@ -367,8 +344,7 @@ pub fn parse<'a>(
                         //     .easy_parse(*v)
                         //     .map_err(to_app_error(v))?;
                         //let (negate, filter) = todo!();
-                        let (_, (negate, filter)) = negatable_filter(data_type, v)
-                            .map_err(|e| to_app_error("failed to parse filter", e))?;
+                        let (_, (negate, filter)) = negatable_filter(data_type, v).map_err(|e| to_app_error("failed to parse filter", e))?;
                         conditions.push((tp, Condition::Single { field, filter, negate }));
                     }
                 };

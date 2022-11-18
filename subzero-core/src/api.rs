@@ -185,7 +185,7 @@ impl<'a, 'b> Query<'a> {
         Ok(())
     }
 
-    pub fn visit<R, F: FnMut(Vec<String>, &'b mut Self) -> R>(&'b mut self, f: F) -> Visitor<'a, 'b,  F> {
+    pub fn visit<R, F: FnMut(Vec<String>, &'b mut Self) -> R>(&'b mut self, f: F) -> Visitor<'a, 'b, F> {
         Visitor(VecDeque::from([vec![String::from(self.node.name())]]), VecDeque::from([self]), f)
     }
 }
@@ -200,8 +200,8 @@ impl<'a, 'b> Iterator for Iter<&'b Query<'a>> {
                 //let cp = current_path;
                 path.extend(sub_selects.iter().map(
                     |SubSelect {
-                        query: Query { node, .. }, ..
-                    }| {
+                         query: Query { node, .. }, ..
+                     }| {
                         let mut p = current_path.clone();
                         p.push(node.name().to_string());
                         p
