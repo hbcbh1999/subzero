@@ -142,10 +142,10 @@ pub struct Query<'a> {
 
 pub struct Iter<T>(VecDeque<Vec<String>>, VecDeque<T>);
 
-pub struct Visitor<'a, F>(VecDeque<Vec<String>>, VecDeque<&'a mut Query<'a>>, F);
+pub struct Visitor<'a, 'b, F>(VecDeque<Vec<String>>, VecDeque<&'b mut Query<'a>>, F);
 
-impl<'a> Query<'a> {
-    pub fn insert_conditions<'b>(&'b mut self, conditions: Vec<(Vec<&'a str>, Condition<'a>)>) -> Result<()> {
+impl<'a, 'b> Query<'a> {
+    pub fn insert_conditions(&'b mut self, conditions: Vec<(Vec<&'a str>, Condition<'a>)>) -> Result<()> {
         self.insert_properties(conditions, |q, p| {
             let query_conditions: &mut Vec<Condition<'a>> = match &mut q.node {
                 Select { where_, .. } => where_.conditions.as_mut(),
@@ -158,7 +158,7 @@ impl<'a> Query<'a> {
             Ok(())
         })
     }
-    pub fn insert_properties<T>(&mut self, mut properties: Vec<(Vec<&str>, T)>, f: fn(&mut Query<'a>, Vec<T>) -> Result<()>) -> Result<()> {
+    pub fn insert_properties<T>(&'b mut self, mut properties: Vec<(Vec<&str>, T)>, f: fn(&mut Query<'a>, Vec<T>) -> Result<()>) -> Result<()> {
         let node_properties = properties.drain_filter(|(path, _)| path.is_empty()).map(|(_, c)| c).collect::<Vec<_>>();
         if !node_properties.is_empty() {
             f(self, node_properties)?
@@ -185,13 +185,13 @@ impl<'a> Query<'a> {
         Ok(())
     }
 
-    pub fn visit<R, F: FnMut(Vec<String>, &'a mut Self) -> R>(&'a mut self, f: F) -> Visitor<'a, F> {
+    pub fn visit<R, F: FnMut(Vec<String>, &'b mut Self) -> R>(&'b mut self, f: F) -> Visitor<'a, 'b,  F> {
         Visitor(VecDeque::from([vec![String::from(self.node.name())]]), VecDeque::from([self]), f)
     }
 }
 
-impl<'a> Iterator for Iter<&'a Query<'a>> {
-    type Item = (Vec<String>, &'a QueryNode<'a>);
+impl<'a, 'b> Iterator for Iter<&'b Query<'a>> {
+    type Item = (Vec<String>, &'b QueryNode<'a>);
     fn next(&mut self) -> Option<Self::Item> {
         let Self(path, stack) = self;
         match (path.pop_front(), stack.pop_front()) {
@@ -200,8 +200,8 @@ impl<'a> Iterator for Iter<&'a Query<'a>> {
                 //let cp = current_path;
                 path.extend(sub_selects.iter().map(
                     |SubSelect {
-                         query: Query { node, .. }, ..
-                     }| {
+                        query: Query { node, .. }, ..
+                    }| {
                         let mut p = current_path.clone();
                         p.push(node.name().to_string());
                         p
@@ -279,13 +279,13 @@ impl<'a> Iterator for Iter<Query<'a>> {
     }
 }
 
-impl<'a> IntoIterator for &'a Query<'a> {
+impl<'a> IntoIterator for &Query<'a> {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
     fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self])) }
 }
 
-impl<'a> IntoIterator for &'a mut Query<'a> {
+impl<'a> IntoIterator for &mut Query<'a> {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
     fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self])) }

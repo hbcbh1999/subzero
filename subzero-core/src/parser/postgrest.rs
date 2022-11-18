@@ -2,12 +2,13 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter::{zip, FromIterator};
 use std::borrow::Cow;
+//use std::str::EncodeUtf16;
 
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, LogicOperator::*, QueryNode::*, SelectItem::*, SelectKind::*, *};
 use crate::error::*;
 use crate::schema::{ObjectType::*, PgType::*, ProcReturnType::*, *};
 
-// use csv::{Reader, StringRecord, ByteRecord};
+use csv::{Reader, ByteRecord};
 use serde_json::{
     value::{RawValue as JsonRawValue},
 };
@@ -68,9 +69,9 @@ lazy_static! {
     };
 }
 
-fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Option<Vec<&'a str>>) -> Result<(Vec<&'a str>, &'a str)> {
+fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Option<Vec<&'a str>>) -> Result<(Vec<&'a str>, Cow<'a, str>)> {
     let (columns, body) = match (content_type, columns_param) {
-        (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((c, _body)),
+        (ApplicationJSON, Some(c)) | (SingularJSON, Some(c)) => Ok((c, Cow::Borrowed(_body))),
         (ApplicationJSON, None) | (SingularJSON, None) => {
             // first nonempty char in body
             let c = _body.chars().find(|c| !c.is_whitespace());
@@ -91,43 +92,66 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
                     message: "Failed to parse json body".to_string(),
                 }),
             }?;
-            Ok((columns, _body))
+            Ok((columns, Cow::Borrowed(_body)))
         }
-        // (TextCSV, cols) => {
-        //     let mut rdr = Reader::from_reader(_body.as_bytes());
-        //             let mut res: Vec<JsonValue> = vec![];
-        //             let header: StringRecord = match cols {
-        //                 Some(c) => Ok(StringRecord::from(c)),
-        //                 None => Ok((rdr.headers().context(CsvDeserializeSnafu)?).clone()),
-        //             }?;
-        //             for record in rdr.records() {
-        //                 res.push(
-        //                     header
-        //                         .clone()
-        //                         .into_iter()
-        //                         .zip(record.context(CsvDeserializeSnafu)?.into_iter())
-        //                         .map(|(k, v)| {
-        //                             (
-        //                                 k,
-        //                                 match v {
-        //                                     "NULL" => JsonValue::Null,
-        //                                     _ => JsonValue::String(v.to_string()),
-        //                                 },
-        //                             )
-        //                         })
-        //                         .collect(),
-        //                 );
-        //             }
-        //             Ok((
-        //                 header.iter().map(|h| Cow::Owned(String::from(h))).collect(),
-        //                 Cow::Owned(serde_json::to_string(&JsonValue::Array(res)).context(JsonDeserializeSnafu)?),
-        //             ))
-        // }
+        (TextCSV, cols) => {
+            let mut rdr = Reader::from_reader(_body.as_bytes());
+            let mut rows = vec![];
+            let headers = match cols {
+                Some(c) => {
+                    rdr.set_byte_headers(ByteRecord::from(c.clone()));
+                    c
+                },
+                None => {
+                    // parse the first row as headers manually
+                    // we do this because of lifetime issues with the csv crate
+                    // get the first row directly from the _body
+                    let first_row = match _body.lines().next() {
+                        Some(row) => Ok(row),
+                        None => Err(Error::InvalidBody {
+                            message: "Failed to parse csv body".to_string(),
+                        }),
+                    }?;
+                    // parse line as csv header row
+                    let columns:Vec<&'a str> = first_row.split(',')
+                        .map(str::trim)
+                        .map(|s| s.trim_matches('"'))
+                        .collect();
+
+                    columns
+                },
+            };
+            
+            for record in rdr.byte_records() {
+                rows.push(record.context(CsvDeserializeSnafu)?);
+            }
+
+            //manually create the json body
+            let mut body = String::from("[");
+            for row in rows {
+                body.push('{');
+                for (i, v) in row.iter().enumerate() {
+                    body.push('"');
+                    body.push_str(headers[i]);
+                    body.push_str("\":\"");
+                    match std::str::from_utf8(v).context(Utf8DeserializeSnafu)? {
+                        "NULL" => body.push_str("null"),
+                        vv => body.push_str(vv.replace('"', "\\\"").as_str()),
+                    }
+                    body.push_str("\",");
+                }
+                body.pop();
+                body.push_str("},");
+            }
+            body.pop();
+            body.push(']');
+            Ok((
+                headers,
+                Cow::Owned(body),
+            ))
+        }
         (Other(t), _) => Err(Error::ContentTypeError {
             message: format!("None of these Content-Types are available: {}", t),
-        }),
-        _ => Err(Error::ContentTypeError {
-            message: "None of these Content-Types are available".to_string(),
         }),
     }?;
     Ok((columns, body))
@@ -163,8 +187,8 @@ pub fn parse<'a>(
             //     .map_err(|_| Error::ContentTypeError {
             //         message: format!("None of these Content-Types are available: {}", accept_header),
             //     })?;
-            let act = todo!();
-            // .map_err(to_app_error(t))?;
+            let (_, act) = content_type(accept_header)
+                .map_err(|e| to_app_error("failed to parse accept header", e))?;
             Ok(act)
         }
         None => Ok(ApplicationJSON),
@@ -177,8 +201,8 @@ pub fn parse<'a>(
             //     .map_err(|_| Error::ContentTypeError {
             //         message: format!("None of these Content-Types are available: {}", t),
             //     })?;
-            let act = todo!();
-            // .map_err(to_app_error(t))?;
+            let (_, act) = content_type(t)
+                .map_err(|e| to_app_error("failed to parse content-type header", e))?;
             Ok(act)
         }
         None => Ok(ApplicationJSON),
@@ -189,7 +213,8 @@ pub fn parse<'a>(
             //     .message("failed to parse Prefer header ")
             //     .easy_parse(pref)
             //     .map_err(to_app_error(pref))?;
-            let p = todo!();
+            let (_, p) = preferences(pref)
+                .map_err(|e| to_app_error("failed to parse Prefer header", e))?;
             Ok(Some(p))
         }
         None => Ok(None),
@@ -205,7 +230,9 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // select_items = parsed_value;
-                select_items = todo!()
+                let (_, parsed_value) = select(v)
+                    .map_err(|e| to_app_error("failed to parse select parameter", e))?;
+                select_items = parsed_value
             }
 
             "columns" => {
@@ -214,7 +241,9 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // columns_ = Some(parsed_value);
-                columns_ = todo!()
+                let (_, parsed_value) = columns(v)
+                    .map_err(|e| to_app_error("failed to parse columns parameter", e))?;
+                columns_ = Some(parsed_value);
             }
             "groupby" => {
                 // let (parsed_value, _) = groupby()
@@ -222,7 +251,9 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // groupbys = parsed_value;
-                groupbys = todo!()
+                let (_, parsed_value) = groupby(v)
+                    .map_err(|e| to_app_error("failed to parse groupby parameter", e))?;
+                groupbys = parsed_value;
             }
             "on_conflict" => {
                 // let (parsed_value, _) = on_conflict()
@@ -230,7 +261,9 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // on_conflict_ = Some(parsed_value);
-                on_conflict_ = todo!()
+                let (_, parsed_value) = on_conflict(v)
+                    .map_err(|e| to_app_error("failed to parse on_conflict parameter", e))?;
+                on_conflict_ = Some(parsed_value);
             }
 
             kk if is_logical(kk) => {
@@ -238,17 +271,20 @@ pub fn parse<'a>(
                 //     .message("failed to parser logic tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let (tp, n, lo): (Vec<&str>, bool, LogicOperator) = todo!();
+                //let (tp, n, lo): (Vec<&str>, bool, LogicOperator) = todo!();
+                let (_, (tp, n, lo)) = logic_tree_path(k)
+                    .map_err(|e| to_app_error("failed to parser logic tree path", e))?;
 
-                let ns = if n { "not." } else { "" };
-                let los = if lo == And { "and" } else { "or" };
-                let s = format!("{}{}{}", ns, los, v);
+                // let ns = if n { "not." } else { "" };
+                // let los = if lo == And { "and" } else { "or" };
+                // let s = format!("{}{}{}", ns, los, v);
 
                 // let (c, _) = logic_condition()
                 //     .message("failed to parse logic tree")
                 //     .easy_parse(s.as_str())
                 //     .map_err(to_app_error(&s))?;
-                let c = todo!();
+                let (_, c) = logic_condition(Some(n), Some(lo), v)
+                    .map_err(|e| to_app_error("failed to parse logic tree", e))?;
                 conditions.push((tp, c));
             }
 
@@ -257,12 +293,14 @@ pub fn parse<'a>(
                 //     .message("failed to parser limit tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let tp = todo!();
+                let (_, (tp, _)) = tree_path(k)
+                    .map_err(|e| to_app_error("failed to parser limit tree path", e))?;
                 // let (parsed_value, _) = limit()
                 //     .message("failed to parse limit parameter")
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
-                let parsed_value = todo!();
+                let (_, parsed_value) = limit(v)
+                    .map_err(|e| to_app_error("failed to parse limit parameter", e))?;
                 limits.push((tp, parsed_value));
             }
 
@@ -271,12 +309,14 @@ pub fn parse<'a>(
                 //     .message("failed to parser offset tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let tp = todo!();
+                let (_, (tp, _)) = tree_path(k)
+                    .map_err(|e| to_app_error("failed to parser offset tree path", e))?;
                 // let (parsed_value, _) = offset()
                 //     .message("failed to parse limit parameter")
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
-                let parsed_value = todo!();
+                let (_, parsed_value) = offset(v)
+                    .map_err(|e| to_app_error("failed to parse limit parameter", e))?;
                 offsets.push((tp, parsed_value));
             }
 
@@ -285,9 +325,11 @@ pub fn parse<'a>(
                 //     .message("failed to parser order tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let tp = todo!();
+                let (_, (tp, _)) = tree_path(k)
+                    .map_err(|e| to_app_error("failed to parser order tree path", e))?;
                 // let (parsed_value, _) = order().message("failed to parse order").easy_parse(*v).map_err(to_app_error(v))?;
-                let parsed_value = todo!();
+                let (_, parsed_value) = order(v)
+                    .map_err(|e| to_app_error("failed to parse order", e))?;
                 orders.push((tp, parsed_value));
             }
 
@@ -297,7 +339,10 @@ pub fn parse<'a>(
                 //     .message("failed to parser filter tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let (tp, field): (Vec<&str>, Field) = todo!();
+                //let (tp, field): (Vec<&str>, Field) = todo!();
+                let (_, (tp, field)) = tree_path(k)
+                    .map_err(|e| to_app_error("failed to parser filter tree path", e))?;
+                
                 let data_type = root_obj.columns.get(field.name).map(|c| c.data_type);
                 match root_obj.kind {
                     Function { .. } => {
@@ -307,7 +352,9 @@ pub fn parse<'a>(
                             //     .message("failed to parse filter")
                             //     .easy_parse(*v)
                             //     .map_err(to_app_error(v))?;
-                            let (negate, filter) = todo!();
+                            //let (negate, filter) = todo!();
+                            let (_, (negate, filter)) = negatable_filter(data_type, v)
+                                .map_err(|e| to_app_error("failed to parse filter", e))?;
                             conditions.push((tp, Condition::Single { field, filter, negate }));
                         } else {
                             //this is a function parameter
@@ -319,7 +366,9 @@ pub fn parse<'a>(
                         //     .message("failed to parse filter")
                         //     .easy_parse(*v)
                         //     .map_err(to_app_error(v))?;
-                        let (negate, filter) = todo!();
+                        //let (negate, filter) = todo!();
+                        let (_, (negate, filter)) = negatable_filter(data_type, v)
+                            .map_err(|e| to_app_error("failed to parse filter", e))?;
                         conditions.push((tp, Condition::Single { field, filter, negate }));
                     }
                 };
@@ -421,7 +470,7 @@ pub fn parse<'a>(
                         (1, Some(p)) if p.name.is_empty() => CallParams::OnePosParam(p.clone()),
                         _ => {
                             //let specified_parameters = args.keys().collect::<Vec<_>>();
-                            let specified_parameters: HashSet<&str> = HashSet::from_iter(args.keys().map(|k| *k));
+                            let specified_parameters: HashSet<&str> = HashSet::from_iter(args.keys().copied());
                             if !specified_parameters.is_superset(&required_params) || !specified_parameters.is_subset(&all_params) {
                                 let mut argument_keys = args.keys().map(|k| k.to_string()).collect::<Vec<_>>();
                                 argument_keys.sort();
@@ -579,7 +628,7 @@ pub fn parse<'a>(
                 node: Insert {
                     into: root,
                     columns,
-                    payload: Payload(Cow::Borrowed(payload), None),
+                    payload: Payload(payload, None),
                     check: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -626,7 +675,7 @@ pub fn parse<'a>(
                 node: Update {
                     table: root,
                     columns,
-                    payload: Payload(Cow::Borrowed(payload), None),
+                    payload: Payload(payload, None),
                     check: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -683,7 +732,7 @@ pub fn parse<'a>(
                 node: Insert {
                     into: root,
                     columns,
-                    payload: Payload(Cow::Borrowed(payload), None),
+                    payload: Payload(payload, None),
                     check: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -751,32 +800,10 @@ pub fn parse<'a>(
         Ok(())
     })?;
 
-    // replace select * with all the columns
-    //replace_start(&mut query, schema_obj)?;
-
     // enforce max rows limit for each node
-    //enforce_max_rows(&mut query, max_rows);
-    // let none = &mut None;
-    // if let Some(max_str) = max_rows {
-    //     let max = max_str.parse::<u32>().unwrap_or(1000);
-    //     for (_, node) in &mut query {
-
-    //         let limit = match node {
-    //             FunctionCall { limit, .. } => limit,
-    //             Select { limit, .. } => limit,
-    //             Insert { .. } => none,
-    //             Delete { .. } => none,
-    //             Update { .. } => none,
-    //         };
-    //         match limit {
-    //             Some(SingleVal(l, ..)) => match l.parse::<u32>() {
-    //                 Ok(ll) if ll > max => *limit = Some(SingleVal(max_str, None)),
-    //                 _ => *limit = Some(SingleVal(max_str, None)),
-    //             },
-    //             None => *limit = Some(SingleVal(max_str, None)),
-    //         }
-    //     }
-    // }
+    enforce_max_rows(&mut query, max_rows);
+    // replace select * with all the columns
+    replace_start(&mut query, schema_obj)?;
 
     Ok(ApiRequest {
         schema_name: schema,
@@ -793,7 +820,7 @@ pub fn parse<'a>(
 }
 
 // enforce max rows
-fn enforce_max_rows<'a>(query: &'a mut Query<'a>, max_rows: Option<&'a str>) {
+fn enforce_max_rows<'a>(query: &mut Query<'a>, max_rows: Option<&'a str>) {
     if let Some(max_str) = max_rows {
         let max = max_str.parse::<u32>().unwrap_or(1000);
         for (_, node) in query {
@@ -817,7 +844,7 @@ fn enforce_max_rows<'a>(query: &'a mut Query<'a>, max_rows: Option<&'a str>) {
 }
 
 // replace star with all columns
-fn replace_start<'a, 'b: 'a>(query: &'b mut Query<'a>, schema_obj: &Schema<'a>) -> Result<()> {
+fn replace_start<'a>(query: &mut Query<'a>, schema_obj: &Schema<'a>) -> Result<()> {
     for (_, node) in query {
         let (select, o_table_name) = match node {
             Select {
@@ -845,7 +872,7 @@ fn replace_start<'a, 'b: 'a>(query: &'b mut Query<'a>, schema_obj: &Schema<'a>) 
                 })?;
                 for col in table_obj.columns.keys() {
                     select.push(SelectItem::Simple {
-                        field: Field { name: *col, json_path: None },
+                        field: Field { name: col, json_path: None },
                         alias: None,
                         cast: None,
                     });
@@ -964,7 +991,7 @@ fn signed_number(i: &str) -> Parsed<&str> {
         terminated(digit1, peek(alt((tag("->"), tag("::"), tag("."), tag(","), eof)))),
     ))(i)
 }
-fn json_operand(i: &str) -> Parsed<JsonOperand> { alt((map(signed_number, |i| JsonOperand::JIdx(i)), map(field_name, JsonOperand::JKey)))(i) }
+fn json_operand(i: &str) -> Parsed<JsonOperand> { alt((map(signed_number, JsonOperand::JIdx), map(field_name, JsonOperand::JKey)))(i) }
 //done
 // fn alias_separator<Input>() -> impl Parser<Input, Output = char>
 // where
@@ -1219,9 +1246,9 @@ fn single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Single
 // {
 //     many1(digit()).map(|v| SingleVal(v, Some("integer".to_string())))
 // }
-fn integer(i: &str) -> Parsed<(&str, Option<&str>)> {
+fn integer(i: &str) -> Parsed<SingleVal> {
     let (input, integer) = recognize(many1(digit1))(i)?;
-    Ok((input, (integer, Some("integer"))))
+    Ok((input, SingleVal(Cow::Borrowed(integer), Some(Cow::Borrowed("integer")))))
 }
 
 //done
@@ -1231,7 +1258,7 @@ fn integer(i: &str) -> Parsed<(&str, Option<&str>)> {
 // {
 //     integer()
 // }
-fn limit(i: &str) -> Parsed<(&str, Option<&str>)> { integer(i) }
+fn limit(i: &str) -> Parsed<SingleVal> { integer(i) }
 
 //done
 // fn offset<Input>() -> impl Parser<Input, Output = SingleVal>
@@ -1240,7 +1267,7 @@ fn limit(i: &str) -> Parsed<(&str, Option<&str>)> { integer(i) }
 // {
 //     integer()
 //}
-fn offset(i: &str) -> Parsed<(&str, Option<&str>)> { integer(i) }
+fn offset(i: &str) -> Parsed<SingleVal> { integer(i) }
 
 // fn logic_single_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (String, Option<String>)>
 // where
@@ -1315,7 +1342,7 @@ fn fts_operator(i: &str) -> Parsed<&str> {
 //         .and(filter(data_type))
 //         .map(|(n, f)| (n.is_some(), f))
 // }
-fn negatable_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<(bool, Filter)> { todo!() }
+fn negatable_filter<'a>(data_type: Option<&'a str>, i: &'a str) -> Parsed<(bool, Filter<'a>)> { todo!() }
 
 //TODO! filter and logic_filter parsers should be combined, they differ only in single_value parser type
 // fn filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
@@ -1453,7 +1480,7 @@ fn order(i: &str) -> Parsed<Vec<OrderTerm>> {
 // {
 //     sep_by1(groupby_term(), lex(char(','))).skip(eof())
 // }
-fn groupby(i: &str) -> Parsed<Vec<Field>> { terminated(separated_list1(tag(","), ws(field)), eof)(i) }
+fn groupby(i: &str) -> Parsed<Vec<GroupByTerm>> { terminated(separated_list1(tag(","), map(ws(field), GroupByTerm)), eof)(i) }
 
 //done
 // fn groupby_term<Input>() -> impl Parser<Input, Output = GroupByTerm>
@@ -1586,7 +1613,7 @@ fn preferences(i: &str) -> Parsed<Preferences> { todo!() }
 //     }
 // }
 
-fn logic_condition(i: &str) -> Parsed<Condition> { todo!() }
+fn logic_condition(n: Option<bool>, lo: Option<LogicOperator>, i: &str) -> Parsed<Condition> { todo!() }
 
 // helper functions
 fn split_select(select: Vec<SelectKind>) -> (Vec<SelectItem>, Vec<SubSelect>) {
@@ -1799,24 +1826,41 @@ fn has_operator(s: &str) -> bool { OPERATORS_START.iter().map(|op| s.starts_with
 //     }
 // }
 
-fn to_app_error<T>(s: &str) -> impl Fn(nom::Err<T>) -> Error {
-    move |_| {
-        // let m = e.errors.drain_filter(|v| matches!(v, ParserError::Message(_))).collect::<Vec<_>>();
-        // let position = e.position.translate_position(s);
-        // let message = match m.as_slice() {
-        //     [ParserError::Message(Info::Static(s))] => s,
-        //     _ => "",
-        // };
-        // let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
-        // let details = format!("{}", e)
-        //     .replace(format!("Parse error at {}", e.position).as_str(), "")
-        //     .replace('\n', " ")
-        //     .trim()
-        //     .to_string();
-        let message = "parser error".to_string();
-        let details = "no details".to_string();
-        Error::ParseRequestError { message, details }
-    }
+// fn to_app_error<T>(s: &str) -> impl Fn(nom::Err<T>) -> Error {
+//     move |_| {
+//         // let m = e.errors.drain_filter(|v| matches!(v, ParserError::Message(_))).collect::<Vec<_>>();
+//         // let position = e.position.translate_position(s);
+//         // let message = match m.as_slice() {
+//         //     [ParserError::Message(Info::Static(s))] => s,
+//         //     _ => "",
+//         // };
+//         // let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
+//         // let details = format!("{}", e)
+//         //     .replace(format!("Parse error at {}", e.position).as_str(), "")
+//         //     .replace('\n', " ")
+//         //     .trim()
+//         //     .to_string();
+//         let message = "parser error".to_string();
+//         let details = "no details".to_string();
+//         Error::ParseRequestError { message, details }
+//     }
+// }
+fn to_app_error<T>(s: &str, _e: nom::Err<T>) -> Error {
+    // let m = e.errors.drain_filter(|v| matches!(v, ParserError::Message(_))).collect::<Vec<_>>();
+    // let position = e.position.translate_position(s);
+    // let message = match m.as_slice() {
+    //     [ParserError::Message(Info::Static(s))] => s,
+    //     _ => "",
+    // };
+    // let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
+    // let details = format!("{}", e)
+    //     .replace(format!("Parse error at {}", e.position).as_str(), "")
+    //     .replace('\n', " ")
+    //     .trim()
+    //     .to_string();
+    let message = s.to_string();
+    let details = "no details".to_string();
+    Error::ParseRequestError { message, details }
 }
 
 //fn get_returning(select: &Vec<SelectKind>) -> Result<Vec<String>> {
