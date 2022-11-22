@@ -1,5 +1,5 @@
 //use core::slice::SlicePattern;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet, BTreeMap};
 use std::iter::{zip, FromIterator};
 use std::borrow::Cow;
 //use std::str::EncodeUtf16;
@@ -10,26 +10,24 @@ use crate::schema::{ObjectType::*, PgType::*, ProcReturnType::*, *};
 
 use csv::{Reader, ByteRecord};
 use serde_json::{
-    value::{RawValue as JsonRawValue},
+    value::{RawValue as JsonRawValue, Value as JsonValue},
 };
 use snafu::{OptionExt, ResultExt};
 
 use nom::{
-    IResult,
-    error::ParseError,
-    combinator::{peek, recognize, eof, map, map_res, opt, value},
+    Err,
+    error::{ParseError, context, ErrorKind, convert_error, VerboseErrorKind},
+    combinator::{peek, recognize, eof, map, map_res, map_opt, opt, value},
     sequence::{delimited, terminated, preceded, tuple},
-    bytes::complete::{tag, is_not},
-    character::complete::{multispace0, char, alpha1, digit1, one_of},
-    multi::{many1, separated_list1},
+    bytes::complete::{tag, is_not, is_a, },
+    character::complete::{multispace0, char, alpha1, digit1, one_of,},
+    multi::{many1, many0, separated_list1, separated_list0},
     branch::{alt},
 };
-use nom::{
-    Err,
-    error::{ErrorKind},
-};
-//use nom::error::Error as NomError;
+// use nom::IResult;
+type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), Err<E>>;
 type Parsed<'a, T> = IResult<&'a str, T>;
+
 const STAR: &str = "*";
 const ALIAS_SUFIXES: [&str; 10] = ["_0", "_1", "_2", "_3", "_4", "_5", "_6", "_7", "_8", "_9"];
 lazy_static! {
@@ -77,16 +75,26 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
             let c = _body.chars().find(|c| !c.is_whitespace());
             let columns = match c {
                 Some('{') => {
-                    let json = serde_json::from_str::<HashMap<&str, &JsonRawValue>>(_body).context(JsonDeserializeSnafu)?;
+                    let json = serde_json::from_str::<BTreeMap<&str, &JsonRawValue>>(_body).context(JsonDeserializeSnafu)?;
                     Ok(json.keys().copied().collect::<Vec<_>>())
                 }
                 Some('[') => {
-                    let json = serde_json::from_str::<Vec<HashMap<&str, &JsonRawValue>>>(_body).context(JsonDeserializeSnafu)?;
+                    let json = serde_json::from_str::<Vec<BTreeMap<&str, &JsonRawValue>>>(_body).context(JsonDeserializeSnafu)?;
                     let columns = match json.get(0) {
                         Some(row) => row.keys().copied().collect::<Vec<_>>(),
                         None => vec![],
                     };
-                    Ok(columns)
+                    let canonical_set: HashSet<_> = columns.iter().copied().collect();
+                    let all_keys_match = json.iter().all(|vv| 
+                        canonical_set == HashSet::from_iter(vv.keys().copied()),
+                    );
+                    if all_keys_match {
+                        Ok(columns)
+                    } else {
+                        Err(Error::InvalidBody {
+                            message: "All object keys must match".to_string(),
+                        })
+                    }
                 }
                 _ => Err(Error::InvalidBody {
                     message: "Failed to parse json body".to_string(),
@@ -181,7 +189,7 @@ pub fn parse<'a>(
             //     .map_err(|_| Error::ContentTypeError {
             //         message: format!("None of these Content-Types are available: {}", accept_header),
             //     })?;
-            let (_, act) = content_type(accept_header).map_err(|e| to_app_error("failed to parse accept header", e))?;
+            let (_, act) = context("failed to parse accept header", content_type)(accept_header).map_err(|e| to_app_error(accept_header, e))?;
             Ok(act)
         }
         None => Ok(ApplicationJSON),
@@ -194,7 +202,7 @@ pub fn parse<'a>(
             //     .map_err(|_| Error::ContentTypeError {
             //         message: format!("None of these Content-Types are available: {}", t),
             //     })?;
-            let (_, act) = content_type(t).map_err(|e| to_app_error("failed to parse content-type header", e))?;
+            let (_, act) = context("failed to parse content-type header", content_type)(t).map_err(|e| to_app_error(t, e))?;
             Ok(act)
         }
         None => Ok(ApplicationJSON),
@@ -205,7 +213,7 @@ pub fn parse<'a>(
             //     .message("failed to parse Prefer header ")
             //     .easy_parse(pref)
             //     .map_err(to_app_error(pref))?;
-            let (_, p) = preferences(pref).map_err(|e| to_app_error("failed to parse Prefer header", e))?;
+            let (_, p) = context("failed to parse Prefer header", preferences)(pref).map_err(|e| to_app_error(pref, e))?;
             Ok(Some(p))
         }
         None => Ok(None),
@@ -221,7 +229,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // select_items = parsed_value;
-                let (_, parsed_value) = select(v).map_err(|e| to_app_error("failed to parse select parameter", e))?;
+                let (_, parsed_value) = context("failed to parse select parameter", select)(v).map_err(|e| to_app_error(v, e))?;
                 select_items = parsed_value
             }
 
@@ -231,7 +239,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // columns_ = Some(parsed_value);
-                let (_, parsed_value) = columns(v).map_err(|e| to_app_error("failed to parse columns parameter", e))?;
+                let (_, parsed_value) = context("failed to parse columns parameter", columns)(v).map_err(|e| to_app_error(v, e))?;
                 columns_ = Some(parsed_value);
             }
             "groupby" => {
@@ -240,7 +248,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // groupbys = parsed_value;
-                let (_, parsed_value) = groupby(v).map_err(|e| to_app_error("failed to parse groupby parameter", e))?;
+                let (_, parsed_value) = context("failed to parse groupby parameter", groupby)(v).map_err(|e| to_app_error(v, e))?;
                 groupbys = parsed_value;
             }
             "on_conflict" => {
@@ -249,7 +257,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
                 // on_conflict_ = Some(parsed_value);
-                let (_, parsed_value) = on_conflict(v).map_err(|e| to_app_error("failed to parse on_conflict parameter", e))?;
+                let (_, parsed_value) = context("failed to parse on_conflict parameter", on_conflict)(v).map_err(|e| to_app_error(v, e))?;
                 on_conflict_ = Some(parsed_value);
             }
 
@@ -259,7 +267,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
                 //let (tp, n, lo): (Vec<&str>, bool, LogicOperator) = todo!();
-                let (_, (tp, n, lo)) = logic_tree_path(k).map_err(|e| to_app_error("failed to parser logic tree path", e))?;
+                let (_, (tp, n, lo)) = context("failed to parser logic tree path", logic_tree_path)(k).map_err(|e| to_app_error(k, e))?;
 
                 // let ns = if n { "not." } else { "" };
                 // let los = if lo == And { "and" } else { "or" };
@@ -269,7 +277,8 @@ pub fn parse<'a>(
                 //     .message("failed to parse logic tree")
                 //     .easy_parse(s.as_str())
                 //     .map_err(to_app_error(&s))?;
-                let (_, c) = logic_condition(Some(n), Some(lo), v).map_err(|e| to_app_error("failed to parse logic tree", e))?;
+                //let (_, c) = logic_condition(Some(n), Some(lo), v).map_err(|e| to_app_error("failed to parse logic tree", e))?;
+                let (_, c) = context("failed to parse logic tree", |ii| logic_condition(Some(&n), Some(&lo), ii))(v).map_err(|e| to_app_error(v, e))?;
                 conditions.push((tp, c));
             }
 
@@ -278,12 +287,12 @@ pub fn parse<'a>(
                 //     .message("failed to parser limit tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let (_, (tp, _)) = tree_path(k).map_err(|e| to_app_error("failed to parser limit tree path", e))?;
+                let (_, (tp, _)) = context("failed to parser limit tree path", tree_path)(k).map_err(|e| to_app_error(k, e))?;
                 // let (parsed_value, _) = limit()
                 //     .message("failed to parse limit parameter")
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
-                let (_, parsed_value) = limit(v).map_err(|e| to_app_error("failed to parse limit parameter", e))?;
+                let (_, parsed_value) = context("failed to parse limit parameter", limit)(v).map_err(|e| to_app_error(v, e))?;
                 limits.push((tp, parsed_value));
             }
 
@@ -292,12 +301,12 @@ pub fn parse<'a>(
                 //     .message("failed to parser offset tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let (_, (tp, _)) = tree_path(k).map_err(|e| to_app_error("failed to parser offset tree path", e))?;
+                let (_, (tp, _)) = context("failed to parser offset tree path", tree_path)(k).map_err(|e| to_app_error(k, e))?;
                 // let (parsed_value, _) = offset()
                 //     .message("failed to parse limit parameter")
                 //     .easy_parse(*v)
                 //     .map_err(to_app_error(v))?;
-                let (_, parsed_value) = offset(v).map_err(|e| to_app_error("failed to parse limit parameter", e))?;
+                let (_, parsed_value) = context("failed to parse limit parameter", offset)(v).map_err(|e| to_app_error(v, e))?;
                 offsets.push((tp, parsed_value));
             }
 
@@ -306,9 +315,9 @@ pub fn parse<'a>(
                 //     .message("failed to parser order tree path")
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
-                let (_, (tp, _)) = tree_path(k).map_err(|e| to_app_error("failed to parser order tree path", e))?;
-                // let (parsed_value, _) = order().message("failed to parse order").easy_parse(*v).map_err(to_app_error(v))?;
-                let (_, parsed_value) = order(v).map_err(|e| to_app_error("failed to parse order", e))?;
+                let (_, (tp, _)) = context("failed to parser order tree path", tree_path)(k).map_err(|e| to_app_error(k, e))?;
+                // let (parsed_value, _) = order().message("failed to parse order"*v).map_err(to_app_error(v))?;
+                let (_, parsed_value) = context("failed to parse order", order)(v).map_err(|e| to_app_error(v, e))?;
                 orders.push((tp, parsed_value));
             }
 
@@ -319,7 +328,7 @@ pub fn parse<'a>(
                 //     .easy_parse(*k)
                 //     .map_err(to_app_error(k))?;
                 //let (tp, field): (Vec<&str>, Field) = todo!();
-                let (_, (tp, field)) = tree_path(k).map_err(|e| to_app_error("failed to parser filter tree path", e))?;
+                let (_, (tp, field)) = context("failed to parser filter tree path", tree_path)(k).map_err(|e| to_app_error(k, e))?;
 
                 let data_type = root_obj.columns.get(field.name).map(|c| c.data_type);
                 match root_obj.kind {
@@ -331,7 +340,8 @@ pub fn parse<'a>(
                             //     .easy_parse(*v)
                             //     .map_err(to_app_error(v))?;
                             //let (negate, filter) = todo!();
-                            let (_, (negate, filter)) = negatable_filter(data_type, v).map_err(|e| to_app_error("failed to parse filter", e))?;
+                            //let (_, (negate, filter)) = negatable_filter(&data_type, v).map_err(|e| to_app_error("failed to parse filter", e))?;
+                            let (_, (negate, filter)) = context("failed to parse filter", |ii| negatable_filter(&data_type, ii))(v).map_err(|e| to_app_error(v, e))?;
                             conditions.push((tp, Condition::Single { field, filter, negate }));
                         } else {
                             //this is a function parameter
@@ -344,7 +354,8 @@ pub fn parse<'a>(
                         //     .easy_parse(*v)
                         //     .map_err(to_app_error(v))?;
                         //let (negate, filter) = todo!();
-                        let (_, (negate, filter)) = negatable_filter(data_type, v).map_err(|e| to_app_error("failed to parse filter", e))?;
+                        //let (_, (negate, filter)) = negatable_filter(&data_type, v).map_err(|e| to_app_error("failed to parse filter", e))?;
+                        let (_, (negate, filter)) = context("failed to parse filter", |ii| negatable_filter(&data_type, ii))(v).map_err(|e| to_app_error(v, e))?;
                         conditions.push((tp, Condition::Single { field, filter, negate }));
                     }
                 };
@@ -415,30 +426,30 @@ pub fn parse<'a>(
     };
 
     let (node_select, sub_selects) = split_select(select_items);
-    let mut query = match (method, root_obj.kind.clone(), body) {
+    let mut query = match (method, &root_obj.kind, body) {
         (method, Function { return_type, parameters, .. }, _body) => {
             let parameters_map = parameters.iter().map(|p| (p.name, p)).collect::<HashMap<_, _>>();
             let required_params: HashSet<&str> = HashSet::from_iter(parameters.iter().filter(|p| p.required).map(|p| p.name));
             let all_params: HashSet<&str> = HashSet::from_iter(parameters.iter().map(|p| p.name));
             let (parameter_values, params) = match (method, _body) {
                 ("GET", None) => {
-                    let mut args: HashMap<&str, ParamValue> = HashMap::new();
+                    let mut args: HashMap<&str, JsonValue> = HashMap::new();
                     for (n, v) in fn_arguments {
                         if let Some(&p) = parameters_map.get(n) {
                             if p.variadic {
                                 if let Some(e) = args.get_mut(n) {
-                                    if let ParamValue::Variadic(a) = e {
-                                        a.push(serde_json::from_str(v).context(JsonDeserializeSnafu)?);
+                                    if let JsonValue::Array(a) = e {
+                                        a.push(v.to_string().into());
                                     }
                                 } else {
-                                    args.insert(n, ParamValue::Variadic(vec![serde_json::from_str(v).context(JsonDeserializeSnafu)?]));
+                                    args.insert(n, JsonValue::Array(vec![v.to_string().into()]));
                                 }
                             } else {
-                                args.insert(n, ParamValue::Single(serde_json::from_str(v).context(JsonDeserializeSnafu)?));
+                                args.insert(n, v.to_string().into());
                             }
                         } else {
                             //this is an unknown param, we still add it but bellow we'll return an error because of it
-                            args.insert(n, ParamValue::Single(serde_json::from_str(v).context(JsonDeserializeSnafu)?));
+                            args.insert(n, v.to_string().into());
                         }
                     }
                     //let payload = serde_json::to_string(&args).context(JsonSerializeSnafu)?;
@@ -461,8 +472,9 @@ pub fn parse<'a>(
                             }
                             CallParams::KeyParams(
                                 parameters
-                                    .into_iter()
+                                    .iter()
                                     .filter(|p| specified_parameters.contains(&p.name))
+                                    .map(|&ProcParam {name, type_, required, variadic}| ProcParam {name, type_, required, variadic})
                                     .collect::<Vec<_>>(),
                             )
                         }
@@ -497,8 +509,9 @@ pub fn parse<'a>(
 
                             CallParams::KeyParams(
                                 parameters
-                                    .into_iter()
+                                    .iter()
                                     .filter(|p| specified_parameters.contains(&p.name))
+                                    .map(|&ProcParam {name, type_, required, variadic}| ProcParam {name, type_, required, variadic})
                                     .collect::<Vec<_>>(),
                             )
                         }
@@ -508,14 +521,18 @@ pub fn parse<'a>(
                 }
                 _ => Err(Error::UnsupportedVerb),
             }?;
-            let payload = serde_json::to_string(&parameter_values).context(JsonDeserializeSnafu)?;
+
+            let payload = match parameter_values {
+                ParamValues::Parsed(args) => Payload(Cow::Owned(serde_json::to_string(&args).context(JsonSerializeSnafu)?), None),
+                ParamValues::Raw(r) => Payload(Cow::Borrowed(r), None),
+            };
             let mut q = Query {
                 node: FunctionCall {
                     fn_name: Qi(schema, root),
                     parameters: params,
 
                     //CallParams::KeyParams(vec![]),
-                    payload: Payload(Cow::Owned(payload), None),
+                    payload,
                     //parameter_values,
                     is_scalar: matches!(return_type, One(Scalar) | SetOf(Scalar)),
                     returns_single: match return_type {
@@ -531,8 +548,8 @@ pub fn parse<'a>(
                         conditions: vec![],
                     },
                     return_table_type: match return_type {
-                        SetOf(Composite(qi)) => Some(qi),
-                        One(Composite(qi)) => Some(qi),
+                        SetOf(Composite(Qi(a,b))) => Some(Qi(a, b)),
+                        One(Composite(Qi(a,b))) => Some(Qi(a,b)),
                         _ => None,
                     },
                     limit: None,
@@ -599,7 +616,6 @@ pub fn parse<'a>(
                 }
                 _ => None,
             };
-
             let mut q = Query {
                 node: Insert {
                     into: root,
@@ -623,7 +639,7 @@ pub fn parse<'a>(
 
             Ok(q)
         }
-        ("DELETE", _, None) => {
+        ("DELETE", _, _) => {
             let mut q = Query {
                 node: Delete {
                     from: root,
@@ -894,7 +910,14 @@ where
 // }
 fn dash(i: &str) -> Parsed<&str> { terminated(tag("-"), peek(is_not(">")))(i) }
 
-fn field_name(i: &str) -> Parsed<&str> { recognize(separated_list1(dash, many1(alt((alpha1, digit1, tag("_"))))))(i) }
+fn field_name(i: &str) -> Parsed<&str> {
+    alt((
+        quoted_value,
+        map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| {
+            s.trim()
+        }),
+    ))(i)
+}
 
 //done
 // fn function_name<Input>() -> impl Parser<Input, Output = String>
@@ -911,17 +934,52 @@ fn field_name(i: &str) -> Parsed<&str> { recognize(separated_list1(dash, many1(a
 //         .map(|words: Vec<String>| words.join("-")),
 //     )))
 // }
-fn function_name(i: &str) -> Parsed<&str> { recognize(separated_list1(dash, many1(alt((alpha1, digit1, tag("_"))))))(i) }
+fn function_name(i: &str) -> Parsed<&str> { 
+    alt((
+        quoted_value,
+        map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| {
+            s.trim()
+        }),
+    ))(i)
+}
 
 //done
 // fn quoted_value<Input>() -> impl Parser<Input, Output = String>
 // where
 //     Input: Stream<Token = char>,
 // {
-//     between(char('"'), char('"'), many(choice((none_of("\\\"".chars()), char('\\').and(any()).map(|(_, c)| c)))))
+// between(
+//     char('"'),
+//     char('"'), 
+//     many(
+//         choice(
+//             (
+//                 none_of("\\\"".chars()),
+//                 char('\\').and(any()).map(|(_, c)| c)
+//             )
+//         )
+//     )
+// )
 // }
 
-fn quoted_value(i: &str) -> Parsed<&str> { delimited(char('"'), is_not("\""), char('"'))(i) }
+fn quoted_value_escaped(i: &str) -> Parsed<Cow<str>> { 
+    map(delimited(
+        char('"'),
+        many0(alt((
+            is_not("\\\""),
+            map(tag("\\\""),|_| "\""),
+        ))),
+        char('"')
+    ),|v| Cow::Owned(v.join("")))(i)
+}
+
+fn quoted_value(i: &str) -> Parsed<&str> { 
+    delimited(
+        char('"'),
+        is_not("\""),
+        char('"')
+    )(i)
+}
 
 //done
 // fn field<Input>() -> impl Parser<Input, Output = Field>
@@ -1009,6 +1067,7 @@ fn cast(i: &str) -> Parsed<&str> { preceded(tag("::"), recognize(many1(alt((alph
 // }
 fn dot(i: &str) -> Parsed<&str> { tag(".")(i) }
 
+//done
 // fn tree_path<Input>() -> impl Parser<Input, Output = (Vec<String>, Field)>
 // where
 //     Input: Stream<Token = char>,
@@ -1029,8 +1088,19 @@ fn dot(i: &str) -> Parsed<&str> { tag(".")(i) }
 //             }
 //         })
 // }
-fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> { todo!() }
+fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> { 
+    map(tuple((separated_list1(dot, field_name), opt(json_path))), |(names, json_path)| {
+        match names.split_last() {
+            Some((name, path)) => (
+                path.to_vec(),
+                Field {name,json_path,},
+            ),
+            None => unreachable!("failed to parse tree path"),
+        }
+    })(i)
+}
 
+//done
 // fn logic_tree_path<Input>() -> impl Parser<Input, Output = (Vec<String>, bool, LogicOperator)>
 // where
 //     Input: Stream<Token = char>,
@@ -1056,15 +1126,39 @@ fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> { todo!() }
 //         None => panic!("failed to parse logic tree path"),
 //     })
 // }
-fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> { todo!() }
+fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> { 
+    map(separated_list1(dot, field_name), |names| match names.split_last() {
+        Some((&name, path)) => {
+            let op = match name {
+                "and" => LogicOperator::And,
+                "or" => LogicOperator::Or,
+                x => unreachable!("unknown logic operator {}", x),
+            };
+            match path.split_last() {
+                Some((&negate, path1)) => {
+                    if negate == "not" {
+                        (path1.to_vec(), true, op)
+                    } else {
+                        (path.to_vec(), false, op)
+                    }
+                }
+                None => (path.to_vec(), false, op),
+            }
+        }
+        None => unreachable!("failed to parse logic tree path"),
+    })(i)
+}
 
+//done
 // fn select<Input>() -> impl Parser<Input, Output = Vec<SelectKind>>
 // where
 //     Input: Stream<Token = char>,
 // {
 //     sep_by1(select_item(), lex(char(','))).skip(eof())
 // }
-fn select(i: &str) -> Parsed<Vec<SelectKind>> { todo!() }
+fn select(i: &str) -> Parsed<Vec<SelectKind>> {
+    terminated(separated_list1(ws(char(',')), select_item), eof)(i)
+}
 
 //done
 // fn columns<Input>() -> impl Parser<Input, Output = Vec<String>>
@@ -1084,6 +1178,7 @@ fn columns(i: &str) -> Parsed<Vec<&str>> { terminated(separated_list1(tag(","), 
 // }
 fn on_conflict(i: &str) -> Parsed<Vec<&str>> { terminated(separated_list1(tag(","), ws(field_name)), eof)(i) }
 
+// done
 // fn function_param<Input>() -> impl Parser<Input, Output = FunctionParam>
 // where
 //     Input: Stream<Token = char>,
@@ -1096,8 +1191,17 @@ fn on_conflict(i: &str) -> Parsed<Vec<&str>> { terminated(separated_list1(tag(",
 //             .map(|(v, c)| FunctionParam::Val(SingleVal(v, c.clone()), c))
 //     )
 // }
-fn function_param(i: &str) -> Parsed<FunctionParam> { todo!() }
+fn function_param(i: &str) -> Parsed<FunctionParam> {
+    alt((
+        map(function_call, |(fn_name, parameters)| FunctionParam::Func { fn_name, parameters }),
+        map(field, FunctionParam::Fld),
+        map(
+            tuple((delimited(char('\''), is_not("'"), char('\'')), opt(cast))),
+            |(v, c)| FunctionParam::Val(SingleVal(Cow::Borrowed(v), c.map(Cow::Borrowed)), c)),
+    ))(i)
+}
 
+//done
 // We need to use `parser!` to break the recursive use of `function_call` to prevent the returned parser from containing itself
 // fn function_call<Input>() -> impl Parser<Input, Output = (String, Vec<FunctionParam>)>
 // where
@@ -1118,8 +1222,18 @@ fn function_param(i: &str) -> Parsed<FunctionParam> { todo!() }
 //         .map(|(_, fn_name, parameters)| (fn_name,parameters))
 //     }
 // }
-fn function_call(i: &str) -> Parsed<(String, Vec<FunctionParam>)> { todo!() }
+fn function_call(i: &str) -> Parsed<(&str, Vec<FunctionParam>)> {
+    map(
+        tuple((
+            char('$'),
+            function_name,
+            delimited(ws(char('(')), separated_list0(ws(char(',')), function_param), ws(char(')'))),
+        )),
+        |(_, fn_name, parameters)| (fn_name, parameters),
+    )(i)
+}
 
+//done
 // We need to use `parser!` to break the recursive use of `select_item` to prevent the returned parser from containing itself
 // #[inline]
 // fn select_item<Input>() -> impl Parser<Input, Output = SelectKind>
@@ -1129,6 +1243,7 @@ fn function_call(i: &str) -> Parsed<(String, Vec<FunctionParam>)> { todo!() }
 //     select_item_()
 // }
 
+//done
 // parser! {
 //     #[inline]
 //     fn select_item_[Input]()(Input) -> SelectKind
@@ -1157,10 +1272,10 @@ fn function_call(i: &str) -> Parsed<(String, Vec<FunctionParam>)> { todo!() }
 //                 alias, fn_name, parameters,
 //                 partitions: match partitions { None => vec![], Some((_,p))=>p},
 //                 orders: match orders {None => vec![], Some((_,o))=>o},
-
+//
 //             })
 //         );
-
+//
 //         let sub_select = (
 //             optional(attempt(alias())),
 //             lex(field_name()),
@@ -1187,7 +1302,7 @@ fn function_call(i: &str) -> Parsed<(String, Vec<FunctionParam>)> { todo!() }
 //                 join: None
 //             }))
 //         });
-
+//
 //         choice!(
 //             attempt(function),
 //             attempt(sub_select),
@@ -1196,7 +1311,77 @@ fn function_call(i: &str) -> Parsed<(String, Vec<FunctionParam>)> { todo!() }
 //         )
 //     }
 // }
-fn select_item(i: &str) -> Parsed<SelectKind> { todo!() }
+fn select_item(i: &str) -> Parsed<SelectKind> {
+    let star = map(char('*'), |_| Item(Star));
+    let column = map(
+        tuple((
+            opt(alias),
+            field,
+            opt(cast),
+        )),
+        |(alias, field, cast)| Item(Simple { field, alias, cast }),
+    );
+    let function = map(
+        tuple((
+            opt(alias),
+            function_call,
+            opt(tuple((
+                tag("-p"),
+                delimited(char('('), separated_list1(ws(char(',')), field), char(')')),
+            ))),
+            opt(tuple((
+                tag("-o"),
+                delimited(char('('), separated_list1(ws(char(',')), order_term), char(')')),
+            ))),
+        )),
+        |(alias, (fn_name, parameters), partitions, orders)| Item(Func {
+            alias,
+            fn_name,
+            parameters,
+            partitions: partitions.map(|(_, p)| p).unwrap_or_default(),
+            orders: orders.map(|(_, o)| o).unwrap_or_default(),
+        }),
+    );
+    let sub_select = map(
+        tuple((
+            opt(alias),
+            ws(field_name),
+            opt(
+                map(
+                    tuple((one_of("!."), ws(field_name))),
+                    |(_, hint)| hint
+                )
+            ),
+            delimited(char('('), separated_list1(ws(char(',')), select_item), char(')')),
+        )),
+        |(alias, from, hint, select)| {
+            let (sel, sub_sel) = split_select(select);
+            Sub(Box::new(SubSelect {
+                query: Query {
+                    node: Select {
+                        select: sel, //select,
+                        from: (from, None),
+                        join_tables: vec![],
+                        //from_alias: alias,
+                        where_: ConditionTree {
+                            operator: And,
+                            conditions: vec![],
+                        },
+                        limit: None,
+                        offset: None,
+                        order: vec![],
+                        groupby: vec![],
+                    },
+                    sub_selects: sub_sel,
+                },
+                alias,
+                hint,
+                join: None,
+            }))
+        },
+    );
+    alt((function, sub_select, column, star))(i)
+}
 
 //done
 // fn single_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (String, Option<String>)>
@@ -1207,12 +1392,16 @@ fn select_item(i: &str) -> Parsed<SelectKind> { todo!() }
 //     many(any()).map(move |v| (v, dt.clone()))
 // }
 
-fn single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<SingleVal> {
+fn single_value<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, SingleVal<'a>> {
     let v = match data_type {
         Some(dt) => SingleVal(Cow::Borrowed(i), Some(Cow::Borrowed(*dt))),
         None => SingleVal(Cow::Borrowed(i), None),
     };
     Ok(("", v))
+}
+
+fn apply<'a, 'b, A: 'a, B:'a >(a: &'b A, p: impl Fn(&'b A, &'a str) -> Parsed<'a, B> +'b) -> impl Fn(&'a str) -> Parsed<'a, B> + 'b {
+    move |i| p(a, i)
 }
 
 //done
@@ -1245,6 +1434,7 @@ fn limit(i: &str) -> Parsed<SingleVal> { integer(i) }
 //}
 fn offset(i: &str) -> Parsed<SingleVal> { integer(i) }
 
+//done
 // fn logic_single_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (String, Option<String>)>
 // where
 //     Input: Stream<Token = char>,
@@ -1257,8 +1447,20 @@ fn offset(i: &str) -> Parsed<SingleVal> { integer(i) }
 //     ))
 //     .map(move |v| (v, dt.clone()))
 // }
-fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<SingleVal> { todo!() }
+fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<SingleVal> {
+    let (input, v) = alt((
+        quoted_value_escaped,
+        map(recognize(delimited(char('{'),is_not("{}"), char('}'))),Cow::Borrowed),
+        map(is_not(",) "), Cow::Borrowed),
+    ))(i)?;
+    let v = match data_type {
+        Some(dt) => SingleVal(v, Some(Cow::Borrowed(*dt))),
+        None => SingleVal(v, None),
+    };
+    Ok((input, v))
+}
 
+//done
 // fn list_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (Vec<String>, Option<String>)>
 // where
 //     Input: Stream<Token = char>,
@@ -1266,15 +1468,27 @@ fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<
 //     let dt = data_type.as_ref().map(|v| format!("Array({})", v)); //TODO!!! this is hardcoded for clickhouse
 //     lex(between(lex(char('(')), lex(char(')')), sep_by(list_element(), lex(char(','))))).map(move |v| (v, dt.clone()))
 // }
-fn list_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<ListVal> { todo!() }
+fn list_value<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, ListVal<'a>> {
+    let dt = data_type.map(|v| Cow::Owned(format!("Array({})", v))); //TODO!!! this is hardcoded for clickhouse
+    let (input, list) = delimited(char('('), separated_list0(char(','), ws(list_element)), char(')'))(i)?;
+    Ok((input, ListVal(list, dt)))
+}
 
+
+//done
 // fn list_element<Input>() -> impl Parser<Input, Output = String>
 // where
 //     Input: Stream<Token = char>,
 // {
 //     attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))).or(many1(none_of(",)".chars())))
 // }
-fn list_element(i: &str) -> Parsed<&str> { todo!() }
+fn list_element(i: &str) -> Parsed<Cow<str>> {
+    alt((
+        //terminated(quoted_value, peek(none_of(",)"))),
+        quoted_value_escaped,
+        map(is_not(",)"),Cow::Borrowed),
+    ))(i)
+}
 
 //done
 // fn operator<Input>() -> impl Parser<Input, Output = String>
@@ -1318,15 +1532,24 @@ fn fts_operator(i: &str) -> Parsed<&str> {
 //         .and(filter(data_type))
 //         .map(|(n, f)| (n.is_some(), f))
 // }
-fn negatable_filter<'a>(data_type: Option<&'a str>, i: &'a str) -> Parsed<(bool, Filter<'a>)> { todo!() }
+fn negatable_filter<'a,'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, (bool, Filter<'a>)> {
+    map(
+        tuple((
+            opt(tag("not.")),
+            apply(data_type, filter)
+        )),
+        |(n, f)| (n.is_some(), f)
+    )(i)
+}
 
+//done
 //TODO! filter and logic_filter parsers should be combined, they differ only in single_value parser type
 // fn filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
 // where
 //     Input: Stream<Token = char>,
 // {
 //     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
-
+//
 //     choice((
 //         attempt(operator().skip(dot()).and(single_value(data_type)).map(move |(o, (v, dt))| match &*o {
 //             "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace('*', "%"), dt))),
@@ -1357,14 +1580,65 @@ fn negatable_filter<'a>(data_type: Option<&'a str>, i: &'a str) -> Parsed<(bool,
 //     ))
 //     .and_then(|r| r)
 // }
-fn filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> { todo!() }
+// fn filter_common<'a, 'b, P>(p: P, data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>>
+// where P: fn(&'b Option<&'a str>, &'a str) -> Parsed<'a, SingleVal<'a>> +'b
+fn filter_common<'a, 'b>(
+    p: fn(&'b Option<&'a str>, &'a str) -> Parsed<'a, SingleVal<'a>>,
+    data_type: &'b Option<&'a str>, i: &'a str
+) -> Parsed<'a, Filter<'a>>
+{
+    alt((
+        map(
+            tuple((
+                operator,
+                dot,
+                apply(data_type, p)
+            )),
+            |(o, _, SingleVal(v, dt))| match o {
+                "like" | "ilike" => Filter::Op(o, SingleVal(Cow::Owned(v.replace('*', "%")), dt)),
+                "is" => match &*v {
+                    "null" => Filter::Is(TrileanVal::TriNull),
+                    "unknown" => Filter::Is(TrileanVal::TriUnknown),
+                    "true" => Filter::Is(TrileanVal::TriTrue),
+                    "false" => Filter::Is(TrileanVal::TriFalse),
+                    _ => panic!("unknown value for is operator, use null, unknown, true, false"),
+                },
+                _ => Filter::Op(o, SingleVal(v, dt)),
+            }
+        ),
+        map(
+            tuple((
+                tag("in"),
+                char('.'),
+                apply(data_type, list_value)
+            )),
+            |(_, _, ListVal(v, dt))| Filter::In(ListVal(v, dt))
+        ),
+        map(
+            tuple((
+                fts_operator,
+                opt(
+                    delimited(char('('), recognize(many1(alt((alpha1, digit1, tag("_"))))), char(')'))
+                ),
+                char('.'),
+                apply(data_type, p)
+            )),
+            |(o, l, _, SingleVal(v, dt))| Filter::Fts(o, l.map(|v| SingleVal(Cow::Borrowed(v), None)), SingleVal(v, dt))
+        ),
+    ))(i)
+}
 
+fn filter<'a,'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> {
+    filter_common(single_value, data_type, i)
+}
+
+//done
 // fn logic_filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
 // where
 //     Input: Stream<Token = char>,
 // {
 //     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
-
+//
 //     choice((
 //         attempt(operator().skip(dot()).and(logic_single_value(data_type)).map(|(o, (v, dt))| match &*o {
 //             "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace('*', "%"), dt))),
@@ -1395,7 +1669,9 @@ fn filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> { to
 //     ))
 //     .and_then(|v| v)
 // }
-fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> { todo!() }
+fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> {
+    filter_common(logic_single_value, data_type, i)
+}
 
 //done
 // fn order<Input>() -> impl Parser<Input, Output = Vec<OrderTerm>>
@@ -1408,20 +1684,21 @@ fn order(i: &str) -> Parsed<Vec<OrderTerm>> {
     terminated(
         separated_list1(
             tag(","),
-            ws(map(
-                tuple((
-                    field,
-                    opt(preceded(
-                        dot,
-                        alt((value(OrderDirection::Asc, tag("asc")), value(OrderDirection::Desc, tag("desc")))),
-                    )),
-                    opt(preceded(
-                        dot,
-                        alt((value(OrderNulls::NullsFirst, tag("nullsfirst")), value(OrderNulls::NullsLast, tag("nullslast")))),
-                    )),
-                )),
-                |(term, direction, null_order)| OrderTerm { term, direction, null_order },
-            )),
+            // ws(map(
+            //     tuple((
+            //         field,
+            //         opt(preceded(
+            //             dot,
+            //             alt((value(OrderDirection::Asc, tag("asc")), value(OrderDirection::Desc, tag("desc")))),
+            //         )),
+            //         opt(preceded(
+            //             dot,
+            //             alt((value(OrderNulls::NullsFirst, tag("nullsfirst")), value(OrderNulls::NullsLast, tag("nullslast")))),
+            //         )),
+            //     )),
+            //     |(term, direction, null_order)| OrderTerm { term, direction, null_order },
+            // )),
+            ws(order_term),
         ),
         eof,
     )(i)
@@ -1448,6 +1725,22 @@ fn order(i: &str) -> Parsed<Vec<OrderTerm>> {
 //         .and(optional(direction).and(optional(nulls)))
 //         .map(|(term, (direction, null_order))| OrderTerm { term, direction, null_order })
 // }
+fn order_term(i: &str) -> Parsed<OrderTerm> {
+    map(
+        tuple((
+            field,
+            opt(preceded(
+                dot,
+                alt((value(OrderDirection::Asc, tag("asc")), value(OrderDirection::Desc, tag("desc")))),
+            )),
+            opt(preceded(
+                dot,
+                alt((value(OrderNulls::NullsFirst, tag("nullsfirst")), value(OrderNulls::NullsLast, tag("nullslast")))),
+            )),
+        )),
+        |(term, direction, null_order)| OrderTerm { term, direction, null_order },
+    )(i)
+}
 
 //done
 // fn groupby<Input>() -> impl Parser<Input, Output = Vec<GroupByTerm>>
@@ -1466,6 +1759,7 @@ fn groupby(i: &str) -> Parsed<Vec<GroupByTerm>> { terminated(separated_list1(tag
 //     field().map(GroupByTerm)
 // }
 
+//done
 // fn content_type<Input>() -> impl Parser<Input, Output = ContentType>
 // where
 //     Input: Stream<Token = char>,
@@ -1502,8 +1796,35 @@ fn groupby(i: &str) -> Parsed<Vec<GroupByTerm>> { terminated(separated_list1(tag
 //     // ))
 // }
 
-fn content_type(i: &str) -> Parsed<ContentType> { todo!() }
+fn content_type(i: &str) -> Parsed<ContentType> {
+    map_res(
+        separated_list1(tag(","), map(is_not(","), |t: &str| {
+            let tt = t.trim().split(';').collect::<Vec<_>>();
+            match tt.first() {
+                Some(&"*/*") => ApplicationJSON,
+                Some(&"application/json") => ApplicationJSON,
+                Some(&"application/vnd.pgrst.object") => SingularJSON,
+                Some(&"application/vnd.pgrst.object+json") => SingularJSON,
+                Some(&"text/csv") => TextCSV,
+                Some(o) => Other(o.to_string()),
+                None => Other(t.to_string()),
+            }
+        })),
+        |v: Vec<ContentType>| {
+            let vv = v
+                // remove unknown content types
+                .into_iter()
+                .filter(|t| !matches!(t, Other(_)))
+                .collect::<Vec<_>>();
+            match vv.first() {
+                Some(ct) => Ok(ct.clone()),
+                None =>Err("unknown content type"),
+            }
+        },
+    )(i)
+}
 
+//done
 // fn preferences<Input>() -> impl Parser<Input, Output = Preferences>
 // where
 //     Input: Stream<Token = char>,
@@ -1512,7 +1833,7 @@ fn content_type(i: &str) -> Parsed<ContentType> { todo!() }
 //         choice((
 //             attempt(string("return=").and(choice((string("representation"), string("minimal"), string("headers-only"))))),
 //             attempt(string("count=").and(choice((string("exact"), string("planned"), string("estimated"))))),
-//             attempt(string("resolution=").and(choice((string("merge-duplicates"), string("ignore-duplicates"))))),
+//             attempt(string("resolution=").and(choice((string("merge-duplicates("), string(")ignore-duplicates"))))),
 //         )),
 //         lex(char(',')),
 //     )
@@ -1549,15 +1870,58 @@ fn content_type(i: &str) -> Parsed<ContentType> { todo!() }
 //     })
 // }
 
-fn preferences(i: &str) -> Parsed<Preferences> { todo!() }
+fn preferences(i: &str) -> Parsed<Preferences> {
+    map_opt(
+        separated_list1(tag(","), map_res(is_not(","), |t: &str| {
+            let tt = t.trim().split('=').map(|s| s.trim()).collect::<Vec<_>>();
+            match tt.as_slice() {
+                ["resolution", s] => Ok(("resolution", *s)),
+                ["return", s] => Ok(("return", *s)),
+                ["count", s] => Ok(("count", *s)),
+                _ => Err("unknown preference"),
+            }
+        })),
+        |v: Vec<(&str, _)>| {
+            let m = v.into_iter().collect::<HashMap<_, _>>();
+            Some(Preferences {
+                resolution: match m.get("resolution") {
+                    Some(r) => match *r {
+                        "merge-duplicates" => Some(Resolution::MergeDuplicates),
+                        "ignore-duplicates" => Some(Resolution::IgnoreDuplicates),
+                        _ => None,
+                    },
+                    None => None,
+                },
+                representation: match m.get("return") {
+                    Some(r) => match *r {
+                        "representation" => Some(Representation::Full),
+                        "minimal" => Some(Representation::None),
+                        "headers-only" => Some(Representation::HeadersOnly),
+                        _ => None,
+                    },
+                    None => None,
+                },
+                count: match m.get("count") {
+                    Some(r) => match *r {
+                        "exact" => Some(Count::ExactCount),
+                        "planned" => Some(Count::PlannedCount),
+                        "estimated" => Some(Count::EstimatedCount),
+                        _ => None,
+                    },
+                    None => None,
+                },
+            })
+        },
+    )(i)
+}
 
+//done
 // fn logic_condition<Input>() -> impl Parser<Input, Output = Condition>
 // where
 //     Input: Stream<Token = char>,
 // {
 //     logic_condition_()
 // }
-
 // parser! {
 //     #[inline]
 //     fn logic_condition_[Input]()(Input) -> Condition
@@ -1569,7 +1933,7 @@ fn preferences(i: &str) -> Parsed<Preferences> { todo!() }
 //             .map(|((field,negate),filter)|
 //                 Condition::Single {field,filter,negate: negate.is_some()}
 //             );
-
+//
 //         let group = optional(attempt(string("not").skip(dot())))
 //             .and(
 //                 lex(choice((string("and"),string("or")))).map(|l|
@@ -1584,12 +1948,59 @@ fn preferences(i: &str) -> Parsed<Preferences> { todo!() }
 //             .map(|(negate, (operator, conditions))|{
 //                 Condition::Group{ negate: negate.is_some(), tree: ConditionTree { operator, conditions,}}
 //             });
-
+//
 //         attempt(single).or(group)
 //     }
 // }
 
-fn logic_condition(n: Option<bool>, lo: Option<LogicOperator>, i: &str) -> Parsed<Condition> { todo!() }
+fn logic_condition<'a, 'b>(n: Option<&'b bool>, lo: Option<&'b LogicOperator>, i: &'a str) -> Parsed<'a, Condition<'a>> {
+    match (n,lo) {
+        (Some(negate), Some(operator)) => {
+            let (i, conditions) = delimited(
+                ws(char('(')),
+                separated_list1(ws(char(',')), |ii| logic_condition(None, None, ii) ),
+                ws(char(')'))
+            )(i)?;
+            Ok((i, Condition::Group {
+                negate: *negate,
+                tree: ConditionTree { operator: operator.clone(), conditions },
+            }))
+        }
+        _ => alt((
+                //single
+                ws(map(tuple((
+                    field,
+                    char('.'),
+                    opt(tag("not.")),
+                    |ii| logic_filter(&None, ii),
+                )), |(field, _, negate, filter)| {
+                    Condition::Single { field, filter, negate: negate.is_some() }
+                })),
+                //group
+                map(tuple((
+                    opt(tag("not.")),
+                    alt((tag("and"), tag("or"))),
+                    delimited(
+                        ws(char('(')),
+                        separated_list1(ws(char(',')), |ii| logic_condition(None, None, ii) ),
+                        ws(char(')'))
+                    )
+                )), |(negate, operator, conditions)| {
+                    Condition::Group {
+                        negate: negate.is_some(),
+                        tree: ConditionTree {
+                            operator: match operator {
+                                "and" => LogicOperator::And,
+                                "or" => LogicOperator::Or,
+                                _ => unreachable!("unknown logic operator {}", operator),
+                            },
+                            conditions
+                        },
+                    }
+                }),
+            ))(i)
+    }
+}
 
 // helper functions
 fn split_select(select: Vec<SelectKind>) -> (Vec<SelectItem>, Vec<SubSelect>) {
@@ -1802,26 +2213,7 @@ fn has_operator(s: &str) -> bool { OPERATORS_START.iter().map(|op| s.starts_with
 //     }
 // }
 
-// fn to_app_error<T>(s: &str) -> impl Fn(nom::Err<T>) -> Error {
-//     move |_| {
-//         // let m = e.errors.drain_filter(|v| matches!(v, ParserError::Message(_))).collect::<Vec<_>>();
-//         // let position = e.position.translate_position(s);
-//         // let message = match m.as_slice() {
-//         //     [ParserError::Message(Info::Static(s))] => s,
-//         //     _ => "",
-//         // };
-//         // let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
-//         // let details = format!("{}", e)
-//         //     .replace(format!("Parse error at {}", e.position).as_str(), "")
-//         //     .replace('\n', " ")
-//         //     .trim()
-//         //     .to_string();
-//         let message = "parser error".to_string();
-//         let details = "no details".to_string();
-//         Error::ParseRequestError { message, details }
-//     }
-// }
-fn to_app_error<T>(s: &str, _e: nom::Err<T>) -> Error {
+fn to_app_error(s: &str, e: nom::Err<nom::error::VerboseError<&str>>) -> Error {
     // let m = e.errors.drain_filter(|v| matches!(v, ParserError::Message(_))).collect::<Vec<_>>();
     // let position = e.position.translate_position(s);
     // let message = match m.as_slice() {
@@ -1834,9 +2226,24 @@ fn to_app_error<T>(s: &str, _e: nom::Err<T>) -> Error {
     //     .replace('\n', " ")
     //     .trim()
     //     .to_string();
-    let message = s.to_string();
-    let details = "no details".to_string();
-    Error::ParseRequestError { message, details }
+    match e {
+        nom::Err::Error(_e) | nom::Err::Failure(_e) => {
+            let m = _e.errors.iter().filter(|(_, v)| matches!(v, VerboseErrorKind::Context(_))).collect::<Vec<_>>();
+            let position = 0;
+            let message = match m.as_slice() {
+                [(_, VerboseErrorKind::Context(s))] => s,
+                _ => "",
+            };
+            let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
+            let details = convert_error(s, _e);
+            Error::ParseRequestError { message, details }
+        },
+        nom::Err::Incomplete(_e) => {
+            let message = "parse error".to_string();
+            let details = format!("{:?}", _e);
+            Error::ParseRequestError { message, details }
+        }
+    }
 }
 
 //fn get_returning(select: &Vec<SelectKind>) -> Result<Vec<String>> {
@@ -1873,1924 +2280,1926 @@ fn get_returning<'a>(selects: &[SelectItem<'a>], sub_selects: &[SubSelect<'a>]) 
     Ok(returning)
 }
 
-// #[cfg(test)]
-// pub mod tests {
-//     //use std::matches;
-//     use crate::api::{
-//         Condition::{Group, Single},
-//         JsonOperand::*,
-//         JsonOperation::*,
-//     };
-//     use combine::easy::{Error, Errors};
-//     use combine::stream::PointerOffset;
-//     use pretty_assertions::{assert_eq, assert_ne};
-
-//     use combine::stream::position;
-//     use combine::stream::position::SourcePosition;
-//     //use combine::error::StringStreamError;
-//     use super::*;
-//     use crate::error::Error as AppError;
-//     use combine::EasyParser;
-
-//     pub static JSON_SCHEMA: &str = r#"
-//                     {
-//                         "schemas":[
-//                             {
-//                                 "name":"api",
-//                                 "objects":[
-//                                     {
-//                                         "kind":"function",
-//                                         "name":"myfunction",
-//                                         "volatile":"v",
-//                                         "composite":false,
-//                                         "setof":false,
-//                                         "return_type":"int4",
-//                                         "return_type_schema":"pg_catalog",
-//                                         "parameters":[
-//                                             {
-//                                                 "name":"id",
-//                                                 "type":"integer",
-//                                                 "required":true,
-//                                                 "variadic":false
-//                                             }
-//                                         ]
-//                                     },
-//                                     {
-//                                         "kind":"view",
-//                                         "name":"addresses",
-//                                         "columns":[
-//                                             { "name":"id", "data_type":"int", "primary_key":true },
-//                                             { "name":"location", "data_type":"text" }
-//                                         ],
-//                                         "foreign_keys":[]
-//                                     },
-//                                     {
-//                                         "kind":"view",
-//                                         "name":"users",
-//                                         "columns":[
-//                                             { "name":"id", "data_type":"int", "primary_key":true },
-//                                             { "name":"name", "data_type":"text" },
-//                                             { "name":"billing_address_id", "data_type":"int" },
-//                                             { "name":"shipping_address_id", "data_type":"int" }
-//                                         ],
-//                                         "foreign_keys":[
-//                                             {
-//                                                 "name":"billing_address_id_fk",
-//                                                 "table":["api","users"],
-//                                                 "columns": ["billing_address_id"],
-//                                                 "referenced_table":["api","addresses"],
-//                                                 "referenced_columns": ["id"]
-//                                             },
-//                                             {
-//                                                 "name":"shipping_address_id_fk",
-//                                                 "table":["api","users"],
-//                                                 "columns": ["shipping_address_id"],
-//                                                 "referenced_table":["api","addresses"],
-//                                                 "referenced_columns": ["id"]
-//                                             }
-//                                         ]
-//                                     },
-//                                     {
-//                                         "kind":"view",
-//                                         "name":"clients",
-//                                         "columns":[
-//                                             { "name":"id", "data_type":"int", "primary_key":true },
-//                                             { "name":"name", "data_type":"text" }
-//                                         ],
-//                                         "foreign_keys":[]
-//                                     },
-//                                     {
-//                                         "kind":"view",
-//                                         "name":"projects",
-//                                         "columns":[
-//                                             { "name":"id", "data_type":"int", "primary_key":true },
-//                                             { "name":"client_id", "data_type":"int" },
-//                                             { "name":"name", "data_type":"text" }
-//                                         ],
-//                                         "foreign_keys":[
-//                                             {
-//                                                 "name":"client_id_fk",
-//                                                 "table":["api","projects"],
-//                                                 "columns": ["client_id"],
-//                                                 "referenced_table":["api","clients"],
-//                                                 "referenced_columns": ["id"]
-//                                             }
-//                                         ]
-//                                     },
-//                                     {
-//                                         "kind":"view",
-//                                         "name":"tasks",
-//                                         "columns":[
-//                                             { "name":"id", "data_type":"int", "primary_key":true },
-//                                             { "name":"project_id", "data_type":"int" },
-//                                             { "name":"name", "data_type":"text" }
-//                                         ],
-//                                         "foreign_keys":[
-//                                             {
-//                                                 "name":"project_id_fk",
-//                                                 "table":["api","tasks"],
-//                                                 "columns": ["project_id"],
-//                                                 "referenced_table":["api","projects"],
-//                                                 "referenced_columns": ["id"]
-//                                             }
-//                                         ]
-//                                     },
-//                                     {
-//                                         "kind":"view",
-//                                         "name":"users_tasks",
-//                                         "columns":[
-//                                             { "name":"task_id", "data_type":"int", "primary_key":true },
-//                                             { "name":"user_id", "data_type":"int", "primary_key":true }
-
-//                                         ],
-//                                         "foreign_keys":[
-//                                             {
-//                                                 "name":"task_id_fk",
-//                                                 "table":["api","users_tasks"],
-//                                                 "columns": ["task_id"],
-//                                                 "referenced_table":["api","tasks"],
-//                                                 "referenced_columns": ["id"]
-//                                             },
-//                                             {
-//                                                 "name":"user_id_fk",
-//                                                 "table":["api","users_tasks"],
-//                                                 "columns": ["user_id"],
-//                                                 "referenced_table":["api","users"],
-//                                                 "referenced_columns": ["id"]
-//                                             }
-//                                         ]
-//                                     }
-//                                 ]
-//                             }
-//                         ]
-//                     }
-//                 "#;
-
-//     fn s(s: &str) -> String { s.to_string() }
-//     // fn vs(v: Vec<(&str, &str)>) -> Vec<(String, String)> {
-//     //     v.into_iter().map(|(s, s2)| (s.to_string(), s2.to_string())).collect()
-//     // }
-//     #[test]
-//     fn test_parse_get_function() {
-//         let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
-//         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-//         let mut api_request = ApiRequest {
-//             schema_name: "api",
-//             get: vec![("id", "10")],
-//             preferences: None,
-//             path: "dummy",
-//             method: "GET",
-//             read_only: true,
-//             headers: emtpy_hashmap.clone(),
-//             accept_content_type: ApplicationJSON,
-//             cookies: emtpy_hashmap.clone(),
-//             query: Query {
-//                 node: FunctionCall {
-//                     fn_name: Qi(s("api"), s("myfunction")),
-//                     parameters: CallParams::KeyParams(vec![ProcParam {
-//                         name: s("id"),
-//                         type_: s("integer"),
-//                         required: true,
-//                         variadic: false,
-//                     }]),
-//                     payload: Payload(s(r#"{"id":"10"}"#), None),
-//                     is_scalar: true,
-//                     returns_single: true,
-//                     is_multiple_call: false,
-//                     returning: vec![s("*")],
-//                     select: vec![Star],
-//                     where_: ConditionTree {
-//                         operator: And,
-//                         conditions: vec![],
-//                     },
-//                     return_table_type: None,
-//                     limit: None,
-//                     offset: None,
-//                     order: vec![],
-//                 },
-//                 sub_selects: vec![],
-//             },
-//         };
-//         let a = parse(
-//             "api",
-//             "myfunction",
-//             &db_schema,
-//             "GET",
-//             "dummy",
-//             vec![("id", "10")],
-//             None,
-//             emtpy_hashmap.clone(),
-//             emtpy_hashmap.clone(),
-//             None,
-//         );
-
-//         assert_eq!(a.unwrap(), api_request);
-
-//         api_request.method = "POST";
-//         api_request.get = vec![];
-//         api_request.read_only = false;
-
-//         let body = r#"{"id":"10"}"#;
-//         let b = parse(
-//             "api",
-//             "myfunction",
-//             &db_schema,
-//             "POST",
-//             "dummy",
-//             vec![],
-//             Some(body),
-//             emtpy_hashmap.clone(),
-//             emtpy_hashmap.clone(),
-//             None,
-//         );
-//         assert_eq!(b.unwrap(), api_request);
-//     }
-
-//     #[test]
-//     fn test_insert_conditions() {
-//         let mut query = Query {
-//             node: Select {
-//                 groupby: vec![],
-//                 order: vec![],
-//                 limit: None,
-//                 offset: None,
-//                 select: vec![Simple {
-//                     field: Field {
-//                         name: s("a"),
-//                         json_path: None,
-//                     },
-//                     alias: None,
-//                     cast: None,
-//                 }],
-//                 from: (s("parent"), None),
-//                 join_tables: vec![],
-//                 //from_alias: None,
-//                 where_: ConditionTree {
-//                     operator: And,
-//                     conditions: vec![],
-//                 },
-//             },
-//             sub_selects: vec![SubSelect {
-//                 query: Query {
-//                     node: Select {
-//                         order: vec![],
-//                         groupby: vec![],
-//                         limit: None,
-//                         offset: None,
-//                         select: vec![Simple {
-//                             field: Field {
-//                                 name: s("a"),
-//                                 json_path: None,
-//                             },
-//                             alias: None,
-//                             cast: None,
-//                         }],
-//                         from: (s("child"), None),
-//                         join_tables: vec![],
-//                         where_: ConditionTree {
-//                             operator: And,
-//                             conditions: vec![],
-//                         },
-//                     },
-//                     sub_selects: vec![],
-//                 },
-//                 alias: None,
-//                 hint: None,
-//                 join: None,
-//             }],
-//         };
-//         let condition = Single {
-//             field: Field {
-//                 name: s("a"),
-//                 json_path: None,
-//             },
-//             filter: Filter::Op(s(">="), SingleVal(s("5"), None)),
-//             negate: false,
-//         };
-//         let _ = query.insert_conditions(vec![(vec![], condition.clone()), (vec![s("child")], condition.clone())]);
-//         assert_eq!(
-//             query,
-//             Query {
-//                 node: Select {
-//                     order: vec![],
-//                     groupby: vec![],
-//                     limit: None,
-//                     offset: None,
-//                     select: vec![Simple {
-//                         field: Field {
-//                             name: s("a"),
-//                             json_path: None
-//                         },
-//                         alias: None,
-//                         cast: None
-//                     },],
-//                     from: (s("parent"), None),
-//                     join_tables: vec![],
-//                     where_: ConditionTree {
-//                         operator: And,
-//                         conditions: vec![condition.clone()]
-//                     }
-//                 },
-//                 sub_selects: vec![SubSelect {
-//                     query: Query {
-//                         node: Select {
-//                             order: vec![],
-//                             groupby: vec![],
-//                             limit: None,
-//                             offset: None,
-//                             select: vec![Simple {
-//                                 field: Field {
-//                                     name: s("a"),
-//                                     json_path: None
-//                                 },
-//                                 alias: None,
-//                                 cast: None
-//                             },],
-//                             from: (s("child"), None),
-//                             join_tables: vec![],
-//                             //from_alias: None,
-//                             where_: ConditionTree {
-//                                 operator: And,
-//                                 conditions: vec![condition]
-//                             }
-//                         },
-//                         sub_selects: vec![]
-//                     },
-//                     alias: None,
-//                     hint: None,
-//                     join: None
-//                 }]
-//             }
-//         );
-//     }
-
-//     #[test]
-//     fn test_parse_get() {
-//         let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
-//         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-//         let a = parse(
-//             "api",
-//             "projects",
-//             &db_schema,
-//             "GET",
-//             "dummy",
-//             vec![
-//                 ("select", "id,name,clients(id),tasks(id)"),
-//                 ("id", "not.gt.10"),
-//                 ("tasks.id", "lt.500"),
-//                 ("not.or", "(id.eq.11,id.eq.12)"),
-//                 ("tasks.or", "(id.eq.11,id.eq.12)"),
-//             ],
-//             None,
-//             emtpy_hashmap.clone(),
-//             emtpy_hashmap.clone(),
-//             None,
-//         );
-
-//         assert_eq!(
-//             a.unwrap(),
-//             ApiRequest {
-//                 schema_name: "api",
-//                 get: vec![
-//                     ("select", "id,name,clients(id),tasks(id)"),
-//                     ("id", "not.gt.10"),
-//                     ("tasks.id", "lt.500"),
-//                     ("not.or", "(id.eq.11,id.eq.12)"),
-//                     ("tasks.or", "(id.eq.11,id.eq.12)"),
-//                 ],
-//                 preferences: None,
-//                 path: "dummy",
-//                 method: "GET",
-//                 read_only: true,
-//                 accept_content_type: ApplicationJSON,
-//                 headers: emtpy_hashmap.clone(),
-//                 cookies: emtpy_hashmap.clone(),
-//                 query: Query {
-//                     node: Select {
-//                         order: vec![],
-//                         groupby: vec![],
-//                         limit: None,
-//                         offset: None,
-//                         select: vec![
-//                             Simple {
-//                                 field: Field {
-//                                     name: s("id"),
-//                                     json_path: None
-//                                 },
-//                                 alias: None,
-//                                 cast: None
-//                             },
-//                             Simple {
-//                                 field: Field {
-//                                     name: s("name"),
-//                                     json_path: None
-//                                 },
-//                                 alias: None,
-//                                 cast: None
-//                             },
-//                         ],
-//                         from: (s("projects"), None),
-//                         join_tables: vec![],
-//                         //from_alias: None,
-//                         where_: ConditionTree {
-//                             operator: And,
-//                             conditions: vec![
-//                                 Single {
-//                                     field: Field {
-//                                         name: s("id"),
-//                                         json_path: None
-//                                     },
-//                                     filter: Filter::Op(s(">"), SingleVal(s("10"), Some(s("int")))),
-//                                     negate: true,
-//                                 },
-//                                 Group {
-//                                     negate: true,
-//                                     tree: ConditionTree {
-//                                         operator: Or,
-//                                         conditions: vec![
-//                                             Single {
-//                                                 filter: Filter::Op(s("="), SingleVal(s("11"), None)),
-//                                                 field: Field {
-//                                                     name: s("id"),
-//                                                     json_path: None
-//                                                 },
-//                                                 negate: false
-//                                             },
-//                                             Single {
-//                                                 filter: Filter::Op(s("="), SingleVal(s("12"), None)),
-//                                                 field: Field {
-//                                                     name: s("id"),
-//                                                     json_path: None
-//                                                 },
-//                                                 negate: false
-//                                             }
-//                                         ]
-//                                     }
-//                                 }
-//                             ]
-//                         }
-//                     },
-//                     sub_selects: vec![
-//                         SubSelect {
-//                             query: Query {
-//                                 sub_selects: vec![],
-//                                 node: Select {
-//                                     order: vec![],
-//                                     groupby: vec![],
-//                                     limit: None,
-//                                     offset: None,
-//                                     select: vec![Simple {
-//                                         field: Field {
-//                                             name: s("id"),
-//                                             json_path: None
-//                                         },
-//                                         alias: None,
-//                                         cast: None
-//                                     },],
-//                                     from: (s("clients"), None),
-//                                     join_tables: vec![],
-//                                     //from_alias: None,
-//                                     where_: ConditionTree {
-//                                         operator: And,
-//                                         conditions: vec![Single {
-//                                             field: Field {
-//                                                 name: s("id"),
-//                                                 json_path: None
-//                                             },
-//                                             filter: Filter::Col(
-//                                                 Qi(s("api"), s("projects")),
-//                                                 Field {
-//                                                     name: s("client_id"),
-//                                                     json_path: None
-//                                                 }
-//                                             ),
-//                                             negate: false,
-//                                         }]
-//                                     }
-//                                 }
-//                             },
-//                             alias: None,
-//                             hint: None,
-//                             join: Some(Parent(ForeignKey {
-//                                 name: s("client_id_fk"),
-//                                 table: Qi(s("api"), s("projects")),
-//                                 columns: vec![s("client_id")],
-//                                 referenced_table: Qi(s("api"), s("clients")),
-//                                 referenced_columns: vec![s("id")],
-//                             }),)
-//                         },
-//                         SubSelect {
-//                             query: Query {
-//                                 sub_selects: vec![],
-//                                 node: Select {
-//                                     order: vec![],
-//                                     groupby: vec![],
-//                                     limit: None,
-//                                     offset: None,
-//                                     select: vec![Simple {
-//                                         field: Field {
-//                                             name: s("id"),
-//                                             json_path: None
-//                                         },
-//                                         alias: None,
-//                                         cast: None
-//                                     },],
-//                                     from: (s("tasks"), None),
-//                                     join_tables: vec![],
-//                                     //from_alias: None,
-//                                     where_: ConditionTree {
-//                                         operator: And,
-//                                         conditions: vec![
-//                                             Single {
-//                                                 field: Field {
-//                                                     name: s("project_id"),
-//                                                     json_path: None
-//                                                 },
-//                                                 filter: Filter::Col(
-//                                                     Qi(s("api"), s("projects")),
-//                                                     Field {
-//                                                         name: s("id"),
-//                                                         json_path: None
-//                                                     }
-//                                                 ),
-//                                                 negate: false,
-//                                             },
-//                                             Single {
-//                                                 field: Field {
-//                                                     name: s("id"),
-//                                                     json_path: None
-//                                                 },
-//                                                 filter: Filter::Op(s("<"), SingleVal(s("500"), Some(s("int")))),
-//                                                 negate: false,
-//                                             },
-//                                             Group {
-//                                                 negate: false,
-//                                                 tree: ConditionTree {
-//                                                     operator: Or,
-//                                                     conditions: vec![
-//                                                         Single {
-//                                                             filter: Filter::Op(s("="), SingleVal(s("11"), None)),
-//                                                             field: Field {
-//                                                                 name: s("id"),
-//                                                                 json_path: None
-//                                                             },
-//                                                             negate: false
-//                                                         },
-//                                                         Single {
-//                                                             filter: Filter::Op(s("="), SingleVal(s("12"), None)),
-//                                                             field: Field {
-//                                                                 name: s("id"),
-//                                                                 json_path: None
-//                                                             },
-//                                                             negate: false
-//                                                         }
-//                                                     ]
-//                                                 }
-//                                             }
-//                                         ]
-//                                     }
-//                                 }
-//                             },
-//                             hint: None,
-//                             alias: None,
-//                             join: Some(Child(ForeignKey {
-//                                 name: s("project_id_fk"),
-//                                 table: Qi(s("api"), s("tasks")),
-//                                 columns: vec![s("project_id")],
-//                                 referenced_table: Qi(s("api"), s("projects")),
-//                                 referenced_columns: vec![s("id")],
-//                             }),)
-//                         }
-//                     ]
-//                 }
-//             }
-//         );
-
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "GET",
-//                 "dummy",
-//                 vec![("select", "id,name,unknown(id)")],
-//                 None,
-//                 emtpy_hashmap.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Err(AppError::NoRelBetween {
-//                 origin: s("projects"),
-//                 target: s("unknown")
-//             })
-//             .map_err(|e| format!("{}", e))
-//         );
-
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "GET",
-//                 "dummy",
-//                 vec![("select", "id-,na$me")],
-//                 None,
-//                 emtpy_hashmap.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Err(AppError::ParseRequestError {
-//                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
-//                 details: s("Unexpected `,` Unexpected `i` Expected letter, digit, `_` or ` `")
-//             })
-//             .map_err(|e| format!("{}", e))
-//         );
-//     }
-
-//     #[test]
-//     fn test_parse_post() {
-//         let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
-//         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-//         let headers = [("prefer", "return=representation")].iter().cloned().collect::<HashMap<_, _>>();
-//         let payload = r#"{"id":10, "name":"john"}"#;
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "POST",
-//                 "dummy",
-//                 vec![("select", "id"), ("id", "gt.10"),],
-//                 Some(payload),
-//                 headers.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Ok(ApiRequest {
-//                 schema_name: "api",
-//                 get: vec![("select", "id"), ("id", "gt.10"),],
-//                 preferences: Some(Preferences {
-//                     representation: Some(Representation::Full),
-//                     resolution: None,
-//                     count: None
-//                 }),
-//                 path: "dummy",
-//                 method: "POST",
-//                 read_only: false,
-//                 accept_content_type: ApplicationJSON,
-//                 headers: headers.clone(),
-//                 cookies: emtpy_hashmap.clone(),
-//                 query: Query {
-//                     node: Insert {
-//                         on_conflict: None,
-//                         select: vec![Simple {
-//                             field: Field {
-//                                 name: s("id"),
-//                                 json_path: None
-//                             },
-//                             alias: None,
-//                             cast: None
-//                         },],
-//                         payload: Payload(s(payload), None),
-//                         into: s("projects"),
-//                         columns: vec![s("id"), s("name")],
-//                         check: ConditionTree {
-//                             operator: And,
-//                             conditions: vec![]
-//                         },
-//                         where_: ConditionTree {
-//                             operator: And,
-//                             conditions: vec![Single {
-//                                 field: Field {
-//                                     name: s("id"),
-//                                     json_path: None
-//                                 },
-//                                 filter: Filter::Op(s(">"), SingleVal(s("10"), Some(s("int")))),
-//                                 negate: false,
-//                             }]
-//                         },
-//                         returning: vec![s("id")]
-//                     },
-//                     sub_selects: vec![]
-//                 }
-//             })
-//         );
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "POST",
-//                 "dummy",
-//                 vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),],
-//                 Some(payload),
-//                 headers.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Ok(ApiRequest {
-//                 schema_name: "api",
-//                 get: vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),],
-//                 preferences: Some(Preferences {
-//                     representation: Some(Representation::Full),
-//                     resolution: None,
-//                     count: None
-//                 }),
-//                 path: "dummy",
-//                 method: "POST",
-//                 read_only: false,
-//                 accept_content_type: ApplicationJSON,
-//                 headers: headers.clone(),
-//                 cookies: emtpy_hashmap.clone(),
-//                 query: Query {
-//                     node: Insert {
-//                         on_conflict: None,
-//                         select: vec![
-//                             Simple {
-//                                 field: Field {
-//                                     name: s("id"),
-//                                     json_path: None
-//                                 },
-//                                 alias: None,
-//                                 cast: None
-//                             },
-//                             Simple {
-//                                 field: Field {
-//                                     name: s("name"),
-//                                     json_path: None
-//                                 },
-//                                 alias: None,
-//                                 cast: None
-//                             },
-//                         ],
-//                         payload: Payload(s(payload), None),
-//                         into: s("projects"),
-//                         columns: vec![s("id"), s("name")],
-//                         check: ConditionTree {
-//                             operator: And,
-//                             conditions: vec![]
-//                         },
-//                         where_: ConditionTree {
-//                             operator: And,
-//                             conditions: vec![Single {
-//                                 field: Field {
-//                                     name: s("id"),
-//                                     json_path: None
-//                                 },
-//                                 filter: Filter::Op(s(">"), SingleVal(s("10"), Some(s("int")))),
-//                                 negate: false,
-//                             }]
-//                         },
-//                         returning: vec![s("id"), s("name"),]
-//                     },
-//                     sub_selects: vec![]
-//                 }
-//             })
-//         );
-
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "POST",
-//                 "dummy",
-//                 vec![("select", "id"), ("id", "gt.10"), ("columns", "id,1$name"),],
-//                 Some(r#"{"id":10, "name":"john", "phone":"123"}"#),
-//                 emtpy_hashmap.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Err(AppError::ParseRequestError {
-//                 message: s("\"failed to parse columns parameter (id,1$name)\" (line 1, column 5)"),
-//                 details: s("Unexpected `$` Expected `,`, whitespaces or end of input"),
-//             })
-//             .map_err(|e| format!("{}", e))
-//         );
-
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "POST",
-//                 "dummy",
-//                 vec![("select", "id"), ("id", "gt.10"),],
-//                 Some(r#"{"id":10, "name""#),
-//                 emtpy_hashmap.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Err(AppError::InvalidBody {
-//                 message: s("Failed to parse json body: EOF while parsing an object at line 1 column 16")
-//             })
-//             .map_err(|e| format!("{}", e))
-//         );
-
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "POST",
-//                 "dummy",
-//                 vec![("select", "id"), ("id", "gt.10"),],
-//                 Some(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#),
-//                 emtpy_hashmap.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Err(AppError::InvalidBody {
-//                 message: s("All object keys must match"),
-//             })
-//             .map_err(|e| format!("{}", e))
-//         );
-
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "GET",
-//                 "dummy",
-//                 vec![("select", "id,name,unknown(id)")],
-//                 None,
-//                 emtpy_hashmap.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Err(AppError::NoRelBetween {
-//                 origin: s("projects"),
-//                 target: s("unknown")
-//             })
-//             .map_err(|e| format!("{}", e))
-//         );
-
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "GET",
-//                 "dummy",
-//                 vec![("select", "id-,na$me")],
-//                 None,
-//                 emtpy_hashmap.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Err(AppError::ParseRequestError {
-//                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
-//                 details: s("Unexpected `,` Unexpected `i` Expected letter, digit, `_` or ` `")
-//             })
-//             .map_err(|e| format!("{}", e))
-//         );
-
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "POST",
-//                 "dummy",
-//                 vec![("select", "id"), ("id", "gt.10"),],
-//                 Some(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),
-//                 headers.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Ok(ApiRequest {
-//                 schema_name: "api",
-//                 get: vec![("select", "id"), ("id", "gt.10"),],
-//                 preferences: Some(Preferences {
-//                     representation: Some(Representation::Full),
-//                     resolution: None,
-//                     count: None
-//                 }),
-//                 path: "dummy",
-//                 method: "POST",
-//                 read_only: false,
-//                 accept_content_type: ApplicationJSON,
-//                 headers: headers.clone(),
-//                 cookies: emtpy_hashmap.clone(),
-//                 query: Query {
-//                     sub_selects: vec![],
-//                     node: Insert {
-//                         on_conflict: None,
-//                         select: vec![Simple {
-//                             field: Field {
-//                                 name: s("id"),
-//                                 json_path: None
-//                             },
-//                             alias: None,
-//                             cast: None
-//                         },],
-//                         payload: Payload(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#), None),
-//                         into: s("projects"),
-//                         columns: vec![s("id"), s("name")],
-//                         check: ConditionTree {
-//                             operator: And,
-//                             conditions: vec![]
-//                         },
-//                         where_: ConditionTree {
-//                             operator: And,
-//                             conditions: vec![Single {
-//                                 field: Field {
-//                                     name: s("id"),
-//                                     json_path: None
-//                                 },
-//                                 filter: Filter::Op(s(">"), SingleVal(s("10"), Some(s("int")))),
-//                                 negate: false,
-//                             }]
-//                         },
-//                         returning: vec![s("id")]
-//                     }
-//                 }
-//             })
-//         );
-
-//         assert_eq!(
-//             parse(
-//                 "api",
-//                 &s("projects"),
-//                 &db_schema,
-//                 "POST",
-//                 "dummy",
-//                 vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),],
-//                 Some(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),
-//                 headers.clone(),
-//                 emtpy_hashmap.clone(),
-//                 None
-//             )
-//             .map_err(|e| format!("{}", e)),
-//             Ok(ApiRequest {
-//                 schema_name: "api",
-//                 get: vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),],
-//                 preferences: Some(Preferences {
-//                     representation: Some(Representation::Full),
-//                     resolution: None,
-//                     count: None
-//                 }),
-//                 path: "dummy",
-//                 method: "POST",
-//                 read_only: false,
-//                 accept_content_type: ApplicationJSON,
-//                 headers,
-//                 cookies: emtpy_hashmap.clone(),
-//                 query: Query {
-//                     sub_selects: vec![
-//                         SubSelect {
-//                             query: Query {
-//                                 sub_selects: vec![],
-//                                 node: Select {
-//                                     order: vec![],
-//                                     groupby: vec![],
-//                                     limit: None,
-//                                     offset: None,
-//                                     select: vec![Simple {
-//                                         field: Field {
-//                                             name: s("id"),
-//                                             json_path: None
-//                                         },
-//                                         alias: None,
-//                                         cast: None
-//                                     },],
-//                                     from: (s("tasks"), None),
-//                                     join_tables: vec![],
-//                                     //from_alias: None,
-//                                     where_: ConditionTree {
-//                                         operator: And,
-//                                         conditions: vec![
-//                                             Single {
-//                                                 field: Field {
-//                                                     name: s("project_id"),
-//                                                     json_path: None
-//                                                 },
-//                                                 filter: Filter::Col(
-//                                                     Qi(s(""), s("subzero_source")),
-//                                                     Field {
-//                                                         name: s("id"),
-//                                                         json_path: None
-//                                                     }
-//                                                 ),
-//                                                 negate: false,
-//                                             },
-//                                             Single {
-//                                                 field: Field {
-//                                                     name: s("id"),
-//                                                     json_path: None
-//                                                 },
-//                                                 filter: Filter::Op(s(">"), SingleVal(s("20"), Some(s("int")))),
-//                                                 negate: false,
-//                                             }
-//                                         ]
-//                                     }
-//                                 }
-//                             },
-//                             hint: None,
-//                             alias: None,
-//                             join: Some(Child(ForeignKey {
-//                                 name: s("project_id_fk"),
-//                                 table: Qi(s("api"), s("tasks")),
-//                                 columns: vec![s("project_id")],
-//                                 referenced_table: Qi(s("api"), s("projects")),
-//                                 referenced_columns: vec![s("id")],
-//                             }),)
-//                         },
-//                         SubSelect {
-//                             query: Query {
-//                                 sub_selects: vec![],
-//                                 node: Select {
-//                                     order: vec![],
-//                                     groupby: vec![],
-//                                     limit: None,
-//                                     offset: None,
-//                                     select: vec![Simple {
-//                                         field: Field {
-//                                             name: s("id"),
-//                                             json_path: None
-//                                         },
-//                                         alias: None,
-//                                         cast: None
-//                                     },],
-//                                     from: (s("clients"), None),
-//                                     join_tables: vec![],
-//                                     //from_alias: None,
-//                                     where_: ConditionTree {
-//                                         operator: And,
-//                                         conditions: vec![Single {
-//                                             field: Field {
-//                                                 name: s("id"),
-//                                                 json_path: None
-//                                             },
-//                                             filter: Filter::Col(
-//                                                 Qi(s(""), s("subzero_source")),
-//                                                 Field {
-//                                                     name: s("client_id"),
-//                                                     json_path: None
-//                                                 }
-//                                             ),
-//                                             negate: false,
-//                                         }]
-//                                     }
-//                                 }
-//                             },
-//                             alias: None,
-//                             hint: None,
-//                             join: Some(Parent(ForeignKey {
-//                                 name: s("client_id_fk"),
-//                                 table: Qi(s("api"), s("projects")),
-//                                 columns: vec![s("client_id")],
-//                                 referenced_table: Qi(s("api"), s("clients")),
-//                                 referenced_columns: vec![s("id")],
-//                             }),)
-//                         },
-//                     ],
-//                     node: Insert {
-//                         on_conflict: None,
-//                         select: vec![
-//                             Simple {
-//                                 field: Field {
-//                                     name: s("id"),
-//                                     json_path: None
-//                                 },
-//                                 alias: None,
-//                                 cast: None
-//                             },
-//                             Simple {
-//                                 field: Field {
-//                                     name: s("name"),
-//                                     json_path: None
-//                                 },
-//                                 alias: None,
-//                                 cast: None
-//                             },
-//                         ],
-//                         payload: Payload(s(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#), None),
-//                         into: s("projects"),
-//                         columns: vec![s("id"), s("name")],
-//                         check: ConditionTree {
-//                             operator: And,
-//                             conditions: vec![]
-//                         },
-//                         where_: ConditionTree {
-//                             operator: And,
-//                             conditions: vec![Single {
-//                                 field: Field {
-//                                     name: s("id"),
-//                                     json_path: None
-//                                 },
-//                                 filter: Filter::Op(s(">"), SingleVal(s("10"), Some(s("int")))),
-//                                 negate: false,
-//                             }]
-//                         },
-//                         returning: vec![s("client_id"), s("id"), s("name")]
-//                     }
-//                 }
-//             })
-//         );
-//     }
-
-//     // #[test]
-//     // fn test_get_join_conditions(){
-//     //     let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
-//     //     assert_eq!( get_join("api"), &db_schema, &s("projects"), &s("tasks"), &mut None).map_err(|e| format!("{}",e),
-//     //         Ok(
-
-//     //                 Child(ForeignKey {
-//     //                     name: s("project_id_fk"),
-//     //                     table: Qi(s("api"),s("tasks")),
-//     //                     columns: vec![s("project_id")],
-//     //                     referenced_table: Qi(s("api"),s("projects")),
-//     //                     referenced_columns: vec![s("id")],
-//     //                 })
-
-//     //         )
-//     //     );
-//     //     assert_eq!( get_join("api"), &db_schema, &s("tasks"), &s("projects"), &mut None).map_err(|e| format!("{}",e),
-//     //         Ok(
-
-//     //                 Parent(ForeignKey {
-//     //                     name: s("project_id_fk"),
-//     //                     table: Qi(s("api"),s("tasks")),
-//     //                     columns: vec![s("project_id")],
-//     //                     referenced_table: Qi(s("api"),s("projects")),
-//     //                     referenced_columns: vec![s("id")],
-//     //                 })
-
-//     //         )
-//     //     );
-//     //     assert_eq!( get_join("api"), &db_schema, &s("clients"), &s("projects"), &mut None).map_err(|e| format!("{}",e),
-//     //         Ok(
-
-//     //                 Child(ForeignKey {
-//     //                     name: s("client_id_fk"),
-//     //                     table: Qi(s("api"),s("projects")),
-//     //                     columns: vec![s("client_id")],
-//     //                     referenced_table: Qi(s("api"),s("clients")),
-//     //                     referenced_columns: vec![s("id")],
-//     //                 })
-
-//     //         )
-//     //     );
-//     //     assert_eq!( get_join("api"), &db_schema, &s("tasks"), &s("users"), &mut None).map_err(|e| format!("{}",e),
-//     //         Ok(
-
-//     //                 Many(
-//     //                     Qi(s("api"), s("users_tasks")),
-//     //                     ForeignKey {
-//     //                         name: s("task_id_fk"),
-//     //                         table: Qi(s("api"),s("users_tasks")),
-//     //                         columns: vec![s("task_id")],
-//     //                         referenced_table: Qi(s("api"),s("tasks")),
-//     //                         referenced_columns: vec![s("id")],
-//     //                     },
-//     //                     ForeignKey {
-//     //                         name: s("user_id_fk"),
-//     //                         table: Qi(s("api"),s("users_tasks")),
-//     //                         columns: vec![s("user_id")],
-//     //                         referenced_table: Qi(s("api"),s("users")),
-//     //                         referenced_columns: vec![s("id")],
-//     //                     },
-//     //                 )
-
-//     //         )
-//     //     );
-//     //     assert_eq!( get_join("api"), &db_schema, &s("tasks"), &s("users"), &mut Some(s("users_tasks"))).map_err(|e| format!("{}",e),
-//     //         Ok(
-
-//     //                 Many(
-//     //                     Qi(s("api"), s("users_tasks")),
-//     //                     ForeignKey {
-//     //                         name: s("task_id_fk"),
-//     //                         table: Qi(s("api"),s("users_tasks")),
-//     //                         columns: vec![s("task_id")],
-//     //                         referenced_table: Qi(s("api"),s("tasks")),
-//     //                         referenced_columns: vec![s("id")],
-//     //                     },
-//     //                     ForeignKey {
-//     //                         name: s("user_id_fk"),
-//     //                         table: Qi(s("api"),s("users_tasks")),
-//     //                         columns: vec![s("user_id")],
-//     //                         referenced_table: Qi(s("api"),s("users")),
-//     //                         referenced_columns: vec![s("id")],
-//     //                     },
-//     //                 )
-
-//     //         )
-//     //     );
-
-//     //     // let result = get_join("api"), &db_schema, &s("users"), &s("addresses"), &mut None;
-//     //     // let expected = AppError::AmbiguousRelBetween {
-//     //     //     origin: s("users"), target: s("addresses"),
-//     //     //     relations: vec![
-//     //     //         Parent(
-//     //     //             ForeignKey {
-//     //     //                 name: s("billing_address_id_fk"),
-//     //     //                 table: Qi(s("api"),s("users")),
-//     //     //                 columns: vec![
-//     //     //                     s("billing_address_id"),
-//     //     //                 ],
-//     //     //                 referenced_table: Qi(s("api"),s("addresses")),
-//     //     //                 referenced_columns: vec![
-//     //     //                     s("id"),
-//     //     //                 ],
-//     //     //             },
-//     //     //         ),
-//     //     //         Parent(
-//     //     //             ForeignKey {
-//     //     //                 name: s("shipping_address_id_fk"),
-//     //     //                 table: Qi(s("api"),s("users")),
-//     //     //                 columns: vec![
-//     //     //                     s("shipping_address_id"),
-//     //     //                 ],
-//     //     //                 referenced_table: Qi(s("api"),s("addresses")),
-//     //     //                 referenced_columns: vec![
-//     //     //                     s("id"),
-//     //     //                 ],
-//     //     //             },
-//     //     //         ),
-//     //     //     ]
-//     //     // };
-//     //     // assert!(result.is_err());
-//     //     // let error = result.unwrap();
-
-//     //     // assert!(matches!(
-//     //     //     get_join("api"), &db_schema, &s("users"), &s("addresses"), &mut None,
-//     //     //     1
-//     //     // );
-//     //     assert!(matches!(
-//     //         get_join("api"), &db_schema, &s("users"), &s("addresses"), &mut None,
-//     //         Err(AppError::AmbiguousRelBetween {..})
-//     //     ));
-
-//     // }
-
-//     #[test]
-//     fn parse_preferences() {
-//         assert_eq!(
-//             preferences().easy_parse("return=minimal, resolution=merge-duplicates, count=planned, count=exact"),
-//             Ok((
-//                 Preferences {
-//                     representation: Some(Representation::None),
-//                     resolution: Some(Resolution::MergeDuplicates),
-//                     count: Some(Count::ExactCount)
-//                 },
-//                 ""
-//             ))
-//         );
-//     }
-
-//     #[test]
-//     fn parse_filter() {
-//         assert_eq!(filter(&None).easy_parse("gte.5"), Ok((Filter::Op(s(">="), SingleVal(s("5"), None)), "")));
-//         assert_eq!(
-//             filter(&None).easy_parse("in.(1,2,3)"),
-//             Ok((Filter::In(ListVal(["1", "2", "3"].map(str::to_string).to_vec(), None)), ""))
-//         );
-//         assert_eq!(
-//             filter(&None).easy_parse("fts.word"),
-//             Ok((Filter::Fts(s("@@ to_tsquery"), None, SingleVal(s("word"), None)), ""))
-//         );
-//     }
-
-//     #[test]
-//     fn parse_logic_condition() {
-//         let field = Field {
-//             name: s("id"),
-//             json_path: None,
-//         };
-//         assert_eq!(
-//             logic_condition().easy_parse("id.gte.5"),
-//             Ok((
-//                 Single {
-//                     filter: Filter::Op(s(">="), SingleVal(s("5"), None)),
-//                     field: field.clone(),
-//                     negate: false
-//                 },
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             logic_condition().easy_parse("id.not.in.(1,2,3)"),
-//             Ok((
-//                 Single {
-//                     filter: Filter::In(ListVal(vec![s("1"), s("2"), s("3")], None)),
-//                     field: field.clone(),
-//                     negate: true
-//                 },
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             logic_condition().easy_parse("id.fts.word"),
-//             Ok((
-//                 Single {
-//                     filter: Filter::Fts(s("@@ to_tsquery"), None, SingleVal(s("word"), None)),
-//                     field: field.clone(),
-//                     negate: false
-//                 },
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             logic_condition().easy_parse("not.or(id.gte.5, id.lte.10)"),
-//             Ok((
-//                 Condition::Group {
-//                     negate: true,
-//                     tree: ConditionTree {
-//                         operator: Or,
-//                         conditions: vec![
-//                             Single {
-//                                 filter: Filter::Op(s(">="), SingleVal(s("5"), None)),
-//                                 field: field.clone(),
-//                                 negate: false
-//                             },
-//                             Single {
-//                                 filter: Filter::Op(s("<="), SingleVal(s("10"), None)),
-//                                 field: field.clone(),
-//                                 negate: false
-//                             }
-//                         ]
-//                     }
-//                 },
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             logic_condition().easy_parse("not.or(id.gte.5, id.lte.10, and(id.gte.2, id.lte.4))"),
-//             Ok((
-//                 Condition::Group {
-//                     negate: true,
-//                     tree: ConditionTree {
-//                         operator: Or,
-//                         conditions: vec![
-//                             Single {
-//                                 filter: Filter::Op(s(">="), SingleVal(s("5"), None)),
-//                                 field: field.clone(),
-//                                 negate: false
-//                             },
-//                             Single {
-//                                 filter: Filter::Op(s("<="), SingleVal(s("10"), None)),
-//                                 field: field.clone(),
-//                                 negate: false
-//                             },
-//                             Condition::Group {
-//                                 negate: false,
-//                                 tree: ConditionTree {
-//                                     operator: And,
-//                                     conditions: vec![
-//                                         Single {
-//                                             filter: Filter::Op(s(">="), SingleVal(s("2"), None)),
-//                                             field: field.clone(),
-//                                             negate: false
-//                                         },
-//                                         Single {
-//                                             filter: Filter::Op(s("<="), SingleVal(s("4"), None)),
-//                                             field,
-//                                             negate: false
-//                                         }
-//                                     ]
-//                                 }
-//                             }
-//                         ]
-//                     }
-//                 },
-//                 ""
-//             ))
-//         );
-//     }
-
-//     #[test]
-//     fn parse_operator() {
-//         assert_eq!(operator().easy_parse("gte."), Ok((s(">="), ".")));
-//         assert_eq!(
-//             operator().easy_parse("gtv."),
-//             Err(Errors {
-//                 position: PointerOffset::new("gtv.".as_ptr() as usize),
-//                 errors: vec![Error::Message("unknown operator".into())]
-//             })
-//         );
-//     }
-
-//     #[test]
-//     fn parse_fts_operator() {
-//         assert_eq!(fts_operator().easy_parse("plfts."), Ok((s("@@ plainto_tsquery"), ".")));
-//         assert_eq!(
-//             fts_operator().easy_parse("xfts."),
-//             Err(Errors {
-//                 position: PointerOffset::new("xfts.".as_ptr() as usize),
-//                 errors: vec![Error::Message("unknown fts operator".into())]
-//             })
-//         );
-//     }
-
-//     #[test]
-//     fn parse_single_value() {
-//         assert_eq!(single_value(&None).easy_parse("any 123 value"), Ok(((s("any 123 value"), None), "")));
-//         assert_eq!(single_value(&None).easy_parse("any123value,another"), Ok(((s("any123value,another"), None), "")));
-//     }
-
-//     #[test]
-//     fn parse_logic_single_value() {
-//         assert_eq!(logic_single_value(&None).easy_parse("any 123 value"), Ok(((s("any 123 value"), None), "")));
-//         assert_eq!(
-//             logic_single_value(&None).easy_parse("any123value,another"),
-//             Ok(((s("any123value"), None), ",another"))
-//         );
-//         assert_eq!(logic_single_value(&None).easy_parse("\"any 123 value,)\""), Ok(((s("any 123 value,)"), None), "")));
-//         assert_eq!(logic_single_value(&None).easy_parse("{a, b, c}"), Ok(((s("{a, b, c}"), None), "")));
-//     }
-
-//     #[test]
-//     fn parse_list_element() {
-//         assert_eq!(list_element().easy_parse("any 123 value"), Ok((s("any 123 value"), "")));
-//         assert_eq!(list_element().easy_parse("any123value,another"), Ok((s("any123value"), ",another")));
-//         assert_eq!(list_element().easy_parse("any123value)"), Ok((s("any123value"), ")")));
-//         assert_eq!(list_element().easy_parse("\"any123value,)\",another"), Ok((s("any123value,)"), ",another")));
-//     }
-
-//     #[test]
-//     fn parse_list_value() {
-//         assert_eq!(list_value(&None).easy_parse("()"), Ok(((vec![], None), "")));
-//         assert_eq!(list_value(&None).easy_parse("(any 123 value)"), Ok(((vec![s("any 123 value")], None), "")));
-//         assert_eq!(
-//             list_value(&None).easy_parse("(any123value,another)"),
-//             Ok(((vec![s("any123value"), s("another")], None), ""))
-//         );
-//         assert_eq!(
-//             list_value(&None).easy_parse("(\"any123 value\", another)"),
-//             Ok(((vec![s("any123 value"), s("another")], None), ""))
-//         );
-//         assert_eq!(
-//             list_value(&None).easy_parse("(\"any123 value\", 123)"),
-//             Ok(((vec![s("any123 value"), s("123")], None), ""))
-//         );
-//         assert_eq!(
-//             list_value(&None).easy_parse("(\"Double\\\"Quote\\\"McGraw\\\"\")"),
-//             Ok(((vec![s("Double\"Quote\"McGraw\"")], None), ""))
-//         );
-//     }
-
-//     #[test]
-//     fn parse_alias_separator() {
-//         assert_eq!(alias_separator().easy_parse(":abc"), Ok((':', "abc")));
-//         assert_eq!(alias_separator().easy_parse("::abc").is_err(), true);
-//     }
-
-//     #[test]
-//     fn parse_json_path() {
-//         assert_eq!(json_path().easy_parse("->key"), Ok((vec![JArrow(JKey(s("key")))], "")));
-
-//         assert_eq!(json_path().easy_parse("->>51"), Ok((vec![J2Arrow(JIdx(s("51")))], "")));
-
-//         assert_eq!(
-//             json_path().easy_parse("->key1->>key2"),
-//             Ok((vec![JArrow(JKey(s("key1"))), J2Arrow(JKey(s("key2")))], ""))
-//         );
-
-//         assert_eq!(
-//             json_path().easy_parse("->key1->>key2,rest"),
-//             Ok((vec![JArrow(JKey(s("key1"))), J2Arrow(JKey(s("key2")))], ",rest"))
-//         );
-//     }
-
-//     #[test]
-//     fn parse_field_name() {
-//         assert_eq!(field_name().easy_parse("field with space "), Ok((s("field with space"), "")));
-//         assert_eq!(field_name().easy_parse("field12"), Ok((s("field12"), "")));
-//         assert_ne!(field_name().easy_parse("field,invalid"), Ok((s("field,invalid"), "")));
-//         assert_eq!(field_name().easy_parse("field-name"), Ok((s("field-name"), "")));
-//         assert_eq!(field_name().easy_parse("field-name->"), Ok((s("field-name"), "->")));
-//         assert_eq!(quoted_value().easy_parse("\"field name\""), Ok((s("field name"), "")));
-//     }
-
-//     #[test]
-//     fn parse_order() {
-//         assert_eq!(
-//             order_term().easy_parse("field"),
-//             Ok((
-//                 OrderTerm {
-//                     term: Field {
-//                         name: s("field"),
-//                         json_path: None
-//                     },
-//                     direction: None,
-//                     null_order: None
-//                 },
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             order_term().easy_parse("field.asc"),
-//             Ok((
-//                 OrderTerm {
-//                     term: Field {
-//                         name: s("field"),
-//                         json_path: None
-//                     },
-//                     direction: Some(OrderDirection::Asc),
-//                     null_order: None
-//                 },
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             order_term().easy_parse("field.desc"),
-//             Ok((
-//                 OrderTerm {
-//                     term: Field {
-//                         name: s("field"),
-//                         json_path: None
-//                     },
-//                     direction: Some(OrderDirection::Desc),
-//                     null_order: None
-//                 },
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             order_term().easy_parse("field.desc.nullsfirst"),
-//             Ok((
-//                 OrderTerm {
-//                     term: Field {
-//                         name: s("field"),
-//                         json_path: None
-//                     },
-//                     direction: Some(OrderDirection::Desc),
-//                     null_order: Some(OrderNulls::NullsFirst)
-//                 },
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             order_term().easy_parse("field.desc.nullslast"),
-//             Ok((
-//                 OrderTerm {
-//                     term: Field {
-//                         name: s("field"),
-//                         json_path: None
-//                     },
-//                     direction: Some(OrderDirection::Desc),
-//                     null_order: Some(OrderNulls::NullsLast)
-//                 },
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             order_term().easy_parse("field.nullslast"),
-//             Ok((
-//                 OrderTerm {
-//                     term: Field {
-//                         name: s("field"),
-//                         json_path: None
-//                     },
-//                     direction: None,
-//                     null_order: Some(OrderNulls::NullsLast)
-//                 },
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             order().easy_parse("field,field.asc,field.desc.nullslast"),
-//             Ok((
-//                 vec![
-//                     OrderTerm {
-//                         term: Field {
-//                             name: s("field"),
-//                             json_path: None
-//                         },
-//                         direction: None,
-//                         null_order: None
-//                     },
-//                     OrderTerm {
-//                         term: Field {
-//                             name: s("field"),
-//                             json_path: None
-//                         },
-//                         direction: Some(OrderDirection::Asc),
-//                         null_order: None
-//                     },
-//                     OrderTerm {
-//                         term: Field {
-//                             name: s("field"),
-//                             json_path: None
-//                         },
-//                         direction: Some(OrderDirection::Desc),
-//                         null_order: Some(OrderNulls::NullsLast)
-//                     },
-//                 ],
-//                 ""
-//             ))
-//         );
-//     }
-
-//     #[test]
-//     fn parse_columns() {
-//         assert_eq!(columns().easy_parse("col1, col2 "), Ok((vec![s("col1"), s("col2")], "")));
-
-//         assert_eq!(
-//             columns().easy_parse(position::Stream::new("id,# name")),
-//             Err(Errors {
-//                 position: SourcePosition { line: 1, column: 4 },
-//                 errors: vec![
-//                     Error::Unexpected('#'.into()),
-//                     Error::Expected("whitespace".into()),
-//                     Error::Expected('"'.into()),
-//                     Error::Expected("letter".into()),
-//                     Error::Expected("digit".into()),
-//                     Error::Expected('_'.into()),
-//                     Error::Expected(' '.into()),
-//                 ]
-//             })
-//         );
-
-//         assert_eq!(
-//             columns().easy_parse(position::Stream::new("col1, col2, ")),
-//             Err(Errors {
-//                 position: SourcePosition { line: 1, column: 13 },
-//                 errors: vec![
-//                     Error::Unexpected("end of input".into()),
-//                     Error::Expected("whitespace".into()),
-//                     Error::Expected('"'.into()),
-//                     Error::Expected("letter".into()),
-//                     Error::Expected("digit".into()),
-//                     Error::Expected('_'.into()),
-//                     Error::Expected(' '.into()),
-//                 ]
-//             })
-//         );
-
-//         // assert_eq!(columns().easy_parse(position::Stream::new("col1, col2 col3")), Err(Errors {
-//         //     position: SourcePosition { line: 1, column: 12 },
-//         //     errors: vec![
-//         //         Error::Unexpected('c'.into()),
-//         //         Error::Expected(','.into()),
-//         //         Error::Expected("whitespaces".into()),
-//         //         Error::Expected("end of input".into())
-//         //     ]
-//         // }));
-//     }
-
-//     #[test]
-//     fn parse_field() {
-//         let result = Field {
-//             name: s("field"),
-//             json_path: None,
-//         };
-//         assert_eq!(field().easy_parse("field"), Ok((result, "")));
-//         let result = Field {
-//             name: s("field"),
-//             json_path: Some(vec![JArrow(JKey(s("key")))]),
-//         };
-//         assert_eq!(field().easy_parse("field->key"), Ok((result, "")));
-//     }
-
-//     #[test]
-//     fn parse_tree_path() {
-//         let result = (
-//             vec![s("sub"), s("path")],
-//             Field {
-//                 name: s("field"),
-//                 json_path: Some(vec![JArrow(JKey(s("key")))]),
-//             },
-//         );
-//         assert_eq!(tree_path().easy_parse("sub.path.field->key"), Ok((result, "")));
-//         //assert!(false);
-//     }
-
-//     #[test]
-//     fn parse_logic_tree_path() {
-//         assert_eq!(logic_tree_path().easy_parse("and"), Ok(((vec![], false, And), "")));
-//         assert_eq!(logic_tree_path().easy_parse("not.or"), Ok(((vec![], true, Or), "")));
-//         assert_eq!(logic_tree_path().easy_parse("sub.path.and"), Ok(((vec![s("sub"), s("path")], false, And), "")));
-//         assert_eq!(logic_tree_path().easy_parse("sub.path.not.or"), Ok(((vec![s("sub"), s("path")], true, Or), "")));
-//     }
-
-//     #[test]
-//     fn parse_select_item() {
-//         assert_eq!(
-//             select_item().easy_parse("alias:$sum(field)-p(city)-o(city.desc)"),
-//             Ok((
-//                 Item(Func {
-//                     alias: Some(s("alias")),
-//                     fn_name: s("sum"),
-//                     parameters: vec![FunctionParam::Fld(Field {
-//                         name: s("field"),
-//                         json_path: None
-//                     })],
-//                     partitions: vec![Field {
-//                         name: s("city"),
-//                         json_path: None
-//                     }],
-//                     orders: vec![OrderTerm {
-//                         term: Field {
-//                             name: s("city"),
-//                             json_path: None
-//                         },
-//                         direction: Some(OrderDirection::Desc),
-//                         null_order: None,
-//                     }],
-//                 }),
-//                 ""
-//             ))
-//         );
-//         assert_eq!(
-//             select_item().easy_parse("alias:$upper(field, '10')"),
-//             Ok((
-//                 Item(Func {
-//                     alias: Some(s("alias")),
-//                     fn_name: s("upper"),
-//                     parameters: vec![
-//                         FunctionParam::Fld(Field {
-//                             name: s("field"),
-//                             json_path: None
-//                         }),
-//                         FunctionParam::Val(SingleVal(s("10"), None), None),
-//                     ],
-//                     partitions: vec![],
-//                     orders: vec![],
-//                 }),
-//                 ""
-//             ))
-//         );
-
-//         assert_eq!(
-//             select_item().easy_parse("alias:column"),
-//             Ok((
-//                 Item(Simple {
-//                     field: Field {
-//                         name: s("column"),
-//                         json_path: None
-//                     },
-//                     alias: Some(s("alias")),
-//                     cast: None
-//                 }),
-//                 ""
-//             ))
-//         );
-
-//         assert_eq!(
-//             select_item().easy_parse("column::cast"),
-//             Ok((
-//                 Item(Simple {
-//                     field: Field {
-//                         name: s("column"),
-//                         json_path: None
-//                     },
-//                     alias: None,
-//                     cast: Some(s("cast"))
-//                 }),
-//                 ""
-//             ))
-//         );
-
-//         assert_eq!(
-//             select_item().easy_parse("alias:column::cast"),
-//             Ok((
-//                 Item(Simple {
-//                     field: Field {
-//                         name: s("column"),
-//                         json_path: None
-//                     },
-//                     alias: Some(s("alias")),
-//                     cast: Some(s("cast"))
-//                 }),
-//                 ""
-//             ))
-//         );
-
-//         assert_eq!(
-//             select_item().easy_parse("column"),
-//             Ok((
-//                 Item(Simple {
-//                     field: Field {
-//                         name: s("column"),
-//                         json_path: None
-//                     },
-//                     alias: None,
-//                     cast: None
-//                 }),
-//                 ""
-//             ))
-//         );
-
-//         assert_eq!(
-//             select_item().easy_parse("table!hint( column0->key, column1 ,  alias2:column2 )"),
-//             Ok((
-//                 Sub(Box::new(SubSelect {
-//                     query: Query {
-//                         sub_selects: vec![],
-//                         node: Select {
-//                             order: vec![],
-//                             groupby: vec![],
-//                             limit: None,
-//                             offset: None,
-//                             select: vec![
-//                                 Simple {
-//                                     field: Field {
-//                                         name: s("column0"),
-//                                         json_path: Some(vec![JArrow(JKey(s("key")))])
-//                                     },
-//                                     alias: None,
-//                                     cast: None
-//                                 },
-//                                 Simple {
-//                                     field: Field {
-//                                         name: s("column1"),
-//                                         json_path: None
-//                                     },
-//                                     alias: None,
-//                                     cast: None
-//                                 },
-//                                 Simple {
-//                                     field: Field {
-//                                         name: s("column2"),
-//                                         json_path: None
-//                                     },
-//                                     alias: Some(s("alias2")),
-//                                     cast: None
-//                                 },
-//                             ],
-//                             from: (s("table"), None),
-//                             join_tables: vec![],
-//                             //from_alias: None,
-//                             where_: ConditionTree {
-//                                 operator: And,
-//                                 conditions: vec![]
-//                             }
-//                         }
-//                     },
-//                     alias: None,
-//                     hint: Some(s("hint")),
-//                     join: None
-//                 })),
-//                 ""
-//             ))
-//         );
-
-//         assert_eq!(
-//             select_item().easy_parse("table.hint ( column0->key, column1 ,  alias2:column2 )"),
-//             Ok((
-//                 Sub(Box::new(SubSelect {
-//                     query: Query {
-//                         sub_selects: vec![],
-//                         node: Select {
-//                             order: vec![],
-//                             groupby: vec![],
-//                             limit: None,
-//                             offset: None,
-//                             select: vec![
-//                                 Simple {
-//                                     field: Field {
-//                                         name: s("column0"),
-//                                         json_path: Some(vec![JArrow(JKey(s("key")))])
-//                                     },
-//                                     alias: None,
-//                                     cast: None
-//                                 },
-//                                 Simple {
-//                                     field: Field {
-//                                         name: s("column1"),
-//                                         json_path: None
-//                                     },
-//                                     alias: None,
-//                                     cast: None
-//                                 },
-//                                 Simple {
-//                                     field: Field {
-//                                         name: s("column2"),
-//                                         json_path: None
-//                                     },
-//                                     alias: Some(s("alias2")),
-//                                     cast: None
-//                                 },
-//                             ],
-//                             from: (s("table"), None),
-//                             join_tables: vec![],
-//                             //from_alias: None,
-//                             where_: ConditionTree {
-//                                 operator: And,
-//                                 conditions: vec![]
-//                             }
-//                         }
-//                     },
-//                     alias: None,
-//                     hint: Some(s("hint")),
-//                     join: None
-//                 })),
-//                 ""
-//             ))
-//         );
-//     }
-// }
+#[cfg(test)]
+pub mod tests {
+    //use std::matches;
+    use crate::api::{
+        Condition::{Group, Single},
+        JsonOperand::*,
+        JsonOperation::*,
+    };
+    //use combine::easy::{Error, Errors};
+    //use combine::stream::PointerOffset;
+    use pretty_assertions::{assert_eq, assert_ne};
+
+    //use combine::stream::position;
+    //use combine::stream::position::SourcePosition;
+    //use combine::error::StringStreamError;
+    use super::*;
+    use crate::error::Error as AppError;
+    //use combine::EasyParser;
+
+    pub static JSON_SCHEMA: &str = r#"
+                    {
+                        "schemas":[
+                            {
+                                "name":"api",
+                                "objects":[
+                                    {
+                                        "kind":"function",
+                                        "name":"myfunction",
+                                        "volatile":"v",
+                                        "composite":false,
+                                        "setof":false,
+                                        "return_type":"int4",
+                                        "return_type_schema":"pg_catalog",
+                                        "parameters":[
+                                            {
+                                                "name":"id",
+                                                "type":"integer",
+                                                "required":true,
+                                                "variadic":false
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"addresses",
+                                        "columns":[
+                                            { "name":"id", "data_type":"int", "primary_key":true },
+                                            { "name":"location", "data_type":"text" }
+                                        ],
+                                        "foreign_keys":[]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"users",
+                                        "columns":[
+                                            { "name":"id", "data_type":"int", "primary_key":true },
+                                            { "name":"name", "data_type":"text" },
+                                            { "name":"billing_address_id", "data_type":"int" },
+                                            { "name":"shipping_address_id", "data_type":"int" }
+                                        ],
+                                        "foreign_keys":[
+                                            {
+                                                "name":"billing_address_id_fk",
+                                                "table":["api","users"],
+                                                "columns": ["billing_address_id"],
+                                                "referenced_table":["api","addresses"],
+                                                "referenced_columns": ["id"]
+                                            },
+                                            {
+                                                "name":"shipping_address_id_fk",
+                                                "table":["api","users"],
+                                                "columns": ["shipping_address_id"],
+                                                "referenced_table":["api","addresses"],
+                                                "referenced_columns": ["id"]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"clients",
+                                        "columns":[
+                                            { "name":"id", "data_type":"int", "primary_key":true },
+                                            { "name":"name", "data_type":"text" }
+                                        ],
+                                        "foreign_keys":[]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"projects",
+                                        "columns":[
+                                            { "name":"id", "data_type":"int", "primary_key":true },
+                                            { "name":"client_id", "data_type":"int" },
+                                            { "name":"name", "data_type":"text" }
+                                        ],
+                                        "foreign_keys":[
+                                            {
+                                                "name":"client_id_fk",
+                                                "table":["api","projects"],
+                                                "columns": ["client_id"],
+                                                "referenced_table":["api","clients"],
+                                                "referenced_columns": ["id"]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"tasks",
+                                        "columns":[
+                                            { "name":"id", "data_type":"int", "primary_key":true },
+                                            { "name":"project_id", "data_type":"int" },
+                                            { "name":"name", "data_type":"text" }
+                                        ],
+                                        "foreign_keys":[
+                                            {
+                                                "name":"project_id_fk",
+                                                "table":["api","tasks"],
+                                                "columns": ["project_id"],
+                                                "referenced_table":["api","projects"],
+                                                "referenced_columns": ["id"]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "kind":"view",
+                                        "name":"users_tasks",
+                                        "columns":[
+                                            { "name":"task_id", "data_type":"int", "primary_key":true },
+                                            { "name":"user_id", "data_type":"int", "primary_key":true }
+
+                                        ],
+                                        "foreign_keys":[
+                                            {
+                                                "name":"task_id_fk",
+                                                "table":["api","users_tasks"],
+                                                "columns": ["task_id"],
+                                                "referenced_table":["api","tasks"],
+                                                "referenced_columns": ["id"]
+                                            },
+                                            {
+                                                "name":"user_id_fk",
+                                                "table":["api","users_tasks"],
+                                                "columns": ["user_id"],
+                                                "referenced_table":["api","users"],
+                                                "referenced_columns": ["id"]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                "#;
+
+    fn s(s: &str) -> String { s.to_string() }
+    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
+    fn sv(s: &str) -> SingleVal { SingleVal(cow(s), None)}
+    // fn vs(v: Vec<(&str, &str)>) -> Vec<(String, String)> {
+    //     v.into_iter().map(|(s, s2)| (s.to_string(), s2.to_string())).collect()
+    // }
+    #[test]
+    fn test_parse_get_function() {
+        let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
+        let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
+        let mut api_request = ApiRequest {
+            schema_name: "api",
+            get: vec![("id", "10")],
+            preferences: None,
+            path: "dummy",
+            method: "GET",
+            read_only: true,
+            headers: emtpy_hashmap.clone(),
+            accept_content_type: ApplicationJSON,
+            cookies: emtpy_hashmap.clone(),
+            query: Query {
+                node: FunctionCall {
+                    fn_name: Qi("api", "myfunction"),
+                    parameters: CallParams::KeyParams(vec![ProcParam {
+                        name: "id",
+                        type_: "integer",
+                        required: true,
+                        variadic: false,
+                    }]),
+                    payload: Payload(cow(r#"{"id":"10"}"#), None),
+                    is_scalar: true,
+                    returns_single: true,
+                    is_multiple_call: false,
+                    returning: vec!["*"],
+                    select: vec![Star],
+                    where_: ConditionTree {
+                        operator: And,
+                        conditions: vec![],
+                    },
+                    return_table_type: None,
+                    limit: None,
+                    offset: None,
+                    order: vec![],
+                },
+                sub_selects: vec![],
+            },
+        };
+        let a = parse(
+            "api",
+            "myfunction",
+            &db_schema,
+            "GET",
+            "dummy",
+            vec![("id", "10")],
+            None,
+            emtpy_hashmap.clone(),
+            emtpy_hashmap.clone(),
+            None,
+        );
+
+        assert_eq!(a.unwrap(), api_request);
+
+        api_request.method = "POST";
+        api_request.get = vec![];
+        api_request.read_only = false;
+
+        let body = r#"{"id":"10"}"#;
+        let b = parse(
+            "api",
+            "myfunction",
+            &db_schema,
+            "POST",
+            "dummy",
+            vec![],
+            Some(body),
+            emtpy_hashmap.clone(),
+            emtpy_hashmap.clone(),
+            None,
+        );
+        assert_eq!(b.unwrap(), api_request);
+    }
+
+    #[test]
+    fn test_insert_conditions() {
+        let mut query = Query {
+            node: Select {
+                groupby: vec![],
+                order: vec![],
+                limit: None,
+                offset: None,
+                select: vec![Simple {
+                    field: Field {
+                        name: "a",
+                        json_path: None,
+                    },
+                    alias: None,
+                    cast: None,
+                }],
+                from: ("parent", None),
+                join_tables: vec![],
+                //from_alias: None,
+                where_: ConditionTree {
+                    operator: And,
+                    conditions: vec![],
+                },
+            },
+            sub_selects: vec![SubSelect {
+                query: Query {
+                    node: Select {
+                        order: vec![],
+                        groupby: vec![],
+                        limit: None,
+                        offset: None,
+                        select: vec![Simple {
+                            field: Field {
+                                name: "a",
+                                json_path: None,
+                            },
+                            alias: None,
+                            cast: None,
+                        }],
+                        from: ("child", None),
+                        join_tables: vec![],
+                        where_: ConditionTree {
+                            operator: And,
+                            conditions: vec![],
+                        },
+                    },
+                    sub_selects: vec![],
+                },
+                alias: None,
+                hint: None,
+                join: None,
+            }],
+        };
+        let condition = Single {
+            field: Field {
+                name: "a",
+                json_path: None,
+            },
+            filter: Filter::Op(">=", SingleVal(cow("5"), None)),
+            negate: false,
+        };
+        let _ = query.insert_conditions(vec![(vec![], condition.clone()), (vec!["child"], condition.clone())]);
+        assert_eq!(
+            query,
+            Query {
+                node: Select {
+                    order: vec![],
+                    groupby: vec![],
+                    limit: None,
+                    offset: None,
+                    select: vec![Simple {
+                        field: Field {
+                            name: "a",
+                            json_path: None
+                        },
+                        alias: None,
+                        cast: None
+                    },],
+                    from: ("parent", None),
+                    join_tables: vec![],
+                    where_: ConditionTree {
+                        operator: And,
+                        conditions: vec![condition.clone()]
+                    }
+                },
+                sub_selects: vec![SubSelect {
+                    query: Query {
+                        node: Select {
+                            order: vec![],
+                            groupby: vec![],
+                            limit: None,
+                            offset: None,
+                            select: vec![Simple {
+                                field: Field {
+                                    name: "a",
+                                    json_path: None
+                                },
+                                alias: None,
+                                cast: None
+                            },],
+                            from: ("child", None),
+                            join_tables: vec![],
+                            //from_alias: None,
+                            where_: ConditionTree {
+                                operator: And,
+                                conditions: vec![condition]
+                            }
+                        },
+                        sub_selects: vec![]
+                    },
+                    alias: None,
+                    hint: None,
+                    join: None
+                }]
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_get() {
+        let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
+        let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
+        let a = parse(
+            "api",
+            "projects",
+            &db_schema,
+            "GET",
+            "dummy",
+            vec![
+                ("select", "id,name,clients(id),tasks(id)"),
+                ("id", "not.gt.10"),
+                ("tasks.id", "lt.500"),
+                ("not.or", "(id.eq.11,id.eq.12)"),
+                ("tasks.or", "(id.eq.11,id.eq.12)"),
+            ],
+            None,
+            emtpy_hashmap.clone(),
+            emtpy_hashmap.clone(),
+            None,
+        );
+
+        assert_eq!(
+            a.unwrap(),
+            ApiRequest {
+                schema_name: "api",
+                get: vec![
+                    ("select", "id,name,clients(id),tasks(id)"),
+                    ("id", "not.gt.10"),
+                    ("tasks.id", "lt.500"),
+                    ("not.or", "(id.eq.11,id.eq.12)"),
+                    ("tasks.or", "(id.eq.11,id.eq.12)"),
+                ],
+                preferences: None,
+                path: "dummy",
+                method: "GET",
+                read_only: true,
+                accept_content_type: ApplicationJSON,
+                headers: emtpy_hashmap.clone(),
+                cookies: emtpy_hashmap.clone(),
+                query: Query {
+                    node: Select {
+                        order: vec![],
+                        groupby: vec![],
+                        limit: None,
+                        offset: None,
+                        select: vec![
+                            Simple {
+                                field: Field {
+                                    name: "id",
+                                    json_path: None
+                                },
+                                alias: None,
+                                cast: None
+                            },
+                            Simple {
+                                field: Field {
+                                    name: "name",
+                                    json_path: None
+                                },
+                                alias: None,
+                                cast: None
+                            },
+                        ],
+                        from: ("projects", None),
+                        join_tables: vec![],
+                        //from_alias: None,
+                        where_: ConditionTree {
+                            operator: And,
+                            conditions: vec![
+                                Single {
+                                    field: Field {
+                                        name: "id",
+                                        json_path: None
+                                    },
+                                    filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
+                                    negate: true,
+                                },
+                                Group {
+                                    negate: true,
+                                    tree: ConditionTree {
+                                        operator: Or,
+                                        conditions: vec![
+                                            Single {
+                                                filter: Filter::Op("=", SingleVal(cow("11"), None)),
+                                                field: Field {
+                                                    name: "id",
+                                                    json_path: None
+                                                },
+                                                negate: false
+                                            },
+                                            Single {
+                                                filter: Filter::Op("=", SingleVal(cow("12"), None)),
+                                                field: Field {
+                                                    name: "id",
+                                                    json_path: None
+                                                },
+                                                negate: false
+                                            }
+                                        ]
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    sub_selects: vec![
+                        SubSelect {
+                            query: Query {
+                                sub_selects: vec![],
+                                node: Select {
+                                    order: vec![],
+                                    groupby: vec![],
+                                    limit: None,
+                                    offset: None,
+                                    select: vec![Simple {
+                                        field: Field {
+                                            name: "id",
+                                            json_path: None
+                                        },
+                                        alias: None,
+                                        cast: None
+                                    },],
+                                    from: ("clients", None),
+                                    join_tables: vec![],
+                                    //from_alias: None,
+                                    where_: ConditionTree {
+                                        operator: And,
+                                        conditions: vec![Single {
+                                            field: Field {
+                                                name: "id",
+                                                json_path: None
+                                            },
+                                            filter: Filter::Col(
+                                                Qi("api", "projects"),
+                                                Field {
+                                                    name: "client_id",
+                                                    json_path: None
+                                                }
+                                            ),
+                                            negate: false,
+                                        }]
+                                    }
+                                }
+                            },
+                            alias: None,
+                            hint: None,
+                            join: Some(Parent(ForeignKey {
+                                name: "client_id_fk",
+                                table: Qi("api", "projects"),
+                                columns: vec!["client_id"],
+                                referenced_table: Qi("api", "clients"),
+                                referenced_columns: vec!["id"],
+                            }),)
+                        },
+                        SubSelect {
+                            query: Query {
+                                sub_selects: vec![],
+                                node: Select {
+                                    order: vec![],
+                                    groupby: vec![],
+                                    limit: None,
+                                    offset: None,
+                                    select: vec![Simple {
+                                        field: Field {
+                                            name: "id",
+                                            json_path: None
+                                        },
+                                        alias: None,
+                                        cast: None
+                                    },],
+                                    from: ("tasks", None),
+                                    join_tables: vec![],
+                                    //from_alias: None,
+                                    where_: ConditionTree {
+                                        operator: And,
+                                        conditions: vec![
+                                            Single {
+                                                field: Field {
+                                                    name: "project_id",
+                                                    json_path: None
+                                                },
+                                                filter: Filter::Col(
+                                                    Qi("api", "projects"),
+                                                    Field {
+                                                        name: "id",
+                                                        json_path: None
+                                                    }
+                                                ),
+                                                negate: false,
+                                            },
+                                            Single {
+                                                field: Field {
+                                                    name: "id",
+                                                    json_path: None
+                                                },
+                                                filter: Filter::Op("<", SingleVal(cow("500"), Some(cow("int")))),
+                                                negate: false,
+                                            },
+                                            Group {
+                                                negate: false,
+                                                tree: ConditionTree {
+                                                    operator: Or,
+                                                    conditions: vec![
+                                                        Single {
+                                                            filter: Filter::Op("=", SingleVal(cow("11"), None)),
+                                                            field: Field {
+                                                                name: "id",
+                                                                json_path: None
+                                                            },
+                                                            negate: false
+                                                        },
+                                                        Single {
+                                                            filter: Filter::Op("=", SingleVal(cow("12"), None)),
+                                                            field: Field {
+                                                                name: "id",
+                                                                json_path: None
+                                                            },
+                                                            negate: false
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                            hint: None,
+                            alias: None,
+                            join: Some(Child(ForeignKey {
+                                name: "project_id_fk",
+                                table: Qi("api", "tasks"),
+                                columns: vec!["project_id"],
+                                referenced_table: Qi("api", "projects"),
+                                referenced_columns: vec!["id"],
+                            }),)
+                        }
+                    ]
+                }
+            }
+        );
+
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "GET",
+                "dummy",
+                vec![("select", "id,name,unknown(id)")],
+                None,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Err(AppError::NoRelBetween {
+                origin: s("projects"),
+                target: s("unknown")
+            })
+            .map_err(|e| format!("{}", e))
+        );
+
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "GET",
+                "dummy",
+                vec![("select", "id-,na$me")],
+                None,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Err(AppError::ParseRequestError {
+                message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
+                //details: s("Unexpected `,` Unexpected `i` Expected letter, digit, `_` or ` `")
+                details: s("0: at line 1, in Eof:\nid-,na$me\n  ^\n\n1: at line 1, in failed to parse select parameter:\nid-,na$me\n^\n\n")
+            })
+            .map_err(|e| format!("{}", e))
+        );
+    }
+
+    #[test]
+    fn test_parse_post() {
+        let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
+        let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
+        let headers = [("prefer", "return=representation")].iter().cloned().collect::<HashMap<_, _>>();
+        let payload = r#"{"id":10, "name":"john"}"#;
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "POST",
+                "dummy",
+                vec![("select", "id"), ("id", "gt.10"),],
+                Some(payload),
+                headers.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Ok(ApiRequest {
+                schema_name: "api",
+                get: vec![("select", "id"), ("id", "gt.10"),],
+                preferences: Some(Preferences {
+                    representation: Some(Representation::Full),
+                    resolution: None,
+                    count: None
+                }),
+                path: "dummy",
+                method: "POST",
+                read_only: false,
+                accept_content_type: ApplicationJSON,
+                headers: headers.clone(),
+                cookies: emtpy_hashmap.clone(),
+                query: Query {
+                    node: Insert {
+                        on_conflict: None,
+                        select: vec![Simple {
+                            field: Field {
+                                name: "id",
+                                json_path: None
+                            },
+                            alias: None,
+                            cast: None
+                        },],
+                        payload: Payload(cow(payload), None),
+                        into: "projects",
+                        columns: vec!["id", "name"],
+                        check: ConditionTree {
+                            operator: And,
+                            conditions: vec![]
+                        },
+                        where_: ConditionTree {
+                            operator: And,
+                            conditions: vec![Single {
+                                field: Field {
+                                    name: "id",
+                                    json_path: None
+                                },
+                                filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
+                                negate: false,
+                            }]
+                        },
+                        returning: vec!["id"]
+                    },
+                    sub_selects: vec![]
+                }
+            })
+        );
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "POST",
+                "dummy",
+                vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),],
+                Some(payload),
+                headers.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Ok(ApiRequest {
+                schema_name: "api",
+                get: vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),],
+                preferences: Some(Preferences {
+                    representation: Some(Representation::Full),
+                    resolution: None,
+                    count: None
+                }),
+                path: "dummy",
+                method: "POST",
+                read_only: false,
+                accept_content_type: ApplicationJSON,
+                headers: headers.clone(),
+                cookies: emtpy_hashmap.clone(),
+                query: Query {
+                    node: Insert {
+                        on_conflict: None,
+                        select: vec![
+                            Simple {
+                                field: Field {
+                                    name: "id",
+                                    json_path: None
+                                },
+                                alias: None,
+                                cast: None
+                            },
+                            Simple {
+                                field: Field {
+                                    name: "name",
+                                    json_path: None
+                                },
+                                alias: None,
+                                cast: None
+                            },
+                        ],
+                        payload: Payload(cow(payload), None),
+                        into: "projects",
+                        columns: vec!["id", "name"],
+                        check: ConditionTree {
+                            operator: And,
+                            conditions: vec![]
+                        },
+                        where_: ConditionTree {
+                            operator: And,
+                            conditions: vec![Single {
+                                field: Field {
+                                    name: "id",
+                                    json_path: None
+                                },
+                                filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
+                                negate: false,
+                            }]
+                        },
+                        returning: vec!["id", "name",]
+                    },
+                    sub_selects: vec![]
+                }
+            })
+        );
+
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "POST",
+                "dummy",
+                vec![("select", "id"), ("id", "gt.10"), ("columns", "id,1$name"),],
+                Some(r#"{"id":10, "name":"john", "phone":"123"}"#),
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Err(AppError::ParseRequestError {
+                message: s("\"failed to parse columns parameter (id,1$name)\" (line 1, column 5)"),
+                //details: s("Unexpected `$` Expected `,`, whitespaces or end of input"),
+                details: s("0: at line 1, in Eof:\nid,1$name\n    ^\n\n1: at line 1, in failed to parse columns parameter:\nid,1$name\n^\n\n")
+            })
+            .map_err(|e| format!("{}", e))
+        );
+
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "POST",
+                "dummy",
+                vec![("select", "id"), ("id", "gt.10"),],
+                Some(r#"{"id":10, "name""#),
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Err("Failed to deserialize json: EOF while parsing an object at line 1 column 16".to_string())
+        );
+
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "POST",
+                "dummy",
+                vec![("select", "id"), ("id", "gt.10"),],
+                Some(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#),
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Err(AppError::InvalidBody {
+                message: s("All object keys must match"),
+            })
+            .map_err(|e| format!("{}", e))
+        );
+
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "GET",
+                "dummy",
+                vec![("select", "id,name,unknown(id)")],
+                None,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Err(AppError::NoRelBetween {
+                origin: s("projects"),
+                target: s("unknown")
+            })
+            .map_err(|e| format!("{}", e))
+        );
+
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "GET",
+                "dummy",
+                vec![("select", "id-,na$me")],
+                None,
+                emtpy_hashmap.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Err(AppError::ParseRequestError {
+                message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
+                //details: s("Unexpected `,` Unexpected `i` Expected letter, digit, `_` or ` `")
+                details: s("0: at line 1, in Eof:\nid-,na$me\n  ^\n\n1: at line 1, in failed to parse select parameter:\nid-,na$me\n^\n\n")
+            })
+            .map_err(|e| format!("{}", e))
+        );
+
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "POST",
+                "dummy",
+                vec![("select", "id"), ("id", "gt.10"),],
+                Some(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),
+                headers.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Ok(ApiRequest {
+                schema_name: "api",
+                get: vec![("select", "id"), ("id", "gt.10"),],
+                preferences: Some(Preferences {
+                    representation: Some(Representation::Full),
+                    resolution: None,
+                    count: None
+                }),
+                path: "dummy",
+                method: "POST",
+                read_only: false,
+                accept_content_type: ApplicationJSON,
+                headers: headers.clone(),
+                cookies: emtpy_hashmap.clone(),
+                query: Query {
+                    sub_selects: vec![],
+                    node: Insert {
+                        on_conflict: None,
+                        select: vec![Simple {
+                            field: Field {
+                                name: "id",
+                                json_path: None
+                            },
+                            alias: None,
+                            cast: None
+                        },],
+                        payload: Payload(cow(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#), None),
+                        into: "projects",
+                        columns: vec!["id", "name"],
+                        check: ConditionTree {
+                            operator: And,
+                            conditions: vec![]
+                        },
+                        where_: ConditionTree {
+                            operator: And,
+                            conditions: vec![Single {
+                                field: Field {
+                                    name: "id",
+                                    json_path: None
+                                },
+                                filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
+                                negate: false,
+                            }]
+                        },
+                        returning: vec!["id"]
+                    }
+                }
+            })
+        );
+
+        assert_eq!(
+            parse(
+                "api",
+                "projects",
+                &db_schema,
+                "POST",
+                "dummy",
+                vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),],
+                Some(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),
+                headers.clone(),
+                emtpy_hashmap.clone(),
+                None
+            )
+            .map_err(|e| format!("{}", e)),
+            Ok(ApiRequest {
+                schema_name: "api",
+                get: vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),],
+                preferences: Some(Preferences {
+                    representation: Some(Representation::Full),
+                    resolution: None,
+                    count: None
+                }),
+                path: "dummy",
+                method: "POST",
+                read_only: false,
+                accept_content_type: ApplicationJSON,
+                headers,
+                cookies: emtpy_hashmap.clone(),
+                query: Query {
+                    sub_selects: vec![
+                        SubSelect {
+                            query: Query {
+                                sub_selects: vec![],
+                                node: Select {
+                                    order: vec![],
+                                    groupby: vec![],
+                                    limit: None,
+                                    offset: None,
+                                    select: vec![Simple {
+                                        field: Field {
+                                            name: "id",
+                                            json_path: None
+                                        },
+                                        alias: None,
+                                        cast: None
+                                    },],
+                                    from: ("tasks", None),
+                                    join_tables: vec![],
+                                    //from_alias: None,
+                                    where_: ConditionTree {
+                                        operator: And,
+                                        conditions: vec![
+                                            Single {
+                                                field: Field {
+                                                    name: "project_id",
+                                                    json_path: None
+                                                },
+                                                filter: Filter::Col(
+                                                    Qi("", "subzero_source"),
+                                                    Field {
+                                                        name: "id",
+                                                        json_path: None
+                                                    }
+                                                ),
+                                                negate: false,
+                                            },
+                                            Single {
+                                                field: Field {
+                                                    name: "id",
+                                                    json_path: None
+                                                },
+                                                filter: Filter::Op(">", SingleVal(cow("20"), Some(cow("int")))),
+                                                negate: false,
+                                            }
+                                        ]
+                                    }
+                                }
+                            },
+                            hint: None,
+                            alias: None,
+                            join: Some(Child(ForeignKey {
+                                name: "project_id_fk",
+                                table: Qi("api", "tasks"),
+                                columns: vec!["project_id"],
+                                referenced_table: Qi("api", "projects"),
+                                referenced_columns: vec!["id"],
+                            }),)
+                        },
+                        SubSelect {
+                            query: Query {
+                                sub_selects: vec![],
+                                node: Select {
+                                    order: vec![],
+                                    groupby: vec![],
+                                    limit: None,
+                                    offset: None,
+                                    select: vec![Simple {
+                                        field: Field {
+                                            name: "id",
+                                            json_path: None
+                                        },
+                                        alias: None,
+                                        cast: None
+                                    },],
+                                    from: ("clients", None),
+                                    join_tables: vec![],
+                                    //from_alias: None,
+                                    where_: ConditionTree {
+                                        operator: And,
+                                        conditions: vec![Single {
+                                            field: Field {
+                                                name: "id",
+                                                json_path: None
+                                            },
+                                            filter: Filter::Col(
+                                                Qi("", "subzero_source"),
+                                                Field {
+                                                    name: "client_id",
+                                                    json_path: None
+                                                }
+                                            ),
+                                            negate: false,
+                                        }]
+                                    }
+                                }
+                            },
+                            alias: None,
+                            hint: None,
+                            join: Some(Parent(ForeignKey {
+                                name: "client_id_fk",
+                                table: Qi("api", "projects"),
+                                columns: vec!["client_id"],
+                                referenced_table: Qi("api", "clients"),
+                                referenced_columns: vec!["id"],
+                            }),)
+                        },
+                    ],
+                    node: Insert {
+                        on_conflict: None,
+                        select: vec![
+                            Simple {
+                                field: Field {
+                                    name: "id",
+                                    json_path: None
+                                },
+                                alias: None,
+                                cast: None
+                            },
+                            Simple {
+                                field: Field {
+                                    name: "name",
+                                    json_path: None
+                                },
+                                alias: None,
+                                cast: None
+                            },
+                        ],
+                        payload: Payload(cow(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#), None),
+                        into: "projects",
+                        columns: vec!["id", "name"],
+                        check: ConditionTree {
+                            operator: And,
+                            conditions: vec![]
+                        },
+                        where_: ConditionTree {
+                            operator: And,
+                            conditions: vec![Single {
+                                field: Field {
+                                    name: "id",
+                                    json_path: None
+                                },
+                                filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
+                                negate: false,
+                            }]
+                        },
+                        returning: vec!["client_id", "id", "name"]
+                    }
+                }
+            })
+        );
+    }
+
+    // #[test]
+    // fn test_get_join_conditions(){
+    //     let db_schema  = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
+    //     assert_eq!( get_join("api"), &db_schema, &"projects(", &")tasks(", &mut None).map_err(|e| format!("){}",e),
+    //         Ok(
+
+    //                 Child(ForeignKey {
+    //                     name: "project_id_fk",
+    //                     table: Qi("api","tasks"),
+    //                     columns: vec!["project_id"],
+    //                     referenced_table: Qi("api","projects"),
+    //                     referenced_columns: vec!["id"],
+    //                 })
+
+    //         )
+    //     );
+    //     assert_eq!( get_join("api"), &db_schema, &"tasks(", &")projects(", &mut None).map_err(|e| format!("){}",e),
+    //         Ok(
+
+    //                 Parent(ForeignKey {
+    //                     name: "project_id_fk",
+    //                     table: Qi("api","tasks"),
+    //                     columns: vec!["project_id"],
+    //                     referenced_table: Qi("api","projects"),
+    //                     referenced_columns: vec!["id"],
+    //                 })
+
+    //         )
+    //     );
+    //     assert_eq!( get_join("api"), &db_schema, &"clients(", &")projects(", &mut None).map_err(|e| format!("){}",e),
+    //         Ok(
+
+    //                 Child(ForeignKey {
+    //                     name: "client_id_fk",
+    //                     table: Qi("api","projects"),
+    //                     columns: vec!["client_id"],
+    //                     referenced_table: Qi("api","clients"),
+    //                     referenced_columns: vec!["id"],
+    //                 })
+
+    //         )
+    //     );
+    //     assert_eq!( get_join("api"), &db_schema, &"tasks(", &")users(", &mut None).map_err(|e| format!("){}",e),
+    //         Ok(
+
+    //                 Many(
+    //                     Qi("api", "users_tasks"),
+    //                     ForeignKey {
+    //                         name: "task_id_fk",
+    //                         table: Qi("api","users_tasks"),
+    //                         columns: vec!["task_id"],
+    //                         referenced_table: Qi("api","tasks"),
+    //                         referenced_columns: vec!["id"],
+    //                     },
+    //                     ForeignKey {
+    //                         name: "user_id_fk",
+    //                         table: Qi("api","users_tasks"),
+    //                         columns: vec!["user_id"],
+    //                         referenced_table: Qi("api","users"),
+    //                         referenced_columns: vec!["id"],
+    //                     },
+    //                 )
+
+    //         )
+    //     );
+    //     assert_eq!( get_join("api"), &db_schema, &"tasks(", &")users(", &mut Some(")users_tasks(")).map_err(|e| format!("){}",e),
+    //         Ok(
+
+    //                 Many(
+    //                     Qi("api", "users_tasks"),
+    //                     ForeignKey {
+    //                         name: "task_id_fk",
+    //                         table: Qi("api","users_tasks"),
+    //                         columns: vec!["task_id"],
+    //                         referenced_table: Qi("api","tasks"),
+    //                         referenced_columns: vec!["id"],
+    //                     },
+    //                     ForeignKey {
+    //                         name: "user_id_fk",
+    //                         table: Qi("api","users_tasks"),
+    //                         columns: vec!["user_id"],
+    //                         referenced_table: Qi("api","users"),
+    //                         referenced_columns: vec!["id"],
+    //                     },
+    //                 )
+
+    //         )
+    //     );
+
+    //     // let result = get_join("api"), &db_schema, &"users(", &")addresses", &mut None;
+    //     // let expected = AppError::AmbiguousRelBetween {
+    //     //     origin: s("users"), target: s("addresses"),
+    //     //     relations: vec![
+    //     //         Parent(
+    //     //             ForeignKey {
+    //     //                 name: "billing_address_id_fk",
+    //     //                 table: Qi("api","users"),
+    //     //                 columns: vec![
+    //     //                     "billing_address_id",
+    //     //                 ],
+    //     //                 referenced_table: Qi("api","addresses"),
+    //     //                 referenced_columns: vec![
+    //     //                     "id",
+    //     //                 ],
+    //     //             },
+    //     //         ),
+    //     //         Parent(
+    //     //             ForeignKey {
+    //     //                 name: "shipping_address_id_fk",
+    //     //                 table: Qi("api","users"),
+    //     //                 columns: vec![
+    //     //                     "shipping_address_id",
+    //     //                 ],
+    //     //                 referenced_table: Qi("api","addresses"),
+    //     //                 referenced_columns: vec![
+    //     //                     "id",
+    //     //                 ],
+    //     //             },
+    //     //         ),
+    //     //     ]
+    //     // };
+    //     // assert!(result.is_err());
+    //     // let error = result.unwrap();
+
+    //     // assert!(matches!(
+    //     //     get_join("api"), &db_schema, &"users(", &")addresses", &mut None,
+    //     //     1
+    //     // );
+    //     assert!(matches!(
+    //         get_join("api"), &db_schema, &"users(", &")addresses", &mut None,
+    //         Err(AppError::AmbiguousRelBetween {..})
+    //     ));
+
+    // }
+
+    #[test]
+    fn parse_preferences() {
+        assert_eq!(
+            preferences("return=minimal , resolution = merge-duplicates, count=planned, count=exact"),
+            Ok(( "",
+                Preferences {
+                    representation: Some(Representation::None),
+                    resolution: Some(Resolution::MergeDuplicates),
+                    count: Some(Count::ExactCount)
+                },
+                
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_filter() {
+        assert_eq!(filter(&None, "gte.5"), Ok(( "",Filter::Op(">=", SingleVal(cow("5"), None)))));
+        assert_eq!(
+            filter(&None, "in.(1,2,3)"),
+            Ok(( "",Filter::In(ListVal(["1", "2", "3"].map(cow).to_vec(), None))))
+        );
+        assert_eq!(
+            filter(&None, "fts.word"),
+            Ok(( "",Filter::Fts("@@ to_tsquery", None, SingleVal(cow("word"), None))))
+        );
+    }
+
+    #[test]
+    fn parse_logic_condition() {
+        let field = Field {
+            name: "id",
+            json_path: None,
+        };
+        assert_eq!(
+            logic_condition(None, None, "id.gte.5"),
+            Ok(( "",
+                Single {
+                    filter: Filter::Op(">=", SingleVal(cow("5"), None)),
+                    field: field.clone(),
+                    negate: false
+                },
+                
+            ))
+        );
+        assert_eq!(
+            logic_condition(None, None, "id.not.in.(1,2,3)"),
+            Ok(( "",
+                Single {
+                    filter: Filter::In(ListVal(vec![cow("1"), cow("2"), cow("3")], None)),
+                    field: field.clone(),
+                    negate: true
+                },
+                
+            ))
+        );
+        assert_eq!(
+            logic_condition(None, None, "id.fts.word"),
+            Ok(( "",
+                Single {
+                    filter: Filter::Fts("@@ to_tsquery", None, SingleVal(cow("word"), None)),
+                    field: field.clone(),
+                    negate: false
+                },
+                
+            ))
+        );
+        assert_eq!(
+            logic_condition(None, None, "not.or(id.gte.5, id.lte.10)"),
+            Ok(( "",
+                Condition::Group {
+                    negate: true,
+                    tree: ConditionTree {
+                        operator: Or,
+                        conditions: vec![
+                            Single {
+                                filter: Filter::Op(">=", SingleVal(cow("5"), None)),
+                                field: field.clone(),
+                                negate: false
+                            },
+                            Single {
+                                filter: Filter::Op("<=", SingleVal(cow("10"), None)),
+                                field: field.clone(),
+                                negate: false
+                            }
+                        ]
+                    }
+                },
+                
+            ))
+        );
+        assert_eq!(
+            logic_condition(None, None, "not.or ( id.gte.5, id.lte.10, and(id.gte.2 , id.lte.4))"),
+            Ok(( "",
+                Condition::Group {
+                    negate: true,
+                    tree: ConditionTree {
+                        operator: Or,
+                        conditions: vec![
+                            Single {
+                                filter: Filter::Op(">=", SingleVal(cow("5"), None)),
+                                field: field.clone(),
+                                negate: false
+                            },
+                            Single {
+                                filter: Filter::Op("<=", SingleVal(cow("10"), None)),
+                                field: field.clone(),
+                                negate: false
+                            },
+                            Condition::Group {
+                                negate: false,
+                                tree: ConditionTree {
+                                    operator: And,
+                                    conditions: vec![
+                                        Single {
+                                            filter: Filter::Op(">=", SingleVal(cow("2"), None)),
+                                            field: field.clone(),
+                                            negate: false
+                                        },
+                                        Single {
+                                            filter: Filter::Op("<=", SingleVal(cow("4"), None)),
+                                            field,
+                                            negate: false
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                },
+                
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_operator() {
+        assert_eq!(operator("gte."), Ok(( ".",">=")));
+        // assert_eq!(
+        //     operator("gtv."),
+        //     Err(Errors {
+        //         position: PointerOffset::new("gtv.".as_ptr() as usize),
+        //         errors: vec![Error::Message("unknown operator".into())]
+        //     })
+        // );
+    }
+
+    #[test]
+    fn parse_fts_operator() {
+        assert_eq!(fts_operator("plfts."), Ok((".", "@@ plainto_tsquery")));
+        // assert_eq!(
+        //     fts_operator("xfts."),
+        //     Err(Errors {
+        //         position: PointerOffset::new("xfts.".as_ptr() as usize),
+        //         errors: vec![Error::Message("unknown fts operator".into())]
+        //     })
+        // );
+    }
+
+    #[test]
+    fn parse_single_value() {
+        assert_eq!(single_value(&None, "any123value"), Ok(( "", SingleVal(cow("any123value"), None))));
+        assert_eq!(single_value(&None, "any123value,another"), Ok(("", SingleVal(cow("any123value,another"), None))));
+    }
+
+    #[test]
+    fn parse_logic_single_value() {
+        assert_eq!(logic_single_value(&None, "any123value"), Ok(("", sv("any123value"))));
+        assert_eq!(
+            logic_single_value(&None, "any123value,another"),
+            Ok(( ",another", sv("any123value")))
+        );
+        assert_eq!(logic_single_value(&None, "\"any 123 value,)\""), Ok(("", sv("any 123 value,)"))));
+        assert_eq!(logic_single_value(&None, "{a, b, c}"), Ok(("", sv("{a, b, c}"))));
+    }
+
+    #[test]
+    fn parse_list_element() {
+        assert_eq!(list_element("any 123 value"), Ok(( "",cow("any 123 value"))));
+        assert_eq!(list_element("any123value,another"), Ok((",another", cow("any123value"))));
+        assert_eq!(list_element("any123value)"), Ok((")", cow("any123value"))));
+        assert_eq!(list_element("\"any123value,)\",another"), Ok((",another", cow("any123value,)"))));
+    }
+
+    #[test]
+    fn parse_list_value() {
+        assert_eq!(list_value(&None, "()"), Ok(( "", ListVal(vec![], None))));
+        assert_eq!(list_value(&None, "(any 123 value)"), Ok(( "", ListVal(vec![cow("any 123 value")], None))));
+        assert_eq!(
+            list_value(&None, "(any123value,another)"),
+            Ok(( "",ListVal(vec![cow("any123value"), cow("another")], None)))
+        );
+        assert_eq!(
+            list_value(&None, "(\"any123 value\", another)"),
+            Ok(( "",ListVal(vec![cow("any123 value"), cow("another")], None)))
+        );
+        assert_eq!(
+            list_value(&None ,"(\"any123 value\", 123)"),
+            Ok(( "",ListVal(vec![cow("any123 value"), cow("123")], None)))
+        );
+        assert_eq!(
+            list_value(&None, "(\"Double\\\"Quote\\\"McGraw\\\"\")"),
+            Ok(( "",ListVal(vec![cow("Double\"Quote\"McGraw\"")], None)))
+        );
+    }
+
+    #[test]
+    fn parse_alias_separator() {
+        assert_eq!(alias_separator(":abc"), Ok(( "abc",":")));
+        assert_eq!(alias_separator("::abc").is_err(), true);
+    }
+
+    #[test]
+    fn parse_json_path() {
+        assert_eq!(json_path("->key"), Ok(( "",vec![JArrow(JKey("key"))])));
+
+        assert_eq!(json_path("->>51"), Ok(( "",vec![J2Arrow(JIdx("51"))])));
+
+        assert_eq!(
+            json_path("->key1->>key2"),
+            Ok(( "",vec![JArrow(JKey("key1")), J2Arrow(JKey("key2"))]))
+        );
+
+        assert_eq!(
+            json_path("->key1->>key2,rest"),
+            Ok(( ",rest",vec![JArrow(JKey("key1")), J2Arrow(JKey("key2"))]))
+        );
+    }
+
+    #[test]
+    fn parse_field_name() {
+        assert_eq!(field_name("field with space "), Ok(( "","field with space")));
+        assert_eq!(field_name("field12"), Ok(( "","field12")));
+        assert_ne!(field_name("field,invalid"), Ok(( "","field,invalid")));
+        assert_eq!(field_name("field-name"), Ok(( "","field-name")));
+        assert_eq!(field_name("field-name->"), Ok(("->", "field-name")));
+        assert_eq!(quoted_value("\"field name\""), Ok(( "","field name")));
+    }
+
+    #[test]
+    fn parse_order() {
+        assert_eq!(
+            order("field"),
+            Ok(( "",
+                vec![OrderTerm {
+                    term: Field {
+                        name: "field",
+                        json_path: None
+                    },
+                    direction: None,
+                    null_order: None
+                },]
+                
+            ))
+        );
+        assert_eq!(
+            order("field.asc"),
+            Ok(( "",
+                vec![OrderTerm {
+                    term: Field {
+                        name: "field",
+                        json_path: None
+                    },
+                    direction: Some(OrderDirection::Asc),
+                    null_order: None
+                },]
+                
+            ))
+        );
+        assert_eq!(
+            order("field.desc"),
+            Ok(( "",
+                vec![OrderTerm {
+                    term: Field {
+                        name: "field",
+                        json_path: None
+                    },
+                    direction: Some(OrderDirection::Desc),
+                    null_order: None
+                },]
+                
+            ))
+        );
+        assert_eq!(
+            order("field.desc.nullsfirst"),
+            Ok(( "",
+                vec![OrderTerm {
+                    term: Field {
+                        name: "field",
+                        json_path: None
+                    },
+                    direction: Some(OrderDirection::Desc),
+                    null_order: Some(OrderNulls::NullsFirst)
+                },]
+                
+            ))
+        );
+        assert_eq!(
+            order("field.desc.nullslast"),
+            Ok(( "",
+                vec![OrderTerm {
+                    term: Field {
+                        name: "field",
+                        json_path: None
+                    },
+                    direction: Some(OrderDirection::Desc),
+                    null_order: Some(OrderNulls::NullsLast)
+                },]
+                
+            ))
+        );
+        assert_eq!(
+            order("field.nullslast"),
+            Ok(( "",
+                vec![OrderTerm {
+                    term: Field {
+                        name: "field",
+                        json_path: None
+                    },
+                    direction: None,
+                    null_order: Some(OrderNulls::NullsLast)
+                },]
+                
+            ))
+        );
+        assert_eq!(
+            order("field,field.asc,field.desc.nullslast"),
+            Ok(( "",
+                vec![
+                    OrderTerm {
+                        term: Field {
+                            name: "field",
+                            json_path: None
+                        },
+                        direction: None,
+                        null_order: None
+                    },
+                    OrderTerm {
+                        term: Field {
+                            name: "field",
+                            json_path: None
+                        },
+                        direction: Some(OrderDirection::Asc),
+                        null_order: None
+                    },
+                    OrderTerm {
+                        term: Field {
+                            name: "field",
+                            json_path: None
+                        },
+                        direction: Some(OrderDirection::Desc),
+                        null_order: Some(OrderNulls::NullsLast)
+                    },
+                ],
+                
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_columns() {
+        assert_eq!(columns("col1, col2 "), Ok(( "",vec!["col1", "col2"])));
+
+        // assert_eq!(
+        //     columns(position::Stream::new("id,# name")),
+        //     Err(Errors {
+        //         position: SourcePosition { line: 1, column: 4 },
+        //         errors: vec![
+        //             Error::Unexpected('#'.into()),
+        //             Error::Expected("whitespace".into()),
+        //             Error::Expected('"'.into()),
+        //             Error::Expected("letter".into()),
+        //             Error::Expected("digit".into()),
+        //             Error::Expected('_'.into()),
+        //             Error::Expected(' '.into()),
+        //         ]
+        //     })
+        // );
+
+        // assert_eq!(
+        //     columns("col1, col2, "),
+        //     Err(Errors {
+        //         position: SourcePosition { line: 1, column: 13 },
+        //         errors: vec![
+        //             Error::Unexpected("end of input".into()),
+        //             Error::Expected("whitespace".into()),
+        //             Error::Expected('"'.into()),
+        //             Error::Expected("letter".into()),
+        //             Error::Expected("digit".into()),
+        //             Error::Expected('_'.into()),
+        //             Error::Expected(' '.into()),
+        //         ]
+        //     })
+        // );
+
+        // assert_eq!(columns(position::Stream::new("col1, col2 col3")), Err(Errors {
+        //     position: SourcePosition { line: 1, column: 12 },
+        //     errors: vec![
+        //         Error::Unexpected('c'.into()),
+        //         Error::Expected(','.into()),
+        //         Error::Expected("whitespaces".into()),
+        //         Error::Expected("end of input".into())
+        //     ]
+        // }));
+    }
+
+    #[test]
+    fn parse_field() {
+        let result = Field {
+            name: "field",
+            json_path: None,
+        };
+        assert_eq!(field("field"), Ok(( "",result)));
+        let result = Field {
+            name: "field",
+            json_path: Some(vec![JArrow(JKey("key"))]),
+        };
+        assert_eq!(field("field->key"), Ok(( "",result)));
+    }
+
+    #[test]
+    fn parse_tree_path() {
+        let result = (
+            vec!["sub", "path"],
+            Field {
+                name: "field",
+                json_path: Some(vec![JArrow(JKey("key"))]),
+            },
+        );
+        assert_eq!(tree_path("sub.path.field->key"), Ok(( "",result)));
+        //assert!(false);
+    }
+
+    #[test]
+    fn parse_logic_tree_path() {
+        assert_eq!(logic_tree_path("and"), Ok(( "",(vec![], false, And))));
+        assert_eq!(logic_tree_path("not.or"), Ok(( "",(vec![], true, Or))));
+        assert_eq!(logic_tree_path("sub.path.and"), Ok(( "",(vec!["sub", "path"], false, And))));
+        assert_eq!(logic_tree_path("sub.path.not.or"), Ok(( "",(vec!["sub", "path"], true, Or))));
+    }
+
+    #[test]
+    fn parse_select_item() {
+        assert_eq!(
+            select_item("alias:$sum(field)-p(city)-o(city.desc)"),
+            Ok(( "",
+                Item(Func {
+                    alias: Some("alias"),
+                    fn_name: "sum",
+                    parameters: vec![FunctionParam::Fld(Field {
+                        name: "field",
+                        json_path: None
+                    })],
+                    partitions: vec![Field {
+                        name: "city",
+                        json_path: None
+                    }],
+                    orders: vec![OrderTerm {
+                        term: Field {
+                            name: "city",
+                            json_path: None
+                        },
+                        direction: Some(OrderDirection::Desc),
+                        null_order: None,
+                    }],
+                }),
+                
+            ))
+        );
+        assert_eq!(
+            select_item("alias:$upper(field, '10')"),
+            Ok(( "",
+                Item(Func {
+                    alias: Some("alias"),
+                    fn_name: "upper",
+                    parameters: vec![
+                        FunctionParam::Fld(Field {
+                            name: "field",
+                            json_path: None
+                        }),
+                        FunctionParam::Val(SingleVal(cow("10"), None), None),
+                    ],
+                    partitions: vec![],
+                    orders: vec![],
+                }),
+                
+            ))
+        );
+
+        assert_eq!(
+            select_item("alias:column"),
+            Ok(( "",
+                Item(Simple {
+                    field: Field {
+                        name: "column",
+                        json_path: None
+                    },
+                    alias: Some("alias"),
+                    cast: None
+                }),
+                
+            ))
+        );
+
+        assert_eq!(
+            select_item("column::cast"),
+            Ok(( "",
+                Item(Simple {
+                    field: Field {
+                        name: "column",
+                        json_path: None
+                    },
+                    alias: None,
+                    cast: Some("cast")
+                }),
+                
+            ))
+        );
+
+        assert_eq!(
+            select_item("alias:column::cast"),
+            Ok(( "",
+                Item(Simple {
+                    field: Field {
+                        name: "column",
+                        json_path: None
+                    },
+                    alias: Some("alias"),
+                    cast: Some("cast")
+                }),
+                
+            ))
+        );
+
+        assert_eq!(
+            select_item("column"),
+            Ok(( "",
+                Item(Simple {
+                    field: Field {
+                        name: "column",
+                        json_path: None
+                    },
+                    alias: None,
+                    cast: None
+                }),
+                
+            ))
+        );
+
+        assert_eq!(
+            select_item("table!hint( column0->key, column1 ,  alias2:column2 )"),
+            Ok(( "",
+                Sub(Box::new(SubSelect {
+                    query: Query {
+                        sub_selects: vec![],
+                        node: Select {
+                            order: vec![],
+                            groupby: vec![],
+                            limit: None,
+                            offset: None,
+                            select: vec![
+                                Simple {
+                                    field: Field {
+                                        name: "column0",
+                                        json_path: Some(vec![JArrow(JKey("key"))])
+                                    },
+                                    alias: None,
+                                    cast: None
+                                },
+                                Simple {
+                                    field: Field {
+                                        name: "column1",
+                                        json_path: None
+                                    },
+                                    alias: None,
+                                    cast: None
+                                },
+                                Simple {
+                                    field: Field {
+                                        name: "column2",
+                                        json_path: None
+                                    },
+                                    alias: Some("alias2"),
+                                    cast: None
+                                },
+                            ],
+                            from: ("table", None),
+                            join_tables: vec![],
+                            //from_alias: None,
+                            where_: ConditionTree {
+                                operator: And,
+                                conditions: vec![]
+                            }
+                        }
+                    },
+                    alias: None,
+                    hint: Some("hint"),
+                    join: None
+                })),
+                
+            ))
+        );
+
+        assert_eq!(
+            select_item("table.hint ( column0->key, column1 ,  alias2:column2 )"),
+            Ok(( "",
+                Sub(Box::new(SubSelect {
+                    query: Query {
+                        sub_selects: vec![],
+                        node: Select {
+                            order: vec![],
+                            groupby: vec![],
+                            limit: None,
+                            offset: None,
+                            select: vec![
+                                Simple {
+                                    field: Field {
+                                        name: "column0",
+                                        json_path: Some(vec![JArrow(JKey("key"))])
+                                    },
+                                    alias: None,
+                                    cast: None
+                                },
+                                Simple {
+                                    field: Field {
+                                        name: "column1",
+                                        json_path: None
+                                    },
+                                    alias: None,
+                                    cast: None
+                                },
+                                Simple {
+                                    field: Field {
+                                        name: "column2",
+                                        json_path: None
+                                    },
+                                    alias: Some("alias2"),
+                                    cast: None
+                                },
+                            ],
+                            from: ("table", None),
+                            join_tables: vec![],
+                            //from_alias: None,
+                            where_: ConditionTree {
+                                operator: And,
+                                conditions: vec![]
+                            }
+                        }
+                    },
+                    alias: None,
+                    hint: Some("hint"),
+                    join: None
+                })),
+                
+            ))
+        );
+    }
+}

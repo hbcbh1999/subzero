@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize, Deserializer, Serializer, ser::SerializeStru
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 use serde_json::Value as JsonValue;
-use serde_json::value::RawValue as JsonRawValue;
+//use serde_json::value::RawValue as JsonRawValue;
 use crate::error::Result;
 use QueryNode::*;
 
@@ -61,32 +61,32 @@ pub const DEFAULT_SAFE_SELECT_FUNCTIONS: &[&str] = &[
     "toUInt64",
 ];
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Resolution {
     MergeDuplicates,
     IgnoreDuplicates,
 }
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Representation {
     Full,
     None,
     HeadersOnly,
 }
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Count {
     ExactCount,
     PlannedCount,
     EstimatedCount,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Preferences {
     pub resolution: Option<Resolution>,
     pub representation: Option<Representation>,
     pub count: Option<Count>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ApiRequest<'a> {
     pub method: &'a str,
     pub path: &'a str,
@@ -110,7 +110,7 @@ pub struct ApiResponse {
     pub body: String,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ContentType {
     ApplicationJSON,
     SingularJSON,
@@ -126,16 +126,14 @@ pub struct ProcParam<'a> {
     pub variadic: bool,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CallParams<'a> {
-    #[serde(borrow)]
     KeyParams(Vec<ProcParam<'a>>),
     OnePosParam(ProcParam<'a>),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Query<'a> {
-    #[serde(borrow)]
     pub node: QueryNode<'a>,
     pub sub_selects: Vec<SubSelect<'a>>,
 }
@@ -331,106 +329,72 @@ impl<'a> IntoIterator for Query<'a> {
 //     }
 // }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(untagged)]
-pub enum ParamValue<'a> {
-    #[serde(borrow)]
-    Variadic(Vec<&'a JsonRawValue>),
+// #[derive(Serialize, Deserialize, Clone, Debug)]
+// #[serde(untagged)]
+// pub enum ParamValue<'a> {
+//     #[serde(borrow)]
+//     Variadic(Vec<&'a JsonRawValue>),
 
-    #[serde(borrow)]
-    Single(&'a JsonRawValue),
-}
+//     #[serde(borrow)]
+//     Single(&'a JsonRawValue),
+// }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ParamValues<'a> {
-    Parsed(HashMap<&'a str, ParamValue<'a>>),
+    Parsed(HashMap<&'a str, JsonValue>),
     Raw(&'a str),
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueryNode<'a> {
     FunctionCall {
-        #[serde(borrow)]
         fn_name: Qi<'a>,
-        #[serde(borrow)]
         parameters: CallParams<'a>,
-        #[serde(borrow)]
         payload: Payload<'a>,
         //parameter_values: ParamValues<'a>,
-        #[serde(borrow)]
         return_table_type: Option<Qi<'a>>,
         is_scalar: bool,
         returns_single: bool,
         is_multiple_call: bool,
-        #[serde(borrow)]
         returning: Vec<&'a str>,
-        #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
-        #[serde(borrow)]
         where_: ConditionTree<'a>,
-        #[serde(borrow)]
         limit: Option<SingleVal<'a>>,
-        #[serde(borrow)]
         offset: Option<SingleVal<'a>>,
-        #[serde(borrow)]
         order: Vec<OrderTerm<'a>>,
     },
     Select {
-        #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
-        #[serde(borrow)]
         from: (&'a str, /*alias_sufix*/ Option<&'a str>),
-        #[serde(borrow)]
         join_tables: Vec<&'a str>,
-        #[serde(borrow)]
         where_: ConditionTree<'a>,
-        #[serde(borrow)]
         limit: Option<SingleVal<'a>>,
-        #[serde(borrow)]
         offset: Option<SingleVal<'a>>,
-        #[serde(borrow)]
         order: Vec<OrderTerm<'a>>,
-        #[serde(borrow)]
         groupby: Vec<GroupByTerm<'a>>,
     },
     Insert {
         into: &'a str,
-        #[serde(borrow)]
         columns: Vec<ColumnName<'a>>,
-        #[serde(borrow)]
         payload: Payload<'a>,
-        #[serde(borrow)]
         check: ConditionTree<'a>,
-        #[serde(borrow)]
         where_: ConditionTree<'a>, //used only for put
-        #[serde(borrow)]
         returning: Vec<&'a str>,
-        #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
-        #[serde(borrow)]
         on_conflict: Option<(Resolution, Vec<&'a str>)>,
     },
     Delete {
         from: &'a str,
-        #[serde(borrow)]
         where_: ConditionTree<'a>,
-        #[serde(borrow)]
         returning: Vec<&'a str>,
-        #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
     },
 
     Update {
         table: &'a str,
-        #[serde(borrow)]
         columns: Vec<ColumnName<'a>>,
-        #[serde(borrow)]
         payload: Payload<'a>,
-        #[serde(borrow)]
         check: ConditionTree<'a>,
-        #[serde(borrow)]
         where_: ConditionTree<'a>,
-        #[serde(borrow)]
         returning: Vec<&'a str>,
-        #[serde(borrow)]
         select: Vec<SelectItem<'a>>,
     },
 }
@@ -474,24 +438,23 @@ impl<'a> QueryNode<'a> {
     // }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct OrderTerm<'a> {
-    #[serde(borrow)]
     pub term: Field<'a>,
     pub direction: Option<OrderDirection>,
     pub null_order: Option<OrderNulls>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct GroupByTerm<'a>(#[serde(borrow)] pub Field<'a>);
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct GroupByTerm<'a>(pub Field<'a>);
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum OrderDirection {
     Asc,
     Desc,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum OrderNulls {
     NullsFirst,
     NullsLast,
@@ -525,7 +488,7 @@ pub enum Join<'a> {
     Many(#[serde(borrow)] Qi<'a>, #[serde(borrow)] ForeignKey<'a>, #[serde(borrow)] ForeignKey<'a>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SelectKind<'a> {
     Item(SelectItem<'a>),
     Sub(Box<SubSelect<'a>>), //TODO! check performance implications for using box
@@ -543,41 +506,29 @@ pub enum FunctionParam<'a> {
     },
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SelectItem<'a> {
     //TODO!!! better name
     Star,
     Simple {
-        #[serde(borrow)]
         field: Field<'a>,
-        #[serde(borrow)]
         alias: Option<&'a str>,
-        #[serde(borrow)]
         cast: Option<&'a str>,
     },
     Func {
-        #[serde(borrow)]
         fn_name: &'a str,
-        #[serde(borrow)]
         parameters: Vec<FunctionParam<'a>>,
-        #[serde(borrow)]
         partitions: Vec<Field<'a>>,
-        #[serde(borrow)]
         orders: Vec<OrderTerm<'a>>,
-        #[serde(borrow)]
         alias: Option<&'a str>,
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SubSelect<'a> {
-    #[serde(borrow)]
     pub query: Query<'a>,
-    #[serde(borrow)]
     pub alias: Option<&'a str>,
-    #[serde(borrow)]
     pub hint: Option<JoinHint<'a>>,
-    #[serde(borrow)]
     pub join: Option<Join<'a>>,
 }
 
@@ -816,7 +767,7 @@ pub type Negate = bool;
 pub type Language<'a> = SingleVal<'a>;
 pub type ColumnName<'a> = &'a str;
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Payload<'a>(pub Cow<'a, str>, pub Option<Cow<'a, str>>);
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]

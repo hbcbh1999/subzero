@@ -169,7 +169,7 @@ fn execute(
                         e
                     })?,
             );
-            debug!("pre_statement: {}\n{:?}", mutate_statement, mutate_parameters);
+            debug!("mutate_statement: {}\n{:?}", mutate_statement, mutate_parameters);
             let mut mutate_stmt = conn
                 .prepare(mutate_statement.as_str())
                 .context(SqliteDbSnafu { authenticated })

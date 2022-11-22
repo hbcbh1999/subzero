@@ -174,7 +174,7 @@ pub fn fmt_query<'a>(
         }
         Select {
             select,
-            from: (table, table_alias_suffix),
+            from: (table, table_alias),
             join_tables,
             where_,
             limit,
@@ -182,10 +182,10 @@ pub fn fmt_query<'a>(
             order,
             groupby,
         } => {
-            let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
-            let (qi, from_snippet) = match table_alias.as_str() {
-                "" => (Qi(schema, table), fmt_qi(&Qi(schema, table))),
-                a => (
+            //let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
+            let (qi, from_snippet) = match table_alias {
+                None => (Qi(schema, table), fmt_qi(&Qi(schema, table))),
+                Some(a) => (
                     Qi("", a),
                     format!("{} as {}", fmt_qi(&Qi(schema, table)), fmt_identity(a)),
                 ),

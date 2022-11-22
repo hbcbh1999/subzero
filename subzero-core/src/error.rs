@@ -63,7 +63,7 @@ pub enum Error {
     #[snafu(display("UnsupportedVerb"))]
     UnsupportedVerb,
 
-    #[snafu(display("Failed to deserialize json: {}", message))]
+    #[snafu(display("UnsupportedFeature: {}", message))]
     UnsupportedFeature { message: String },
 
     #[snafu(display("Failed to deserialize json: {}", source))]
