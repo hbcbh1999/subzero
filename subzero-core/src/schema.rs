@@ -74,7 +74,6 @@ struct PermissionDef<'a> {
     // pub check_json_str: Option<Cow<'a, str>>,
     // #[serde(default, borrow, skip_serializing_if = "is_default")]
     // pub using_json_str: Option<Cow<'a, str>>,
-
     #[serde(default, skip_serializing_if = "is_default")]
     pub grant: Option<Vec<Action>>,
     #[serde(default, borrow, skip_serializing_if = "is_default")]
@@ -535,8 +534,8 @@ where
                     }
                     _ => (),
                 }
-                match (p.policy_for, p.check, p.using/*, p.check_json_str, p.using_json_str*/) {
-                    (actions, check @ Some(_), using/*, None, None*/) | (actions, check, using @ Some(_)/*, None, None*/) => {
+                match (p.policy_for, p.check, p.using /*, p.check_json_str, p.using_json_str*/) {
+                    (actions, check @ Some(_), using /*, None, None*/) | (actions, check, using @ Some(_) /*, None, None*/) => {
                         let actions_ = match actions {
                             Some(actions) => {
                                 if actions.is_empty() {

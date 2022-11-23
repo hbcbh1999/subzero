@@ -169,7 +169,6 @@ fn replace_json_str(v: &mut JsonValue) -> Result<()> {
                     *s = JsonValue::Null;
                     o.insert("check".to_string(), j);
                 }
-                
             }
             if let Some(s) = o.get_mut("using_json_str") {
                 if let Some(ss) = s.as_str() {
@@ -177,7 +176,6 @@ fn replace_json_str(v: &mut JsonValue) -> Result<()> {
                     *s = JsonValue::Null;
                     o.insert("using".to_string(), j);
                 }
-                
             }
             for (_, v) in o {
                 replace_json_str(v)?;
@@ -190,7 +188,7 @@ fn replace_json_str(v: &mut JsonValue) -> Result<()> {
             }
             Ok(())
         }
-        _ => {Ok(())}
+        _ => Ok(()),
     }
 }
 
@@ -256,7 +254,7 @@ impl Backend for ClickhouseBackend {
                         // so we first parse it into a JsonValue and then convert those two fileds into json
                         let mut v: JsonValue = serde_json::from_str(&s).context(JsonDeserializeSnafu).context(CoreSnafu)?;
                         //recursivley iterate through the json and convert check_json_str and using_json_str into json
-                       // println!("json value before replace:\n{:?}\n", v);
+                        // println!("json value before replace:\n{:?}\n", v);
                         // recursively iterate through the json and apply the f function
                         replace_json_str(&mut v)?;
                         println!("successfully replaced json_str");

@@ -19,10 +19,10 @@ use snafu::{OptionExt, ResultExt};
 use nom::{
     Err,
     error::{ParseError, context, ErrorKind, convert_error, VerboseErrorKind},
-    combinator::{peek, recognize, eof, map, map_res, map_opt, opt, value, },
+    combinator::{peek, recognize, eof, map, map_res, map_opt, opt, value},
     sequence::{delimited, terminated, preceded, tuple},
     bytes::complete::{tag, is_not, is_a, take},
-    character::complete::{multispace0, char, alpha1, digit1, one_of, },
+    character::complete::{multispace0, char, alpha1, digit1, one_of},
     multi::{many1, many0, separated_list1, separated_list0},
     branch::{alt},
 };
@@ -87,9 +87,7 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
                         None => vec![],
                     };
                     let canonical_set: HashSet<_> = columns.iter().copied().collect();
-                    let all_keys_match = json.iter().all(|vv| 
-                        canonical_set == HashSet::from_iter(vv.keys().copied()),
-                    );
+                    let all_keys_match = json.iter().all(|vv| canonical_set == HashSet::from_iter(vv.keys().copied()));
                     if all_keys_match {
                         Ok(columns)
                     } else {
@@ -147,7 +145,7 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
                             body.push('"');
                             body.push_str(vv.replace('"', "\\\"").as_str());
                             body.push('"');
-                        },
+                        }
                     }
                     body.push(',');
                 }
@@ -284,7 +282,8 @@ pub fn parse<'a>(
                 //     .easy_parse(s.as_str())
                 //     .map_err(to_app_error(&s))?;
                 //let (_, c) = logic_condition(Some(n), Some(lo), v).map_err(|e| to_app_error("failed to parse logic tree", e))?;
-                let (_, c) = context("failed to parse logic tree", |ii| logic_condition(Some(&n), Some(&lo), ii))(v).map_err(|e| to_app_error(v, e))?;
+                let (_, c) =
+                    context("failed to parse logic tree", |ii| logic_condition(Some(&n), Some(&lo), ii))(v).map_err(|e| to_app_error(v, e))?;
                 conditions.push((tp, c));
             }
 
@@ -347,7 +346,8 @@ pub fn parse<'a>(
                             //     .map_err(to_app_error(v))?;
                             //let (negate, filter) = todo!();
                             //let (_, (negate, filter)) = negatable_filter(&data_type, v).map_err(|e| to_app_error("failed to parse filter", e))?;
-                            let (_, (negate, filter)) = context("failed to parse filter", |ii| negatable_filter(&data_type, ii))(v).map_err(|e| to_app_error(v, e))?;
+                            let (_, (negate, filter)) =
+                                context("failed to parse filter", |ii| negatable_filter(&data_type, ii))(v).map_err(|e| to_app_error(v, e))?;
                             conditions.push((tp, Condition::Single { field, filter, negate }));
                         } else {
                             //this is a function parameter
@@ -361,7 +361,8 @@ pub fn parse<'a>(
                         //     .map_err(to_app_error(v))?;
                         //let (negate, filter) = todo!();
                         //let (_, (negate, filter)) = negatable_filter(&data_type, v).map_err(|e| to_app_error("failed to parse filter", e))?;
-                        let (_, (negate, filter)) = context("failed to parse filter", |ii| negatable_filter(&data_type, ii))(v).map_err(|e| to_app_error(v, e))?;
+                        let (_, (negate, filter)) =
+                            context("failed to parse filter", |ii| negatable_filter(&data_type, ii))(v).map_err(|e| to_app_error(v, e))?;
                         conditions.push((tp, Condition::Single { field, filter, negate }));
                     }
                 };
@@ -480,7 +481,19 @@ pub fn parse<'a>(
                                 parameters
                                     .iter()
                                     .filter(|p| specified_parameters.contains(&p.name))
-                                    .map(|&ProcParam {name, type_, required, variadic}| ProcParam {name, type_, required, variadic})
+                                    .map(
+                                        |&ProcParam {
+                                             name,
+                                             type_,
+                                             required,
+                                             variadic,
+                                         }| ProcParam {
+                                            name,
+                                            type_,
+                                            required,
+                                            variadic,
+                                        },
+                                    )
                                     .collect::<Vec<_>>(),
                             )
                         }
@@ -517,7 +530,19 @@ pub fn parse<'a>(
                                 parameters
                                     .iter()
                                     .filter(|p| specified_parameters.contains(&p.name))
-                                    .map(|&ProcParam {name, type_, required, variadic}| ProcParam {name, type_, required, variadic})
+                                    .map(
+                                        |&ProcParam {
+                                             name,
+                                             type_,
+                                             required,
+                                             variadic,
+                                         }| ProcParam {
+                                            name,
+                                            type_,
+                                            required,
+                                            variadic,
+                                        },
+                                    )
                                     .collect::<Vec<_>>(),
                             )
                         }
@@ -554,8 +579,8 @@ pub fn parse<'a>(
                         conditions: vec![],
                     },
                     return_table_type: match return_type {
-                        SetOf(Composite(Qi(a,b))) => Some(Qi(a, b)),
-                        One(Composite(Qi(a,b))) => Some(Qi(a,b)),
+                        SetOf(Composite(Qi(a, b))) => Some(Qi(a, b)),
+                        One(Composite(Qi(a, b))) => Some(Qi(a, b)),
                         _ => None,
                     },
                     limit: None,
@@ -919,9 +944,7 @@ fn dash(i: &str) -> Parsed<&str> { terminated(tag("-"), peek(is_not(">")))(i) }
 fn field_name(i: &str) -> Parsed<&str> {
     alt((
         quoted_value,
-        map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| {
-            s.trim()
-        }),
+        map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| s.trim()),
     ))(i)
 }
 
@@ -940,12 +963,10 @@ fn field_name(i: &str) -> Parsed<&str> {
 //         .map(|words: Vec<String>| words.join("-")),
 //     )))
 // }
-fn function_name(i: &str) -> Parsed<&str> { 
+fn function_name(i: &str) -> Parsed<&str> {
     alt((
         quoted_value,
-        map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| {
-            s.trim()
-        }),
+        map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| s.trim()),
     ))(i)
 }
 
@@ -956,7 +977,7 @@ fn function_name(i: &str) -> Parsed<&str> {
 // {
 // between(
 //     char('"'),
-//     char('"'), 
+//     char('"'),
 //     many(
 //         choice(
 //             (
@@ -971,7 +992,7 @@ fn function_name(i: &str) -> Parsed<&str> {
 fn quoted_value_escaped(i: &str) -> Parsed<Cow<str>> {
     // map(
     //     preceded(
-    //         char('\"'), 
+    //         char('\"'),
     //         cut(terminated(
     //             escaped_transform(
     //                 alphanumeric1,
@@ -987,24 +1008,21 @@ fn quoted_value_escaped(i: &str) -> Parsed<Cow<str>> {
     //     ),
     //     Cow::Owned
     // )(i)
-    map(delimited(
-        char('"'),
-        many0(alt((
-            is_not("\\\""),
-            //map(tag("\\\""),|_| "\""),
-            preceded(char('\\'), take(1usize))
-        ))),
-        char('"')
-    ),|v| Cow::Owned(v.join("")))(i)
-}
-
-fn quoted_value(i: &str) -> Parsed<&str> { 
-    delimited(
-        char('"'),
-        is_not("\""),
-        char('"')
+    map(
+        delimited(
+            char('"'),
+            many0(alt((
+                is_not("\\\""),
+                //map(tag("\\\""),|_| "\""),
+                preceded(char('\\'), take(1usize)),
+            ))),
+            char('"'),
+        ),
+        |v| Cow::Owned(v.join("")),
     )(i)
 }
+
+fn quoted_value(i: &str) -> Parsed<&str> { delimited(char('"'), is_not("\""), char('"'))(i) }
 
 //done
 // fn field<Input>() -> impl Parser<Input, Output = Field>
@@ -1113,13 +1131,10 @@ fn dot(i: &str) -> Parsed<&str> { tag(".")(i) }
 //             }
 //         })
 // }
-fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> { 
+fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> {
     map(tuple((separated_list1(dot, field_name), opt(json_path))), |(names, json_path)| {
         match names.split_last() {
-            Some((name, path)) => (
-                path.to_vec(),
-                Field {name,json_path,},
-            ),
+            Some((name, path)) => (path.to_vec(), Field { name, json_path }),
             None => unreachable!("failed to parse tree path"),
         }
     })(i)
@@ -1151,7 +1166,7 @@ fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> {
 //         None => panic!("failed to parse logic tree path"),
 //     })
 // }
-fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> { 
+fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> {
     map(separated_list1(dot, field_name), |names| match names.split_last() {
         Some((&name, path)) => {
             let op = match name {
@@ -1181,9 +1196,7 @@ fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> {
 // {
 //     sep_by1(select_item(), lex(char(','))).skip(eof())
 // }
-fn select(i: &str) -> Parsed<Vec<SelectKind>> {
-    terminated(separated_list1(ws(char(',')), select_item), eof)(i)
-}
+fn select(i: &str) -> Parsed<Vec<SelectKind>> { terminated(separated_list1(ws(char(',')), select_item), eof)(i) }
 
 //done
 // fn columns<Input>() -> impl Parser<Input, Output = Vec<String>>
@@ -1220,9 +1233,9 @@ fn function_param(i: &str) -> Parsed<FunctionParam> {
     alt((
         map(function_call, |(fn_name, parameters)| FunctionParam::Func { fn_name, parameters }),
         map(field, FunctionParam::Fld),
-        map(
-            tuple((delimited(char('\''), is_not("'"), char('\'')), opt(cast))),
-            |(v, c)| FunctionParam::Val(SingleVal(Cow::Borrowed(v), c.map(Cow::Borrowed)), c)),
+        map(tuple((delimited(char('\''), is_not("'"), char('\'')), opt(cast))), |(v, c)| {
+            FunctionParam::Val(SingleVal(Cow::Borrowed(v), c.map(Cow::Borrowed)), c)
+        }),
     ))(i)
 }
 
@@ -1338,45 +1351,29 @@ fn function_call(i: &str) -> Parsed<(&str, Vec<FunctionParam>)> {
 // }
 fn select_item(i: &str) -> Parsed<SelectKind> {
     let star = map(char('*'), |_| Item(Star));
-    let column = map(
-        tuple((
-            opt(alias),
-            field,
-            opt(cast),
-        )),
-        |(alias, field, cast)| Item(Simple { field, alias, cast }),
-    );
+    let column = map(tuple((opt(alias), field, opt(cast))), |(alias, field, cast)| Item(Simple { field, alias, cast }));
     let function = map(
         tuple((
             opt(alias),
             function_call,
-            opt(tuple((
-                tag("-p"),
-                delimited(char('('), separated_list1(ws(char(',')), field), char(')')),
-            ))),
-            opt(tuple((
-                tag("-o"),
-                delimited(char('('), separated_list1(ws(char(',')), order_term), char(')')),
-            ))),
+            opt(tuple((tag("-p"), delimited(char('('), separated_list1(ws(char(',')), field), char(')'))))),
+            opt(tuple((tag("-o"), delimited(char('('), separated_list1(ws(char(',')), order_term), char(')'))))),
         )),
-        |(alias, (fn_name, parameters), partitions, orders)| Item(Func {
-            alias,
-            fn_name,
-            parameters,
-            partitions: partitions.map(|(_, p)| p).unwrap_or_default(),
-            orders: orders.map(|(_, o)| o).unwrap_or_default(),
-        }),
+        |(alias, (fn_name, parameters), partitions, orders)| {
+            Item(Func {
+                alias,
+                fn_name,
+                parameters,
+                partitions: partitions.map(|(_, p)| p).unwrap_or_default(),
+                orders: orders.map(|(_, o)| o).unwrap_or_default(),
+            })
+        },
     );
     let sub_select = map(
         tuple((
             opt(alias),
             ws(field_name),
-            opt(
-                map(
-                    tuple((one_of("!."), ws(field_name))),
-                    |(_, hint)| hint
-                )
-            ),
+            opt(map(tuple((one_of("!."), ws(field_name))), |(_, hint)| hint)),
             delimited(char('('), separated_list1(ws(char(',')), select_item), char(')')),
         )),
         |(alias, from, hint, select)| {
@@ -1425,7 +1422,7 @@ fn single_value<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a
     Ok(("", v))
 }
 
-fn apply<'a, 'b, A: 'a, B:'a >(a: &'b A, p: impl Fn(&'b A, &'a str) -> Parsed<'a, B> +'b) -> impl Fn(&'a str) -> Parsed<'a, B> + 'b {
+fn apply<'a, 'b, A: 'a, B: 'a>(a: &'b A, p: impl Fn(&'b A, &'a str) -> Parsed<'a, B> + 'b) -> impl Fn(&'a str) -> Parsed<'a, B> + 'b {
     move |i| p(a, i)
 }
 
@@ -1475,7 +1472,7 @@ fn offset(i: &str) -> Parsed<SingleVal> { integer(i) }
 fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<SingleVal> {
     let (input, v) = alt((
         quoted_value_escaped,
-        map(recognize(delimited(char('{'),is_not("{}"), char('}'))),Cow::Borrowed),
+        map(recognize(delimited(char('{'), is_not("{}"), char('}'))), Cow::Borrowed),
         map(is_not(",)"), Cow::Borrowed),
     ))(i)?;
     let v = match data_type {
@@ -1499,7 +1496,6 @@ fn list_value<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, 
     Ok((input, ListVal(list, dt)))
 }
 
-
 //done
 // fn list_element<Input>() -> impl Parser<Input, Output = String>
 // where
@@ -1511,7 +1507,7 @@ fn list_element(i: &str) -> Parsed<Cow<str>> {
     alt((
         //terminated(quoted_value, peek(none_of(",)"))),
         quoted_value_escaped,
-        map(is_not(",)"),Cow::Borrowed),
+        map(is_not(",)"), Cow::Borrowed),
     ))(i)
 }
 
@@ -1557,14 +1553,8 @@ fn fts_operator(i: &str) -> Parsed<&str> {
 //         .and(filter(data_type))
 //         .map(|(n, f)| (n.is_some(), f))
 // }
-fn negatable_filter<'a,'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, (bool, Filter<'a>)> {
-    map(
-        tuple((
-            opt(tag("not.")),
-            apply(data_type, filter)
-        )),
-        |(n, f)| (n.is_some(), f)
-    )(i)
+fn negatable_filter<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, (bool, Filter<'a>)> {
+    map(tuple((opt(tag("not.")), apply(data_type, filter))), |(n, f)| (n.is_some(), f))(i)
 }
 
 //done
@@ -1608,54 +1598,36 @@ fn negatable_filter<'a,'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed
 // fn filter_common<'a, 'b, P>(p: P, data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>>
 // where P: fn(&'b Option<&'a str>, &'a str) -> Parsed<'a, SingleVal<'a>> +'b
 fn filter_common<'a, 'b>(
-    p: fn(&'b Option<&'a str>, &'a str) -> Parsed<'a, SingleVal<'a>>,
-    data_type: &'b Option<&'a str>, i: &'a str
-) -> Parsed<'a, Filter<'a>>
-{
+    p: fn(&'b Option<&'a str>, &'a str) -> Parsed<'a, SingleVal<'a>>, data_type: &'b Option<&'a str>, i: &'a str,
+) -> Parsed<'a, Filter<'a>> {
     alt((
-        map(
-            tuple((
-                operator,
-                dot,
-                apply(data_type, p)
-            )),
-            |(o, _, SingleVal(v, dt))| match o {
-                "like" | "ilike" => Filter::Op(o, SingleVal(Cow::Owned(v.replace('*', "%")), dt)),
-                "is" => match &*v {
-                    "null" => Filter::Is(TrileanVal::TriNull),
-                    "unknown" => Filter::Is(TrileanVal::TriUnknown),
-                    "true" => Filter::Is(TrileanVal::TriTrue),
-                    "false" => Filter::Is(TrileanVal::TriFalse),
-                    _ => panic!("unknown value for is operator, use null, unknown, true, false"),
-                },
-                _ => Filter::Op(o, SingleVal(v, dt)),
-            }
-        ),
-        map(
-            tuple((
-                tag("in"),
-                char('.'),
-                apply(data_type, list_value)
-            )),
-            |(_, _, ListVal(v, dt))| Filter::In(ListVal(v, dt))
-        ),
+        map(tuple((operator, dot, apply(data_type, p))), |(o, _, SingleVal(v, dt))| match o {
+            "like" | "ilike" => Filter::Op(o, SingleVal(Cow::Owned(v.replace('*', "%")), dt)),
+            "is" => match &*v {
+                "null" => Filter::Is(TrileanVal::TriNull),
+                "unknown" => Filter::Is(TrileanVal::TriUnknown),
+                "true" => Filter::Is(TrileanVal::TriTrue),
+                "false" => Filter::Is(TrileanVal::TriFalse),
+                _ => panic!("unknown value for is operator, use null, unknown, true, false"),
+            },
+            _ => Filter::Op(o, SingleVal(v, dt)),
+        }),
+        map(tuple((tag("in"), char('.'), apply(data_type, list_value))), |(_, _, ListVal(v, dt))| {
+            Filter::In(ListVal(v, dt))
+        }),
         map(
             tuple((
                 fts_operator,
-                opt(
-                    delimited(ws(char('(')), recognize(many1(alt((alpha1, digit1, tag("_"))))), ws(char(')')))
-                ),
+                opt(delimited(ws(char('(')), recognize(many1(alt((alpha1, digit1, tag("_"))))), ws(char(')')))),
                 char('.'),
-                apply(data_type, p)
+                apply(data_type, p),
             )),
-            |(o, l, _, SingleVal(v, dt))| Filter::Fts(o, l.map(|v| SingleVal(Cow::Borrowed(v), None)), SingleVal(v, dt))
+            |(o, l, _, SingleVal(v, dt))| Filter::Fts(o, l.map(|v| SingleVal(Cow::Borrowed(v), None)), SingleVal(v, dt)),
         ),
     ))(i)
 }
 
-fn filter<'a,'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> {
-    filter_common(single_value, data_type, i)
-}
+fn filter<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> { filter_common(single_value, data_type, i) }
 
 //done
 // fn logic_filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
@@ -1694,9 +1666,7 @@ fn filter<'a,'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, Filte
 //     ))
 //     .and_then(|v| v)
 // }
-fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> {
-    filter_common(logic_single_value, data_type, i)
-}
+fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> { filter_common(logic_single_value, data_type, i) }
 
 //done
 // fn order<Input>() -> impl Parser<Input, Output = Vec<OrderTerm>>
@@ -1823,18 +1793,21 @@ fn groupby(i: &str) -> Parsed<Vec<GroupByTerm>> { terminated(separated_list1(tag
 
 fn content_type(i: &str) -> Parsed<ContentType> {
     map_res(
-        separated_list1(tag(","), map(is_not(","), |t: &str| {
-            let tt = t.trim().split(';').collect::<Vec<_>>();
-            match tt.first() {
-                Some(&"*/*") => ApplicationJSON,
-                Some(&"application/json") => ApplicationJSON,
-                Some(&"application/vnd.pgrst.object") => SingularJSON,
-                Some(&"application/vnd.pgrst.object+json") => SingularJSON,
-                Some(&"text/csv") => TextCSV,
-                Some(o) => Other(o.to_string()),
-                None => Other(t.to_string()),
-            }
-        })),
+        separated_list1(
+            tag(","),
+            map(is_not(","), |t: &str| {
+                let tt = t.trim().split(';').collect::<Vec<_>>();
+                match tt.first() {
+                    Some(&"*/*") => ApplicationJSON,
+                    Some(&"application/json") => ApplicationJSON,
+                    Some(&"application/vnd.pgrst.object") => SingularJSON,
+                    Some(&"application/vnd.pgrst.object+json") => SingularJSON,
+                    Some(&"text/csv") => TextCSV,
+                    Some(o) => Other(o.to_string()),
+                    None => Other(t.to_string()),
+                }
+            }),
+        ),
         |v: Vec<ContentType>| {
             let vv = v
                 // remove unknown content types
@@ -1843,7 +1816,7 @@ fn content_type(i: &str) -> Parsed<ContentType> {
                 .collect::<Vec<_>>();
             match vv.first() {
                 Some(ct) => Ok(ct.clone()),
-                None =>Err("unknown content type"),
+                None => Err("unknown content type"),
             }
         },
     )(i)
@@ -1897,15 +1870,18 @@ fn content_type(i: &str) -> Parsed<ContentType> {
 
 fn preferences(i: &str) -> Parsed<Preferences> {
     map_opt(
-        separated_list1(tag(","), map_res(is_not(","), |t: &str| {
-            let tt = t.trim().split('=').map(|s| s.trim()).collect::<Vec<_>>();
-            match tt.as_slice() {
-                ["resolution", s] => Ok(("resolution", *s)),
-                ["return", s] => Ok(("return", *s)),
-                ["count", s] => Ok(("count", *s)),
-                _ => Err("unknown preference"),
-            }
-        })),
+        separated_list1(
+            tag(","),
+            map_res(is_not(","), |t: &str| {
+                let tt = t.trim().split('=').map(|s| s.trim()).collect::<Vec<_>>();
+                match tt.as_slice() {
+                    ["resolution", s] => Ok(("resolution", *s)),
+                    ["return", s] => Ok(("return", *s)),
+                    ["count", s] => Ok(("count", *s)),
+                    _ => Err("unknown preference"),
+                }
+            }),
+        ),
         |v: Vec<(&str, _)>| {
             let m = v.into_iter().collect::<HashMap<_, _>>();
             Some(Preferences {
@@ -1979,51 +1955,50 @@ fn preferences(i: &str) -> Parsed<Preferences> {
 // }
 
 fn logic_condition<'a, 'b>(n: Option<&'b bool>, lo: Option<&'b LogicOperator>, i: &'a str) -> Parsed<'a, Condition<'a>> {
-    match (n,lo) {
+    match (n, lo) {
         (Some(negate), Some(operator)) => {
-            let (i, conditions) = delimited(
-                ws(char('(')),
-                separated_list1(ws(char(',')), |ii| logic_condition(None, None, ii) ),
-                ws(char(')'))
-            )(i)?;
-            Ok((i, Condition::Group {
-                negate: *negate,
-                tree: ConditionTree { operator: operator.clone(), conditions },
-            }))
+            let (i, conditions) = delimited(ws(char('(')), separated_list1(ws(char(',')), |ii| logic_condition(None, None, ii)), ws(char(')')))(i)?;
+            Ok((
+                i,
+                Condition::Group {
+                    negate: *negate,
+                    tree: ConditionTree {
+                        operator: operator.clone(),
+                        conditions,
+                    },
+                },
+            ))
         }
         _ => alt((
-                //single
-                ws(map(tuple((
+            //single
+            ws(map(
+                tuple((field, char('.'), opt(tag("not.")), |ii| logic_filter(&None, ii))),
+                |(field, _, negate, filter)| Condition::Single {
                     field,
-                    char('.'),
-                    opt(tag("not.")),
-                    |ii| logic_filter(&None, ii),
-                )), |(field, _, negate, filter)| {
-                    Condition::Single { field, filter, negate: negate.is_some() }
-                })),
-                //group
-                map(tuple((
+                    filter,
+                    negate: negate.is_some(),
+                },
+            )),
+            //group
+            map(
+                tuple((
                     opt(tag("not.")),
                     alt((tag("and"), tag("or"))),
-                    delimited(
-                        ws(char('(')),
-                        separated_list1(ws(char(',')), |ii| logic_condition(None, None, ii) ),
-                        ws(char(')'))
-                    )
-                )), |(negate, operator, conditions)| {
-                    Condition::Group {
-                        negate: negate.is_some(),
-                        tree: ConditionTree {
-                            operator: match operator {
-                                "and" => LogicOperator::And,
-                                "or" => LogicOperator::Or,
-                                _ => unreachable!("unknown logic operator {}", operator),
-                            },
-                            conditions
+                    delimited(ws(char('(')), separated_list1(ws(char(',')), |ii| logic_condition(None, None, ii)), ws(char(')'))),
+                )),
+                |(negate, operator, conditions)| Condition::Group {
+                    negate: negate.is_some(),
+                    tree: ConditionTree {
+                        operator: match operator {
+                            "and" => LogicOperator::And,
+                            "or" => LogicOperator::Or,
+                            _ => unreachable!("unknown logic operator {}", operator),
                         },
-                    }
-                }),
-            ))(i)
+                        conditions,
+                    },
+                },
+            ),
+        ))(i),
     }
 }
 
@@ -2253,7 +2228,11 @@ fn to_app_error(s: &str, e: nom::Err<nom::error::VerboseError<&str>>) -> Error {
     //     .to_string();
     match e {
         nom::Err::Error(_e) | nom::Err::Failure(_e) => {
-            let m = _e.errors.iter().filter(|(_, v)| matches!(v, VerboseErrorKind::Context(_))).collect::<Vec<_>>();
+            let m = _e
+                .errors
+                .iter()
+                .filter(|(_, v)| matches!(v, VerboseErrorKind::Context(_)))
+                .collect::<Vec<_>>();
             let position = 0;
             let message = match m.as_slice() {
                 [(_, VerboseErrorKind::Context(s))] => s,
@@ -2263,7 +2242,7 @@ fn to_app_error(s: &str, e: nom::Err<nom::error::VerboseError<&str>>) -> Error {
             let details = convert_error(s, _e);
             //debug!("Parse error:\n{}", details);
             Error::ParseRequestError { message, details }
-        },
+        }
         nom::Err::Incomplete(_e) => {
             let message = "parse error".to_string();
             let details = format!("{:?}", _e);
@@ -2461,7 +2440,7 @@ pub mod tests {
 
     fn s(s: &str) -> String { s.to_string() }
     fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
-    fn sv(s: &str) -> SingleVal { SingleVal(cow(s), None)}
+    fn sv(s: &str) -> SingleVal { SingleVal(cow(s), None) }
     // fn vs(v: Vec<(&str, &str)>) -> Vec<(String, String)> {
     //     v.into_iter().map(|(s, s2)| (s.to_string(), s2.to_string())).collect()
     // }
@@ -2550,10 +2529,7 @@ pub mod tests {
                 limit: None,
                 offset: None,
                 select: vec![Simple {
-                    field: Field {
-                        name: "a",
-                        json_path: None,
-                    },
+                    field: Field { name: "a", json_path: None },
                     alias: None,
                     cast: None,
                 }],
@@ -2573,10 +2549,7 @@ pub mod tests {
                         limit: None,
                         offset: None,
                         select: vec![Simple {
-                            field: Field {
-                                name: "a",
-                                json_path: None,
-                            },
+                            field: Field { name: "a", json_path: None },
                             alias: None,
                             cast: None,
                         }],
@@ -2595,10 +2568,7 @@ pub mod tests {
             }],
         };
         let condition = Single {
-            field: Field {
-                name: "a",
-                json_path: None,
-            },
+            field: Field { name: "a", json_path: None },
             filter: Filter::Op(">=", SingleVal(cow("5"), None)),
             negate: false,
         };
@@ -2612,10 +2582,7 @@ pub mod tests {
                     limit: None,
                     offset: None,
                     select: vec![Simple {
-                        field: Field {
-                            name: "a",
-                            json_path: None
-                        },
+                        field: Field { name: "a", json_path: None },
                         alias: None,
                         cast: None
                     },],
@@ -2634,10 +2601,7 @@ pub mod tests {
                             limit: None,
                             offset: None,
                             select: vec![Simple {
-                                field: Field {
-                                    name: "a",
-                                    json_path: None
-                                },
+                                field: Field { name: "a", json_path: None },
                                 alias: None,
                                 cast: None
                             },],
@@ -2708,10 +2672,7 @@ pub mod tests {
                         offset: None,
                         select: vec![
                             Simple {
-                                field: Field {
-                                    name: "id",
-                                    json_path: None
-                                },
+                                field: Field { name: "id", json_path: None },
                                 alias: None,
                                 cast: None
                             },
@@ -2731,10 +2692,7 @@ pub mod tests {
                             operator: And,
                             conditions: vec![
                                 Single {
-                                    field: Field {
-                                        name: "id",
-                                        json_path: None
-                                    },
+                                    field: Field { name: "id", json_path: None },
                                     filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
                                     negate: true,
                                 },
@@ -2745,18 +2703,12 @@ pub mod tests {
                                         conditions: vec![
                                             Single {
                                                 filter: Filter::Op("=", SingleVal(cow("11"), None)),
-                                                field: Field {
-                                                    name: "id",
-                                                    json_path: None
-                                                },
+                                                field: Field { name: "id", json_path: None },
                                                 negate: false
                                             },
                                             Single {
                                                 filter: Filter::Op("=", SingleVal(cow("12"), None)),
-                                                field: Field {
-                                                    name: "id",
-                                                    json_path: None
-                                                },
+                                                field: Field { name: "id", json_path: None },
                                                 negate: false
                                             }
                                         ]
@@ -2775,10 +2727,7 @@ pub mod tests {
                                     limit: None,
                                     offset: None,
                                     select: vec![Simple {
-                                        field: Field {
-                                            name: "id",
-                                            json_path: None
-                                        },
+                                        field: Field { name: "id", json_path: None },
                                         alias: None,
                                         cast: None
                                     },],
@@ -2788,10 +2737,7 @@ pub mod tests {
                                     where_: ConditionTree {
                                         operator: And,
                                         conditions: vec![Single {
-                                            field: Field {
-                                                name: "id",
-                                                json_path: None
-                                            },
+                                            field: Field { name: "id", json_path: None },
                                             filter: Filter::Col(
                                                 Qi("api", "projects"),
                                                 Field {
@@ -2823,10 +2769,7 @@ pub mod tests {
                                     limit: None,
                                     offset: None,
                                     select: vec![Simple {
-                                        field: Field {
-                                            name: "id",
-                                            json_path: None
-                                        },
+                                        field: Field { name: "id", json_path: None },
                                         alias: None,
                                         cast: None
                                     },],
@@ -2841,20 +2784,11 @@ pub mod tests {
                                                     name: "project_id",
                                                     json_path: None
                                                 },
-                                                filter: Filter::Col(
-                                                    Qi("api", "projects"),
-                                                    Field {
-                                                        name: "id",
-                                                        json_path: None
-                                                    }
-                                                ),
+                                                filter: Filter::Col(Qi("api", "projects"), Field { name: "id", json_path: None }),
                                                 negate: false,
                                             },
                                             Single {
-                                                field: Field {
-                                                    name: "id",
-                                                    json_path: None
-                                                },
+                                                field: Field { name: "id", json_path: None },
                                                 filter: Filter::Op("<", SingleVal(cow("500"), Some(cow("int")))),
                                                 negate: false,
                                             },
@@ -2865,18 +2799,12 @@ pub mod tests {
                                                     conditions: vec![
                                                         Single {
                                                             filter: Filter::Op("=", SingleVal(cow("11"), None)),
-                                                            field: Field {
-                                                                name: "id",
-                                                                json_path: None
-                                                            },
+                                                            field: Field { name: "id", json_path: None },
                                                             negate: false
                                                         },
                                                         Single {
                                                             filter: Filter::Op("=", SingleVal(cow("12"), None)),
-                                                            field: Field {
-                                                                name: "id",
-                                                                json_path: None
-                                                            },
+                                                            field: Field { name: "id", json_path: None },
                                                             negate: false
                                                         }
                                                     ]
@@ -2983,10 +2911,7 @@ pub mod tests {
                     node: Insert {
                         on_conflict: None,
                         select: vec![Simple {
-                            field: Field {
-                                name: "id",
-                                json_path: None
-                            },
+                            field: Field { name: "id", json_path: None },
                             alias: None,
                             cast: None
                         },],
@@ -3000,10 +2925,7 @@ pub mod tests {
                         where_: ConditionTree {
                             operator: And,
                             conditions: vec![Single {
-                                field: Field {
-                                    name: "id",
-                                    json_path: None
-                                },
+                                field: Field { name: "id", json_path: None },
                                 filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
                                 negate: false,
                             }]
@@ -3047,10 +2969,7 @@ pub mod tests {
                         on_conflict: None,
                         select: vec![
                             Simple {
-                                field: Field {
-                                    name: "id",
-                                    json_path: None
-                                },
+                                field: Field { name: "id", json_path: None },
                                 alias: None,
                                 cast: None
                             },
@@ -3073,10 +2992,7 @@ pub mod tests {
                         where_: ConditionTree {
                             operator: And,
                             conditions: vec![Single {
-                                field: Field {
-                                    name: "id",
-                                    json_path: None
-                                },
+                                field: Field { name: "id", json_path: None },
                                 filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
                                 negate: false,
                             }]
@@ -3223,10 +3139,7 @@ pub mod tests {
                     node: Insert {
                         on_conflict: None,
                         select: vec![Simple {
-                            field: Field {
-                                name: "id",
-                                json_path: None
-                            },
+                            field: Field { name: "id", json_path: None },
                             alias: None,
                             cast: None
                         },],
@@ -3240,10 +3153,7 @@ pub mod tests {
                         where_: ConditionTree {
                             operator: And,
                             conditions: vec![Single {
-                                field: Field {
-                                    name: "id",
-                                    json_path: None
-                                },
+                                field: Field { name: "id", json_path: None },
                                 filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
                                 negate: false,
                             }]
@@ -3293,10 +3203,7 @@ pub mod tests {
                                     limit: None,
                                     offset: None,
                                     select: vec![Simple {
-                                        field: Field {
-                                            name: "id",
-                                            json_path: None
-                                        },
+                                        field: Field { name: "id", json_path: None },
                                         alias: None,
                                         cast: None
                                     },],
@@ -3311,20 +3218,11 @@ pub mod tests {
                                                     name: "project_id",
                                                     json_path: None
                                                 },
-                                                filter: Filter::Col(
-                                                    Qi("", "subzero_source"),
-                                                    Field {
-                                                        name: "id",
-                                                        json_path: None
-                                                    }
-                                                ),
+                                                filter: Filter::Col(Qi("", "subzero_source"), Field { name: "id", json_path: None }),
                                                 negate: false,
                                             },
                                             Single {
-                                                field: Field {
-                                                    name: "id",
-                                                    json_path: None
-                                                },
+                                                field: Field { name: "id", json_path: None },
                                                 filter: Filter::Op(">", SingleVal(cow("20"), Some(cow("int")))),
                                                 negate: false,
                                             }
@@ -3351,10 +3249,7 @@ pub mod tests {
                                     limit: None,
                                     offset: None,
                                     select: vec![Simple {
-                                        field: Field {
-                                            name: "id",
-                                            json_path: None
-                                        },
+                                        field: Field { name: "id", json_path: None },
                                         alias: None,
                                         cast: None
                                     },],
@@ -3364,10 +3259,7 @@ pub mod tests {
                                     where_: ConditionTree {
                                         operator: And,
                                         conditions: vec![Single {
-                                            field: Field {
-                                                name: "id",
-                                                json_path: None
-                                            },
+                                            field: Field { name: "id", json_path: None },
                                             filter: Filter::Col(
                                                 Qi("", "subzero_source"),
                                                 Field {
@@ -3395,10 +3287,7 @@ pub mod tests {
                         on_conflict: None,
                         select: vec![
                             Simple {
-                                field: Field {
-                                    name: "id",
-                                    json_path: None
-                                },
+                                field: Field { name: "id", json_path: None },
                                 alias: None,
                                 cast: None
                             },
@@ -3421,10 +3310,7 @@ pub mod tests {
                         where_: ConditionTree {
                             operator: And,
                             conditions: vec![Single {
-                                field: Field {
-                                    name: "id",
-                                    json_path: None
-                                },
+                                field: Field { name: "id", json_path: None },
                                 filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
                                 negate: false,
                             }]
@@ -3575,72 +3461,67 @@ pub mod tests {
     fn parse_preferences() {
         assert_eq!(
             preferences("return=minimal , resolution = merge-duplicates, count=planned, count=exact"),
-            Ok(( "",
+            Ok((
+                "",
                 Preferences {
                     representation: Some(Representation::None),
                     resolution: Some(Resolution::MergeDuplicates),
                     count: Some(Count::ExactCount)
                 },
-                
             ))
         );
     }
 
     #[test]
     fn parse_filter() {
-        assert_eq!(filter(&None, "gte.5"), Ok(( "",Filter::Op(">=", SingleVal(cow("5"), None)))));
-        assert_eq!(
-            filter(&None, "in.(1,2,3)"),
-            Ok(( "",Filter::In(ListVal(["1", "2", "3"].map(cow).to_vec(), None))))
-        );
+        assert_eq!(filter(&None, "gte.5"), Ok(("", Filter::Op(">=", SingleVal(cow("5"), None)))));
+        assert_eq!(filter(&None, "in.(1,2,3)"), Ok(("", Filter::In(ListVal(["1", "2", "3"].map(cow).to_vec(), None)))));
         assert_eq!(
             filter(&None, "fts.word"),
-            Ok(( "",Filter::Fts("@@ to_tsquery", None, SingleVal(cow("word"), None))))
+            Ok(("", Filter::Fts("@@ to_tsquery", None, SingleVal(cow("word"), None))))
         );
     }
 
     #[test]
     fn parse_logic_condition() {
-        let field = Field {
-            name: "id",
-            json_path: None,
-        };
+        let field = Field { name: "id", json_path: None };
         assert_eq!(
             logic_condition(None, None, "id.gte.5"),
-            Ok(( "",
+            Ok((
+                "",
                 Single {
                     filter: Filter::Op(">=", SingleVal(cow("5"), None)),
                     field: field.clone(),
                     negate: false
                 },
-                
             ))
         );
         assert_eq!(
             logic_condition(None, None, "id.not.in.(1,2,3)"),
-            Ok(( "",
+            Ok((
+                "",
                 Single {
                     filter: Filter::In(ListVal(vec![cow("1"), cow("2"), cow("3")], None)),
                     field: field.clone(),
                     negate: true
                 },
-                
             ))
         );
         assert_eq!(
             logic_condition(None, None, "id.fts.word"),
-            Ok(( "",
+            Ok((
+                "",
                 Single {
                     filter: Filter::Fts("@@ to_tsquery", None, SingleVal(cow("word"), None)),
                     field: field.clone(),
                     negate: false
                 },
-                
             ))
         );
         assert_eq!(
             logic_condition(None, None, "not.or(id.gte.5, id.lte.10)"),
-            Ok(( "",
+            Ok((
+                "",
                 Condition::Group {
                     negate: true,
                     tree: ConditionTree {
@@ -3659,12 +3540,12 @@ pub mod tests {
                         ]
                     }
                 },
-                
             ))
         );
         assert_eq!(
             logic_condition(None, None, "not.or ( id.gte.5, id.lte.10, and(id.gte.2 , id.lte.4))"),
-            Ok(( "",
+            Ok((
+                "",
                 Condition::Group {
                     negate: true,
                     tree: ConditionTree {
@@ -3701,14 +3582,13 @@ pub mod tests {
                         ]
                     }
                 },
-                
             ))
         );
     }
 
     #[test]
     fn parse_operator() {
-        assert_eq!(operator("gte."), Ok(( ".",">=")));
+        assert_eq!(operator("gte."), Ok((".", ">=")));
         // assert_eq!(
         //     operator("gtv."),
         //     Err(Errors {
@@ -3732,24 +3612,21 @@ pub mod tests {
 
     #[test]
     fn parse_single_value() {
-        assert_eq!(single_value(&None, "any123value"), Ok(( "", SingleVal(cow("any123value"), None))));
+        assert_eq!(single_value(&None, "any123value"), Ok(("", SingleVal(cow("any123value"), None))));
         assert_eq!(single_value(&None, "any123value,another"), Ok(("", SingleVal(cow("any123value,another"), None))));
     }
 
     #[test]
     fn parse_logic_single_value() {
         assert_eq!(logic_single_value(&None, "any123value"), Ok(("", sv("any123value"))));
-        assert_eq!(
-            logic_single_value(&None, "any123value,another"),
-            Ok(( ",another", sv("any123value")))
-        );
+        assert_eq!(logic_single_value(&None, "any123value,another"), Ok((",another", sv("any123value"))));
         assert_eq!(logic_single_value(&None, "\"any 123 value,)\""), Ok(("", sv("any 123 value,)"))));
         assert_eq!(logic_single_value(&None, "{a, b, c}"), Ok(("", sv("{a, b, c}"))));
     }
 
     #[test]
     fn parse_list_element() {
-        assert_eq!(list_element("any 123 value"), Ok(( "",cow("any 123 value"))));
+        assert_eq!(list_element("any 123 value"), Ok(("", cow("any 123 value"))));
         assert_eq!(list_element("any123value,another"), Ok((",another", cow("any123value"))));
         assert_eq!(list_element("any123value)"), Ok((")", cow("any123value"))));
         assert_eq!(list_element("\"any123value,)\",another"), Ok((",another", cow("any123value,)"))));
@@ -3757,64 +3634,59 @@ pub mod tests {
 
     #[test]
     fn parse_list_value() {
-        assert_eq!(list_value(&None, "()"), Ok(( "", ListVal(vec![], None))));
-        assert_eq!(list_value(&None, "(any 123 value)"), Ok(( "", ListVal(vec![cow("any 123 value")], None))));
+        assert_eq!(list_value(&None, "()"), Ok(("", ListVal(vec![], None))));
+        assert_eq!(list_value(&None, "(any 123 value)"), Ok(("", ListVal(vec![cow("any 123 value")], None))));
         assert_eq!(
             list_value(&None, "(any123value,another)"),
-            Ok(( "",ListVal(vec![cow("any123value"), cow("another")], None)))
+            Ok(("", ListVal(vec![cow("any123value"), cow("another")], None)))
         );
         assert_eq!(
             list_value(&None, "(\"any123 value\", another)"),
-            Ok(( "",ListVal(vec![cow("any123 value"), cow("another")], None)))
+            Ok(("", ListVal(vec![cow("any123 value"), cow("another")], None)))
         );
         assert_eq!(
-            list_value(&None ,"(\"any123 value\", 123)"),
-            Ok(( "",ListVal(vec![cow("any123 value"), cow("123")], None)))
+            list_value(&None, "(\"any123 value\", 123)"),
+            Ok(("", ListVal(vec![cow("any123 value"), cow("123")], None)))
         );
         assert_eq!(
             list_value(&None, "(\"Double\\\"Quote\\\"McGraw\\\"\")"),
-            Ok(( "",ListVal(vec![cow("Double\"Quote\"McGraw\"")], None)))
+            Ok(("", ListVal(vec![cow("Double\"Quote\"McGraw\"")], None)))
         );
     }
 
     #[test]
     fn parse_alias_separator() {
-        assert_eq!(alias_separator(":abc"), Ok(( "abc",":")));
+        assert_eq!(alias_separator(":abc"), Ok(("abc", ":")));
         assert_eq!(alias_separator("::abc").is_err(), true);
     }
 
     #[test]
     fn parse_json_path() {
-        assert_eq!(json_path("->key"), Ok(( "",vec![JArrow(JKey("key"))])));
+        assert_eq!(json_path("->key"), Ok(("", vec![JArrow(JKey("key"))])));
 
-        assert_eq!(json_path("->>51"), Ok(( "",vec![J2Arrow(JIdx("51"))])));
+        assert_eq!(json_path("->>51"), Ok(("", vec![J2Arrow(JIdx("51"))])));
 
-        assert_eq!(
-            json_path("->key1->>key2"),
-            Ok(( "",vec![JArrow(JKey("key1")), J2Arrow(JKey("key2"))]))
-        );
+        assert_eq!(json_path("->key1->>key2"), Ok(("", vec![JArrow(JKey("key1")), J2Arrow(JKey("key2"))])));
 
-        assert_eq!(
-            json_path("->key1->>key2,rest"),
-            Ok(( ",rest",vec![JArrow(JKey("key1")), J2Arrow(JKey("key2"))]))
-        );
+        assert_eq!(json_path("->key1->>key2,rest"), Ok((",rest", vec![JArrow(JKey("key1")), J2Arrow(JKey("key2"))])));
     }
 
     #[test]
     fn parse_field_name() {
-        assert_eq!(field_name("field with space "), Ok(( "","field with space")));
-        assert_eq!(field_name("field12"), Ok(( "","field12")));
-        assert_ne!(field_name("field,invalid"), Ok(( "","field,invalid")));
-        assert_eq!(field_name("field-name"), Ok(( "","field-name")));
+        assert_eq!(field_name("field with space "), Ok(("", "field with space")));
+        assert_eq!(field_name("field12"), Ok(("", "field12")));
+        assert_ne!(field_name("field,invalid"), Ok(("", "field,invalid")));
+        assert_eq!(field_name("field-name"), Ok(("", "field-name")));
         assert_eq!(field_name("field-name->"), Ok(("->", "field-name")));
-        assert_eq!(quoted_value("\"field name\""), Ok(( "","field name")));
+        assert_eq!(quoted_value("\"field name\""), Ok(("", "field name")));
     }
 
     #[test]
     fn parse_order() {
         assert_eq!(
             order("field"),
-            Ok(( "",
+            Ok((
+                "",
                 vec![OrderTerm {
                     term: Field {
                         name: "field",
@@ -3823,12 +3695,12 @@ pub mod tests {
                     direction: None,
                     null_order: None
                 },]
-                
             ))
         );
         assert_eq!(
             order("field.asc"),
-            Ok(( "",
+            Ok((
+                "",
                 vec![OrderTerm {
                     term: Field {
                         name: "field",
@@ -3837,12 +3709,12 @@ pub mod tests {
                     direction: Some(OrderDirection::Asc),
                     null_order: None
                 },]
-                
             ))
         );
         assert_eq!(
             order("field.desc"),
-            Ok(( "",
+            Ok((
+                "",
                 vec![OrderTerm {
                     term: Field {
                         name: "field",
@@ -3851,12 +3723,12 @@ pub mod tests {
                     direction: Some(OrderDirection::Desc),
                     null_order: None
                 },]
-                
             ))
         );
         assert_eq!(
             order("field.desc.nullsfirst"),
-            Ok(( "",
+            Ok((
+                "",
                 vec![OrderTerm {
                     term: Field {
                         name: "field",
@@ -3865,12 +3737,12 @@ pub mod tests {
                     direction: Some(OrderDirection::Desc),
                     null_order: Some(OrderNulls::NullsFirst)
                 },]
-                
             ))
         );
         assert_eq!(
             order("field.desc.nullslast"),
-            Ok(( "",
+            Ok((
+                "",
                 vec![OrderTerm {
                     term: Field {
                         name: "field",
@@ -3879,12 +3751,12 @@ pub mod tests {
                     direction: Some(OrderDirection::Desc),
                     null_order: Some(OrderNulls::NullsLast)
                 },]
-                
             ))
         );
         assert_eq!(
             order("field.nullslast"),
-            Ok(( "",
+            Ok((
+                "",
                 vec![OrderTerm {
                     term: Field {
                         name: "field",
@@ -3893,12 +3765,12 @@ pub mod tests {
                     direction: None,
                     null_order: Some(OrderNulls::NullsLast)
                 },]
-                
             ))
         );
         assert_eq!(
             order("field,field.asc,field.desc.nullslast"),
-            Ok(( "",
+            Ok((
+                "",
                 vec![
                     OrderTerm {
                         term: Field {
@@ -3925,14 +3797,13 @@ pub mod tests {
                         null_order: Some(OrderNulls::NullsLast)
                     },
                 ],
-                
             ))
         );
     }
 
     #[test]
     fn parse_columns() {
-        assert_eq!(columns("col1, col2 "), Ok(( "",vec!["col1", "col2"])));
+        assert_eq!(columns("col1, col2 "), Ok(("", vec!["col1", "col2"])));
 
         // assert_eq!(
         //     columns(position::Stream::new("id,# name")),
@@ -3983,12 +3854,12 @@ pub mod tests {
             name: "field",
             json_path: None,
         };
-        assert_eq!(field("field"), Ok(( "",result)));
+        assert_eq!(field("field"), Ok(("", result)));
         let result = Field {
             name: "field",
             json_path: Some(vec![JArrow(JKey("key"))]),
         };
-        assert_eq!(field("field->key"), Ok(( "",result)));
+        assert_eq!(field("field->key"), Ok(("", result)));
     }
 
     #[test]
@@ -4000,23 +3871,24 @@ pub mod tests {
                 json_path: Some(vec![JArrow(JKey("key"))]),
             },
         );
-        assert_eq!(tree_path("sub.path.field->key"), Ok(( "",result)));
+        assert_eq!(tree_path("sub.path.field->key"), Ok(("", result)));
         //assert!(false);
     }
 
     #[test]
     fn parse_logic_tree_path() {
-        assert_eq!(logic_tree_path("and"), Ok(( "",(vec![], false, And))));
-        assert_eq!(logic_tree_path("not.or"), Ok(( "",(vec![], true, Or))));
-        assert_eq!(logic_tree_path("sub.path.and"), Ok(( "",(vec!["sub", "path"], false, And))));
-        assert_eq!(logic_tree_path("sub.path.not.or"), Ok(( "",(vec!["sub", "path"], true, Or))));
+        assert_eq!(logic_tree_path("and"), Ok(("", (vec![], false, And))));
+        assert_eq!(logic_tree_path("not.or"), Ok(("", (vec![], true, Or))));
+        assert_eq!(logic_tree_path("sub.path.and"), Ok(("", (vec!["sub", "path"], false, And))));
+        assert_eq!(logic_tree_path("sub.path.not.or"), Ok(("", (vec!["sub", "path"], true, Or))));
     }
 
     #[test]
     fn parse_select_item() {
         assert_eq!(
             select_item("alias:$sum(field)-p(city)-o(city.desc)"),
-            Ok(( "",
+            Ok((
+                "",
                 Item(Func {
                     alias: Some("alias"),
                     fn_name: "sum",
@@ -4037,12 +3909,12 @@ pub mod tests {
                         null_order: None,
                     }],
                 }),
-                
             ))
         );
         assert_eq!(
             select_item("alias:$upper(field, '10')"),
-            Ok(( "",
+            Ok((
+                "",
                 Item(Func {
                     alias: Some("alias"),
                     fn_name: "upper",
@@ -4056,13 +3928,13 @@ pub mod tests {
                     partitions: vec![],
                     orders: vec![],
                 }),
-                
             ))
         );
 
         assert_eq!(
             select_item("alias:column"),
-            Ok(( "",
+            Ok((
+                "",
                 Item(Simple {
                     field: Field {
                         name: "column",
@@ -4071,13 +3943,13 @@ pub mod tests {
                     alias: Some("alias"),
                     cast: None
                 }),
-                
             ))
         );
 
         assert_eq!(
             select_item("column::cast"),
-            Ok(( "",
+            Ok((
+                "",
                 Item(Simple {
                     field: Field {
                         name: "column",
@@ -4086,13 +3958,13 @@ pub mod tests {
                     alias: None,
                     cast: Some("cast")
                 }),
-                
             ))
         );
 
         assert_eq!(
             select_item("alias:column::cast"),
-            Ok(( "",
+            Ok((
+                "",
                 Item(Simple {
                     field: Field {
                         name: "column",
@@ -4101,13 +3973,13 @@ pub mod tests {
                     alias: Some("alias"),
                     cast: Some("cast")
                 }),
-                
             ))
         );
 
         assert_eq!(
             select_item("column"),
-            Ok(( "",
+            Ok((
+                "",
                 Item(Simple {
                     field: Field {
                         name: "column",
@@ -4116,13 +3988,13 @@ pub mod tests {
                     alias: None,
                     cast: None
                 }),
-                
             ))
         );
 
         assert_eq!(
             select_item("table!hint( column0->key, column1 ,  alias2:column2 )"),
-            Ok(( "",
+            Ok((
+                "",
                 Sub(Box::new(SubSelect {
                     query: Query {
                         sub_selects: vec![],
@@ -4170,13 +4042,13 @@ pub mod tests {
                     hint: Some("hint"),
                     join: None
                 })),
-                
             ))
         );
 
         assert_eq!(
             select_item("table.hint ( column0->key, column1 ,  alias2:column2 )"),
-            Ok(( "",
+            Ok((
+                "",
                 Sub(Box::new(SubSelect {
                     query: Query {
                         sub_selects: vec![],
@@ -4224,7 +4096,6 @@ pub mod tests {
                     hint: Some("hint"),
                     join: None
                 })),
-                
             ))
         );
     }
