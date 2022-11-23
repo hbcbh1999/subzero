@@ -8,7 +8,7 @@ use crate::error::{Result, *};
 use crate::config::{VhostConfig, SchemaStructure::*};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, SingleVal, Payload, ListVal},
-    error::{Error, JsonDeserializeSnafu},
+    error::{Error, JsonDeserializeSnafu, JsonSerializeSnafu},
     schema::{DbSchema},
     formatter::{
         Param::*,
@@ -160,6 +160,39 @@ pub struct ClickhouseBackend {
     pool: Pool,
     db_schema: DbSchemaWrap,
 }
+fn replace_json_str(v: &mut JsonValue) -> Result<()> {
+    match v {
+        JsonValue::Object(o) => {
+            if let Some(s) = o.get_mut("check_json_str") {
+                if let Some(ss) = s.as_str() {
+                    let j = serde_json::from_str::<JsonValue>(ss).context(JsonDeserializeSnafu).context(CoreSnafu)?;
+                    *s = JsonValue::Null;
+                    o.insert("check".to_string(), j);
+                }
+                
+            }
+            if let Some(s) = o.get_mut("using_json_str") {
+                if let Some(ss) = s.as_str() {
+                    let j = serde_json::from_str::<JsonValue>(ss).context(JsonDeserializeSnafu).context(CoreSnafu)?;
+                    *s = JsonValue::Null;
+                    o.insert("using".to_string(), j);
+                }
+                
+            }
+            for (_, v) in o {
+                replace_json_str(v)?;
+            }
+            Ok(())
+        }
+        JsonValue::Array(a) => {
+            for v in a {
+                replace_json_str(v)?;
+            }
+            Ok(())
+        }
+        _ => {Ok(())}
+    }
+}
 
 #[async_trait]
 impl Backend for ClickhouseBackend {
@@ -218,7 +251,18 @@ impl Backend for ClickhouseBackend {
                         let _headers = parts.headers;
                         let bytes = hyper::body::to_bytes(body).await.context(HyperSnafu)?;
                         let s = String::from_utf8(bytes.to_vec()).unwrap_or_default();
-                        //println!("json schema:\n{:?}", s);
+                        //println!("json schema original:\n{:?}\n", s);
+                        // clickhouse query returns check_json_str and using_json_str as string
+                        // so we first parse it into a JsonValue and then convert those two fileds into json
+                        let mut v: JsonValue = serde_json::from_str(&s).context(JsonDeserializeSnafu).context(CoreSnafu)?;
+                        //recursivley iterate through the json and convert check_json_str and using_json_str into json
+                       // println!("json value before replace:\n{:?}\n", v);
+                        // recursively iterate through the json and apply the f function
+                        replace_json_str(&mut v)?;
+                        println!("successfully replaced json_str");
+                        let s = serde_json::to_string_pretty(&v).context(JsonSerializeSnafu).context(CoreSnafu)?;
+
+                        println!("json schema repalced:\n{:?}\n", s);
                         //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;
                         //println!("schema {:?}", schema);
                         Ok(DbSchemaWrap::new(s, |s| {

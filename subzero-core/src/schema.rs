@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
 use log::debug;
 use ColumnPermissions::*;
+//use std::borrow::Cow;
 
 pub type Role<'a> = &'a str;
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize, Serialize)]
@@ -34,6 +35,7 @@ impl<'a> Default for ColumnPermissions<'a> {
 pub struct Permissions<'a> {
     #[serde(borrow)]
     pub grants: HashMap<(Role<'a>, Action), ColumnPermissions<'a>>,
+    #[serde(borrow)]
     pub policies: HashMap<(Role<'a>, Action), Vec<Policy<'a>>>,
 }
 
@@ -52,9 +54,10 @@ pub struct Policy<'a> {
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 struct PermissionDef<'a> {
+    #[serde(borrow)]
     pub role: Role<'a>,
 
-    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(borrow, default, skip_serializing_if = "is_default")]
     pub name: Option<&'a str>,
 
     #[serde(default, skip_serializing_if = "is_default", deserialize_with = "deserialize_bool_from_anything")]
@@ -67,14 +70,14 @@ struct PermissionDef<'a> {
     #[serde(default, skip_serializing_if = "is_default")]
     pub using: Option<Vec<Condition<'a>>>,
 
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub check_json_str: Option<&'a str>,
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub using_json_str: Option<&'a str>,
+    // #[serde(default, borrow, skip_serializing_if = "is_default")]
+    // pub check_json_str: Option<Cow<'a, str>>,
+    // #[serde(default, borrow, skip_serializing_if = "is_default")]
+    // pub using_json_str: Option<Cow<'a, str>>,
 
     #[serde(default, skip_serializing_if = "is_default")]
     pub grant: Option<Vec<Action>>,
-    #[serde(default, skip_serializing_if = "is_default")]
+    #[serde(default, borrow, skip_serializing_if = "is_default")]
     pub columns: Option<Vec<&'a str>>,
 }
 
@@ -371,7 +374,7 @@ pub struct Schema<'a> {
     pub name: &'a str,
     #[serde(borrow, deserialize_with = "deserialize_objects")]
     pub objects: BTreeMap<&'a str, Object<'a>>,
-    #[serde(default)]
+    #[serde(borrow, default)]
     join_tables: BTreeMap<(&'a str, &'a str), BTreeSet<&'a str>>,
 }
 
@@ -532,8 +535,8 @@ where
                     }
                     _ => (),
                 }
-                match (p.policy_for, p.check, p.using, p.check_json_str, p.using_json_str) {
-                    (actions, check @ Some(_), using, None, None) | (actions, check, using @ Some(_), None, None) => {
+                match (p.policy_for, p.check, p.using/*, p.check_json_str, p.using_json_str*/) {
+                    (actions, check @ Some(_), using/*, None, None*/) | (actions, check, using @ Some(_)/*, None, None*/) => {
                         let actions_ = match actions {
                             Some(actions) => {
                                 if actions.is_empty() {
@@ -576,58 +579,58 @@ where
                             }
                         }
                     }
-                    //these is custom handling for clickouse where json manipulation is limited
-                    //and check and using are stored as json strings
-                    (actions, None, None, check_str @ Some(_), using_str) | (actions, None, None, check_str, using_str @ Some(_)) => {
-                        let actions_ = match actions {
-                            Some(actions) => {
-                                if actions.is_empty() {
-                                    vec![Action::All]
-                                } else {
-                                    actions
-                                }
-                            }
-                            None => vec![Action::All],
-                        };
-                        let check: Option<Vec<Condition>> = match check_str {
-                            Some(check_str) => Some(serde_json::from_str(check_str).map_err(serde::de::Error::custom)?),
-                            None => None,
-                        };
-                        let using: Option<Vec<Condition>> = match using_str {
-                            Some(using_str) => Some(serde_json::from_str(using_str).map_err(serde::de::Error::custom)?),
-                            None => None,
-                        };
-                        for a in actions_ {
-                            let pols = policies.entry((p.role, a.clone())).or_insert_with(Vec::new);
-                            match (a, &check, &using) {
-                                (Action::Select, _, Some(u)) => pols.push(Policy {
-                                    name: p.name,
-                                    restrictive: p.restrictive,
-                                    check: None,
-                                    using: Some(u.clone()),
-                                }),
-                                (Action::Insert, Some(c), _) => pols.push(Policy {
-                                    name: p.name,
-                                    restrictive: p.restrictive,
-                                    check: Some(c.clone()),
-                                    using: None,
-                                }),
-                                (Action::Update, c, u) | (Action::All, c, u) => pols.push(Policy {
-                                    name: p.name,
-                                    restrictive: p.restrictive,
-                                    check: c.clone(),
-                                    using: u.clone(),
-                                }),
-                                (Action::Delete, _, Some(u)) => pols.push(Policy {
-                                    name: p.name,
-                                    restrictive: p.restrictive,
-                                    check: None,
-                                    using: Some(u.clone()),
-                                }),
-                                _ => (),
-                            }
-                        }
-                    }
+                    //this branch is custom handling for clickouse where json manipulation is limited
+                    //and check and using are returned as json strings
+                    // (actions, None, None, check_str @ Some(_), using_str) | (actions, None, None, check_str, using_str @ Some(_)) => {
+                    //     let actions_ = match actions {
+                    //         Some(actions) => {
+                    //             if actions.is_empty() {
+                    //                 vec![Action::All]
+                    //             } else {
+                    //                 actions
+                    //             }
+                    //         }
+                    //         None => vec![Action::All],
+                    //     };
+                    //     let check: Option<Vec<Condition>> = match check_str {
+                    //         Some(check_str) => Some(serde_json::from_str(&check_str).map_err(serde::de::Error::custom)?),
+                    //         None => None,
+                    //     };
+                    //     let using: Option<Vec<Condition>> = match using_str {
+                    //         Some(using_str) => Some(serde_json::from_str(&using_str).map_err(serde::de::Error::custom)?),
+                    //         None => None,
+                    //     };
+                    //     for a in actions_ {
+                    //         let pols = policies.entry((p.role, a.clone())).or_insert_with(Vec::new);
+                    //         match (a, &check, &using) {
+                    //             (Action::Select, _, Some(u)) => pols.push(Policy {
+                    //                 name: p.name,
+                    //                 restrictive: p.restrictive,
+                    //                 check: None,
+                    //                 using: Some(u.clone()),
+                    //             }),
+                    //             (Action::Insert, Some(c), _) => pols.push(Policy {
+                    //                 name: p.name,
+                    //                 restrictive: p.restrictive,
+                    //                 check: Some(c.clone()),
+                    //                 using: None,
+                    //             }),
+                    //             (Action::Update, c, u) | (Action::All, c, u) => pols.push(Policy {
+                    //                 name: p.name,
+                    //                 restrictive: p.restrictive,
+                    //                 check: c.clone(),
+                    //                 using: u.clone(),
+                    //             }),
+                    //             (Action::Delete, _, Some(u)) => pols.push(Policy {
+                    //                 name: p.name,
+                    //                 restrictive: p.restrictive,
+                    //                 check: None,
+                    //                 using: Some(u.clone()),
+                    //             }),
+                    //             _ => (),
+                    //         }
+                    //     }
+                    // }
                     _ => {}
                 }
             }

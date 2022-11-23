@@ -1,7 +1,9 @@
 //use core::slice::SlicePattern;
 use std::collections::{BTreeSet, HashMap, HashSet, BTreeMap};
 use std::iter::{zip, FromIterator};
+
 use std::borrow::Cow;
+//use std::borrow::Cow::Borrowed;
 //use std::str::EncodeUtf16;
 
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, LogicOperator::*, QueryNode::*, SelectItem::*, SelectKind::*, *};
@@ -17,10 +19,10 @@ use snafu::{OptionExt, ResultExt};
 use nom::{
     Err,
     error::{ParseError, context, ErrorKind, convert_error, VerboseErrorKind},
-    combinator::{peek, recognize, eof, map, map_res, map_opt, opt, value},
+    combinator::{peek, recognize, eof, map, map_res, map_opt, opt, value, },
     sequence::{delimited, terminated, preceded, tuple},
-    bytes::complete::{tag, is_not, is_a, },
-    character::complete::{multispace0, char, alpha1, digit1, one_of,},
+    bytes::complete::{tag, is_not, is_a, take},
+    character::complete::{multispace0, char, alpha1, digit1, one_of, },
     multi::{many1, many0, separated_list1, separated_list0},
     branch::{alt},
 };
@@ -138,12 +140,16 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
                 for (i, v) in row.iter().enumerate() {
                     body.push('"');
                     body.push_str(headers[i]);
-                    body.push_str("\":\"");
+                    body.push_str("\":");
                     match std::str::from_utf8(v).context(Utf8DeserializeSnafu)? {
                         "NULL" => body.push_str("null"),
-                        vv => body.push_str(vv.replace('"', "\\\"").as_str()),
+                        vv => {
+                            body.push('"');
+                            body.push_str(vv.replace('"', "\\\"").as_str());
+                            body.push('"');
+                        },
                     }
-                    body.push_str("\",");
+                    body.push(',');
                 }
                 body.pop();
                 body.push_str("},");
@@ -962,12 +968,31 @@ fn function_name(i: &str) -> Parsed<&str> {
 // )
 // }
 
-fn quoted_value_escaped(i: &str) -> Parsed<Cow<str>> { 
+fn quoted_value_escaped(i: &str) -> Parsed<Cow<str>> {
+    // map(
+    //     preceded(
+    //         char('\"'), 
+    //         cut(terminated(
+    //             escaped_transform(
+    //                 alphanumeric1,
+    //                 '\\',
+    //                 alt((
+    //                     value("\\", tag("\\")),
+    //                     value("\"", tag("\"")),
+    //                     value("\n", tag("n")),
+    //                 ))
+    //             ),
+    //             char('\"')
+    //         ))
+    //     ),
+    //     Cow::Owned
+    // )(i)
     map(delimited(
         char('"'),
         many0(alt((
             is_not("\\\""),
-            map(tag("\\\""),|_| "\""),
+            //map(tag("\\\""),|_| "\""),
+            preceded(char('\\'), take(1usize))
         ))),
         char('"')
     ),|v| Cow::Owned(v.join("")))(i)
@@ -1451,7 +1476,7 @@ fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<
     let (input, v) = alt((
         quoted_value_escaped,
         map(recognize(delimited(char('{'),is_not("{}"), char('}'))),Cow::Borrowed),
-        map(is_not(",) "), Cow::Borrowed),
+        map(is_not(",)"), Cow::Borrowed),
     ))(i)?;
     let v = match data_type {
         Some(dt) => SingleVal(v, Some(Cow::Borrowed(*dt))),
@@ -1470,7 +1495,7 @@ fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<
 // }
 fn list_value<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, ListVal<'a>> {
     let dt = data_type.map(|v| Cow::Owned(format!("Array({})", v))); //TODO!!! this is hardcoded for clickhouse
-    let (input, list) = delimited(char('('), separated_list0(char(','), ws(list_element)), char(')'))(i)?;
+    let (input, list) = delimited(ws(char('(')), separated_list0(ws(char(',')), list_element), ws(char(')')))(i)?;
     Ok((input, ListVal(list, dt)))
 }
 
@@ -1618,7 +1643,7 @@ fn filter_common<'a, 'b>(
             tuple((
                 fts_operator,
                 opt(
-                    delimited(char('('), recognize(many1(alt((alpha1, digit1, tag("_"))))), char(')'))
+                    delimited(ws(char('(')), recognize(many1(alt((alpha1, digit1, tag("_"))))), ws(char(')')))
                 ),
                 char('.'),
                 apply(data_type, p)
@@ -2236,6 +2261,7 @@ fn to_app_error(s: &str, e: nom::Err<nom::error::VerboseError<&str>>) -> Error {
             };
             let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
             let details = convert_error(s, _e);
+            //debug!("Parse error:\n{}", details);
             Error::ParseRequestError { message, details }
         },
         nom::Err::Incomplete(_e) => {
