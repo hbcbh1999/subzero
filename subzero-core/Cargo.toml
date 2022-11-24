@@ -24,3 +24,12 @@ sqlite = []
 [dev-dependencies]
 pretty_assertions = "1.0.0"
 regex = "1.4.6"
+criterion = "0.3"
+
+[lib]
+bench = false
+
+[[bench]]
+name = "my_benchmark"
+harness = false
+

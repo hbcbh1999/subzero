@@ -49,10 +49,10 @@ postgresql = ["subzero-core/postgresql","postgres-types", "tokio-postgres", "dea
 clickhouse = ["subzero-core/clickhouse","subzero-core/sqlite","deadpool", "url", "formdata", "base64"]
 sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
 
-
 [[bin]]
 name = "subzero"
 path = "src/main.rs"
+bench = false
 
 [dev-dependencies]
 pretty_assertions = "1.0.0"
