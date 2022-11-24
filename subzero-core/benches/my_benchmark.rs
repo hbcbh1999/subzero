@@ -2,11 +2,11 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 #[macro_use]
 extern crate lazy_static;
 use std::collections::HashMap;
-use subzero::api::*;
-use subzero::dynamic_statement::generate;
-use subzero::formatter::postgresql::main_query;
-use subzero::parser::postgrest::parse;
-use subzero::schema::*;
+// use subzero_core::api::*;
+//use subzero_core::dynamic_statement::generate;
+use subzero_core::formatter::postgresql::{generate, fmt_main_query};
+use subzero_core::parser::postgrest::parse;
+use subzero_core::schema::*;
 
 pub static JSON_SCHEMA: &str = r#"
                     {
@@ -137,44 +137,47 @@ lazy_static! {
     };
     static ref DB_SCHEMA: DbSchema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
 }
-fn s(s: &str) -> String {
-    s.to_string()
-}
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let emtpy_hashmap = HashMap::new();
+    let emtpy_hashmap0 = HashMap::new();
+    let emtpy_hashmap1 = HashMap::new();
+    let emtpy_hashmap2 = HashMap::new();
+    
     let request = parse(
-        &s("api"),
-        &s("projects"),
+        "api",
+        "projects",
         &DB_SCHEMA,
-        &Method::GET,
-        s("/projects"),
-        &PARAMETERS.to_vec(),
+        "GET",
+        "/projects",
+        PARAMETERS.to_vec(),
         None,
-        &emtpy_hashmap,
-        &emtpy_hashmap,
+        emtpy_hashmap1,
+        emtpy_hashmap2,
         None,
     )
     .unwrap();
     c.bench_function("parse request", |b| {
         b.iter(|| {
             parse(
-                black_box(&s("api")),
-                black_box(&s("projects")),
+                black_box("api"),
+                black_box("projects"),
                 black_box(&DB_SCHEMA),
-                black_box(&Method::GET),
-                black_box(s("/projects")),
-                black_box(&PARAMETERS.to_vec()),
+                black_box("GET"),
+                black_box("/projects"),
+                black_box(PARAMETERS.to_vec()),
                 black_box(None),
-                &emtpy_hashmap,
-                &emtpy_hashmap,
+                HashMap::new(),
+                HashMap::new(),
                 None,
             )
         })
     });
 
     c.bench_function("generate query & prepare statement", |b| {
-        b.iter(|| generate(main_query(black_box(&s("api")), black_box(&request))))
+        b.iter(|| {
+            let q = fmt_main_query(black_box("api"), black_box(&request), &emtpy_hashmap0).unwrap();
+            generate(q)
+        })
     });
 }
 
