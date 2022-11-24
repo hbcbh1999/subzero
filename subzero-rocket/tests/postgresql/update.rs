@@ -35,7 +35,8 @@ describe "Patching record" $ do
       it "fails with 400 and error" $
         request methodPatch "/simple_pk" [] "}{ x = 2"
           shouldRespondWith
-          [json|r#"{"message":"Failed to parse json body: expected value at line 1 column 1"}"#|]
+          //[json|r#"{"message":"Failed to parse json body: expected value at line 1 column 1"}"#|]
+          [json|r#"{"message":"Failed to parse json body"}"#|]
           { matchStatus  = 400,
             matchHeaders = ["Content-Type" <:> "application/json"]
           }
@@ -44,7 +45,8 @@ describe "Patching record" $ do
       it "fails with 400 and error" $
         request methodPatch "/items" [] ""
           shouldRespondWith
-          [json|r#"{"message":"Failed to parse json body: EOF while parsing a value at line 1 column 0"}"#|]
+          //[json|r#"{"message":"Failed to parse json body: EOF while parsing a value at line 1 column 0"}"#|]
+          [json|r#"{"message":"Failed to parse json body"}"#|]
           { matchStatus  = 400,
             matchHeaders = ["Content-Type" <:> "application/json"]
           }

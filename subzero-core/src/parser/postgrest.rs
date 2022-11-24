@@ -18,7 +18,8 @@ use snafu::{OptionExt, ResultExt};
 
 use nom::{
     Err,
-    error::{ParseError, context, ErrorKind, convert_error, VerboseErrorKind},
+    error::{ParseError, context, ErrorKind, VerboseErrorKind, VerboseError},
+    //error::convert_error,
     combinator::{peek, recognize, eof, map, map_res, map_opt, opt, value},
     sequence::{delimited, terminated, preceded, tuple},
     bytes::complete::{tag, is_not, is_a, take},
@@ -26,6 +27,132 @@ use nom::{
     multi::{many1, many0, separated_list1, separated_list0},
     branch::{alt},
 };
+
+/// Useful functions to calculate the offset between slices and show a hexdump of a slice
+pub trait Offset {
+    /// Offset between the first byte of self and the first byte of the argument
+    fn offset(&self, second: &Self) -> usize;
+}
+// impl<'a> Offset for &'a str {
+//     fn offset(&self, second: &Self) -> usize {
+//       let fst = self.as_ptr();
+//       let snd = second.as_ptr();
+
+//       snd as usize - fst as usize
+//     }
+// }
+impl Offset for str {
+    fn offset(&self, second: &Self) -> usize {
+        let fst = self.as_ptr();
+        let snd = second.as_ptr();
+
+        snd as usize - fst as usize
+    }
+}
+
+pub fn convert_error<I: core::ops::Deref<Target = str>>(input: I, e: VerboseError<I>) -> (Vec<usize>, nom::lib::std::string::String) {
+    use nom::lib::std::fmt::Write;
+    //use nom::traits::Offset;
+
+    let mut result = nom::lib::std::string::String::new();
+    let mut offsets = vec![];
+
+    for (i, (substring, kind)) in e.errors.iter().enumerate() {
+        let offset = input.offset(substring);
+
+        if input.is_empty() {
+            offsets.push(offset);
+            match kind {
+                VerboseErrorKind::Char(c) => {
+                    write!(&mut result, "{}: expected '{}', got empty input\n\n", i, c)
+                }
+                
+                VerboseErrorKind::Nom(e) => write!(&mut result, "{}: in {:?}, got empty input\n\n", i, e),
+                VerboseErrorKind::Context(s) => write!(&mut result, "{}: in {}, got empty input\n\n", i, s),
+
+            }
+        } else {
+            let prefix = &input.as_bytes()[..offset];
+
+            // Count the number of newlines in the first `offset` bytes of input
+            let line_number = prefix.iter().filter(|&&b| b == b'\n').count() + 1;
+
+            // Find the line that includes the subslice:
+            // Find the *last* newline before the substring starts
+            let line_begin = prefix.iter().rev().position(|&b| b == b'\n').map(|pos| offset - pos).unwrap_or(0);
+
+            // Find the full line after that newline
+            let line = input[line_begin..].lines().next().unwrap_or(&input[line_begin..]).trim_end();
+
+            // The (1-indexed) column number is the offset of our substring into that line
+            let column_number = line.offset(substring) + 1;
+            offsets.push(column_number);
+            match kind {
+                VerboseErrorKind::Char(c) => {
+                    if let Some(actual) = substring.chars().next() {
+                        write!(
+                            &mut result,
+                            "{i}: at line {line_number}:\n\
+                            {line}\n\
+                            {caret:>column$}\n\
+                            expected '{expected}', found {actual}\n\n",
+                            i = i,
+                            line_number = line_number,
+                            line = line,
+                            caret = '^',
+                            column = column_number,
+                            expected = c,
+                            actual = actual,
+                        )
+                    } else {
+                        write!(
+                            &mut result,
+                            "{i}: at line {line_number}:\n\
+                            {line}\n\
+                            {caret:>column$}\n\
+                            expected '{expected}', got end of input\n\n",
+                            i = i,
+                            line_number = line_number,
+                            line = line,
+                            caret = '^',
+                            column = column_number,
+                            expected = c,
+                        )
+                    }
+                }
+                VerboseErrorKind::Context(s) => write!(
+                    &mut result,
+                    "{i}: at line {line_number}, in {context}:\n\
+                    {line}\n\
+                    {caret:>column$}\n\n",
+                    i = i,
+                    line_number = line_number,
+                    context = s,
+                    line = line,
+                    caret = '^',
+                    column = column_number,
+                ),
+                VerboseErrorKind::Nom(e) => write!(
+                    &mut result,
+                    "{i}: at line {line_number}, in {nom_err:?}:\n\
+                    {line}\n\
+                    {caret:>column$}\n\n",
+                    i = i,
+                    line_number = line_number,
+                    nom_err = e,
+                    line = line,
+                    caret = '^',
+                    column = column_number,
+                ),
+            }
+        }
+        // Because `write!` to a `String` is infallible, this `unwrap` is fine.
+        .unwrap();
+    }
+
+    (offsets, result)
+}
+
 // use nom::IResult;
 type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), Err<E>>;
 type Parsed<'a, T> = IResult<&'a str, T>;
@@ -193,7 +320,9 @@ pub fn parse<'a>(
             //     .map_err(|_| Error::ContentTypeError {
             //         message: format!("None of these Content-Types are available: {}", accept_header),
             //     })?;
-            let (_, act) = context("failed to parse accept header", content_type)(accept_header).map_err(|e| to_app_error(accept_header, e))?;
+            let (_, act) = context("failed to parse accept header", content_type)(accept_header).map_err(|_| Error::ContentTypeError {
+                message: format!("None of these Content-Types are available: {}", accept_header),
+            })?;
             Ok(act)
         }
         None => Ok(ApplicationJSON),
@@ -206,7 +335,9 @@ pub fn parse<'a>(
             //     .map_err(|_| Error::ContentTypeError {
             //         message: format!("None of these Content-Types are available: {}", t),
             //     })?;
-            let (_, act) = context("failed to parse content-type header", content_type)(t).map_err(|e| to_app_error(t, e))?;
+            let (_, act) = context("failed to parse content-type header", content_type)(t).map_err(|_| Error::ContentTypeError {
+                message: format!("None of these Content-Types are available: {}", t),
+            })?;
             Ok(act)
         }
         None => Ok(ApplicationJSON),
@@ -440,7 +571,7 @@ pub fn parse<'a>(
             let all_params: HashSet<&str> = HashSet::from_iter(parameters.iter().map(|p| p.name));
             let (parameter_values, params) = match (method, _body) {
                 ("GET", None) => {
-                    let mut args: HashMap<&str, JsonValue> = HashMap::new();
+                    let mut args: BTreeMap<&str, JsonValue> = BTreeMap::new();
                     for (n, v) in fn_arguments {
                         if let Some(&p) = parameters_map.get(n) {
                             if p.variadic {
@@ -505,7 +636,7 @@ pub fn parse<'a>(
                     let params = match (parameters.len(), parameters.get(0)) {
                         (1, Some(p)) if p.name.is_empty() && (p.type_ == "json" || p.type_ == "jsonb") => CallParams::OnePosParam(p.clone()),
                         _ => {
-                            let json_payload: HashMap<&str, &JsonRawValue> = match (payload.len(), content_type) {
+                            let json_payload: BTreeMap<&str, &JsonRawValue> = match (payload.len(), content_type) {
                                 (0, _) => serde_json::from_str("{}").context(JsonDeserializeSnafu),
                                 (_, _) => serde_json::from_str(payload).context(JsonDeserializeSnafu),
                             }?;
@@ -2228,19 +2359,22 @@ fn to_app_error(s: &str, e: nom::Err<nom::error::VerboseError<&str>>) -> Error {
     //     .to_string();
     match e {
         nom::Err::Error(_e) | nom::Err::Failure(_e) => {
+            //println!("Raw error:\n{:?}", &_e);
             let m = _e
                 .errors
                 .iter()
                 .filter(|(_, v)| matches!(v, VerboseErrorKind::Context(_)))
                 .collect::<Vec<_>>();
-            let position = 0;
             let message = match m.as_slice() {
                 [(_, VerboseErrorKind::Context(s))] => s,
                 _ => "",
             };
-            let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
-            let details = convert_error(s, _e);
-            //debug!("Parse error:\n{}", details);
+            let (offsets, details) = convert_error(s, _e);
+            let position = offsets.first().unwrap_or(&0usize);
+            let message = format!("\"{} ({})\" (line 1, column {})", message, s, position);
+            //let details = details.replace('\n', " ").trim().to_string();
+            //println!("Parse error:\n{}", details);
+            
             Error::ParseRequestError { message, details }
         }
         nom::Err::Incomplete(_e) => {
@@ -2865,7 +2999,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Err(AppError::ParseRequestError {
-                message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
+                message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 3)"),
                 //details: s("Unexpected `,` Unexpected `i` Expected letter, digit, `_` or ` `")
                 details: s("0: at line 1, in Eof:\nid-,na$me\n  ^\n\n1: at line 1, in failed to parse select parameter:\nid-,na$me\n^\n\n")
             })
@@ -3099,7 +3233,7 @@ pub mod tests {
             )
             .map_err(|e| format!("{}", e)),
             Err(AppError::ParseRequestError {
-                message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 4)"),
+                message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 3)"),
                 //details: s("Unexpected `,` Unexpected `i` Expected letter, digit, `_` or ` `")
                 details: s("0: at line 1, in Eof:\nid-,na$me\n  ^\n\n1: at line 1, in failed to parse select parameter:\nid-,na$me\n^\n\n")
             })
@@ -3543,7 +3677,7 @@ pub mod tests {
             ))
         );
         assert_eq!(
-            logic_condition(None, None, "not.or ( id.gte.5, id.lte.10, and(id.gte.2 , id.lte.4))"),
+            logic_condition(None, None, "not.or ( id.gte.5, id.lte.10, and(id.gte.2, id.lte.4))"),
             Ok((
                 "",
                 Condition::Group {

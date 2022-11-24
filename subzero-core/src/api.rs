@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize, Deserializer, Serializer, ser::SerializeStruct, ser::SerializeSeq};
 use std::borrow::Cow;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque, BTreeMap};
 use serde_json::Value as JsonValue;
 //use serde_json::value::RawValue as JsonRawValue;
 use crate::error::Result;
@@ -340,7 +340,7 @@ impl<'a> IntoIterator for Query<'a> {
 // }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ParamValues<'a> {
-    Parsed(HashMap<&'a str, JsonValue>),
+    Parsed(BTreeMap<&'a str, JsonValue>),
     Raw(&'a str),
 }
 #[derive(Debug, Clone, PartialEq, Eq)]

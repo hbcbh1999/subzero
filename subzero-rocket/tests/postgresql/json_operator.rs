@@ -238,16 +238,19 @@ feature "json operators"
         // [json|
         //   r#"{"details": "unexpected 'x' expecting digit, \"->\", \"::\" or end of input",
         //   "message": "\"failed to parse select parameter (data->>-78xy)\" (line 1, column 11)"}"# |]
-        [json|r#"{"details":"Unexpected `x` Unexpected `-` Unexpected `d` Expected digit, ->, ::, ., ,, end of input, -, `\"`, letter, `_` or ` `","message":"\"failed to parse select parameter (data->>-78xy)\" (line 1, column 11)"}"#|]
+        [json|r#"{"details":"0: at line 1, in Eof:\ndata->>-78xy\n    ^\n\n1: at line 1, in failed to parse select parameter:\ndata->>-78xy\n^\n\n","message":"\"failed to parse select parameter (data->>-78xy)\" (line 1, column 5)"}"#|]
         { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
       get "/json_arr?select=data->>--34" shouldRespondWith
-        [json|r#"{"details":"Unexpected `-` Unexpected `d` Expected digit, -, `\"`, letter, `_` or ` `","message":"\"failed to parse select parameter (data->>--34)\" (line 1, column 9)"}"# |]
+        [json|r#"{"details":"0: at line 1, in Eof:\ndata->>--34\n    ^\n\n1: at line 1, in failed to parse select parameter:\ndata->>--34\n^\n\n","message":"\"failed to parse select parameter (data->>--34)\" (line 1, column 5)"}"# |]
         { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
       get "/json_arr?select=data->>-xy-4" shouldRespondWith
         // [json|
         //   r#"{"details":"unexpected \"x\" expecting digit",
         //   "message":"\"failed to parse select parameter (data->>-xy-4)\" (line 1, column 9)"}"# |]
-        [json|r#"{"details":"Unexpected `x` Unexpected `-` Unexpected `d` Expected digit, -, `\"`, letter, `_` or ` `","message":"\"failed to parse select parameter (data->>-xy-4)\" (line 1, column 9)"}"#|]
+        [json|r#"{
+          "details":"0: at line 1, in Eof:\ndata->>-xy-4\n    ^\n\n1: at line 1, in failed to parse select parameter:\ndata->>-xy-4\n^\n\n",
+          "message":"\"failed to parse select parameter (data->>-xy-4)\" (line 1, column 5)"
+        }"#|]
         { matchStatus = 400, matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "obtains a composite type field" $ do
