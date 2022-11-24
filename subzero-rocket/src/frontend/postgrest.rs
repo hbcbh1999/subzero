@@ -3,6 +3,7 @@ use jsonpath_lib::select;
 use jsonwebtoken::{decode, errors::ErrorKind, DecodingKey, Validation};
 use serde_json::{from_value, Value as JsonValue};
 use snafu::ResultExt;
+use std::borrow::Cow;
 
 #[cfg(feature = "sqlite")]
 use tokio::task;
@@ -49,40 +50,40 @@ fn get_current_timestamp() -> u64 {
 //     }
 // }
 
-fn get_env(role: Option<&str>, request: &ApiRequest, jwt_claims: &Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<String, String> {
-    let mut env = HashMap::new();
+fn get_env<'a>(role: Option<&'a str>, request: &'a ApiRequest, jwt_claims: &'a Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<Cow<'a, str>, Cow<'a, str>> {
+    let mut env:HashMap<Cow<'a, str>, Cow<'a, str>> = HashMap::new();
     let search_path = &[String::from(request.schema_name)];
     if let Some(r) = role {
-        env.insert("role".to_string(), r.to_string());
+        env.insert("role".into(), r.into());
     }
 
-    env.insert("request.method".to_string(), request.method.to_string());
-    env.insert("request.path".to_string(), request.path.to_string());
+    env.insert("request.method".into(),request.method.into());
+    env.insert("request.path".into(), request.path.into());
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
 
-    env.insert("search_path".to_string(), search_path.join(", "));
+    env.insert("search_path".into(), search_path.join(", ").into());
     if use_legacy_gucs {
         if let Some(r) = role {
-            env.insert("request.jwt.claim.role".to_string(), r.to_string());
+            env.insert("request.jwt.claim.role".into(), r.into());
         }
 
         env.extend(
             request
                 .headers
                 .iter()
-                .map(|(k, v)| (format!("request.header.{}", k.to_lowercase()), v.to_string())),
+                .map(|(k, &v)| (format!("request.header.{}", k.to_lowercase()).into(), v.into())),
         );
-        env.extend(request.cookies.iter().map(|(k, v)| (format!("request.cookie.{}", k), v.to_string())));
-        env.extend(request.get.iter().map(|(k, v)| (format!("request.get.{}", k), v.to_string())));
+        env.extend(request.cookies.iter().map(|(&k, &v)| (format!("request.cookie.{}", k).into(), v.into())));
+        env.extend(request.get.iter().map(|&(k, v)| (format!("request.get.{}", k).into(), v.into())));
         match jwt_claims {
             Some(v) => {
                 if let Some(claims) = v.as_object() {
                     env.extend(claims.iter().map(|(k, v)| {
                         (
-                            format!("request.jwt.claim.{}", k),
+                            format!("request.jwt.claim.{}", k).into(),
                             match v {
-                                JsonValue::String(s) => s.clone(),
-                                _ => format!("{}", v),
+                                JsonValue::String(s) => s.into(),
+                                _ => format!("{}", v).into(),
                             },
                         )
                     }));
@@ -92,21 +93,21 @@ fn get_env(role: Option<&str>, request: &ApiRequest, jwt_claims: &Option<JsonVal
         }
     } else {
         env.insert(
-            "request.headers".to_string(),
-            serde_json::to_string(&request.headers.iter().map(|(k, v)| (k.to_lowercase(), v.to_string())).collect::<Vec<_>>()).unwrap(),
+            "request.headers".into(),
+            serde_json::to_string(&request.headers.iter().map(|(k, v)| (k.to_lowercase(), v)).collect::<Vec<_>>()).unwrap().into(),
         );
         env.insert(
-            "request.cookies".to_string(),
-            serde_json::to_string(&request.cookies.iter().map(|(k, v)| (k, v.to_string())).collect::<Vec<_>>()).unwrap(),
+            "request.cookies".into(),
+            serde_json::to_string(&request.cookies.iter().map(|(k, v)| (k, v)).collect::<Vec<_>>()).unwrap().into(),
         );
         env.insert(
-            "request.get".to_string(),
-            serde_json::to_string(&request.get.iter().map(|(k, v)| (k, v.to_string())).collect::<Vec<_>>()).unwrap(),
+            "request.get".into(),
+            serde_json::to_string(&request.get.iter().map(|(k, v)| (k, v)).collect::<Vec<_>>()).unwrap().into(),
         );
         match jwt_claims {
             Some(v) => {
                 if let Some(claims) = v.as_object() {
-                    env.insert("request.jwt.claims".to_string(), serde_json::to_string(&claims).unwrap());
+                    env.insert("request.jwt.claims".into(), serde_json::to_string(&claims).unwrap().into());
                 }
             }
             None => {}
@@ -236,7 +237,7 @@ pub async fn handle<'a>(
     let env_role = if db_schema.use_internal_permissions { None } else { Some(role) };
 
     let _env = get_env(env_role, &request, &jwt_claims, config.db_use_legacy_gucs);
-    let env = _env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect::<HashMap<_, _>>();
+    let env = _env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect::<HashMap<_, _>>();
 
     let response: ApiResponse = match config.db_type.as_str() {
         #[cfg(feature = "postgresql")]
