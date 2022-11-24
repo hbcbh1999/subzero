@@ -242,13 +242,13 @@ pub fn fmt_query<'a>(
 fn fmt_condition_tree<'a, 'b>(qi: &'b Qi<'b>, t: &'a ConditionTree) -> Result<Snippet<'a>> {
     let ConditionTree { operator, conditions } = t;
     {
-        let sep = format!(" {} ", fmt_logic_operator(operator));
+        let sep = fmt_logic_operator(operator);
         Ok(conditions
             .iter()
             .filter(|c| !matches!(c, Single { filter: Col(_, _), .. } | Foreign { .. }))
             .map(|c| fmt_condition(qi, c))
             .collect::<Result<Vec<_>>>()?
-            .join(sep.as_str()))
+            .join(sep))
     }
 }
 fmt_condition!();
@@ -308,7 +308,7 @@ fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect
                 .iter()
                 .filter(|c| matches!(c, Single { filter: Col(_, _), .. } | Foreign { .. }))
                 .collect::<Vec<_>>(),
-            format!(" {} ", fmt_logic_operator(operator)),
+            fmt_logic_operator(operator),
         );
 
         match j {
@@ -351,7 +351,7 @@ fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect
                                 .iter()
                                 .map(|c| fmt_condition(&Qi("", local_table_name), c))
                                 .collect::<Result<Vec<_>>>()?
-                                .join(join_separator.as_str()),
+                                .join(join_separator),
                     ],
                 ))
             }
@@ -391,7 +391,7 @@ fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect
                                 .iter()
                                 .map(|c| fmt_condition(&Qi("", local_table_name), c))
                                 .collect::<Result<Vec<_>>>()?
-                                .join(join_separator.as_str()),
+                                .join(join_separator),
                     ],
                 ))
             }
