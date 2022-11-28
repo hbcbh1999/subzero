@@ -2,7 +2,7 @@
 members = [
     "subzero-core",
     "subzero-rocket",
-    # "subzero-wasm",
+    "subzero-wasm",
 ]
 
 [patch.crates-io]
