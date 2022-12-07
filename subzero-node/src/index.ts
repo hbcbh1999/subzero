@@ -4,8 +4,6 @@ import {default as clickhouse_introspection_query } from '../introspection/click
 
 import { default as wasmbin } from '../../subzero-wasm/pkg/subzero_wasm_bg.wasm'
 import /*init, */{ initSync, Backend } from '../../subzero-wasm/pkg/subzero_wasm.js'
-import type { Request as SubzeroRequest } from '../../subzero-wasm/pkg/subzero_wasm.js'
-export type { Request } from '../../subzero-wasm/pkg/subzero_wasm.js'
 import type { IncomingMessage } from 'http'
 import type { NextApiRequest } from 'next'
 import type { Request as ExpressRequest } from 'express'
@@ -27,6 +25,7 @@ export type DbType = 'postgresql' | 'sqlite' | 'clickhouse'
 export type Query = string
 export type Parameters = (string | number | boolean | null | (string | number | boolean | null)[])[]
 export type Statement = { query: Query, parameters: Parameters }
+
 export type GetParameters = [string, string][]
 export type Method = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
 export type Body = string | undefined
@@ -55,9 +54,6 @@ export class SubzeroError extends Error {
   }
 }
 
-// export async function init_wasm() {
-//   await init()
-// }
 function toSubzeroError(err: any) {
   let wasm_err: string = err.message
   try {
@@ -68,12 +64,58 @@ function toSubzeroError(err: any) {
   }
 }
 
+export class SqliteTwoStepStatement {
+  private mutate: Statement
+  private select: Statement
+  private ids?: string[]
+  constructor(mutate: Statement, select: Statement) {
+    this.mutate = mutate
+    this.select = select
+  }
+
+  fmtMutateStatement(): Statement {
+    return this.mutate
+  }
+
+  fmtSelectStatement(): Statement {
+    // check the ids are set
+    if (!this.ids) {
+      throw new Error('ids of the mutated rows are not set')
+    }
+    let { query, parameters } = this.select
+    let placeholder = '["_subzero_ids_placeholder_"]'
+    // replace placeholder with the actual ids in json format
+    parameters.forEach((p, i) => {
+      if (p == placeholder) {
+        parameters[i] = JSON.stringify(this.ids)
+      }
+    })
+    return { query, parameters }
+  }
+
+  setMutatedRows(rows: any[]) {
+    const constraints_satisfied = rows.every((r) => r['_subzero_check__constraint'] == 1)
+    if (constraints_satisfied) {
+      let idColumnName = rows[0] ? Object.keys(rows[0])[0] : ''
+      const ids = rows.map((r) => r[idColumnName].toString())
+      this.ids = ids
+    }
+    else {
+        throw new SubzeroError('Permission denied', 403, 'check constraint of an insert/update permission has failed')
+    }
+  }
+}
+
 export class Subzero {
   private backend: Backend
+  private dbType: DbType
+  private allowed_select_functions?: string[]
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(dbType: DbType, schema: any, allowed_select_functions?: string[]) {
     try {
+      this.dbType = dbType
+      this.allowed_select_functions = allowed_select_functions
       this.backend = Backend.init(JSON.stringify(schema), dbType, allowed_select_functions)
     } catch (e:any) {
       throw toSubzeroError(e)
@@ -82,12 +124,13 @@ export class Subzero {
 
   setSchema(schema: any) {
     try {
-      this.backend.set_schema(JSON.stringify(schema))
+      this.backend = Backend.init(JSON.stringify(schema), this.dbType, this.allowed_select_functions)
     } catch (e: any) {
       throw toSubzeroError(e)
     }
   }
-  async parse(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest, maxRows?: number): Promise<SubzeroRequest> {
+
+  private async normalizeRequest(request: SubzeroHttpRequest): Promise<void> {
     // try to accomodate for different request types
 
     if (request instanceof Request) {
@@ -118,54 +161,58 @@ export class Subzero {
         }
       }
     }
+  }
 
+  async fmtStatement(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest,  env: Env, maxRows?: number,): Promise<Statement> {
     try {
-      return this.backend.parse(
-        schemaName,
-        request.parsedUrl.pathname.substring(urlPrefix.length), // entity
-        request.method || 'GET', // method
-        request.parsedUrl.pathname, // path
-        request.parsedUrl.searchParams, // get
-        request.textBody !== undefined ? request.textBody : (request.body || ''), // body
-        role,
-        request.headersSequence,
-        [], // cookies
-        maxRows,
+      await this.normalizeRequest(request);
+      let parsedUrl = request.parsedUrl || new URL('');
+      let maxRowsStr = maxRows !== undefined ? maxRows.toString() : undefined;
+      
+      const [query, parameters] = this.backend.fmt_main_query(
+            schemaName,
+            parsedUrl.pathname.substring(urlPrefix.length) || '', // entity
+            request.method || 'GET', // method
+            parsedUrl.pathname, // path
+            parsedUrl.searchParams, // get
+            request.textBody !== undefined ? request.textBody : (request.body || ''), // body
+            role,
+            request.headersSequence,
+            [], //cookies
+            env,
+            maxRowsStr
       )
-    } catch (e: any) {
-      throw toSubzeroError(e)
-    }
-  }
-
-  fmtMainQuery(request: SubzeroRequest, env: Env): Statement {
-    try {
-      const [query, parameters] = this.backend.fmt_main_query(request, env)
-      //const query = _query.replaceAll('rarray(', 'carray(')
       return { query, parameters }
     } catch (e: any) {
       throw toSubzeroError(e)
     }
   }
 
-  fmtSqliteMutateQuery(request: SubzeroRequest, env: Env): Statement {
+  async fmtSqliteTwoStepStatement(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest,  env: Env, maxRows?: number,): Promise<SqliteTwoStepStatement> {
     try {
-      const [query, parameters] = this.backend.fmt_sqlite_mutate_query(request, env)
-      //const query = _query.replaceAll('rarray(', 'carray(')
-      return { query, parameters }
+      await this.normalizeRequest(request);
+      let parsedUrl = request.parsedUrl || new URL('');
+      let maxRowsStr = maxRows !== undefined ? maxRows.toString() : undefined;
+      
+      const [mutate_query, mutate_parameters, select_query, select_parameters] = this.backend.fmt_sqlite_two_stage_query(
+            schemaName,
+            parsedUrl.pathname.substring(urlPrefix.length) || '', // entity
+            request.method || 'GET', // method
+            parsedUrl.pathname, // path
+            parsedUrl.searchParams, // get
+            request.textBody !== undefined ? request.textBody : (request.body || ''), // body
+            role,
+            request.headersSequence,
+            [], //cookies
+            env,
+            maxRowsStr
+      )
+      return new SqliteTwoStepStatement({ query: mutate_query, parameters: mutate_parameters }, { query: select_query, parameters: select_parameters })
     } catch (e: any) {
       throw toSubzeroError(e)
     }
   }
 
-  fmtSqliteSecondStageSelect(request: SubzeroRequest, ids: string[], env: Env): Statement {
-    try {
-      const [query, parameters] = this.backend.fmt_sqlite_second_stage_select(request, ids, env)
-      //const query = _query.replaceAll('rarray(', 'carray(')
-      return { query, parameters }
-    } catch (e: any) {
-      throw toSubzeroError(e)
-    }
-  }
 }
 
 export function getRawIntrospectionQuery(dbType: DbType): Query {

@@ -8,7 +8,7 @@ use crate::error::{Result, *};
 use crate::config::{VhostConfig, SchemaStructure::*};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, SingleVal, Payload, ListVal},
-    error::{Error, JsonDeserializeSnafu},
+    error::{Error, JsonDeserializeSnafu, JsonSerializeSnafu},
     schema::{DbSchema},
     formatter::{
         Param::*,
@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use http::Error as HttpError;
 // use log::{debug};
-use super::{Backend, include_files};
+use super::{Backend, DbSchemaWrap, include_files};
 
 use std::{fs};
 use std::path::Path;
@@ -54,8 +54,8 @@ impl managed::Manager for Manager {
     async fn recycle(&self, _: &mut HttpClient) -> managed::RecycleResult<HttpError> { Ok(()) }
 }
 
-async fn execute<'a>(
-    pool: &'a Pool, _authenticated: bool, request: &ApiRequest<'a>, env: &'a HashMap<&str, &str>, _config: &VhostConfig,
+async fn execute(
+    pool: &Pool, _authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, _config: &VhostConfig,
 ) -> Result<ApiResponse> {
     let o = pool.get().await.unwrap(); //.context(ClickhouseDbPoolError)?;
     let uri = &o.0;
@@ -69,7 +69,8 @@ async fn execute<'a>(
             SV(SingleVal(v, _)) => v.to_string(),
             LV(ListVal(v, _)) => format!("[{}]", v.join(",")),
             PL(Payload(v, _)) => v.to_string(),
-            TV(v) => v.to_string(),
+            StrOwned(v) => v.clone(),
+            Str(v) => v.to_string(),
         };
         parameters.push((format!("param_p{}", k + 1), p));
     }
@@ -157,7 +158,38 @@ async fn execute<'a>(
 pub struct ClickhouseBackend {
     config: VhostConfig,
     pool: Pool,
-    db_schema: DbSchema,
+    db_schema: DbSchemaWrap,
+}
+fn replace_json_str(v: &mut JsonValue) -> Result<()> {
+    match v {
+        JsonValue::Object(o) => {
+            if let Some(s) = o.get_mut("check_json_str") {
+                if let Some(ss) = s.as_str() {
+                    let j = serde_json::from_str::<JsonValue>(ss).context(JsonDeserializeSnafu).context(CoreSnafu)?;
+                    *s = JsonValue::Null;
+                    o.insert("check".to_string(), j);
+                }
+            }
+            if let Some(s) = o.get_mut("using_json_str") {
+                if let Some(ss) = s.as_str() {
+                    let j = serde_json::from_str::<JsonValue>(ss).context(JsonDeserializeSnafu).context(CoreSnafu)?;
+                    *s = JsonValue::Null;
+                    o.insert("using".to_string(), j);
+                }
+            }
+            for (_, v) in o {
+                replace_json_str(v)?;
+            }
+            Ok(())
+        }
+        JsonValue::Array(a) => {
+            for v in a {
+                replace_json_str(v)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 #[async_trait]
@@ -168,12 +200,12 @@ impl Backend for ClickhouseBackend {
         let pool = Pool::builder(mgr).max_size(config.db_pool).build().unwrap();
 
         //read db schema
-        let db_schema = match &config.db_schema_structure {
+        let db_schema: DbSchemaWrap = match config.db_schema_structure.clone() {
             SqlFile(f) => match fs::read_to_string(
-                vec![f, &format!("clickhouse_{}", f)]
+                vec![&f, &format!("clickhouse_{}", f)]
                     .into_iter()
                     .find(|f| Path::new(f).exists())
-                    .unwrap_or(f),
+                    .unwrap_or(&f),
             ) {
                 Ok(q) => match pool.get().await {
                     Ok(o) => {
@@ -217,31 +249,55 @@ impl Backend for ClickhouseBackend {
                         let _headers = parts.headers;
                         let bytes = hyper::body::to_bytes(body).await.context(HyperSnafu)?;
                         let s = String::from_utf8(bytes.to_vec()).unwrap_or_default();
-                        //println!("json schema:\n{:?}", s);
+                        //println!("json schema original:\n{:?}\n", s);
+                        // clickhouse query returns check_json_str and using_json_str as string
+                        // so we first parse it into a JsonValue and then convert those two fileds into json
+                        let mut v: JsonValue = serde_json::from_str(&s).context(JsonDeserializeSnafu).context(CoreSnafu)?;
+                        //recursivley iterate through the json and convert check_json_str and using_json_str into json
+                        // println!("json value before replace:\n{:?}\n", v);
+                        // recursively iterate through the json and apply the f function
+                        replace_json_str(&mut v)?;
+                        println!("successfully replaced json_str");
+                        let s = serde_json::to_string_pretty(&v).context(JsonSerializeSnafu).context(CoreSnafu)?;
+
+                        println!("json schema repalced:\n{:?}\n", s);
                         //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;
                         //println!("schema {:?}", schema);
-                        serde_json::from_str::<DbSchema>(&s).context(JsonDeserializeSnafu).context(CoreSnafu)
+                        Ok(DbSchemaWrap::new(s, |s| {
+                            serde_json::from_str::<DbSchema>(s.as_str())
+                                .context(JsonDeserializeSnafu)
+                                .context(CoreSnafu)
+                        }))
                     }
                     Err(e) => Err(e).context(ClickhouseDbPoolSnafu),
                 },
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str())
-                    .context(JsonDeserializeSnafu)
-                    .context(CoreSnafu),
+            JsonFile(f) => match fs::read_to_string(&f) {
+                Ok(s) => Ok(DbSchemaWrap::new(s, |s| {
+                    serde_json::from_str::<DbSchema>(s.as_str())
+                        .context(JsonDeserializeSnafu)
+                        .context(CoreSnafu)
+                })),
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str())
-                .context(JsonDeserializeSnafu)
-                .context(CoreSnafu),
+            JsonString(s) => Ok(DbSchemaWrap::new(s, |s| {
+                serde_json::from_str::<DbSchema>(s.as_str())
+                    .context(JsonDeserializeSnafu)
+                    .context(CoreSnafu)
+            })),
         }?;
+
+        if let Err(e) = db_schema.with_schema(|s| s.as_ref()) {
+            let message = format!("Backend init failed: {}", e);
+            return Err(crate::Error::Internal { message });
+        }
 
         Ok(ClickhouseBackend { config, pool, db_schema })
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
         execute(&self.pool, authenticated, request, env, &self.config).await
     }
-    fn db_schema(&self) -> &DbSchema { &self.db_schema }
+    fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
     fn config(&self) -> &VhostConfig { &self.config }
 }

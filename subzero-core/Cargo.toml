@@ -6,11 +6,12 @@ autobenches = false
 
 [dependencies]
 log = "0.4.14"
-combine = { version = "4.6.4", features = ["std"], default-features = false }
+# combine = { version = "4.6.4", features = ["std"], default-features = false }
+nom = "7.1.1"
 # combine = { git = "https://github.com/ruslantalpa/combine.git", rev = "8333260", default-features = false, features = ["std"] }
 lazy_static = "1.4.0"
 serde = { version = "1.0", features = ["derive"], default-features = false }
-serde_json = "1.0.68"
+serde_json = { version = "1.0", features = ["raw_value"] }
 csv = "1.1.6"
 snafu = "0.7.3"
 
@@ -31,3 +32,4 @@ bench = false
 [[bench]]
 name = "my_benchmark"
 harness = false
+

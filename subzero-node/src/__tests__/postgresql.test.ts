@@ -83,21 +83,29 @@ function normalize_statement(s: Statement) {
 const base_url = 'http://localhost:3000/rest';
 const subzero = new Subzero('postgresql', schema);
 test('main query', async () => {
-  const request = await subzero.parse(
-    'public',
-    '/rest/',
-    'anonymous',
-    new Request(`${base_url}/tasks?id=eq.1`, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-      },
-    }),
-  );
+  // const request = await subzero.parse(
+  //   'public',
+  //   '/rest/',
+  //   'anonymous',
+  //   new Request(`${base_url}/tasks?id=eq.1`, {
+  //     method: 'GET',
+  //     headers: {
+  //       Accept: 'application/json',
+  //     },
+  //   }),
+  // );
   expect(
     normalize_statement(
-      subzero.fmtMainQuery(
-        request,
+      await subzero.fmtStatement(
+        'public',
+        '/rest/',
+        'anonymous',
+        new Request(`${base_url}/tasks?id=eq.1`, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+        }),
         [
           ['role', 'admin'],
           ['request', '{"method":"GET"}'],

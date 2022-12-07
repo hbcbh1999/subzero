@@ -8,6 +8,7 @@ autobenches = false
 [dependencies]
 # log = "0.4.14"
 # env_logger = "0.9.0"
+ouroboros = "0.15"
 serde = "1.0"
 serde_json = "1.0.68"
 bytes = "1.1.0"
@@ -47,7 +48,6 @@ all = ["postgresql", "sqlite", "clickhouse"]
 postgresql = ["subzero-core/postgresql","postgres-types", "tokio-postgres", "deadpool-postgres", "postgres-openssl", "openssl"]
 clickhouse = ["subzero-core/clickhouse","subzero-core/sqlite","deadpool", "url", "formdata", "base64"]
 sqlite = ["rusqlite", "r2d2", "r2d2_sqlite"]
-
 
 [[bin]]
 name = "subzero"

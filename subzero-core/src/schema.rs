@@ -1,4 +1,4 @@
-use crate::api::{ForeignKey, Join, Join::*, ProcParam, Qi, ColumnName, Condition};
+use crate::api::{ForeignKey, Join, Join::*, ProcParam, Qi, Condition};
 use crate::error::*;
 use serde::{Deserialize, Deserializer, Serialize};
 use snafu::OptionExt;
@@ -6,8 +6,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
 use log::debug;
 use ColumnPermissions::*;
+//use std::borrow::Cow;
 
-pub type Role = String;
+pub type Role<'a> = &'a str;
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Action {
@@ -21,70 +22,74 @@ pub enum Action {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub enum ColumnPermissions {
+pub enum ColumnPermissions<'a> {
     All,
-    Specific(Vec<ColumnName>),
+    #[serde(borrow)]
+    Specific(Vec<&'a str>),
 }
-impl Default for ColumnPermissions {
+impl<'a> Default for ColumnPermissions<'a> {
     fn default() -> Self { ColumnPermissions::All }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
-pub struct Permissions {
-    pub grants: HashMap<(Role, Action), ColumnPermissions>,
-    pub policies: HashMap<(Role, Action), Vec<Policy>>,
+pub struct Permissions<'a> {
+    #[serde(borrow)]
+    pub grants: HashMap<(Role<'a>, Action), ColumnPermissions<'a>>,
+    #[serde(borrow)]
+    pub policies: HashMap<(Role<'a>, Action), Vec<Policy<'a>>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
-pub struct Policy {
+pub struct Policy<'a> {
     //#[serde(default, skip_serializing_if = "is_default")]
-    pub name: Option<String>,
+    pub name: Option<&'a str>,
     //#[serde(default, skip_serializing_if = "is_default")]
     pub restrictive: bool,
     //#[serde(default, skip_serializing_if = "is_default")]
-    pub using: Option<Vec<Condition>>,
+    #[serde(borrow)]
+    pub using: Option<Vec<Condition<'a>>>,
     //#[serde(default, skip_serializing_if = "is_default")]
-    pub check: Option<Vec<Condition>>,
+    pub check: Option<Vec<Condition<'a>>>,
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
-struct PermissionDef {
-    pub role: Role,
+struct PermissionDef<'a> {
+    #[serde(borrow)]
+    pub role: Role<'a>,
 
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub name: Option<String>,
+    #[serde(borrow, default, skip_serializing_if = "is_default")]
+    pub name: Option<&'a str>,
 
     #[serde(default, skip_serializing_if = "is_default", deserialize_with = "deserialize_bool_from_anything")]
     pub restrictive: bool,
 
     #[serde(default, skip_serializing_if = "is_default")]
     pub policy_for: Option<Vec<Action>>,
+    #[serde(default, borrow, skip_serializing_if = "is_default")]
+    pub check: Option<Vec<Condition<'a>>>,
     #[serde(default, skip_serializing_if = "is_default")]
-    pub check: Option<Vec<Condition>>,
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub using: Option<Vec<Condition>>,
+    pub using: Option<Vec<Condition<'a>>>,
 
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub check_json_str: Option<String>,
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub using_json_str: Option<String>,
-
+    // #[serde(default, borrow, skip_serializing_if = "is_default")]
+    // pub check_json_str: Option<Cow<'a, str>>,
+    // #[serde(default, borrow, skip_serializing_if = "is_default")]
+    // pub using_json_str: Option<Cow<'a, str>>,
     #[serde(default, skip_serializing_if = "is_default")]
     pub grant: Option<Vec<Action>>,
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub columns: Option<Vec<ColumnName>>,
+    #[serde(default, borrow, skip_serializing_if = "is_default")]
+    pub columns: Option<Vec<&'a str>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
-pub struct DbSchema {
+pub struct DbSchema<'a> {
     #[serde(default, deserialize_with = "deserialize_bool_from_anything")]
     pub use_internal_permissions: bool,
-    #[serde(deserialize_with = "deserialize_schemas")]
-    pub schemas: HashMap<String, Schema>,
+    #[serde(borrow, deserialize_with = "deserialize_schemas")]
+    pub schemas: HashMap<&'a str, Schema<'a>>,
 }
 
-impl DbSchema {
-    pub fn get_join(&self, current_schema: &String, origin: &String, target: &String, hint: &Option<String>) -> Result<Join> {
+impl<'a> DbSchema<'a> {
+    pub fn get_join(&self, current_schema: &'a str, origin: &'a str, target: &'a str, hint: &Option<&'a str>) -> Result<Join> {
         let schema = self.schemas.get(current_schema).context(UnacceptableSchemaSnafu {
             schemas: vec![current_schema.to_owned()],
         })?;
@@ -94,13 +99,13 @@ impl DbSchema {
         match origin_table
             .foreign_keys
             .iter()
-            .find(|&fk| &fk.name == target && &fk.referenced_table.0 == current_schema)
+            .find(|fk| fk.name == target && fk.referenced_table.0 == current_schema)
         {
             // the target is a foreign key name
             // projects?select=projects_client_id_fkey(*)
             // TODO! when views are involved there may be multiple fks with the same name
             Some(fk) => {
-                if origin == &fk.table.1 {
+                if origin == fk.table.1 {
                     Ok(Parent(fk.clone()))
                 } else {
                     Ok(Child(fk.clone()))
@@ -116,14 +121,14 @@ impl DbSchema {
                                 if let Some(fk) = origin_table
                                     .foreign_keys
                                     .iter()
-                                    .find(|&fk| &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target)
+                                    .find(|&fk| &fk.name == h && fk.referenced_table.0 == current_schema && fk.referenced_table.1 == target)
                                 {
                                     return Ok(Parent(fk.clone()));
                                 }
                                 if let Some(fk) = target_table
                                     .foreign_keys
                                     .iter()
-                                    .find(|&fk| &fk.name == h && &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin)
+                                    .find(|&fk| &fk.name == h && fk.referenced_table.0 == current_schema && fk.referenced_table.1 == origin)
                                 {
                                     return Ok(Child(fk.clone()));
                                 }
@@ -133,13 +138,13 @@ impl DbSchema {
                                     let ofk1 = join_table
                                         .foreign_keys
                                         .iter()
-                                        .find(|fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin);
+                                        .find(|fk| fk.referenced_table.0 == current_schema && fk.referenced_table.1 == origin);
                                     let ofk2 = join_table
                                         .foreign_keys
                                         .iter()
-                                        .find(|fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target);
+                                        .find(|fk| fk.referenced_table.0 == current_schema && fk.referenced_table.1 == target);
                                     if let (Some(fk1), Some(fk2)) = (ofk1, ofk2) {
-                                        return Ok(Many(Qi(current_schema.clone(), join_table.name.clone()), fk1.clone(), fk2.clone()));
+                                        return Ok(Many(Qi(current_schema, join_table.name), fk1.clone(), fk2.clone()));
                                     } else {
                                         return Err(Error::NoRelBetween {
                                             origin: origin.to_owned(),
@@ -156,8 +161,8 @@ impl DbSchema {
                                             .foreign_keys
                                             .iter()
                                             .filter(|&fk| {
-                                                &fk.referenced_table.0 == current_schema
-                                                    && &fk.referenced_table.1 == target
+                                                fk.referenced_table.0 == current_schema
+                                                    && fk.referenced_table.1 == target
                                                     && fk.columns.len() == 1
                                                     && (fk.columns.contains(h) || fk.referenced_columns.contains(h))
                                             })
@@ -172,8 +177,8 @@ impl DbSchema {
                                         .foreign_keys
                                         .iter()
                                         .filter(|&fk| {
-                                            &fk.referenced_table.0 == current_schema
-                                                && &fk.referenced_table.1 == origin
+                                            fk.referenced_table.0 == current_schema
+                                                && fk.referenced_table.1 == origin
                                                 && fk.columns.len() == 1
                                                 && (fk.columns.contains(h) || fk.referenced_columns.contains(h))
                                         })
@@ -192,7 +197,8 @@ impl DbSchema {
                                     Err(Error::AmbiguousRelBetween {
                                         origin: origin.to_owned(),
                                         target: target.to_owned(),
-                                        relations: joins,
+                                        rel_hint: rel_hint(&joins),
+                                        compressed_rel: joins.iter().map(compressed_rel).collect(),
                                     })
                                 }
 
@@ -205,7 +211,7 @@ impl DbSchema {
                                 let child_joins = target_table
                                     .foreign_keys
                                     .iter()
-                                    .filter(|&fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin)
+                                    .filter(|&fk| fk.referenced_table.0 == current_schema && fk.referenced_table.1 == origin)
                                     .map(|fk| Child(fk.clone()))
                                     .collect::<Vec<_>>();
 
@@ -215,16 +221,14 @@ impl DbSchema {
                                     .foreign_keys
                                     .iter()
                                     .filter(|&fk| {
-                                        &fk.referenced_table.0 == current_schema
-                                            && &fk.referenced_table.1 == target
-                                            && fk.table != fk.referenced_table
+                                        fk.referenced_table.0 == current_schema && fk.referenced_table.1 == target && fk.table != fk.referenced_table
                                     })
                                     .map(|fk| Parent(fk.clone()))
                                     .collect::<Vec<_>>();
 
                                 // check many to many relations
                                 // users?select=tasks(*)
-                                let many_joins = match schema.join_tables.get(&(origin.clone(), target.clone())) {
+                                let many_joins = match schema.join_tables.get(&(origin, target)) {
                                     None => vec![],
                                     Some(jt) => jt
                                         .iter()
@@ -233,19 +237,18 @@ impl DbSchema {
                                             let fks1 = join_table
                                                 .foreign_keys
                                                 .iter()
-                                                .filter(|fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == origin)
+                                                .filter(|fk| fk.referenced_table.0 == current_schema && fk.referenced_table.1 == origin)
                                                 .collect::<Vec<_>>();
                                             let fks2 = join_table
                                                 .foreign_keys
                                                 .iter()
-                                                .filter(|fk| &fk.referenced_table.0 == current_schema && &fk.referenced_table.1 == target)
+                                                .filter(|fk| fk.referenced_table.0 == current_schema && fk.referenced_table.1 == target)
                                                 .collect::<Vec<_>>();
                                             let product = fks1
                                                 .iter()
                                                 .flat_map(|&fk1| {
-                                                    fks2.iter().map(move |&fk2| {
-                                                        Many(Qi(current_schema.clone(), join_table.name.clone()), fk1.clone(), fk2.clone())
-                                                    })
+                                                    fks2.iter()
+                                                        .map(move |&fk2| Many(Qi(current_schema, join_table.name), fk1.clone(), fk2.clone()))
                                                 })
                                                 .collect::<Vec<Join>>();
                                             product
@@ -269,7 +272,8 @@ impl DbSchema {
                                     Err(Error::AmbiguousRelBetween {
                                         origin: origin.to_owned(),
                                         target: target.to_owned(),
-                                        relations: joins,
+                                        rel_hint: rel_hint(&joins),
+                                        compressed_rel: joins.iter().map(compressed_rel).collect(),
                                     })
                                 }
                             }
@@ -282,7 +286,7 @@ impl DbSchema {
                         let joins = origin_table
                             .foreign_keys
                             .iter()
-                            .filter(|&fk| &fk.referenced_table.0 == current_schema && fk.columns.len() == 1 && fk.columns.contains(target))
+                            .filter(|&fk| fk.referenced_table.0 == current_schema && fk.columns.len() == 1 && fk.columns.contains(&target))
                             .map(|fk| Parent(fk.clone()))
                             .collect::<Vec<_>>();
                         //Ok(joins)
@@ -297,7 +301,8 @@ impl DbSchema {
                             Err(Error::AmbiguousRelBetween {
                                 origin: origin.to_owned(),
                                 target: target.to_owned(),
-                                relations: joins,
+                                rel_hint: rel_hint(&joins),
+                                compressed_rel: joins.iter().map(compressed_rel).collect(),
                             })
                         }
                     }
@@ -306,33 +311,30 @@ impl DbSchema {
         }
     }
 
-    pub fn has_select_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()> {
+    pub fn has_select_privileges(&self, role: Role, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
         self.has_privileges(role, &Action::Select, current_schema, origin, columns)
     }
-    pub fn has_insert_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()> {
+    pub fn has_insert_privileges(&self, role: Role, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
         self.has_privileges(role, &Action::Insert, current_schema, origin, columns)
     }
-    pub fn has_update_privileges(&self, role: &Role, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()> {
+    pub fn has_update_privileges(&self, role: Role, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
         self.has_privileges(role, &Action::Update, current_schema, origin, columns)
     }
-    pub fn has_delete_privileges(&self, role: &Role, current_schema: &String, origin: &String) -> Result<()> {
+    pub fn has_delete_privileges(&self, role: Role, current_schema: &str, origin: &str) -> Result<()> {
         self.has_privileges(role, &Action::Delete, current_schema, origin, &All)
     }
-    pub fn has_execute_privileges(&self, role: &Role, current_schema: &String, origin: &String) -> Result<()> {
+    pub fn has_execute_privileges(&self, role: Role, current_schema: &str, origin: &str) -> Result<()> {
         self.has_privileges(role, &Action::Execute, current_schema, origin, &All)
     }
 
-    fn has_privileges(&self, role: &Role, action: &Action, current_schema: &String, origin: &String, columns: &ColumnPermissions) -> Result<()> {
+    fn has_privileges(&self, role: Role, action: &Action, current_schema: &str, origin: &str, columns: &ColumnPermissions) -> Result<()> {
         debug!("has_privileges: {:?} {:?} {:?} {:?} {:?}", role, action, current_schema, origin, columns);
         let schema = self.schemas.get(current_schema).context(UnacceptableSchemaSnafu {
             schemas: vec![current_schema.to_owned()],
         })?;
         let origin_table = schema.objects.get(origin).context(UnknownRelationSnafu { relation: origin.to_owned() })?;
         let grants = &origin_table.permissions.grants;
-        let all_privileges = [
-            grants.get(&(role.clone(), action.clone())),
-            grants.get(&("public".to_string(), action.clone())),
-        ];
+        let all_privileges = [grants.get(&(role, action.clone())), grants.get(&("public", action.clone()))];
         let column_permissions = match all_privileges {
             [Some(Specific(a)), Some(Specific(b))] => Ok(Specific(a.iter().chain(b.iter()).cloned().collect::<Vec<_>>())),
             [Some(All), _] | [_, Some(All)] => Ok(All),
@@ -367,35 +369,39 @@ impl DbSchema {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct Schema {
-    pub name: String,
-    #[serde(deserialize_with = "deserialize_objects")]
-    pub objects: BTreeMap<String, Object>,
-    #[serde(default)]
-    join_tables: BTreeMap<(String, String), BTreeSet<String>>,
+pub struct Schema<'a> {
+    pub name: &'a str,
+    #[serde(borrow, deserialize_with = "deserialize_objects")]
+    pub objects: BTreeMap<&'a str, Object<'a>>,
+    #[serde(borrow, default)]
+    join_tables: BTreeMap<(&'a str, &'a str), BTreeSet<&'a str>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct Object {
-    pub kind: ObjectType,
-    pub name: String,
-    pub columns: BTreeMap<String, Column>,
-    pub foreign_keys: Vec<ForeignKey>,
-    pub permissions: Permissions,
+pub struct Object<'a> {
+    #[serde(borrow)]
+    pub kind: ObjectType<'a>,
+    pub name: &'a str,
+    #[serde(borrow)]
+    pub columns: BTreeMap<&'a str, Column<'a>>,
+    #[serde(borrow)]
+    pub foreign_keys: Vec<ForeignKey<'a>>,
+    #[serde(borrow)]
+    pub permissions: Permissions<'a>,
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
-struct ObjectDef {
+struct ObjectDef<'a> {
     //common fields
-    pub kind: String,
-    pub name: String,
-    #[serde(deserialize_with = "deserialize_columns", default)]
-    pub columns: BTreeMap<String, Column>,
-    #[serde(deserialize_with = "deserialize_foreign_keys", default)]
-    pub foreign_keys: Vec<ForeignKey>,
+    pub kind: &'a str,
+    pub name: &'a str,
+    #[serde(borrow, deserialize_with = "deserialize_columns", default)]
+    pub columns: BTreeMap<&'a str, Column<'a>>,
+    #[serde(borrow, deserialize_with = "deserialize_foreign_keys", default)]
+    pub foreign_keys: Vec<ForeignKey<'a>>,
 
-    #[serde(deserialize_with = "deserialize_permissions", default)]
-    pub permissions: Permissions,
+    #[serde(borrow, deserialize_with = "deserialize_permissions", default)]
+    pub permissions: Permissions<'a>,
     // #[serde(deserialize_with = "deserialize_grants", default)]
     // pub grants: Option<Permissions<ColumnName>>,
     // #[serde(deserialize_with = "deserialize_policies", default)]
@@ -409,19 +415,19 @@ struct ObjectDef {
     #[serde(default)]
     pub setof: bool,
     #[serde(default)]
-    pub return_type: String,
+    pub return_type: &'a str,
     #[serde(default = "pg_catalog")]
-    pub return_type_schema: String,
-    #[serde(default, deserialize_with = "deserialize_vec_procparam")]
-    parameters: Vec<ProcParam>,
+    pub return_type_schema: &'a str,
+    #[serde(borrow, default, deserialize_with = "deserialize_vec_procparam")]
+    parameters: Vec<ProcParam<'a>>,
 }
 
 #[derive(Deserialize)]
 #[serde(remote = "ProcParam")]
-struct ProcParamDef {
-    name: String,
+struct ProcParamDef<'a> {
+    name: &'a str,
     #[serde(alias = "type")]
-    type_: String,
+    type_: &'a str,
     required: bool,
     variadic: bool,
 }
@@ -434,19 +440,21 @@ pub enum ProcVolatility {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
-pub enum ProcReturnType {
-    One(PgType),
-    SetOf(PgType),
+pub enum ProcReturnType<'a> {
+    #[serde(borrow)]
+    One(PgType<'a>),
+    SetOf(PgType<'a>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
-pub enum PgType {
+pub enum PgType<'a> {
     Scalar,
-    Composite(Qi),
+    #[serde(borrow)]
+    Composite(Qi<'a>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
-pub enum ObjectType {
+pub enum ObjectType<'a> {
     #[serde(rename = "view")]
     View,
 
@@ -456,26 +464,27 @@ pub enum ObjectType {
     #[serde(rename = "function")]
     Function {
         volatile: ProcVolatility,
-        return_type: ProcReturnType,
+        #[serde(borrow)]
+        return_type: ProcReturnType<'a>,
         #[serde(deserialize_with = "deserialize_vec_procparam")]
-        parameters: Vec<ProcParam>,
+        parameters: Vec<ProcParam<'a>>,
     },
 }
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
-struct ForeignKeyDef {
-    name: String,
-    table: Qi,
-    columns: Vec<String>,
-    referenced_table: Qi,
-    referenced_columns: Vec<String>,
+struct ForeignKeyDef<'a> {
+    name: &'a str,
+    table: Qi<'a>,
+    columns: Vec<&'a str>,
+    referenced_table: Qi<'a>,
+    referenced_columns: Vec<&'a str>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
-pub struct Column {
+pub struct Column<'a> {
     #[serde(default)]
-    pub name: ColumnName,
-    pub data_type: String,
+    pub name: &'a str,
+    pub data_type: &'a str,
     // #[serde(default, skip_serializing_if = "is_default")]
     #[serde(default)]
     pub primary_key: bool,
@@ -493,7 +502,7 @@ fn normalize_actions(actions: &[Action]) -> Vec<Action> {
         acc
     })
 }
-fn deserialize_permissions<'de, D>(deserializer: D) -> Result<Permissions, D::Error>
+fn deserialize_permissions<'de, D>(deserializer: D) -> Result<Permissions<'de>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -508,11 +517,11 @@ where
                         let actions_ = normalize_actions(&actions);
                         for a in actions_ {
                             if columns.is_empty() {
-                                grants.insert((p.role.clone(), a), All);
+                                grants.insert((p.role, a), All);
                             } else {
-                                let cols = grants.entry((p.role.clone(), a)).or_insert(Specific(Vec::new()));
+                                let cols = grants.entry((p.role, a)).or_insert(Specific(Vec::new()));
                                 if let Specific(cols) = cols {
-                                    cols.extend(columns.iter().cloned())
+                                    cols.extend(columns.iter());
                                 }
                             }
                         }
@@ -520,13 +529,13 @@ where
                     (Some(actions), None) => {
                         let actions_ = normalize_actions(&actions);
                         for a in actions_ {
-                            grants.insert((p.role.clone(), a), All);
+                            grants.insert((p.role, a), All);
                         }
                     }
                     _ => (),
                 }
-                match (p.policy_for, p.check, p.using, p.check_json_str, p.using_json_str) {
-                    (actions, check @ Some(_), using, None, None) | (actions, check, using @ Some(_), None, None) => {
+                match (p.policy_for, p.check, p.using /*, p.check_json_str, p.using_json_str*/) {
+                    (actions, check @ Some(_), using /*, None, None*/) | (actions, check, using @ Some(_) /*, None, None*/) => {
                         let actions_ = match actions {
                             Some(actions) => {
                                 if actions.is_empty() {
@@ -539,28 +548,28 @@ where
                         };
 
                         for a in actions_ {
-                            let pols = policies.entry((p.role.clone(), a.clone())).or_insert_with(Vec::new);
+                            let pols = policies.entry((p.role, a.clone())).or_insert_with(Vec::new);
                             match (a, &check, &using) {
                                 (Action::Select, _, Some(u)) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: None,
                                     using: Some(u.clone()),
                                 }),
                                 (Action::Insert, Some(c), _) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: Some(c.clone()),
                                     using: None,
                                 }),
                                 (Action::Update, c, u) | (Action::All, c, u) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: c.clone(),
                                     using: u.clone(),
                                 }),
                                 (Action::Delete, _, Some(u)) => pols.push(Policy {
-                                    name: p.name.clone(),
+                                    name: p.name,
                                     restrictive: p.restrictive,
                                     check: None,
                                     using: Some(u.clone()),
@@ -569,58 +578,58 @@ where
                             }
                         }
                     }
-                    //these is custom handling for clickouse where json manipulation is limited
-                    //and check and using are stored as json strings
-                    (actions, None, None, check_str @ Some(_), using_str) | (actions, None, None, check_str, using_str @ Some(_)) => {
-                        let actions_ = match actions {
-                            Some(actions) => {
-                                if actions.is_empty() {
-                                    vec![Action::All]
-                                } else {
-                                    actions
-                                }
-                            }
-                            None => vec![Action::All],
-                        };
-                        let check: Option<Vec<Condition>> = match check_str {
-                            Some(check_str) => Some(serde_json::from_str(&check_str).map_err(serde::de::Error::custom)?),
-                            None => None,
-                        };
-                        let using: Option<Vec<Condition>> = match using_str {
-                            Some(using_str) => Some(serde_json::from_str(&using_str).map_err(serde::de::Error::custom)?),
-                            None => None,
-                        };
-                        for a in actions_ {
-                            let pols = policies.entry((p.role.clone(), a.clone())).or_insert_with(Vec::new);
-                            match (a, &check, &using) {
-                                (Action::Select, _, Some(u)) => pols.push(Policy {
-                                    name: p.name.clone(),
-                                    restrictive: p.restrictive,
-                                    check: None,
-                                    using: Some(u.clone()),
-                                }),
-                                (Action::Insert, Some(c), _) => pols.push(Policy {
-                                    name: p.name.clone(),
-                                    restrictive: p.restrictive,
-                                    check: Some(c.clone()),
-                                    using: None,
-                                }),
-                                (Action::Update, c, u) | (Action::All, c, u) => pols.push(Policy {
-                                    name: p.name.clone(),
-                                    restrictive: p.restrictive,
-                                    check: c.clone(),
-                                    using: u.clone(),
-                                }),
-                                (Action::Delete, _, Some(u)) => pols.push(Policy {
-                                    name: p.name.clone(),
-                                    restrictive: p.restrictive,
-                                    check: None,
-                                    using: Some(u.clone()),
-                                }),
-                                _ => (),
-                            }
-                        }
-                    }
+                    //this branch is custom handling for clickouse where json manipulation is limited
+                    //and check and using are returned as json strings
+                    // (actions, None, None, check_str @ Some(_), using_str) | (actions, None, None, check_str, using_str @ Some(_)) => {
+                    //     let actions_ = match actions {
+                    //         Some(actions) => {
+                    //             if actions.is_empty() {
+                    //                 vec![Action::All]
+                    //             } else {
+                    //                 actions
+                    //             }
+                    //         }
+                    //         None => vec![Action::All],
+                    //     };
+                    //     let check: Option<Vec<Condition>> = match check_str {
+                    //         Some(check_str) => Some(serde_json::from_str(&check_str).map_err(serde::de::Error::custom)?),
+                    //         None => None,
+                    //     };
+                    //     let using: Option<Vec<Condition>> = match using_str {
+                    //         Some(using_str) => Some(serde_json::from_str(&using_str).map_err(serde::de::Error::custom)?),
+                    //         None => None,
+                    //     };
+                    //     for a in actions_ {
+                    //         let pols = policies.entry((p.role, a.clone())).or_insert_with(Vec::new);
+                    //         match (a, &check, &using) {
+                    //             (Action::Select, _, Some(u)) => pols.push(Policy {
+                    //                 name: p.name,
+                    //                 restrictive: p.restrictive,
+                    //                 check: None,
+                    //                 using: Some(u.clone()),
+                    //             }),
+                    //             (Action::Insert, Some(c), _) => pols.push(Policy {
+                    //                 name: p.name,
+                    //                 restrictive: p.restrictive,
+                    //                 check: Some(c.clone()),
+                    //                 using: None,
+                    //             }),
+                    //             (Action::Update, c, u) | (Action::All, c, u) => pols.push(Policy {
+                    //                 name: p.name,
+                    //                 restrictive: p.restrictive,
+                    //                 check: c.clone(),
+                    //                 using: u.clone(),
+                    //             }),
+                    //             (Action::Delete, _, Some(u)) => pols.push(Policy {
+                    //                 name: p.name,
+                    //                 restrictive: p.restrictive,
+                    //                 check: None,
+                    //                 using: Some(u.clone()),
+                    //             }),
+                    //             _ => (),
+                    //         }
+                    //     }
+                    // }
                     _ => {}
                 }
             }
@@ -662,24 +671,24 @@ where
 
 // }
 
-fn deserialize_vec_procparam<'de, D>(deserializer: D) -> Result<Vec<ProcParam>, D::Error>
+fn deserialize_vec_procparam<'de: 'a, 'a, D>(deserializer: D) -> Result<Vec<ProcParam<'a>>, D::Error>
 where
     D: Deserializer<'de>,
 {
     #[derive(Deserialize)]
-    struct Wrapper(#[serde(with = "ProcParamDef")] ProcParam);
+    struct Wrapper<'a>(#[serde(borrow, with = "ProcParamDef")] ProcParam<'a>);
 
     let v = Vec::deserialize(deserializer)?;
     Ok(v.into_iter().map(|Wrapper(a)| a).collect())
 }
 
-fn deserialize_schemas<'de, D>(deserializer: D) -> Result<HashMap<String, Schema>, D::Error>
+fn deserialize_schemas<'de, D>(deserializer: D) -> Result<HashMap<&'de str, Schema<'de>>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let mut map = HashMap::new();
     for mut schema in Vec::<Schema>::deserialize(deserializer)? {
-        let join_tables: BTreeMap<(String, String), Vec<String>> = schema
+        let join_tables: BTreeMap<(&str, &str), Vec<&str>> = schema
             .objects
             .iter()
             .flat_map(|(n, o)| match o.kind {
@@ -693,13 +702,13 @@ where
                             .filter(|&fk2| fk2 != fk1 && fk1.referenced_table.0 == schema.name && fk2.referenced_table.0 == schema.name)
                             .flat_map(|fk2| {
                                 vec![
-                                    ((fk1.referenced_table.1.clone(), fk2.referenced_table.1.clone()), n.clone()),
-                                    ((fk2.referenced_table.1.clone(), fk1.referenced_table.1.clone()), n.clone()),
+                                    ((fk1.referenced_table.1, fk2.referenced_table.1), *n),
+                                    ((fk2.referenced_table.1, fk1.referenced_table.1), *n),
                                 ]
                             })
-                            .collect::<Vec<((String, String), String)>>()
+                            .collect::<Vec<((&str, &str), &str)>>()
                     })
-                    .collect::<Vec<((String, String), String)>>(),
+                    .collect::<Vec<((&str, &str), &str)>>(),
             })
             .fold(BTreeMap::new(), |mut acc, (k, v)| {
                 acc.entry(k).or_default().push(v);
@@ -708,20 +717,20 @@ where
         for (k, v) in join_tables {
             schema.join_tables.insert(k, BTreeSet::from_iter(v.into_iter()));
         }
-        map.insert(schema.name.clone(), schema);
+        map.insert(schema.name, schema);
     }
     Ok(map)
 }
 
-fn deserialize_objects<'de, D>(deserializer: D) -> Result<BTreeMap<String, Object>, D::Error>
+fn deserialize_objects<'de, D>(deserializer: D) -> Result<BTreeMap<&'de str, Object<'de>>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let mut map = BTreeMap::new();
     for o in Vec::<ObjectDef>::deserialize(deserializer)? {
         map.insert(
-            o.name.clone(),
-            match o.kind.as_str() {
+            o.name,
+            match o.kind {
                 "function" => Object {
                     kind: ObjectType::Function {
                         volatile: match o.volatile {
@@ -762,7 +771,7 @@ where
     Ok(map)
 }
 
-fn deserialize_foreign_keys<'de, D>(deserializer: D) -> Result<Vec<ForeignKey>, D::Error>
+fn deserialize_foreign_keys<'de, D>(deserializer: D) -> Result<Vec<ForeignKey<'de>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -779,13 +788,13 @@ where
     Ok(v)
 }
 
-fn deserialize_columns<'de, D>(deserializer: D) -> Result<BTreeMap<String, Column>, D::Error>
+fn deserialize_columns<'de, D>(deserializer: D) -> Result<BTreeMap<&'de str, Column<'de>>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let mut map = BTreeMap::new();
     for column in Vec::<Column>::deserialize(deserializer)? {
-        map.insert(column.name.clone(), column);
+        map.insert(column.name, column);
     }
     Ok(map)
 }
@@ -849,7 +858,7 @@ where
 //     t == &T::default()
 // }
 
-fn pg_catalog() -> String { "pg_catalog".to_string() }
+fn pg_catalog<'a>() -> &'a str { "pg_catalog" }
 
 #[cfg(test)]
 mod tests {
@@ -860,17 +869,19 @@ mod tests {
     use crate::error::Error as AppError;
     use serde_json::Value as JsonValue;
     use pretty_assertions::assert_eq;
+    use std::borrow::Cow;
+    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
     fn s(s: &str) -> String { s.to_string() }
-    fn t<T>((k, v): (&str, T)) -> (String, T) { (k.to_string(), v) }
+
     #[test]
     fn deserialize_db_schema() {
         let db_schema = DbSchema {
             use_internal_permissions: false,
-            schemas: [(
+            schemas: vec![(
                 "api",
                 Schema {
-                    name: s("api"),
-                    objects: [
+                    name: "api",
+                    objects: vec![
                         (
                             "myfunction",
                             Object {
@@ -878,14 +889,14 @@ mod tests {
                                     volatile: ProcVolatility::Volatile,
                                     return_type: ProcReturnType::SetOf(PgType::Scalar),
                                     parameters: vec![ProcParam {
-                                        name: s("a"),
-                                        type_: s("integer"),
+                                        name: "a",
+                                        type_: "integer",
                                         required: true,
                                         variadic: false,
                                     }],
                                 },
-                                name: s("myfunction"),
-                                columns: [].iter().cloned().map(t).collect(),
+                                name: "myfunction",
+                                columns: [].iter().cloned().collect(),
                                 foreign_keys: [].to_vec(),
                                 permissions: Permissions::default(),
                             },
@@ -894,35 +905,34 @@ mod tests {
                             "tasks",
                             Object {
                                 kind: View,
-                                name: s("tasks"),
+                                name: "tasks",
                                 columns: [
                                     (
                                         "id",
                                         Column {
-                                            name: s("id"),
-                                            data_type: s("int"),
+                                            name: "id",
+                                            data_type: "int",
                                             primary_key: true,
                                         },
                                     ),
                                     (
                                         "name",
                                         Column {
-                                            name: s("name"),
-                                            data_type: s("text"),
+                                            name: "name",
+                                            data_type: "text",
                                             primary_key: false,
                                         },
                                     ),
                                 ]
                                 .iter()
                                 .cloned()
-                                .map(t)
                                 .collect(),
                                 foreign_keys: [ForeignKey {
-                                    name: s("project_id_fk"),
-                                    table: Qi(s("api"), s("tasks")),
-                                    columns: vec![s("project_id")],
-                                    referenced_table: Qi(s("api"), s("projects")),
-                                    referenced_columns: vec![s("id")],
+                                    name: "project_id_fk",
+                                    table: Qi("api", "tasks"),
+                                    columns: vec!["project_id"],
+                                    referenced_table: Qi("api", "projects"),
+                                    referenced_columns: vec!["id"],
                                 }]
                                 .to_vec(),
                                 permissions: Permissions::default(),
@@ -932,55 +942,46 @@ mod tests {
                             "projects",
                             Object {
                                 kind: Table,
-                                name: s("projects"),
+                                name: "projects",
                                 columns: [(
                                     "id",
                                     Column {
-                                        name: s("id"),
-                                        data_type: s("int"),
+                                        name: "id",
+                                        data_type: "int",
                                         primary_key: true,
                                     },
                                 )]
                                 .iter()
                                 .cloned()
-                                .map(t)
                                 .collect(),
                                 foreign_keys: [].to_vec(),
                                 permissions: Permissions {
-                                    grants: vec![((s("role"), Select), Specific(vec![s("id"), s("name")]))].iter().cloned().collect(),
+                                    grants: vec![(("role", Select), Specific(vec!["id", "name"]))].iter().cloned().collect(),
                                     policies: vec![(
-                                        (s("role"), Select),
+                                        ("role", Select),
                                         vec![Policy {
                                             name: None,
                                             restrictive: false,
                                             using: Some(vec![Condition::Single {
-                                                field: Field {
-                                                    name: s("id"),
-                                                    json_path: None,
-                                                },
-                                                filter: Filter::Op(s("eq"), SingleVal(s("10"), Some(s("int")))),
+                                                field: Field { name: "id", json_path: None },
+                                                filter: Filter::Op("eq", SingleVal(cow("10"), Some(cow("int")))),
                                                 negate: false,
                                             }]),
                                             check: None,
                                         }],
                                     )]
-                                    .iter()
-                                    .cloned()
+                                    .into_iter()
                                     .collect(),
                                 },
                             },
                         ),
                     ]
-                    .iter()
-                    .cloned()
-                    .map(t)
+                    .into_iter()
                     .collect(),
                     join_tables: [].iter().cloned().collect(),
                 },
             )]
-            .iter()
-            .cloned()
-            .map(t)
+            .into_iter()
             .collect(),
         };
 
@@ -1103,42 +1104,39 @@ mod tests {
 
     #[test]
     fn serialize_conditions() {
-        let field = Field {
-            name: s("id"),
-            json_path: None,
-        };
+        let field = Field { name: "id", json_path: None };
         let negate = false;
         let conditions = vec![
             Single {
                 field: field.clone(),
                 negate,
-                filter: Env(s("eq"), EnvVar { var: s("role"), part: None }),
+                filter: Env("eq", EnvVar { var: "role", part: None }),
             },
             Single {
                 field: field.clone(),
                 negate,
                 filter: Env(
-                    s("eq"),
+                    "eq",
                     EnvVar {
-                        var: s("request.jwt.claim"),
-                        part: Some(s("user_id")),
+                        var: "request.jwt.claim",
+                        part: Some("user_id"),
                     },
                 ),
             },
             Single {
                 field: field.clone(),
                 negate,
-                filter: Op(s("eq"), SingleVal(s("hello"), None)),
+                filter: Op("eq", SingleVal(cow("hello"), None)),
             },
             Single {
                 field: field.clone(),
                 negate,
-                filter: Op(s("eq"), SingleVal(s("hello"), Some(s("text")))),
+                filter: Op("eq", SingleVal(cow("hello"), Some(cow("text")))),
             },
             Single {
                 field: field.clone(),
                 negate,
-                filter: In(ListVal(vec![s("1"), s("2"), s("3")], None)),
+                filter: In(ListVal(vec![cow("1"), cow("2"), cow("3")], None)),
             },
             Single {
                 field: field.clone(),
@@ -1148,7 +1146,7 @@ mod tests {
             Single {
                 field: field.clone(),
                 negate: true,
-                filter: Fts(s("eq"), None, SingleVal(s("hello"), None)),
+                filter: Fts("eq", None, SingleVal(cow("hello"), None)),
             },
             Group {
                 negate: false,
@@ -1158,12 +1156,12 @@ mod tests {
                         Single {
                             field: field.clone(),
                             negate,
-                            filter: Op(s("eq"), SingleVal(s("hello"), None)),
+                            filter: Op("eq", SingleVal(cow("hello"), None)),
                         },
                         Single {
                             field,
                             negate,
-                            filter: In(ListVal(vec![s("1"), s("2"), s("3")], None)),
+                            filter: In(ListVal(vec![cow("1"), cow("2"), cow("3")], None)),
                         },
                     ],
                 },
@@ -1342,11 +1340,11 @@ mod tests {
                 .get_join(&s("api"), &s("projects"), &s("tasks"), &None)
                 .map_err(|e| format!("{}", e)),
             Ok(Child(ForeignKey {
-                name: s("project_id_fk"),
-                table: Qi(s("api"), s("tasks")),
-                columns: vec![s("project_id")],
-                referenced_table: Qi(s("api"), s("projects")),
-                referenced_columns: vec![s("id")],
+                name: "project_id_fk",
+                table: Qi("api", "tasks"),
+                columns: vec!["project_id"],
+                referenced_table: Qi("api", "projects"),
+                referenced_columns: vec!["id"],
             }))
         );
         assert_eq!(
@@ -1354,11 +1352,11 @@ mod tests {
                 .get_join(&s("api"), &s("tasks"), &s("projects"), &None)
                 .map_err(|e| format!("{}", e)),
             Ok(Parent(ForeignKey {
-                name: s("project_id_fk"),
-                table: Qi(s("api"), s("tasks")),
-                columns: vec![s("project_id")],
-                referenced_table: Qi(s("api"), s("projects")),
-                referenced_columns: vec![s("id")],
+                name: "project_id_fk",
+                table: Qi("api", "tasks"),
+                columns: vec!["project_id"],
+                referenced_table: Qi("api", "projects"),
+                referenced_columns: vec!["id"],
             }))
         );
         assert_eq!(
@@ -1366,11 +1364,11 @@ mod tests {
                 .get_join(&s("api"), &s("clients"), &s("projects"), &None)
                 .map_err(|e| format!("{}", e)),
             Ok(Child(ForeignKey {
-                name: s("client_id_fk"),
-                table: Qi(s("api"), s("projects")),
-                columns: vec![s("client_id")],
-                referenced_table: Qi(s("api"), s("clients")),
-                referenced_columns: vec![s("id")],
+                name: "client_id_fk",
+                table: Qi("api", "projects"),
+                columns: vec!["client_id"],
+                referenced_table: Qi("api", "clients"),
+                referenced_columns: vec!["id"],
             }))
         );
         assert_eq!(
@@ -1378,42 +1376,42 @@ mod tests {
                 .get_join(&s("api"), &s("tasks"), &s("users"), &None)
                 .map_err(|e| format!("{}", e)),
             Ok(Many(
-                Qi(s("api"), s("users_tasks")),
+                Qi("api", "users_tasks"),
                 ForeignKey {
-                    name: s("task_id_fk"),
-                    table: Qi(s("api"), s("users_tasks")),
-                    columns: vec![s("task_id")],
-                    referenced_table: Qi(s("api"), s("tasks")),
-                    referenced_columns: vec![s("id")],
+                    name: "task_id_fk",
+                    table: Qi("api", "users_tasks"),
+                    columns: vec!["task_id"],
+                    referenced_table: Qi("api", "tasks"),
+                    referenced_columns: vec!["id"],
                 },
                 ForeignKey {
-                    name: s("user_id_fk"),
-                    table: Qi(s("api"), s("users_tasks")),
-                    columns: vec![s("user_id")],
-                    referenced_table: Qi(s("api"), s("users")),
-                    referenced_columns: vec![s("id")],
+                    name: "user_id_fk",
+                    table: Qi("api", "users_tasks"),
+                    columns: vec!["user_id"],
+                    referenced_table: Qi("api", "users"),
+                    referenced_columns: vec!["id"],
                 },
             ))
         );
         assert_eq!(
             db_schema
-                .get_join(&s("api"), &s("tasks"), &s("users"), &Some(s("users_tasks")))
+                .get_join(&s("api"), &s("tasks"), &s("users"), &Some("users_tasks"))
                 .map_err(|e| format!("{}", e)),
             Ok(Many(
-                Qi(s("api"), s("users_tasks")),
+                Qi("api", "users_tasks"),
                 ForeignKey {
-                    name: s("task_id_fk"),
-                    table: Qi(s("api"), s("users_tasks")),
-                    columns: vec![s("task_id")],
-                    referenced_table: Qi(s("api"), s("tasks")),
-                    referenced_columns: vec![s("id")],
+                    name: "task_id_fk",
+                    table: Qi("api", "users_tasks"),
+                    columns: vec!["task_id"],
+                    referenced_table: Qi("api", "tasks"),
+                    referenced_columns: vec!["id"],
                 },
                 ForeignKey {
-                    name: s("user_id_fk"),
-                    table: Qi(s("api"), s("users_tasks")),
-                    columns: vec![s("user_id")],
-                    referenced_table: Qi(s("api"), s("users")),
-                    referenced_columns: vec![s("id")],
+                    name: "user_id_fk",
+                    table: Qi("api", "users_tasks"),
+                    columns: vec!["user_id"],
+                    referenced_table: Qi("api", "users"),
+                    referenced_columns: vec!["id"],
                 },
             ))
         );
@@ -1425,11 +1423,11 @@ mod tests {
         //         Parent(
         //             ForeignKey {
         //                 name: s("billing_address_id_fk"),
-        //                 table: Qi(s("api"),s("users")),
+        //                 table: Qi("api",s("users")),
         //                 columns: vec![
         //                     s("billing_address_id"),
         //                 ],
-        //                 referenced_table: Qi(s("api"),s("addresses")),
+        //                 referenced_table: Qi("api",s("addresses")),
         //                 referenced_columns: vec![
         //                     s("id"),
         //                 ],
@@ -1438,11 +1436,11 @@ mod tests {
         //         Parent(
         //             ForeignKey {
         //                 name: s("shipping_address_id_fk"),
-        //                 table: Qi(s("api"),s("users")),
+        //                 table: Qi("api",s("users")),
         //                 columns: vec![
         //                     s("shipping_address_id"),
         //                 ],
-        //                 referenced_table: Qi(s("api"),s("addresses")),
+        //                 referenced_table: Qi("api",s("addresses")),
         //                 referenced_columns: vec![
         //                     s("id"),
         //                 ],

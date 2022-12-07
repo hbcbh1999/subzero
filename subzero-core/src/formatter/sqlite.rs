@@ -39,6 +39,7 @@ use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
 use crate::error::{Result, Error};
 use super::{ToParam, Snippet, SqlParam};
+use std::borrow::Cow;
 generate_fn!();
 macro_rules! simple_select_item_format {
     () => {
@@ -53,10 +54,9 @@ macro_rules! cast_select_item_format {
 
 fmt_main_query!();
 pub fn fmt_main_query_internal<'a>(
-    schema_str: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
+    schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
     env: &'a HashMap<&'a str, &'a str>,
 ) -> Result<Snippet<'a>> {
-    let schema = String::from(schema_str);
     let count = matches!(
         preferences,
         Some(Preferences {
@@ -123,7 +123,7 @@ pub fn fmt_main_query_internal<'a>(
     let run_unwrapped_query = matches!(query.node, Insert { .. } | Update { .. } | Delete { .. });
     let has_payload_cte = matches!(query.node, Insert { .. } | Update { .. });
     let wrap_cte_name = if run_unwrapped_query { None } else { Some("_subzero_query") };
-    let source_query = fmt_query(&schema, return_representation, wrap_cte_name, query, &None)?;
+    let source_query = fmt_query(schema, return_representation, wrap_cte_name, query, &None)?;
     let main_query = if run_unwrapped_query {
         "with env as materialized (" + fmt_env_query(env) + ") " + if has_payload_cte { ", " } else { "" } + source_query
     } else {
@@ -133,7 +133,7 @@ pub fn fmt_main_query_internal<'a>(
             + source_query
             + " , "
             + if count {
-                fmt_count_query(&schema, Some("_subzero_count_query"), query)?
+                fmt_count_query(schema, Some("_subzero_count_query"), query)?
             } else {
                 sql("_subzero_count_query as (select 1)")
             }
@@ -164,7 +164,7 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
 
 //fmt_query!();
 pub fn fmt_query<'a>(
-    schema: &String, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
+    schema: &'a str, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
     let add_env_tbl_to_from = wrapin_cte.is_some();
 
@@ -182,12 +182,13 @@ pub fn fmt_query<'a>(
             order,
             groupby,
         } => {
+            //let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
             let (qi, from_snippet) = match table_alias {
+                None => (Qi(schema, table), fmt_qi(&Qi(schema, table))),
                 Some(a) => (
-                    Qi("".to_string(), a.clone()),
-                    format!("{} as {}", fmt_qi(&Qi(schema.clone(), table.clone())), fmt_identity(a)),
+                    Qi("", a),
+                    format!("{} as {}", fmt_qi(&Qi(schema, table)), fmt_identity(a)),
                 ),
-                None => (Qi(schema.clone(), table.clone()), fmt_qi(&Qi(schema.clone(), table.clone()))),
             };
             if select.iter().any(|s| matches!( s, Star)) {
                 return Err(Error::UnsupportedFeature {message: "'select *' not supported, use explicit select parameters".to_string()})
@@ -217,7 +218,7 @@ pub fn fmt_query<'a>(
                             ", {}",
                             join_tables
                                 .iter()
-                                .map(|f| fmt_qi(&Qi(schema.clone(), f.clone())))
+                                .map(|f| fmt_qi(&Qi(schema, f)))
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         )
@@ -252,23 +253,23 @@ pub fn fmt_query<'a>(
             on_conflict,
             .. //select
         } => {
-            let qi = &Qi(schema.clone(), into.clone());
+            let qi = &Qi(schema, into);
             let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
                 returning
                     .iter()
-                    .map(|r| if r.as_str() == "*" { "*".to_string() } else { fmt_identity(r) })
+                    .map(|&r| if r == "*" { "*".to_string() } else { fmt_identity(r) })
                     .collect::<Vec<_>>()
                     .join(",")
             };
 
             let into_columns = if !columns.is_empty() {
-                format!("({})", columns.iter().map(fmt_identity).collect::<Vec<_>>().join(","))
+                format!("({})", columns.iter().map(|c| fmt_identity(c)).collect::<Vec<_>>().join(","))
             } else {
                 String::new()
             };
-            let select_columns = columns.iter().map(fmt_identity).collect::<Vec<_>>().join(",");
+            let select_columns = columns.iter().map(|c| fmt_identity(c)).collect::<Vec<_>>().join(",");
             (
                 None,
                 fmt_body(payload, columns) +
@@ -276,10 +277,10 @@ pub fn fmt_query<'a>(
                 " select " + select_columns +
                 " from subzero_body _ " +
                 // where is only relevant for upsert
-                if !where_.conditions.is_empty(){"where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)?} else { sql(" where true ") } + 
+                if !where_.conditions.is_empty(){"where " + fmt_condition_tree(&Qi("", "_"), where_)?} else { sql(" where true ") } + 
                 match on_conflict {
                     Some((r,cols)) if !cols.is_empty() => {
-                        let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
+                        let on_c = format!("on conflict({})",cols.iter().map(|c| fmt_identity(c)).collect::<Vec<_>>().join(", "));
                         let on_do = match (r, columns.len()) {
                             (Resolution::IgnoreDuplicates, _) |
                             (_, 0) => "do nothing".to_string(),
@@ -305,13 +306,13 @@ pub fn fmt_query<'a>(
             returning,
             .. //select,
         } => {
-            let qi = &Qi(schema.clone(), from.clone());
+            let qi = &Qi(schema, from);
             let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
                 returning
                     .iter()
-                    .map(|r| if r.as_str() == "*" { "*".to_string() } else { fmt_identity(r) })
+                    .map(|&r| if r == "*" { "*".to_string() } else { fmt_identity(r) })
                     .collect::<Vec<_>>()
                     .join(",")
             };
@@ -341,14 +342,14 @@ pub fn fmt_query<'a>(
             returning,
             ..//select,
         } => {
-            let qi = &Qi(schema.clone(), table.clone());
+            let qi = &Qi(schema, table);
             let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
                 returning
                     .iter()
-                    .map(|r| {
-                        if r.as_str() == "*" {
+                    .map(|&r| {
+                        if r == "*" {
                             format!("{}.*", fmt_qi(qi))
                         } else {
                             format!("{}.{}", fmt_qi(qi), fmt_identity(r))
@@ -371,8 +372,8 @@ pub fn fmt_query<'a>(
                     } else {
                         returning
                             .iter()
-                            .map(|r| {
-                                if r.as_str() == "*" {
+                            .map(|&r| {
+                                if r == "*" {
                                     format!("{}.*", table)
                                 } else {
                                     format!("{}.{}", table, r)
@@ -419,7 +420,7 @@ pub fn fmt_query<'a>(
 fmt_count_query!();
 //fmt_body!();
 #[rustfmt::skip]
-fn fmt_body<'a>(payload: &'a Payload, columns: &'a [String]) -> Snippet<'a> {
+fn fmt_body<'a>(payload: &'a Payload, columns: &'a [&'a str]) -> Snippet<'a> {
     let payload_param: &SqlParam = payload;
     " subzero_payload as ( select " + param(payload_param) + " as json_data ),"
     + " subzero_body as ("
@@ -439,7 +440,7 @@ fmt_condition_tree!();
 fmt_condition!();
 macro_rules! fmt_in_filter {
     ($p:ident) => {
-        fmt_operator(&"in".to_string())? + ("( select value from json_each(" + param($p) + ") )")
+        fmt_operator(&"in")? + ("( select value from json_each(" + param($p) + ") )")
     };
 }
 //fmt_env_var!();
@@ -454,7 +455,7 @@ fmt_select_name!();
 fmt_function_call!();
 //fmt_select_item_function!();
 fn fmt_select_item_function<'a>(
-    qi: &Qi, fn_name: &String, parameters: &'a [FunctionParam], partitions: &'a Vec<Field>, orders: &'a Vec<OrderTerm>, alias: &'a Option<String>,
+    qi: &Qi, fn_name: &str, parameters: &'a [FunctionParam], partitions: &'a Vec<Field>, orders: &'a Vec<OrderTerm>, alias: &'a Option<&str>,
 ) -> Result<Snippet<'a>> {
     Ok(format!("'{}', ", fmt_select_name(fn_name, &None, alias).unwrap_or_default())
         + sql(fmt_identity(fn_name))
@@ -482,7 +483,7 @@ fn fmt_select_item_function<'a>(
 fmt_select_item!();
 fmt_function_param!();
 //fmt_sub_select_item!();
-fn fmt_sub_select_item<'a>(schema: &String, _qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
+fn fmt_sub_select_item<'a>(schema: &'a str, _qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
     let SubSelect { query, alias, join, .. } = i;
     match join {
         Some(j) => match j {
@@ -495,7 +496,7 @@ fn fmt_sub_select_item<'a>(schema: &String, _qi: &Qi, i: &'a SubSelect) -> Resul
             }
             Child(fk) => {
                 let alias_or_name = format!("'{}'", alias.as_ref().unwrap_or(&fk.table.1));
-                let local_table_name = fmt_identity(&fk.table.1);
+                let local_table_name = fmt_identity(fk.table.1);
                 let subquery = fmt_query(schema, true, None, query, join)?;
                 Ok((
                     (sql(alias_or_name)
@@ -514,7 +515,7 @@ fn fmt_sub_select_item<'a>(schema: &String, _qi: &Qi, i: &'a SubSelect) -> Resul
             }
             Many(_table, _fk1, fk2) => {
                 let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
-                let local_table_name = fmt_identity(&fk2.referenced_table.1);
+                let local_table_name = fmt_identity(fk2.referenced_table.1);
                 let subquery = fmt_query(schema, true, None, query, join)?;
                 Ok((
                     (sql(alias_or_name)
@@ -541,9 +542,9 @@ fmt_logic_operator!();
 fmt_identity!();
 //fmt_qi!();
 fn fmt_qi(qi: &Qi) -> String {
-    match (qi.0.as_str(), qi.1.as_str()) {
+    match (qi.0, qi.1) {
         ("", "") => String::new(),
-        _ => fmt_identity(&qi.1),
+        _ => fmt_identity(qi.1),
     }
 }
 macro_rules! fmt_field_format {
@@ -570,7 +571,7 @@ fn fmt_json_operation(j: &JsonOperation) -> String {
 //fmt_json_operand!();
 fn fmt_json_operand(o: &JsonOperand) -> String {
     match o {
-        JKey(k) => k.clone(),
+        JKey(k) => k.to_string(),
         JIdx(i) => format!("[{}]", i),
     }
 }

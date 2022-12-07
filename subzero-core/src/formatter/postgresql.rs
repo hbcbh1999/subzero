@@ -5,10 +5,12 @@ use super::base::{
     fmt_select_name, fmt_sub_select_item, return_representation, simple_select_item_format, star_select_item_format, fmt_function_param,
     fmt_select_item_function, fmt_function_call, fmt_env_query,
 };
+use std::borrow::Cow;
 use std::collections::HashMap;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
 use crate::error::{Result, Error};
+
 use super::{ToParam, Snippet, SqlParam};
 generate_fn!();
 fmt_main_query_internal!();
@@ -49,22 +51,25 @@ mod tests {
     use pretty_assertions::assert_eq;
     use regex::Regex;
     use super::*;
+    use std::borrow::Cow;
+    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
     generate_fn!();
-    fn s(s: &str) -> String { s.to_string() }
+    fn s(s: &str) -> &str { s }
 
     #[test]
     fn test_fmt_function_query() {
-        let payload = r#"{"id":"10"}"#.to_string();
+        let payload = r#"{"id":"10"}"#;
         let q = Query {
             node: FunctionCall {
-                fn_name: Qi(s("api"), s("myfunction")),
+                fn_name: Qi("api", "myfunction"),
                 parameters: CallParams::KeyParams(vec![ProcParam {
-                    name: s("id"),
-                    type_: s("integer"),
+                    name: "id",
+                    type_: "integer",
                     required: true,
                     variadic: false,
                 }]),
-                payload: Payload(payload.clone(), None),
+                //parameter_values: ParamValues::Raw(payload),
+                payload: Payload(Cow::Borrowed(payload), None),
                 is_scalar: true,
                 returns_single: false,
                 is_multiple_call: false,
@@ -82,8 +87,8 @@ mod tests {
             sub_selects: vec![],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
-        let p = Payload(payload, None);
+        let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
+        let p = Payload(Cow::Borrowed(payload), None);
         let pp: Vec<&SqlParam> = vec![&p];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
         let re = Regex::new(r"\s+").unwrap();
@@ -117,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_fmt_insert_query() {
-        let payload = r#"[{"id":10, "a":"a field"}]"#.to_string();
+        let payload = r#"[{"id":10, "a":"a field"}]"#;
         let q = Query {
             node: Insert {
                 on_conflict: None,
@@ -152,7 +157,7 @@ mod tests {
                     ],
                 },
                 columns: vec![s("id"), s("a")],
-                payload: Payload(payload.clone(), None),
+                payload: Payload(Cow::Borrowed(payload), None),
                 returning: vec![s("id"), s("a")],
             },
             sub_selects: vec![
@@ -181,7 +186,7 @@ mod tests {
                                         json_path: None,
                                     },
                                     filter: Filter::Col(
-                                        Qi(s(""), s("subzero_source")),
+                                        Qi("", "subzero_source"),
                                         Field {
                                             name: s("client_id"),
                                             json_path: None,
@@ -196,11 +201,11 @@ mod tests {
                     alias: None,
                     hint: None,
                     join: Some(Parent(ForeignKey {
-                        name: s("client_id_fk"),
-                        table: Qi(s("api"), s("projects")),
-                        columns: vec![s("client_id")],
-                        referenced_table: Qi(s("api"), s("clients")),
-                        referenced_columns: vec![s("id")],
+                        name: "client_id_fk",
+                        table: Qi("api", "projects"),
+                        columns: vec!["client_id"],
+                        referenced_table: Qi("api", "clients"),
+                        referenced_columns: vec!["id"],
                     })),
                 },
                 SubSelect {
@@ -229,7 +234,7 @@ mod tests {
                                             json_path: None,
                                         },
                                         filter: Filter::Col(
-                                            Qi(s(""), s("subzero_source")),
+                                            Qi("", "subzero_source"),
                                             Field {
                                                 name: s("id"),
                                                 json_path: None,
@@ -238,7 +243,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: Op(s(">"), SingleVal(s("50"), None)),
+                                        filter: Op(s(">"), SingleVal(cow("50"), None)),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -246,7 +251,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: In(ListVal(vec![s("51"), s("52")], None)),
+                                        filter: In(ListVal(vec![cow("51"), cow("52")], None)),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -261,20 +266,20 @@ mod tests {
                     hint: None,
                     alias: None,
                     join: Some(Child(ForeignKey {
-                        name: s("project_id_fk"),
-                        table: Qi(s("api"), s("tasks")),
-                        columns: vec![s("project_id")],
-                        referenced_table: Qi(s("api"), s("projects")),
-                        referenced_columns: vec![s("id")],
+                        name: "project_id_fk",
+                        table: Qi("api", "tasks"),
+                        columns: vec!["project_id"],
+                        referenced_table: Qi("api", "projects"),
+                        referenced_columns: vec!["id"],
                     })),
                 },
             ],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
-        let p0: &SqlParam = &ListVal(vec![s("51"), s("52")], None);
-        let p1: &SqlParam = &SingleVal(s("50"), None);
-        let p = Payload(payload, None);
+        let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
+        let p0: &SqlParam = &ListVal(vec![cow("51"), cow("52")], None);
+        let p1: &SqlParam = &SingleVal(cow("50"), None);
+        let p = Payload(Cow::Borrowed(payload), None);
         let pp: Vec<&SqlParam> = vec![&p, p1, p0];
         assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
         let re = Regex::new(r"\s+").unwrap();
@@ -366,7 +371,7 @@ mod tests {
                     operator: And,
                     conditions: vec![
                         Single {
-                            filter: Op(s(">="), SingleVal(s("5"), None)),
+                            filter: Op(s(">="), SingleVal(cow("5"), None)),
                             field: Field {
                                 name: s("id"),
                                 json_path: None,
@@ -374,7 +379,7 @@ mod tests {
                             negate: false,
                         },
                         Single {
-                            filter: Op(s("<"), SingleVal(s("10"), None)),
+                            filter: Op(s("<"), SingleVal(cow("10"), None)),
                             field: Field {
                                 name: s("id"),
                                 json_path: None,
@@ -410,7 +415,7 @@ mod tests {
                                         json_path: None,
                                     },
                                     filter: Filter::Col(
-                                        Qi(s("api"), s("projects")),
+                                        Qi("api", "projects"),
                                         Field {
                                             name: s("client_id"),
                                             json_path: None,
@@ -425,11 +430,11 @@ mod tests {
                     alias: None,
                     hint: None,
                     join: Some(Parent(ForeignKey {
-                        name: s("client_id_fk"),
-                        table: Qi(s("api"), s("projects")),
-                        columns: vec![s("client_id")],
-                        referenced_table: Qi(s("api"), s("clients")),
-                        referenced_columns: vec![s("id")],
+                        name: "client_id_fk",
+                        table: Qi("api", "projects"),
+                        columns: vec!["client_id"],
+                        referenced_table: Qi("api", "clients"),
+                        referenced_columns: vec!["id"],
                     })),
                 },
                 SubSelect {
@@ -458,7 +463,7 @@ mod tests {
                                             json_path: None,
                                         },
                                         filter: Filter::Col(
-                                            Qi(s("api"), s("projects")),
+                                            Qi("api", "projects"),
                                             Field {
                                                 name: s("id"),
                                                 json_path: None,
@@ -467,7 +472,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: Op(s(">"), SingleVal(s("50"), None)),
+                                        filter: Op(s(">"), SingleVal(cow("50"), None)),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -475,7 +480,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: In(ListVal(vec![s("51"), s("52")], None)),
+                                        filter: In(ListVal(vec![cow("51"), cow("52")], None)),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -490,17 +495,17 @@ mod tests {
                     hint: None,
                     alias: None,
                     join: Some(Child(ForeignKey {
-                        name: s("project_id_fk"),
-                        table: Qi(s("api"), s("tasks")),
-                        columns: vec![s("project_id")],
-                        referenced_table: Qi(s("api"), s("projects")),
-                        referenced_columns: vec![s("id")],
+                        name: "project_id_fk",
+                        table: Qi("api", "tasks"),
+                        columns: vec!["project_id"],
+                        referenced_table: Qi("api", "projects"),
+                        referenced_columns: vec!["id"],
                     })),
                 },
             ],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query(&s("api"), true, None, &q, &None).unwrap());
+        let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
         assert_eq!(
             format!("{:?}", parameters),
             "[SingleVal(\"50\", None), ListVal([\"51\", \"52\"], None), SingleVal(\"5\", None), SingleVal(\"10\", None)]"
@@ -550,7 +555,7 @@ mod tests {
                 "{:?}",
                 generate(
                     fmt_condition_tree(
-                        &Qi(s("schema"), s("table")),
+                        &Qi("schema", "table"),
                         &ConditionTree {
                             operator: And,
                             conditions: vec![
@@ -559,7 +564,7 @@ mod tests {
                                         name: s("name"),
                                         json_path: Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])
                                     },
-                                    filter: Op(s(">"), SingleVal(s("2"), None)),
+                                    filter: Op(s(">"), SingleVal(cow("2"), None)),
                                     negate: false
                                 },
                                 Group {
@@ -572,7 +577,7 @@ mod tests {
                                                     name: s("name"),
                                                     json_path: None
                                                 },
-                                                filter: Op(s(">"), SingleVal(s("2"), None)),
+                                                filter: Op(s(">"), SingleVal(cow("2"), None)),
                                                 negate: false
                                             },
                                             Single {
@@ -580,7 +585,7 @@ mod tests {
                                                     name: s("name"),
                                                     json_path: None
                                                 },
-                                                filter: Op(s("<"), SingleVal(s("5"), None)),
+                                                filter: Op(s("<"), SingleVal(cow("5"), None)),
                                                 negate: false
                                             }
                                         ]
@@ -598,7 +603,7 @@ mod tests {
                     s(
                         "to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1 and (\"schema\".\"table\".\"name\" > $2 and \"schema\".\"table\".\"name\" < $3)"
                     ),
-                    vec![SingleVal(s("2"), None), SingleVal(s("2"), None), SingleVal(s("5"), None)],
+                    vec![SingleVal(cow("2"), None), SingleVal(cow("2"), None), SingleVal(cow("5"), None)],
                     4
                 )
             )
@@ -612,13 +617,13 @@ mod tests {
                 "{:?}",
                 generate(
                     fmt_condition(
-                        &Qi(s("schema"), s("table")),
+                        &Qi("schema", "table"),
                         &Single {
                             field: Field {
                                 name: s("name"),
                                 json_path: Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])
                             },
-                            filter: Op(s(">"), SingleVal(s("2"), None)),
+                            filter: Op(s(">"), SingleVal(cow("2"), None)),
                             negate: false
                         }
                     )
@@ -627,7 +632,7 @@ mod tests {
             ),
             format!(
                 "{:?}",
-                (s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1"), vec![&SingleVal(s("2"), None)], 2)
+                (s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1"), vec![&SingleVal(cow("2"), None)], 2)
             )
         );
 
@@ -636,13 +641,13 @@ mod tests {
                 "{:?}",
                 generate(
                     fmt_condition(
-                        &Qi(s("schema"), s("table")),
+                        &Qi("schema", "table"),
                         &Single {
                             field: Field {
                                 name: s("name"),
                                 json_path: None
                             },
-                            filter: In(ListVal(vec![s("5"), s("6")], None)),
+                            filter: In(ListVal(vec![cow("5"), cow("6")], None)),
                             negate: true
                         }
                     )
@@ -651,7 +656,7 @@ mod tests {
             ),
             format!(
                 "{:?}",
-                (s("not(\"schema\".\"table\".\"name\" = any ($1))"), vec![ListVal(vec![s("5"), s("6")], None)], 2)
+                (s("not(\"schema\".\"table\".\"name\" = any ($1))"), vec![ListVal(vec![cow("5"), cow("6")], None)], 2)
             )
         );
     }
@@ -659,17 +664,17 @@ mod tests {
     #[test]
     fn test_fmt_filter() {
         assert_eq!(
-            format!("{:?}", generate(fmt_filter(&Op(s(">"), SingleVal(s("2"), None))).unwrap())),
-            format!("{:?}", (&s("> $1"), vec![SingleVal(s("2"), None)], 2))
+            format!("{:?}", generate(fmt_filter(&Op(s(">"), SingleVal(cow("2"), None))).unwrap())),
+            format!("{:?}", (&s("> $1"), vec![SingleVal(cow("2"), None)], 2))
         );
         assert_eq!(
-            format!("{:?}", generate(fmt_filter(&In(ListVal(vec![s("5"), s("6")], None))).unwrap())),
-            format!("{:?}", (&s("= any ($1)"), vec![ListVal(vec![s("5"), s("6")], None)], 2))
+            format!("{:?}", generate(fmt_filter(&In(ListVal(vec![cow("5"), cow("6")], None))).unwrap())),
+            format!("{:?}", (&s("= any ($1)"), vec![ListVal(vec![cow("5"), cow("6")], None)], 2))
         );
         assert_eq!(
             format!(
                 "{:?}",
-                generate(fmt_filter(&Fts(s("@@ to_tsquery"), Some(SingleVal(s("eng"), None)), SingleVal(s("2"), None))).unwrap())
+                generate(fmt_filter(&Fts(s("@@ to_tsquery"), Some(SingleVal(cow("eng"), None)), SingleVal(cow("2"), None))).unwrap())
             ),
             r#"("@@ to_tsquery ($1,$2)", [SingleVal("eng", None), SingleVal("2", None)], 3)"#.to_string()
         );
@@ -679,7 +684,7 @@ mod tests {
                 "{:?}",
                 generate(
                     fmt_filter(&Col(
-                        Qi(s("api"), s("projects")),
+                        Qi("api", "projects"),
                         Field {
                             name: s("id"),
                             json_path: None
@@ -713,21 +718,21 @@ mod tests {
             alias: Some(s("alias")),
             cast: None,
         };
-        let select_item = fmt_select_item(&Qi(s("schema"), s("table")), &select).unwrap();
+        let select_item = fmt_select_item(&Qi("schema", "table"), &select).unwrap();
         let (query_str, _, _) = generate(select_item);
         assert_eq!(query_str, s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 as \"alias\""));
     }
 
     #[test]
     fn test_fmt_qi() {
-        assert_eq!(fmt_qi(&Qi(s("schema"), s("table"))), s("\"schema\".\"table\""));
+        assert_eq!(fmt_qi(&Qi("schema", "table")), s("\"schema\".\"table\""));
     }
 
     #[test]
     fn test_fmt_field() {
         assert_eq!(
             fmt_field(
-                &Qi(s("a"), s("b")),
+                &Qi("a", "b"),
                 &Field {
                     name: s("name"),
                     json_path: None
@@ -738,7 +743,7 @@ mod tests {
         );
         assert_eq!(
             fmt_field(
-                &Qi(s("a"), s("b")),
+                &Qi("a", "b"),
                 &Field {
                     name: s("name"),
                     json_path: Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])

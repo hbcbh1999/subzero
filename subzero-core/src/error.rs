@@ -1,6 +1,7 @@
 use crate::api::{ContentType, ContentType::*, Join, Join::*};
 use snafu::Snafu;
 use serde_json::{json, Value as JsonValue, Error as SerdeError};
+use std::str::Utf8Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -28,8 +29,13 @@ pub enum Error {
     #[snafu(display("NoRelBetween {} {}", origin, target))]
     NoRelBetween { origin: String, target: String },
 
-    #[snafu(display("AmbiguousRelBetween {} {} {:?}", origin, target, relations))]
-    AmbiguousRelBetween { origin: String, target: String, relations: Vec<Join> },
+    #[snafu(display("AmbiguousRelBetween {} {} {:?}", origin, target, rel_hint))]
+    AmbiguousRelBetween {
+        origin: String,
+        target: String,
+        rel_hint: String,
+        compressed_rel: JsonValue,
+    },
 
     #[snafu(display("InvalidFilters"))]
     InvalidFilters,
@@ -57,7 +63,7 @@ pub enum Error {
     #[snafu(display("UnsupportedVerb"))]
     UnsupportedVerb,
 
-    #[snafu(display("Failed to deserialize json: {}", message))]
+    #[snafu(display("UnsupportedFeature: {}", message))]
     UnsupportedFeature { message: String },
 
     #[snafu(display("Failed to deserialize json: {}", source))]
@@ -65,6 +71,9 @@ pub enum Error {
 
     #[snafu(display("Failed to deserialize csv: {}", source))]
     CsvDeserialize { source: csv::Error },
+
+    #[snafu(display("Failed to deserialize utf8: {}", source))]
+    Utf8Deserialize { source: Utf8Error },
 
     #[snafu(display("Failed to serialize json: {}", source))]
     JsonSerialize { source: serde_json::Error },
@@ -138,6 +147,7 @@ impl Error {
             Error::LimitOffsetNotAllowedError => 400,
             Error::OrderNotAllowedError => 400,
             Error::CsvDeserialize { .. } => 400,
+            Error::Utf8Deserialize { .. } => 400,
             Error::PutMatchingPkError => 400,
             Error::JsonSerialize { .. } => 500,
             Error::SingularityError { .. } => 406,
@@ -179,9 +189,14 @@ impl Error {
                         origin, target
                     )
             }),
-            Error::AmbiguousRelBetween { origin, target, relations } => json!({
-                "details": relations.iter().map(compressed_rel).collect::<JsonValue>(),
-                "hint":     format!("Try changing '{}' to one of the following: {}. Find the desired relationship in the 'details' key.",target, rel_hint(relations)),
+            Error::AmbiguousRelBetween {
+                origin,
+                target,
+                rel_hint,
+                compressed_rel,
+            } => json!({
+                "details": compressed_rel, //relations.iter().map(compressed_rel).collect::<JsonValue>(),
+                "hint":     format!("Try changing '{}' to one of the following: {}. Find the desired relationship in the 'details' key.",target, rel_hint),
                 "message":  format!("Could not embed because more than one relationship was found for '{}' and '{}'", origin, target),
             }),
             Error::InvalidFilters => {
@@ -225,6 +240,7 @@ impl Error {
             }
             Error::JsonDeserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::CsvDeserialize { .. } => json!({ "message": format!("{}", self) }),
+            Error::Utf8Deserialize { .. } => json!({ "message": format!("{}", self) }),
             Error::JsonSerialize { .. } => json!({ "message": format!("{}", self) }),
             Error::SingularityError { count, content_type } => json!({
                 "message": "JSON object requested, multiple (or no) rows returned",
@@ -234,7 +250,7 @@ impl Error {
     }
 }
 
-fn rel_hint(joins: &[Join]) -> String {
+pub fn rel_hint(joins: &[Join]) -> String {
     joins
         .iter()
         .map(|j| match j {
@@ -246,7 +262,7 @@ fn rel_hint(joins: &[Join]) -> String {
         .join(", ")
 }
 
-fn compressed_rel(join: &Join) -> JsonValue {
+pub fn compressed_rel(join: &Join) -> JsonValue {
     match join {
         Child(fk) => json!({
             "cardinality": "one-to-many",

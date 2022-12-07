@@ -1,7 +1,7 @@
 // use std::collections::HashMap;
 
 use r2d2::Pool;
-
+use std::borrow::Cow;
 use r2d2_sqlite::SqliteConnectionManager;
 use rocket::log::private::debug;
 use crate::config::{VhostConfig, SchemaStructure::*};
@@ -32,7 +32,7 @@ use async_trait::async_trait;
 use rusqlite::vtab::array;
 use std::collections::HashMap;
 use std::{fs};
-use super::{Backend, include_files};
+use super::{Backend, include_files, DbSchemaWrap};
 use tokio::task;
 use rusqlite::{
     params_from_iter,
@@ -51,8 +51,9 @@ impl ToSql for WrapParam<'_> {
             //WrapParam(LV(ListVal(v, ..))) => Ok(ToSqlOutput::Array(Rc::new(v.iter().map(|v| Value::from(v.clone())).collect()))),
             WrapParam(LV(ListVal(v, ..))) => Ok(ToSqlOutput::Owned(Text(serde_json::to_string(v).unwrap_or_default()))),
             WrapParam(SV(SingleVal(v, ..))) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
-            WrapParam(TV(v)) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
-            WrapParam(PL(Payload(v, ..))) => Ok(ToSqlOutput::Owned(Text(v.clone()))),
+            WrapParam(Str(v)) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
+            WrapParam(StrOwned(v)) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
+            WrapParam(PL(Payload(v, ..))) => Ok(ToSqlOutput::Borrowed(ValueRef::Text(v.as_bytes()))),
         }
     }
 }
@@ -102,7 +103,7 @@ fn execute(
             //sqlite does not support returining in CTEs so we must do a two step process
             let primary_key_column = "rowid"; //every table has this (TODO!!! check)
             let primary_key_field = Field {
-                name: primary_key_column.to_string(),
+                name: primary_key_column,
                 json_path: None,
             };
             let is_delete = matches!(node, Delete { .. });
@@ -135,18 +136,18 @@ fn execute(
                 } => {
                     //return only the primary key column
                     returning.clear();
-                    returning.push(primary_key_column.to_string());
+                    returning.push(primary_key_column);
                     select.clear();
                     select.push(SelectItem::Simple {
                         field: primary_key_field.clone(),
-                        alias: Some(primary_key_column.to_string()),
+                        alias: Some(primary_key_column),
                         cast: None,
                     });
 
                     if !is_delete {
                         select.push(SelectItem::Simple {
                             field: Field {
-                                name: "_subzero_check__constraint".to_string(),
+                                name: "_subzero_check__constraint",
                                 json_path: None,
                             },
                             alias: None,
@@ -168,7 +169,7 @@ fn execute(
                         e
                     })?,
             );
-            debug!("pre_statement: {}\n{:?}", mutate_statement, mutate_parameters);
+            debug!("mutate_statement: {}\n{:?}", mutate_statement, mutate_parameters);
             let mut mutate_stmt = conn
                 .prepare(mutate_statement.as_str())
                 .context(SqliteDbSnafu { authenticated })
@@ -249,7 +250,7 @@ fn execute(
                 0,
                 Condition::Single {
                     field: primary_key_field,
-                    filter: Filter::In(ListVal(ids.iter().map(|(i, _)| i.to_string()).collect(), None)),
+                    filter: Filter::In(ListVal(ids.iter().map(|(i, _)| Cow::Owned(i.to_string())).collect(), None)),
                     negate: false,
                 },
             );
@@ -258,7 +259,7 @@ fn execute(
             // set the request query to be a select
             select_request.query = Query {
                 node: Select {
-                    from: (table.to_owned(), Some("subzero_source".to_string())),
+                    from: (table.to_owned(), Some("subzero_source")),
                     join_tables: vec![], //todo!! this should probably not be empty
                     where_: select_where,
                     select: select.to_vec(),
@@ -406,7 +407,7 @@ pub struct SQLiteBackend {
     //vhost: String,
     config: VhostConfig,
     pool: Pool<SqliteConnectionManager>,
-    db_schema: DbSchema,
+    db_schema: DbSchemaWrap,
 }
 
 #[async_trait]
@@ -418,8 +419,13 @@ impl Backend for SQLiteBackend {
         let pool = Pool::builder().max_size(config.db_pool as u32).build(manager).unwrap();
 
         //read db schema
-        let db_schema = match &config.db_schema_structure {
-            SqlFile(f) => match fs::read_to_string(vec![f, &format!("sqlite_{}", f)].into_iter().find(|f| Path::new(f).exists()).unwrap_or(f)) {
+        let db_schema: DbSchemaWrap = match config.db_schema_structure.clone() {
+            SqlFile(f) => match fs::read_to_string(
+                vec![&f, &format!("sqlite_{}", f)]
+                    .into_iter()
+                    .find(|f| Path::new(f).exists())
+                    .unwrap_or(&f),
+            ) {
                 Ok(q) => match pool.get() {
                     Ok(conn) => task::block_in_place(|| {
                         let authenticated = false;
@@ -429,10 +435,13 @@ impl Backend for SQLiteBackend {
                         let mut rows = stmt.query([]).context(SqliteDbSnafu { authenticated })?;
                         match rows.next().context(SqliteDbSnafu { authenticated })? {
                             Some(r) => {
-                                println!("json db_schema: {}", r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?.as_str());
-                                serde_json::from_str::<DbSchema>(r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?.as_str())
-                                    .context(JsonDeserializeSnafu)
-                                    .context(CoreSnafu)
+                                //println!("json db_schema: {}", r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?.as_str());
+                                let s: String = r.get::<usize, String>(0).context(SqliteDbSnafu { authenticated })?;
+                                Ok(DbSchemaWrap::new(s, |s| {
+                                    serde_json::from_str::<DbSchema>(s.as_str())
+                                        .context(JsonDeserializeSnafu)
+                                        .context(CoreSnafu)
+                                }))
                             }
                             None => Err(Error::Internal {
                                 message: "sqlite structure query did not return any rows".to_string(),
@@ -443,22 +452,29 @@ impl Backend for SQLiteBackend {
                 },
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonFile(f) => match fs::read_to_string(f) {
-                Ok(s) => serde_json::from_str::<DbSchema>(s.as_str())
-                    .context(JsonDeserializeSnafu)
-                    .context(CoreSnafu),
+            JsonFile(f) => match fs::read_to_string(&f) {
+                Ok(s) => Ok(DbSchemaWrap::new(s, |s| {
+                    serde_json::from_str::<DbSchema>(s.as_str())
+                        .context(JsonDeserializeSnafu)
+                        .context(CoreSnafu)
+                })),
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },
-            JsonString(s) => serde_json::from_str::<DbSchema>(s.as_str())
-                .context(JsonDeserializeSnafu)
-                .context(CoreSnafu),
+            JsonString(s) => Ok(DbSchemaWrap::new(s, |s| {
+                serde_json::from_str::<DbSchema>(s.as_str())
+                    .context(JsonDeserializeSnafu)
+                    .context(CoreSnafu)
+            })),
         }?;
-        debug!("db_schema: {:?}", db_schema);
+        if let Err(e) = db_schema.with_schema(|s| s.as_ref()) {
+            let message = format!("Backend init failed: {}", e);
+            return Err(crate::Error::Internal { message });
+        }
         Ok(SQLiteBackend { config, pool, db_schema })
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
         execute(&self.pool, authenticated, request, env, &self.config)
     }
-    fn db_schema(&self) -> &DbSchema { &self.db_schema }
+    fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
     fn config(&self) -> &VhostConfig { &self.config }
 }

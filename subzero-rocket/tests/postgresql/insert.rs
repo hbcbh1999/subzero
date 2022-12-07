@@ -65,7 +65,7 @@ feature "insert"
         post "/articles"
              [json| r#"[{"id": 100, "body": "xxxxx"}, 123, "xxxx", {"id": 111, "body": "xxxx"}]"# |]
         shouldRespondWith
-             [json| r#"{"message":"All object keys must match"}"# |]
+             [json| r#"{"message":"Failed to deserialize json: invalid type: integer `123`, expected a map at line 1 column 34"}"# |]
              { matchStatus  = 400
              , matchHeaders = ["Content-Type" <:> "application/json"]
              }
@@ -262,7 +262,7 @@ feature "insert"
       it "fails with 400 and error" $
         post "/simple_pk" [json|"}{ x = 2"|]
         shouldRespondWith
-        [json|r#"{"message":"Failed to parse json body: expected value at line 1 column 1"}"#|]
+        [json|r#"{"message":"Failed to parse json body"}"#|]
         { matchStatus  = 400
         , matchHeaders = ["Content-Type" <:> "application/json"]
         }
@@ -271,7 +271,7 @@ feature "insert"
       it "fails with 400 and error" $
         post "/simple_pk" [json|""|]
         shouldRespondWith
-        [json|r#"{"message":"Failed to parse json body: EOF while parsing a value at line 1 column 0"}"#|]
+        [json|r#"{"message":"Failed to parse json body"}"#|]
         { matchStatus  = 400
         , matchHeaders = ["Content-Type" <:> "application/json"]
         }
@@ -395,7 +395,7 @@ feature "insert"
             {"id": 204, "body": "yyy"},
             {"id": 205, "body": "zzz"}]"#|]
           shouldRespondWith
-          [json| r#"{"message":"\"failed to parse columns parameter ()\" (line 1, column 1)","details":"Unexpected end of input Expected `\"`, letter, digit, `_` or ` `"}"# |]
+          [json| r#"{"message":"\"failed to parse columns parameter ()\" (line 1, column 0)","details":"0: in IsA, got empty input\n\n1: in Alt, got empty input\n\n2: in Many1, got empty input\n\n3: in Alt, got empty input\n\n4: in failed to parse columns parameter, got empty input\n\n"}"# |]
           { matchStatus  = 400
           , matchHeaders = []
           }

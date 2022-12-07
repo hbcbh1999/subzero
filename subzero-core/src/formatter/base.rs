@@ -38,8 +38,8 @@ pub(super) use cast_select_item_format;
 
 #[allow(unused_macros)]
 macro_rules! fmt_main_query_internal { () => {
-pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
-    let schema = String::from(schema_str);
+pub fn fmt_main_query_internal<'a>(schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+
     let count = match preferences {
         Some(Preferences {
             count: Some(Count::ExactCount),
@@ -136,7 +136,7 @@ pub fn fmt_main_query_internal<'a>(schema_str: &'a str, method: &'a str, accept_
         )?  + " , "
 
         + if count {
-            fmt_count_query(&schema, Some("_subzero_count_query"), query)?
+            fmt_count_query(schema, Some("_subzero_count_query"), query)?
         } else {
             sql("_subzero_count_query AS (select 1)")
         }
@@ -164,8 +164,8 @@ pub(super) use fmt_main_query_internal;
 #[allow(unused_macros)]
 macro_rules! fmt_main_query {
     () => {
-        pub fn fmt_main_query<'a>(schema_str: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
-            fmt_main_query_internal(schema_str, &request.method, &request.accept_content_type, &request.query, &request.preferences, env)
+        pub fn fmt_main_query<'a>(schema: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+            fmt_main_query_internal(schema, &request.method, &request.accept_content_type, &request.query, &request.preferences, env)
         }
     };
 }
@@ -200,7 +200,7 @@ pub(super) use fmt_env_query;
 #[allow(unused_macros)]
 macro_rules! fmt_query { () => {
 pub fn fmt_query<'a>(
-    schema: &String,
+    schema: &'a str,
     return_representation: bool,
     wrapin_cte: Option<&'static str>,
     q: &'a Query,
@@ -222,9 +222,11 @@ pub fn fmt_query<'a>(
             order,
             ..
         } => {
-            let bb: &SqlParam = payload;
             let (params_cte, arg_frag): (Snippet<'a>, Snippet<'a>) = match &parameters {
-                CallParams::OnePosParam(_p) => (sql(" "), param(bb)),
+                CallParams::OnePosParam(_p) => {
+                    let bb: &SqlParam = payload;
+                    (sql(" "), param(bb))
+                },
                 CallParams::KeyParams(p) if p.len() == 0 => (sql(" "), sql("")),
                 CallParams::KeyParams(prms) => (
                     fmt_body(payload)
@@ -233,7 +235,7 @@ pub fn fmt_query<'a>(
                         + prms
                             .iter()
                             //.map(|p| format!("{} {}", fmt_identity(&p.name), p.type_))
-                            .map(|p| vec![fmt_identity(&p.name), p.type_.clone()].join(" "))
+                            .map(|p| vec![fmt_identity(&p.name), p.type_.to_string()].join(" "))
                             .collect::<Vec<_>>()
                             .join(", ")
                         + ")"
@@ -264,8 +266,8 @@ pub fn fmt_query<'a>(
             } else {
                 returning
                     .iter()
-                    .map(|r| {
-                        if r.as_str() == "*" {
+                    .map(|&r| {
+                        if r == "*" {
                             //format!("{}.*", fmt_identity(&fn_name.1))
                             vec![fmt_identity(&fn_name.1).as_str(), ".*"].join("")
                         } else {
@@ -295,7 +297,7 @@ pub fn fmt_query<'a>(
                 }
             };
 
-            let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
+            let qi_subzero_source = &Qi("", "subzero_source");
             let mut select: Vec<_> = select
                 .iter()
                 .map(|s| fmt_select_item(qi_subzero_source, s))
@@ -340,26 +342,29 @@ pub fn fmt_query<'a>(
             order,
             groupby,
         } => {
-            let (qi, from_snippet) = match table_alias {
+            //let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
+            let (_qi, from_snippet) = match table_alias {
+                None => (
+                    Qi(schema, table),
+                    fmt_qi(&Qi(schema, table)),
+                ),
                 Some(a) => (
-                    Qi("".to_string(), a.clone()),
+                    Qi("", a),
                     // format!(
                     //     "{} as {}",
                     //     fmt_qi(&Qi(schema.clone(), table.clone())),
                     //     fmt_identity(&a)
                     // ),
-                    vec![fmt_qi(&Qi(schema.clone(), table.clone())), fmt_identity(&a)].join(" as "),
+                    vec![fmt_qi(&Qi(schema, table)), fmt_identity(a)].join(" as "),
                 ),
-                None => (
-                    Qi(schema.clone(), table.clone()),
-                    fmt_qi(&Qi(schema.clone(), table.clone())),
-                ),
+
             };
-            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(&qi, s)).collect::<Result<Vec<_>>>()?;
+            let qi = &_qi;
+            let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi, s)).collect::<Result<Vec<_>>>()?;
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
-                .map(|s| fmt_sub_select_item(schema, &qi, s))
+                .map(|s| fmt_sub_select_item(schema, qi, s))
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
@@ -384,7 +389,7 @@ pub fn fmt_query<'a>(
                         String::from(", ") +
                         join_tables
                                 .iter()
-                                .map(|f| fmt_qi(&Qi(schema.clone(), f.clone())))
+                                .map(|f| fmt_qi(&Qi(schema, f)))
                                 .collect::<Vec<_>>()
                                 .join(", ").as_str()
                     } else {
@@ -395,13 +400,13 @@ pub fn fmt_query<'a>(
                     + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
                     + " "
                     + if where_.conditions.len() > 0 {
-                        "where " + fmt_condition_tree(&qi, where_)?
+                        "where " + fmt_condition_tree(qi, where_)?
                     } else {
                         sql("")
                     }
                     + " "
-                    + (fmt_groupby(&qi, groupby)?)
-                    + (fmt_order(&qi, order)?)
+                    + (fmt_groupby(qi, groupby)?)
+                    + (fmt_order(qi, order)?)
                     + " "
                     + fmt_limit(limit)
                     + " "
@@ -418,8 +423,8 @@ pub fn fmt_query<'a>(
             select,
             on_conflict,
         } => {
-            let qi = &Qi(schema.clone(), into.clone());
-            let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
+            let qi = &Qi(schema, into);
+            let qi_subzero_source = &Qi("", "subzero_source");
             let mut select: Vec<_> = select
                 .iter()
                 .map(|s| fmt_select_item(qi_subzero_source, s))
@@ -437,8 +442,8 @@ pub fn fmt_query<'a>(
             } else {
                 returning
                     .iter()
-                    .map(|r| {
-                        if r.as_str() == "*" {
+                    .map(|&r| {
+                        if r == "*" {
                             //format!("*")
                             String::from("*")
                         } else {
@@ -461,7 +466,7 @@ pub fn fmt_query<'a>(
                 String::from("(")
                 + columns
                         .iter()
-                        .map(fmt_identity)
+                        .map(|&c| fmt_identity(c))
                         .collect::<Vec<_>>()
                         .join(",").as_str()
                 + ")"
@@ -471,7 +476,7 @@ pub fn fmt_query<'a>(
             };
             let select_columns = columns
                 .iter()
-                .map(fmt_identity)
+                .map(|&c| fmt_identity(c))
                 .collect::<Vec<_>>()
                 .join(",");
             (
@@ -481,10 +486,10 @@ pub fn fmt_query<'a>(
                     " insert into " + fmt_qi(qi) + " " +into_columns +
                     " select " + select_columns +
                     " from json_populate_recordset(null::" + fmt_qi(qi) + ", (select val from subzero_body)) _ " +
-                    " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("".to_string(), "_".to_string()), where_)? } else { sql("") } + // this line is only relevant for upsert
+                    " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("", "_"), where_)? } else { sql("") } + // this line is only relevant for upsert
                     match on_conflict {
                         Some((r,cols)) if cols.len()>0 => {
-                            let on_c = format!("on conflict({})",cols.iter().map(fmt_identity).collect::<Vec<_>>().join(", "));
+                            let on_c = format!("on conflict({})",cols.iter().map(|&c| fmt_identity(c)).collect::<Vec<_>>().join(", "));
                             let on_do = match (r, columns.len()) {
                                 (Resolution::IgnoreDuplicates, _) |
                                 (_, 0) => format!("do nothing"),
@@ -531,8 +536,8 @@ pub fn fmt_query<'a>(
             returning,
             select,
         } => {
-            let qi = &Qi(schema.clone(), from.clone());
-            let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
+            let qi = &Qi(schema, from);
+            let qi_subzero_source = &Qi("", "subzero_source");
             let mut select: Vec<_> = select
                 .iter()
                 .map(|s| fmt_select_item(qi_subzero_source, s))
@@ -550,8 +555,8 @@ pub fn fmt_query<'a>(
             } else {
                 returning
                     .iter()
-                    .map(|r| {
-                        if r.as_str() == "*" {
+                    .map(|&r| {
+                        if r == "*" {
                             format!("*")
                         } else {
                             fmt_identity(r)
@@ -568,7 +573,7 @@ pub fn fmt_query<'a>(
                         + fmt_qi(qi)
                         + " "
                         + if where_.conditions.len() > 0 {
-                            "where " + fmt_condition_tree(&qi, where_)?
+                            "where " + fmt_condition_tree(qi, where_)?
                         } else {
                             sql("")
                         }
@@ -606,8 +611,8 @@ pub fn fmt_query<'a>(
             returning,
             select,
         } => {
-            let qi = &Qi(schema.clone(), table.clone());
-            let qi_subzero_source = &Qi("".to_string(), "subzero_source".to_string());
+            let qi = &Qi(schema, table);
+            let qi_subzero_source = &Qi("", "subzero_source");
             let mut select: Vec<_> = select
                 .iter()
                 .map(|s| fmt_select_item(qi_subzero_source, s))
@@ -625,8 +630,8 @@ pub fn fmt_query<'a>(
             } else {
                 returning
                     .iter()
-                    .map(|r| {
-                        if r.as_str() == "*" {
+                    .map(|&r| {
+                        if r == "*" {
                             format!("{}.*", fmt_qi(qi))
                         } else {
                             format!("{}.{}", fmt_qi(qi), fmt_identity(r))
@@ -649,8 +654,8 @@ pub fn fmt_query<'a>(
                     } else {
                         returning
                             .iter()
-                            .map(|r| {
-                                if r.as_str() == "*" {
+                            .map(|&r| {
+                                if r == "*" {
                                     format!("{}.*", table)
                                 } else {
                                     format!("{}.{}", table, r)
@@ -726,7 +731,7 @@ pub(super) use fmt_query;
 #[allow(unused_macros)]
 macro_rules! fmt_count_query {
     () => {
-        fn fmt_count_query<'a>(schema: &String, wrapin_cte: Option<&'static str>, q: &'a Query) -> Result<Snippet<'a>> {
+        fn fmt_count_query<'a>(schema: &'a str, wrapin_cte: Option<&'static str>, q: &'a Query) -> Result<Snippet<'a>> {
             let query_snippet = match &q.node {
                 FunctionCall { .. } => sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string()))),
                 Select {
@@ -735,13 +740,13 @@ macro_rules! fmt_count_query {
                     where_,
                     ..
                 } => {
-                    let qi = &Qi(schema.clone(), table.clone());
+                    let qi = &Qi(schema, table);
                     //let (_, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(&schema, qi, s)).unzip();
                     //let select: Vec<_> = select.iter().map(|s| fmt_select_item(&schema, qi, s)).collect();
                     let (_, joins): (Vec<_>, Vec<_>) = q
                         .sub_selects
                         .iter()
-                        .map(|s| fmt_sub_select_item(&schema, qi, s))
+                        .map(|s| fmt_sub_select_item(schema, qi, s))
                         .collect::<Result<Vec<_>>>()?
                         .into_iter()
                         .unzip();
@@ -750,7 +755,7 @@ macro_rules! fmt_count_query {
                         + vec![table.clone()]
                             .iter()
                             .chain(join_tables.iter())
-                            .map(|f| fmt_qi(&Qi(schema.clone(), f.clone())))
+                            .map(|f| fmt_qi(&Qi(schema, f)))
                             .collect::<Vec<_>>()
                             .join(", ")
                         + " "
@@ -801,7 +806,7 @@ pub(super) use fmt_body;
 #[allow(unused_macros)]
 macro_rules! fmt_condition_tree {
     () => {
-        fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> Result<Snippet<'a>> {
+        fn fmt_condition_tree<'a, 'b>(qi: &'b Qi<'b>, t: &'a ConditionTree<'a>) -> Result<Snippet<'a>> {
             match t {
                 ConditionTree { operator, conditions } => {
                     //let sep = format!(" {} ", fmt_logic_operator(operator));
@@ -822,7 +827,7 @@ pub(super) use fmt_condition_tree;
 #[allow(unused_macros)]
 macro_rules! fmt_condition {
     () => {
-        fn fmt_condition<'a>(qi: &Qi, c: &'a Condition) -> Result<Snippet<'a>> {
+        fn fmt_condition<'a, 'b>(qi: &'b Qi<'b>, c: &'a Condition<'a>) -> Result<Snippet<'a>> {
             Ok(match c {
                 Single { field, filter, negate } => {
                     //let fld = sql(format!("{} ", fmt_field(qi, field)?));
@@ -851,7 +856,7 @@ macro_rules! fmt_condition {
                     }
                 }
 
-                Raw { sql: s } => sql(s.as_str()),
+                Raw { sql: s } => sql(*s),
             })
         }
     };
@@ -862,7 +867,7 @@ pub(super) use fmt_condition;
 #[allow(unused_macros)]
 macro_rules! fmt_in_filter {
     ($p:ident) => {
-        fmt_operator(&"= any".to_string())? + ("(" + param($p) + ")")
+        fmt_operator(&"= any")? + ("(" + param($p) + ")")
     };
 }
 #[allow(unused_imports)]
@@ -929,7 +934,7 @@ pub(super) use fmt_env_var;
 #[allow(unused_macros)]
 macro_rules! fmt_function_call {
     () => {
-        fn fmt_function_call<'a>(qi: &Qi, fn_name: &String, parameters: &'a [FunctionParam]) -> Result<Snippet<'a>> {
+        fn fmt_function_call<'a, 'b>(qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>]) -> Result<Snippet<'a>> {
             Ok(sql(fmt_identity(fn_name))
                 + "("
                 + parameters
@@ -947,9 +952,9 @@ pub(super) use fmt_function_call;
 #[allow(unused_macros)]
 macro_rules! fmt_select_item_function {
     () => {
-        fn fmt_select_item_function<'a>(
-            qi: &Qi, fn_name: &String, parameters: &'a [FunctionParam], partitions: &'a Vec<Field>, orders: &'a Vec<OrderTerm>,
-            alias: &'a Option<String>,
+        fn fmt_select_item_function<'a, 'b>(
+            qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>], partitions: &'a Vec<Field<'a>>, orders: &'a Vec<OrderTerm>,
+            alias: &'a Option<&str>,
         ) -> Result<Snippet<'a>> {
             Ok(fmt_function_call(qi, fn_name, parameters)?
                 + if partitions.is_empty() && orders.is_empty() {
@@ -979,7 +984,7 @@ pub(super) use fmt_select_item_function;
 #[allow(unused_macros)]
 macro_rules! fmt_select_item {
     () => {
-        fn fmt_select_item<'a>(qi: &Qi, i: &'a SelectItem) -> Result<Snippet<'a>> {
+        fn fmt_select_item<'a, 'b>(qi: &'b Qi<'b>, i: &'a SelectItem) -> Result<Snippet<'a>> {
             match i {
                 Star => Ok(sql(format!(star_select_item_format!(), fmt_qi(qi)))),
                 Simple {
@@ -1009,7 +1014,7 @@ macro_rules! fmt_select_item {
                     parameters,
                     partitions,
                     orders,
-                } => fmt_select_item_function(qi, fn_name, parameters, partitions, orders, alias),
+                } => fmt_select_item_function(qi, *fn_name, parameters, partitions, orders, alias),
             }
         }
     };
@@ -1020,7 +1025,7 @@ pub(super) use fmt_select_item;
 #[allow(unused_macros)]
 macro_rules! fmt_sub_select_item {
     () => {
-        fn fmt_sub_select_item<'a>(schema: &String, qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
+        fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
             match i {
                 SubSelect { query, alias, join, .. } => match join {
                     Some(j) => match j {
@@ -1051,7 +1056,7 @@ macro_rules! fmt_sub_select_item {
                             ))
                         }
                         Many(_table, _fk1, fk2) => {
-                            let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
+                            let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1.as_ref()));
                             let local_table_name = fmt_identity(&fk2.referenced_table.1);
                             let subquery = fmt_query(schema, true, None, query, join)?;
                             Ok((
@@ -1080,7 +1085,7 @@ pub(super) use fmt_sub_select_item;
 macro_rules! fmt_operator {
     () => {
         //fn fmt_operator(o: &Operator) -> Result<String> { Ok(format!("{} ", o)) }
-        fn fmt_operator(o: &Operator) -> Result<String> { Ok(String::new() + o.as_str() + " ") }
+        fn fmt_operator<'a>(o: &'a Operator<'a>) -> Result<String> { Ok(String::from(*o) + " ") }
     };
 }
 #[allow(unused_imports)]
@@ -1104,7 +1109,7 @@ pub(super) use fmt_logic_operator;
 macro_rules! fmt_identity {
     () => {
         #[allow(clippy::ptr_arg)]
-        fn fmt_identity(i: &String) -> String {
+        fn fmt_identity(i: &str) -> String {
             String::from("\"")
                 + i.chars()
                     .take_while(|x| x != &'\0')
@@ -1122,7 +1127,7 @@ pub(super) use fmt_identity;
 macro_rules! fmt_qi {
     () => {
         fn fmt_qi(qi: &Qi) -> String {
-            match (qi.0.as_str(), qi.1.as_str()) {
+            match (qi.0, qi.1) {
                 // (_,"subzero_source") |
                 // (_,"subzero_fn_call") |
                 ("", "") => String::new(),
@@ -1139,8 +1144,8 @@ pub(super) use fmt_qi;
 #[allow(unused_macros)]
 macro_rules! fmt_field {
     () => {
-        fn fmt_field(qi: &Qi, f: &Field) -> Result<String> {
-            let sep = match (qi.0.as_str(), qi.1.as_str()) {
+        fn fmt_field<'a, 'b>(qi: &'b Qi<'b>, f: &'a Field<'a>) -> Result<String> {
+            let sep = match (qi.0, qi.1) {
                 ("", "") => "",
                 _ => ".",
             };
@@ -1162,7 +1167,7 @@ pub(super) use fmt_field;
 #[allow(unused_macros)]
 macro_rules! fmt_function_param {
     () => {
-        fn fmt_function_param<'a>(qi: &Qi, p: &'a FunctionParam) -> Result<Snippet<'a>> {
+        fn fmt_function_param<'a, 'b>(qi: &'b Qi<'b>, p: &'a FunctionParam<'a>) -> Result<Snippet<'a>> {
             Ok(match p {
                 FunctionParam::Val(v, c) => {
                     let vv: &SqlParam = v;
@@ -1183,7 +1188,7 @@ pub(super) use fmt_function_param;
 #[allow(unused_macros)]
 macro_rules! fmt_order {
     () => {
-        fn fmt_order(qi: &Qi, o: &Vec<OrderTerm>) -> Result<String> {
+        fn fmt_order<'a>(qi: &'a Qi, o: &'a Vec<OrderTerm<'a>>) -> Result<String> {
             Ok(if o.len() > 0 {
                 //format!("order by {}", o.iter().map(|t| fmt_order_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", "))
                 String::from("order by ")
@@ -1204,7 +1209,7 @@ pub(super) use fmt_order;
 #[allow(unused_macros)]
 macro_rules! fmt_order_term {
     () => {
-        fn fmt_order_term(_qi: &Qi, t: &OrderTerm) -> Result<String> {
+        fn fmt_order_term<'a>(_qi: &'a Qi, t: &'a OrderTerm<'a>) -> Result<String> {
             let direction = match &t.direction {
                 None => "",
                 Some(d) => match d {
@@ -1220,7 +1225,7 @@ macro_rules! fmt_order_term {
                 },
             };
             //Ok(format!("{} {} {}", fmt_field(&Qi("".to_string(),"".to_string()), &t.term)?, direction, nulls))
-            Ok(vec![fmt_field(&Qi("".to_string(), "".to_string()), &t.term)?.as_str(), direction, nulls].join(" "))
+            Ok(vec![fmt_field(&Qi("", ""), &t.term)?.as_str(), direction, nulls].join(" "))
         }
     };
 }
@@ -1230,7 +1235,7 @@ pub(super) use fmt_order_term;
 #[allow(unused_macros)]
 macro_rules! fmt_groupby {
     () => {
-        fn fmt_groupby(qi: &Qi, o: &Vec<GroupByTerm>) -> Result<String> {
+        fn fmt_groupby<'a>(qi: &'a Qi, o: &'a Vec<GroupByTerm<'a>>) -> Result<String> {
             Ok(if o.len() > 0 {
                 format!("group by {}", o.iter().map(|t| fmt_groupby_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", "))
             } else {
@@ -1246,8 +1251,8 @@ pub(super) use fmt_groupby;
 #[allow(unused_macros)]
 macro_rules! fmt_groupby_term {
     () => {
-        fn fmt_groupby_term(_qi: &Qi, t: &GroupByTerm) -> Result<String> {
-            fmt_field(&Qi("".to_string(), "".to_string()), &t.0)
+        fn fmt_groupby_term<'a>(_qi: &'a Qi, t: &'a GroupByTerm<'a>) -> Result<String> {
+            fmt_field(&Qi("", ""), &t.0)
             //Ok(fmt_identity(&t.0.name))
         }
     };
@@ -1258,24 +1263,24 @@ pub(super) use fmt_groupby_term;
 #[allow(unused_macros)]
 macro_rules! fmt_select_name {
     () => {
-        fn fmt_select_name(name: &String, json_path: &Option<Vec<JsonOperation>>, alias: &Option<String>) -> Option<String> {
+        fn fmt_select_name(name: &str, json_path: &Option<Vec<JsonOperation>>, alias: &Option<&str>) -> Option<String> {
             match (name, json_path, alias) {
                 (n, Some(jp), None) => match jp.last() {
-                    Some(JArrow(JKey(k))) | Some(J2Arrow(JKey(k))) => Some(k.clone()),
+                    Some(JArrow(JKey(k))) | Some(J2Arrow(JKey(k))) => Some(k.to_string()),
                     Some(JArrow(JIdx(_))) | Some(J2Arrow(JIdx(_))) => Some(
                         jp.iter()
                             .rev()
                             .find_map(|i| match i {
-                                J2Arrow(JKey(k)) | JArrow(JKey(k)) => Some(k),
+                                J2Arrow(JKey(k)) | JArrow(JKey(k)) => Some(k.to_string()),
                                 _ => None,
                             })
-                            .unwrap_or(n)
+                            .unwrap_or(n.to_string())
                             .clone(),
                     ),
                     None => None,
                 },
-                (_, _, Some(aa)) => Some(aa.clone()),
-                (n, None, None) => Some(n.clone()),
+                (_, _, Some(aa)) => Some(aa.to_string()),
+                (n, None, None) => Some(n.to_string()),
             }
         }
     };
@@ -1286,7 +1291,7 @@ pub(super) use fmt_select_name;
 #[allow(unused_macros)]
 macro_rules! fmt_as {
     () => {
-        fn fmt_as(name: &String, json_path: &Option<Vec<JsonOperation>>, alias: &Option<String>) -> String {
+        fn fmt_as(name: &str, json_path: &Option<Vec<JsonOperation>>, alias: &Option<&str>) -> String {
             match (name, json_path, alias) {
                 (_, Some(_), None) => match fmt_select_name(name, json_path, alias) {
                     Some(nn) => String::from(" as ") + fmt_identity(&nn).as_str(), //format!(" as {}", fmt_identity(&nn)),
@@ -1368,8 +1373,8 @@ macro_rules! fmt_json_operand {
     () => {
         fn fmt_json_operand(o: &JsonOperand) -> String {
             match o {
-                JKey(k) => String::from("'") + k.as_str() + "'", //format!("'{}'", k),
-                JIdx(i) => i.clone(),
+                JKey(k) => String::from("'") + *k + "'", //format!("'{}'", k),
+                JIdx(i) => i.to_string(),
             }
         }
     };

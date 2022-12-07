@@ -135,7 +135,7 @@ lazy_static! {
             ("tasks.or", "(id.eq.11,id.eq.12)"),
         ]
     };
-    static ref DB_SCHEMA: DbSchema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
+    static ref DB_SCHEMA: DbSchema<'static> = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
 }
 
 fn criterion_benchmark(c: &mut Criterion) {

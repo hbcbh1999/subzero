@@ -14,7 +14,6 @@ use crate::api::{
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn};
 use crate::error::{Result, *};
 use super::{ToParam, Snippet, SqlParam};
-
 macro_rules! fmt_field_format {
     () => {
         "JSON_VALUE({}{}{}, '${}')"
@@ -30,10 +29,9 @@ generate_fn!(true, "String");
 
 fmt_main_query!();
 pub fn fmt_main_query_internal<'a>(
-    schema_str: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
+    schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
     env: &'a HashMap<&'a str, &'a str>,
 ) -> Result<Snippet<'a>> {
-    let schema = String::from(schema_str);
     let _count = match preferences {
         Some(Preferences {
             count: Some(Count::ExactCount),
@@ -51,7 +49,7 @@ pub fn fmt_main_query_internal<'a>(
         + ") "
         + if has_payload_cte { ", " } else { "" }
         + fmt_query(
-            &schema,
+            schema,
             return_representation,
             None, //Some("_subzero_query"),
             query,
@@ -82,7 +80,7 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
 }
 //fmt_query!();
 pub fn fmt_query<'a>(
-    schema: &String, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, join: &Option<Join>,
+    schema: &'a str, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, join: &Option<Join<'a>>,
 ) -> Result<Snippet<'a>> {
     let add_env_tbl_to_from = wrapin_cte.is_some();
 
@@ -97,13 +95,12 @@ pub fn fmt_query<'a>(
             order,
             groupby,
         } => {
-            let (qi, from_snippet) = match table_alias {
-                Some(a) => (
-                    Qi("".to_string(), a.clone()),
-                    format!("{} as {}", fmt_qi(&Qi(schema.clone(), table.clone())), fmt_identity(a)),
-                ),
-                None => (Qi(schema.clone(), table.clone()), fmt_qi(&Qi(schema.clone(), table.clone()))),
+            //let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
+            let (_qi, from_snippet) = match table_alias {
+                None => (Qi(schema, table), fmt_qi(&Qi(schema, table))),
+                Some(a) => (Qi("", a), format!("{} as {}", fmt_qi(&Qi(schema, table)), fmt_identity(a))),
             };
+            let qi = &_qi;
 
             // get the columns needed for joins
             let empty = vec![];
@@ -124,14 +121,14 @@ pub fn fmt_query<'a>(
                     } => !join_cols.contains(name),
                     _ => true,
                 })
-                .map(|s| fmt_select_item(&qi, s))
+                .map(|s| fmt_select_item(qi, s))
                 .collect::<Result<Vec<_>>>()?;
 
             // add subselects
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
-                .map(|s| fmt_sub_select_item(schema, &qi, s))
+                .map(|s| fmt_sub_select_item(schema, qi, s))
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
@@ -143,7 +140,7 @@ pub fn fmt_query<'a>(
                 .map(|name| {
                     Ok(sql(format!(
                         simple_select_item_format!(),
-                        field=fmt_field(&qi, &Field { name: name.clone(), json_path: None })?,
+                        field=fmt_field(qi, &Field { name, json_path: None })?,
                         as=fmt_as(name, &None, &None),
                         select_name=fmt_select_name(name, &None, &None).unwrap_or_default()
                     )))
@@ -173,20 +170,21 @@ pub fn fmt_query<'a>(
                     let mut uniques = HashSet::new();
                     let mut terms = pks
                         .iter()
-                        .map(|c| {
-                            GroupByTerm(Field {
-                                name: c.clone(),
-                                json_path: None,
-                            })
-                        })
+                        .map(|&c| GroupByTerm(Field { name: c, json_path: None }))
                         // append the other selected fields to the groupby
                         .chain(select.iter().filter_map(|s| match s {
-                            Simple { field, .. } => Some(GroupByTerm(field.clone())),
+                            Simple {
+                                field: Field { name, json_path },
+                                ..
+                            } => Some(GroupByTerm(Field {
+                                name,
+                                json_path: json_path.clone(),
+                            })),
                             _ => None,
                         }))
                         .collect::<Vec<_>>();
                     //filter only qunique
-                    terms.retain(|GroupByTerm(Field { name, .. })| uniques.insert(name.clone()));
+                    terms.retain(|&GroupByTerm(Field { name, .. })| uniques.insert(name));
                     terms
                 });
 
@@ -199,30 +197,23 @@ pub fn fmt_query<'a>(
                     + if add_env_tbl_to_from { ", env " } else { "" }
                     + " "
                     + if !join_tables.is_empty() {
-                        format!(
-                            ", {}",
-                            join_tables
-                                .iter()
-                                .map(|f| fmt_qi(&Qi(schema.clone(), f.clone())))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        )
+                        format!(", {}", join_tables.iter().map(|f| fmt_qi(&Qi(schema, f))).collect::<Vec<_>>().join(", "))
                     } else {
                         String::new()
                     }
                     + " "
                     + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
                     + " "
-                    + match fmt_condition_tree(&qi, where_)? {
+                    + match fmt_condition_tree(qi, where_)? {
                         SqlSnippet(s) => match s[..] {
                             [] => sql(""),
                             _ => "where " + SqlSnippet(s),
                         },
                     }
                     + " "
-                    + (fmt_groupby(&qi, if !groupby.is_empty() { groupby } else { &groupby_for_join })?)
+                    + (fmt_groupby(qi, if !groupby.is_empty() { groupby } else { &groupby_for_join })?)
                     + " "
-                    + (fmt_order(&qi, order)?)
+                    + (fmt_order(qi, order)?)
                     + " "
                     + fmt_limit(limit)
                     + " "
@@ -248,22 +239,22 @@ pub fn fmt_query<'a>(
 //fmt_count_query!();
 //fmt_body!();
 //fmt_condition_tree!();
-fn fmt_condition_tree<'a>(qi: &Qi, t: &'a ConditionTree) -> Result<Snippet<'a>> {
+fn fmt_condition_tree<'a, 'b>(qi: &'b Qi<'b>, t: &'a ConditionTree) -> Result<Snippet<'a>> {
     let ConditionTree { operator, conditions } = t;
     {
-        let sep = format!(" {} ", fmt_logic_operator(operator));
+        let sep = fmt_logic_operator(operator);
         Ok(conditions
             .iter()
             .filter(|c| !matches!(c, Single { filter: Col(_, _), .. } | Foreign { .. }))
             .map(|c| fmt_condition(qi, c))
             .collect::<Result<Vec<_>>>()?
-            .join(sep.as_str()))
+            .join(sep))
     }
 }
 fmt_condition!();
 macro_rules! fmt_in_filter {
     ($p:ident) => {
-        fmt_operator(&"in ".to_string())? + param($p)
+        fmt_operator(&"in ")? + param($p)
     };
 }
 fn fmt_env_var(e: &'_ EnvVar) -> String {
@@ -278,7 +269,7 @@ fmt_select_item!();
 fmt_function_call!();
 fmt_select_item_function!();
 //fmt_function_param!();
-fn fmt_function_param<'a>(qi: &Qi, p: &'a FunctionParam) -> Result<Snippet<'a>> {
+fn fmt_function_param<'a, 'b>(qi: &'b Qi<'b>, p: &'a FunctionParam) -> Result<Snippet<'a>> {
     Ok(match p {
         FunctionParam::Val(v, _c) => {
             let vv: &SqlParam = v;
@@ -293,7 +284,7 @@ fn fmt_function_param<'a>(qi: &Qi, p: &'a FunctionParam) -> Result<Snippet<'a>> 
     })
 }
 //fmt_sub_select_item!();
-fn fmt_sub_select_item<'a>(schema: &String, qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
+fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
     let SubSelect { query, alias, join, .. } = i;
     if let Some(j) = join {
         let subselect_columns = query
@@ -317,13 +308,14 @@ fn fmt_sub_select_item<'a>(schema: &String, qi: &Qi, i: &'a SubSelect) -> Result
                 .iter()
                 .filter(|c| matches!(c, Single { filter: Col(_, _), .. } | Foreign { .. }))
                 .collect::<Vec<_>>(),
-            format!(" {} ", fmt_logic_operator(operator)),
+            fmt_logic_operator(operator),
         );
 
         match j {
             Parent(fk) => {
                 let alias_or_name = alias.as_ref().unwrap_or(&fk.referenced_table.1);
-                let local_table_name = format!("{}_{}", qi.1, alias_or_name);
+                let _local_table_name = format!("{}_{}", qi.1, alias_or_name);
+                let local_table_name = _local_table_name.as_str();
                 let subquery = fmt_query(schema, true, None, query, join)?;
                 Ok((
                     //sql(format!("row_to_json({}.*) as {}", fmt_identity(&local_table_name), fmt_identity(alias_or_name))),
@@ -353,13 +345,13 @@ fn fmt_sub_select_item<'a>(schema: &String, qi: &Qi, i: &'a SubSelect) -> Result
                         "left join ("
                             + subquery
                             + ") as "
-                            + sql(fmt_identity(&local_table_name))
+                            + sql(fmt_identity(local_table_name))
                             + " on "
                             + join_conditions
                                 .iter()
-                                .map(|c| fmt_condition(&Qi("".to_string(), local_table_name.clone()), c))
+                                .map(|c| fmt_condition(&Qi("", local_table_name), c))
                                 .collect::<Result<Vec<_>>>()?
-                                .join(join_separator.as_str()),
+                                .join(join_separator),
                     ],
                 ))
             }
@@ -397,15 +389,15 @@ fn fmt_sub_select_item<'a>(schema: &String, qi: &Qi, i: &'a SubSelect) -> Result
                             + " on "
                             + join_conditions
                                 .iter()
-                                .map(|c| fmt_condition(&Qi("".to_string(), local_table_name.clone()), c))
+                                .map(|c| fmt_condition(&Qi("", local_table_name), c))
                                 .collect::<Result<Vec<_>>>()?
-                                .join(join_separator.as_str()),
+                                .join(join_separator),
                     ],
                 ))
             }
             Many(_table, _fk1, fk2) => {
                 let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
-                let local_table_name = fmt_identity(&fk2.referenced_table.1);
+                let local_table_name = fmt_identity(fk2.referenced_table.1);
                 let subquery = fmt_query(schema, true, None, query, join)?;
                 Ok((
                     ("coalesce((select json_agg("
@@ -434,7 +426,7 @@ fmt_order_term!();
 fmt_groupby!();
 fmt_groupby_term!();
 //fmt_as!();
-fn fmt_as(name: &String, json_path: &Option<Vec<JsonOperation>>, alias: &Option<String>) -> String {
+fn fmt_as(name: &str, json_path: &Option<Vec<JsonOperation>>, alias: &Option<&str>) -> String {
     match (name, json_path, alias) {
         (_, Some(_), None) => match fmt_select_name(name, json_path, alias) {
             Some(nn) => format!(" as {}", fmt_identity(&nn)),
@@ -457,7 +449,7 @@ fn fmt_json_operation(j: &JsonOperation) -> String {
 //fmt_json_operand!();
 fn fmt_json_operand(o: &JsonOperand) -> String {
     match o {
-        JKey(k) => k.clone(),
+        JKey(k) => k.to_string(),
         JIdx(i) => format!("[{}]", i),
     }
 }
@@ -471,13 +463,16 @@ mod tests {
     use regex::Regex;
     use crate::api::{ContentType::*};
     use super::*;
+    use std::borrow::Cow;
+    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
     macro_rules! param_placeholder_format {
         () => {
             "{{p{pos}:{data_type}}}"
         };
     }
     generate_fn!(true);
-    fn s(s: &str) -> String { s.to_string() }
+    fn s(s: &str) -> &str { s }
+    //fn ss(s: &str) -> String { s.to_string() }
     #[test]
     fn test_fmt_select_query() {
         let q = Query {
@@ -509,7 +504,7 @@ mod tests {
                 where_: ConditionTree {
                     operator: And,
                     conditions: vec![Single {
-                        filter: Op(s(">="), SingleVal(s("5"), Some(s("Int32")))),
+                        filter: Op(s(">="), SingleVal(cow("5"), Some(cow("Int32")))),
                         field: Field {
                             name: s("id"),
                             json_path: None,
@@ -554,7 +549,7 @@ mod tests {
                                         json_path: None,
                                     },
                                     filter: Filter::Col(
-                                        Qi(s("default"), s("projects")),
+                                        Qi("default", "projects"),
                                         Field {
                                             name: s("client_id"),
                                             json_path: None,
@@ -569,11 +564,11 @@ mod tests {
                     alias: Some(s("client")),
                     hint: None,
                     join: Some(Parent(ForeignKey {
-                        name: s("client_id_fk"),
-                        table: Qi(s("default"), s("projects")),
-                        columns: vec![s("client_id")],
-                        referenced_table: Qi(s("default"), s("clients")),
-                        referenced_columns: vec![s("id")],
+                        name: "client_id_fk",
+                        table: Qi("default", "projects"),
+                        columns: vec!["client_id"],
+                        referenced_table: Qi("default", "clients"),
+                        referenced_columns: vec!["id"],
                     })),
                 },
                 SubSelect {
@@ -612,7 +607,7 @@ mod tests {
                                             json_path: None,
                                         },
                                         filter: Filter::Col(
-                                            Qi(s("default"), s("projects")),
+                                            Qi("default", "projects"),
                                             Field {
                                                 name: s("id"),
                                                 json_path: None,
@@ -621,7 +616,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: Op(s(">"), SingleVal(s("50"), Some(s("Int32")))),
+                                        filter: Op(s(">"), SingleVal(cow("50"), Some(cow("Int32")))),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -629,7 +624,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: In(ListVal(vec![s("51"), s("52")], Some(s("Array(Int32)")))),
+                                        filter: In(ListVal(vec![cow("51"), cow("52")], Some(cow("Array(Int32)")))),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -644,18 +639,18 @@ mod tests {
                     hint: None,
                     alias: None,
                     join: Some(Child(ForeignKey {
-                        name: s("project_id_fk"),
-                        table: Qi(s("default"), s("tasks")),
-                        columns: vec![s("project_id")],
-                        referenced_table: Qi(s("default"), s("projects")),
-                        referenced_columns: vec![s("id")],
+                        name: "project_id_fk",
+                        table: Qi("default", "tasks"),
+                        columns: vec!["project_id"],
+                        referenced_table: Qi("default", "projects"),
+                        referenced_columns: vec!["id"],
                     })),
                 },
             ],
         };
         let emtpy_hashmap = HashMap::new();
 
-        let (query_str, _parameters, _) = generate(fmt_query(&s("default"), true, None, &q, &None).unwrap());
+        let (query_str, _parameters, _) = generate(fmt_query("default", true, None, &q, &None).unwrap());
         // assert_eq!(
         //     format!("{:?}", parameters),
         //     "[SingleVal(\"50\"), ListVal([\"51\", \"52\"]), SingleVal(\"5\"), SingleVal(\"10\")]"
@@ -719,7 +714,7 @@ mod tests {
             expected_query_str
         );
 
-        let (main_query_str, _parameters, _) = generate(fmt_main_query(&s("default"), &api_request, &HashMap::new()).unwrap());
+        let (main_query_str, _parameters, _) = generate(fmt_main_query("default", &api_request, &HashMap::new()).unwrap());
         assert_eq!(re.replace_all(main_query_str.as_str(), " "), re.replace_all(expected_main_query_str.as_str(), " "));
     }
 }

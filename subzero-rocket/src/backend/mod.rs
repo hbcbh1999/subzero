@@ -10,6 +10,7 @@ use regex::Regex;
 use std::{fs};
 use std::path::Path;
 // use log::{debug};
+use ouroboros::self_referencing;
 
 #[cfg(feature = "clickhouse")]
 pub mod clickhouse;
@@ -70,6 +71,14 @@ pub trait Backend {
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse>;
     fn db_schema(&self) -> &DbSchema;
     fn config(&self) -> &VhostConfig;
+}
+
+#[self_referencing]
+pub struct DbSchemaWrap {
+    schema_string: String,
+    #[covariant]
+    #[borrows(schema_string)]
+    schema: Result<DbSchema<'this>>,
 }
 
 #[cfg(test)]
