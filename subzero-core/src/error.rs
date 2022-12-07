@@ -193,7 +193,7 @@ impl Error {
             } => json!({
                 "details": compressed_rel, //relations.iter().map(compressed_rel).collect::<JsonValue>(),
                 "hint":     format!("Try changing '{target}' to one of the following: {rel_hint}. Find the desired relationship in the 'details' key."),
-                "message":  format!("Could not embedtarget because more than one relatirel_hintonship was found for '{origin}' and '{target}'"),
+                "message":  format!("Could not embed because more than one relationship was found for '{origin}' and '{target}'"),
             }),
             Error::InvalidFilters => {
                 json!({"message":"Filters must include all and only primary key columns with 'eq' operators"})
