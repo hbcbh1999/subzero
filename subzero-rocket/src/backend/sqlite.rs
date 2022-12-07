@@ -420,17 +420,12 @@ impl Backend for SQLiteBackend {
 
         //read db schema
         let db_schema: DbSchemaWrap = match config.db_schema_structure.clone() {
-            SqlFile(f) => match fs::read_to_string(
-                vec![&f, &format!("sqlite_{}", f)]
-                    .into_iter()
-                    .find(|f| Path::new(f).exists())
-                    .unwrap_or(&f),
-            ) {
+            SqlFile(f) => match fs::read_to_string(vec![&f, &format!("sqlite_{f}")].into_iter().find(|f| Path::new(f).exists()).unwrap_or(&f)) {
                 Ok(q) => match pool.get() {
                     Ok(conn) => task::block_in_place(|| {
                         let authenticated = false;
                         let query = include_files(q);
-                        println!("schema query: {}", query);
+                        println!("schema query: {query}");
                         let mut stmt = conn.prepare(query.as_str()).context(SqliteDbSnafu { authenticated })?;
                         let mut rows = stmt.query([]).context(SqliteDbSnafu { authenticated })?;
                         match rows.next().context(SqliteDbSnafu { authenticated })? {
@@ -467,7 +462,7 @@ impl Backend for SQLiteBackend {
             })),
         }?;
         if let Err(e) = db_schema.with_schema(|s| s.as_ref()) {
-            let message = format!("Backend init failed: {}", e);
+            let message = format!("Backend init failed: {e}");
             return Err(crate::Error::Internal { message });
         }
         Ok(SQLiteBackend { config, pool, db_schema })

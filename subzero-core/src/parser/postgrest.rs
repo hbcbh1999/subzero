@@ -64,11 +64,11 @@ pub fn convert_error<I: core::ops::Deref<Target = str>>(input: I, e: VerboseErro
             offsets.push(offset);
             match kind {
                 VerboseErrorKind::Char(c) => {
-                    write!(&mut result, "{}: expected '{}', got empty input\n\n", i, c)
+                    write!(&mut result, "{i}: expected '{c}', got empty input\n\n")
                 }
 
-                VerboseErrorKind::Nom(e) => write!(&mut result, "{}: in {:?}, got empty input\n\n", i, e),
-                VerboseErrorKind::Context(s) => write!(&mut result, "{}: in {}, got empty input\n\n", i, s),
+                VerboseErrorKind::Nom(e) => write!(&mut result, "{i}: in {e:?}, got empty input\n\n"),
+                VerboseErrorKind::Context(s) => write!(&mut result, "{i}: in {s}, got empty input\n\n"),
             }
         } else {
             let prefix = &input.as_bytes()[..offset];
@@ -189,8 +189,8 @@ lazy_static! {
     ].iter().copied().collect();
 
     static ref OPERATORS_START: Vec<String> = {
-        OPERATORS.keys().chain(["not","in"].iter()).chain(FTS_OPERATORS.keys()).map(|&op| format!("{}.", op) )
-        .chain(FTS_OPERATORS.keys().map(|&op| format!("{}(", op) ))
+        OPERATORS.keys().chain(["not","in"].iter()).chain(FTS_OPERATORS.keys()).map(|&op| format!("{op}.") )
+        .chain(FTS_OPERATORS.keys().map(|&op| format!("{op}(") ))
         .collect()
     };
 }
@@ -283,7 +283,7 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
             Ok((headers, Cow::Owned(body)))
         }
         (Other(t), _) => Err(Error::ContentTypeError {
-            message: format!("None of these Content-Types are available: {}", t),
+            message: format!("None of these Content-Types are available: {t}"),
         }),
     }?;
     Ok((columns, body))
@@ -320,7 +320,7 @@ pub fn parse<'a>(
             //         message: format!("None of these Content-Types are available: {}", accept_header),
             //     })?;
             let (_, act) = context("failed to parse accept header", content_type)(accept_header).map_err(|_| Error::ContentTypeError {
-                message: format!("None of these Content-Types are available: {}", accept_header),
+                message: format!("None of these Content-Types are available: {accept_header}"),
             })?;
             Ok(act)
         }
@@ -335,7 +335,7 @@ pub fn parse<'a>(
             //         message: format!("None of these Content-Types are available: {}", t),
             //     })?;
             let (_, act) = context("failed to parse content-type header", content_type)(t).map_err(|_| Error::ContentTypeError {
-                message: format!("None of these Content-Types are available: {}", t),
+                message: format!("None of these Content-Types are available: {t}"),
             })?;
             Ok(act)
         }
@@ -1544,7 +1544,7 @@ fn select_item(i: &str) -> Parsed<SelectKind> {
 //     many(any()).map(move |v| (v, dt.clone()))
 // }
 
-fn single_value<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, SingleVal<'a>> {
+fn single_value<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, SingleVal<'a>> {
     let v = match data_type {
         Some(dt) => SingleVal(Cow::Borrowed(i), Some(Cow::Borrowed(*dt))),
         None => SingleVal(Cow::Borrowed(i), None),
@@ -1599,7 +1599,7 @@ fn offset(i: &str) -> Parsed<SingleVal> { integer(i) }
 //     ))
 //     .map(move |v| (v, dt.clone()))
 // }
-fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<SingleVal> {
+fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<'a, SingleVal<'a>> {
     let (input, v) = alt((
         quoted_value_escaped,
         map(recognize(delimited(char('{'), is_not("{}"), char('}'))), Cow::Borrowed),
@@ -1620,8 +1620,8 @@ fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<
 //     let dt = data_type.as_ref().map(|v| format!("Array({})", v)); //TODO!!! this is hardcoded for clickhouse
 //     lex(between(lex(char('(')), lex(char(')')), sep_by(list_element(), lex(char(','))))).map(move |v| (v, dt.clone()))
 // }
-fn list_value<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, ListVal<'a>> {
-    let dt = data_type.map(|v| Cow::Owned(format!("Array({})", v))); //TODO!!! this is hardcoded for clickhouse
+fn list_value<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, ListVal<'a>> {
+    let dt = data_type.map(|v| Cow::Owned(format!("Array({v})"))); //TODO!!! this is hardcoded for clickhouse
     let (input, list) = delimited(ws(char('(')), separated_list0(ws(char(',')), list_element), ws(char(')')))(i)?;
     Ok((input, ListVal(list, dt)))
 }
@@ -1683,7 +1683,7 @@ fn fts_operator(i: &str) -> Parsed<&str> {
 //         .and(filter(data_type))
 //         .map(|(n, f)| (n.is_some(), f))
 // }
-fn negatable_filter<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, (bool, Filter<'a>)> {
+fn negatable_filter<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, (bool, Filter<'a>)> {
     map(tuple((opt(tag("not.")), apply(data_type, filter))), |(n, f)| (n.is_some(), f))(i)
 }
 
@@ -1757,7 +1757,7 @@ fn filter_common<'a, 'b>(
     ))(i)
 }
 
-fn filter<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> { filter_common(single_value, data_type, i) }
+fn filter<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> { filter_common(single_value, data_type, i) }
 
 //done
 // fn logic_filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
@@ -1796,7 +1796,7 @@ fn filter<'a, 'b>(data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, Filt
 //     ))
 //     .and_then(|v| v)
 // }
-fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<Filter> { filter_common(logic_single_value, data_type, i) }
+fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> { filter_common(logic_single_value, data_type, i) }
 
 //done
 // fn order<Input>() -> impl Parser<Input, Output = Vec<OrderTerm>>
@@ -2370,7 +2370,7 @@ fn to_app_error(s: &str, e: nom::Err<nom::error::VerboseError<&str>>) -> Error {
             };
             let (offsets, details) = convert_error(s, _e);
             let position = offsets.first().unwrap_or(&0usize);
-            let message = format!("\"{} ({})\" (line 1, column {})", message, s, position);
+            let message = format!("\"{message} ({s})\" (line 1, column {position})");
             //let details = details.replace('\n', " ").trim().to_string();
             //println!("Parse error:\n{}", details);
 
@@ -2378,7 +2378,7 @@ fn to_app_error(s: &str, e: nom::Err<nom::error::VerboseError<&str>>) -> Error {
         }
         nom::Err::Incomplete(_e) => {
             let message = "parse error".to_string();
-            let details = format!("{:?}", _e);
+            let details = format!("{_e:?}");
             Error::ParseRequestError { message, details }
         }
     }
@@ -2406,7 +2406,7 @@ fn get_returning<'a>(selects: &[SelectItem<'a>], sub_selects: &[SubSelect<'a>]) 
             },
             x => Err(Error::NoRelBetween {
                 origin: "table".to_string(),
-                target: format!("{:?}", x),
+                target: format!("{x:?}"),
             }),
         }))
         .collect::<Result<Vec<_>, _>>()?
@@ -2975,12 +2975,12 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Err(AppError::NoRelBetween {
                 origin: s("projects"),
                 target: s("unknown")
             })
-            .map_err(|e| format!("{}", e))
+            .map_err(|e| format!("{e}"))
         );
 
         assert_eq!(
@@ -2996,13 +2996,13 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Err(AppError::ParseRequestError {
                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 3)"),
                 //details: s("Unexpected `,` Unexpected `i` Expected letter, digit, `_` or ` `")
                 details: s("0: at line 1, in Eof:\nid-,na$me\n  ^\n\n1: at line 1, in failed to parse select parameter:\nid-,na$me\n^\n\n")
             })
-            .map_err(|e| format!("{}", e))
+            .map_err(|e| format!("{e}"))
         );
     }
 
@@ -3025,7 +3025,7 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Ok(ApiRequest {
                 schema_name: "api",
                 get: vec![("select", "id"), ("id", "gt.10"),],
@@ -3082,7 +3082,7 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Ok(ApiRequest {
                 schema_name: "api",
                 get: vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),],
@@ -3150,13 +3150,13 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Err(AppError::ParseRequestError {
                 message: s("\"failed to parse columns parameter (id,1$name)\" (line 1, column 5)"),
                 //details: s("Unexpected `$` Expected `,`, whitespaces or end of input"),
                 details: s("0: at line 1, in Eof:\nid,1$name\n    ^\n\n1: at line 1, in failed to parse columns parameter:\nid,1$name\n^\n\n")
             })
-            .map_err(|e| format!("{}", e))
+            .map_err(|e| format!("{e}"))
         );
 
         assert_eq!(
@@ -3172,7 +3172,7 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Err("Failed to deserialize json: EOF while parsing an object at line 1 column 16".to_string())
         );
 
@@ -3189,11 +3189,11 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Err(AppError::InvalidBody {
                 message: s("All object keys must match"),
             })
-            .map_err(|e| format!("{}", e))
+            .map_err(|e| format!("{e}"))
         );
 
         assert_eq!(
@@ -3209,12 +3209,12 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Err(AppError::NoRelBetween {
                 origin: s("projects"),
                 target: s("unknown")
             })
-            .map_err(|e| format!("{}", e))
+            .map_err(|e| format!("{e}"))
         );
 
         assert_eq!(
@@ -3230,13 +3230,13 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Err(AppError::ParseRequestError {
                 message: s("\"failed to parse select parameter (id-,na$me)\" (line 1, column 3)"),
                 //details: s("Unexpected `,` Unexpected `i` Expected letter, digit, `_` or ` `")
                 details: s("0: at line 1, in Eof:\nid-,na$me\n  ^\n\n1: at line 1, in failed to parse select parameter:\nid-,na$me\n^\n\n")
             })
-            .map_err(|e| format!("{}", e))
+            .map_err(|e| format!("{e}"))
         );
 
         assert_eq!(
@@ -3252,7 +3252,7 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Ok(ApiRequest {
                 schema_name: "api",
                 get: vec![("select", "id"), ("id", "gt.10"),],
@@ -3310,7 +3310,7 @@ pub mod tests {
                 emtpy_hashmap.clone(),
                 None
             )
-            .map_err(|e| format!("{}", e)),
+            .map_err(|e| format!("{e}")),
             Ok(ApiRequest {
                 schema_name: "api",
                 get: vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),],

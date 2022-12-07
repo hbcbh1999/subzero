@@ -227,8 +227,8 @@ pub fn fmt_query<'a>(
 
     Ok(match wrapin_cte {
         Some(cte_name) => match cte_snippet {
-            Some(cte) => " " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )",
-            None => format!(" {} as ( ", cte_name) + query_snippet + " )",
+            Some(cte) => " " + cte + " , " + format!("{cte_name} as ( ") + query_snippet + " )",
+            None => format!(" {cte_name} as ( ") + query_snippet + " )",
         },
         None => match cte_snippet {
             Some(cte) => " " + cte + query_snippet,
@@ -324,7 +324,7 @@ fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect
                         + "tuple("
                         + subselect_columns
                             .iter()
-                            .map(|i| format!("\"{}\".\"{}\"", local_table_name, i))
+                            .map(|i| format!("\"{local_table_name}\".\"{i}\""))
                             .collect::<Vec<_>>()
                             .join(", ")
                         + "), "
@@ -332,7 +332,7 @@ fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect
                         + "'Tuple(', "
                         + subselect_columns
                             .iter()
-                            .map(|i| format!("'{} ', toTypeName(\"{}\".\"{}\")", i, local_table_name, i))
+                            .map(|i| format!("'{i} ', toTypeName(\"{local_table_name}\".\"{i}\")"))
                             .collect::<Vec<_>>()
                             .join(", ',', ")
                         + ", ')'"
@@ -365,7 +365,7 @@ fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect
                         + "tuple("
                         + subselect_columns
                             .iter()
-                            .map(|i| format!("\"{}\".\"{}\"", local_table_name, i))
+                            .map(|i| format!("\"{local_table_name}\".\"{i}\""))
                             .collect::<Vec<_>>()
                             .join(", ")
                         + "), "
@@ -373,7 +373,7 @@ fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect
                         + "'Tuple(', "
                         + subselect_columns
                             .iter()
-                            .map(|i| format!("'{} ', toTypeName(\"{}\".\"{}\")", i, local_table_name, i))
+                            .map(|i| format!("'{i} ', toTypeName(\"{local_table_name}\".\"{i}\")"))
                             .collect::<Vec<_>>()
                             .join(", ',', ")
                         + ", ')'"
@@ -450,7 +450,7 @@ fn fmt_json_operation(j: &JsonOperation) -> String {
 fn fmt_json_operand(o: &JsonOperand) -> String {
     match o {
         JKey(k) => k.to_string(),
-        JIdx(i) => format!("[{}]", i),
+        JIdx(i) => format!("[{i}]"),
     }
 }
 
@@ -702,7 +702,7 @@ mod tests {
 
         let expected_main_query_str = format!(
             r#"with env as (select null)
-        {}
+        {expected_query_str}
         format JSONEachRow
         settings 
         
@@ -710,8 +710,7 @@ mod tests {
         join_use_nulls=1,
         output_format_json_named_tuples_as_objects=1
         
-        "#,
-            expected_query_str
+        "#
         );
 
         let (main_query_str, _parameters, _) = generate(fmt_main_query("default", &api_request, &HashMap::new()).unwrap());

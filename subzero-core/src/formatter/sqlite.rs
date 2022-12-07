@@ -116,7 +116,7 @@ pub fn fmt_main_query_internal<'a>(
             coalesce(string_agg(substring(_subzero_t::text, 2, length(_subzero_t::text) - 2), chr(10)), '')
         "#),
         (_, Other(t), _) => Err(Error::ContentTypeError {
-            message: format!("None of these Content-Types are available: {}", t),
+            message: format!("None of these Content-Types are available: {t}"),
         }),
     }?;
 
@@ -291,7 +291,7 @@ pub fn fmt_query<'a>(
                                 ).collect::<Vec<_>>().join(", ")
                             )
                         };
-                        format!("{} {}", on_c, on_do)
+                        format!("{on_c} {on_do}")
                     },
                     _ => String::new()
                 } +
@@ -374,9 +374,9 @@ pub fn fmt_query<'a>(
                             .iter()
                             .map(|&r| {
                                 if r == "*" {
-                                    format!("{}.*", table)
+                                    format!("{table}.*")
                                 } else {
-                                    format!("{}.{}", table, r)
+                                    format!("{table}.{r}")
                                 }
                             })
                             .collect::<Vec<_>>()
@@ -408,8 +408,8 @@ pub fn fmt_query<'a>(
 
     Ok(match wrapin_cte {
         Some(cte_name) => match cte_snippet {
-            Some(cte) => " " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )",
-            None => format!(" {} as ( ", cte_name) + query_snippet + " )",
+            Some(cte) => " " + cte + " , " + format!("{cte_name} as ( ") + query_snippet + " )",
+            None => format!(" {cte_name} as ( ") + query_snippet + " )",
         },
         None => match cte_snippet {
             Some(cte) => " " + cte + query_snippet,
@@ -572,6 +572,6 @@ fn fmt_json_operation(j: &JsonOperation) -> String {
 fn fmt_json_operand(o: &JsonOperand) -> String {
     match o {
         JKey(k) => k.to_string(),
-        JIdx(i) => format!("[{}]", i),
+        JIdx(i) => format!("[{i}]"),
     }
 }

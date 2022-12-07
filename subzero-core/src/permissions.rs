@@ -622,7 +622,7 @@ fn validate_fn_param<'a>(safe_functions: &'a Vec<&'a str>, p: &'a FunctionParam<
         FunctionParam::Func { fn_name, parameters } => {
             if !safe_functions.contains(fn_name) {
                 return Err(Error::ParseRequestError {
-                    details: format!("calling: '{}' is not allowed", fn_name),
+                    details: format!("calling: '{fn_name}' is not allowed"),
                     message: "Unsafe functions called".to_string(),
                 });
             }
@@ -644,7 +644,7 @@ pub fn check_safe_functions<'a>(request: &'a ApiRequest<'a>, safe_functions: &'a
                     if let Func { fn_name, parameters, .. } = s {
                         if !safe_functions.contains(fn_name) {
                             return Err(Error::ParseRequestError {
-                                details: format!("calling: '{}' is not allowed", fn_name),
+                                details: format!("calling: '{fn_name}' is not allowed"),
                                 message: "Unsafe functions called".to_string(),
                             });
                         }

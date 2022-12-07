@@ -113,7 +113,7 @@ impl Error {
                 ("Content-Type".into(), "application/json".into()),
                 (
                     "WWW-Authenticate".into(),
-                    format!("Bearer error=\"invalid_token\", error_description=\"{}\"", message),
+                    format!("Bearer error=\"invalid_token\", error_description=\"{message}\""),
                 ),
             ],
             _ => vec![("Content-Type".into(), "application/json".into())],
@@ -157,7 +157,7 @@ impl Error {
     pub fn json_body(&self) -> JsonValue {
         match self {
             Error::Serde { source } => {
-                json!({ "message": format!("{}", source) })
+                json!({ "message": format!("{source}") })
             }
             Error::UnsupportedFeature { message } => json!({ "message": message }),
             Error::ContentTypeError { message } => json!({ "message": message }),
@@ -183,11 +183,7 @@ impl Error {
                 json!({"message": "order querystring parameter not allowed"})
             }
             Error::NoRelBetween { origin, target } => json!({
-                "message":
-                    format!(
-                        "Could not find foreign keys between these entities. No relationship found between {} and {}",
-                        origin, target
-                    )
+                "message": format!("Could not find foreign keys between these entities. No relationship found between {origin} and {target}")
             }),
             Error::AmbiguousRelBetween {
                 origin,
@@ -196,8 +192,8 @@ impl Error {
                 compressed_rel,
             } => json!({
                 "details": compressed_rel, //relations.iter().map(compressed_rel).collect::<JsonValue>(),
-                "hint":     format!("Try changing '{}' to one of the following: {}. Find the desired relationship in the 'details' key.",target, rel_hint),
-                "message":  format!("Could not embed because more than one relationship was found for '{}' and '{}'", origin, target),
+                "hint":     format!("Try changing '{target}' to one of the following: {rel_hint}. Find the desired relationship in the 'details' key."),
+                "message":  format!("Could not embedtarget because more than one relatirel_hintonship was found for '{origin}' and '{target}'"),
             }),
             Error::InvalidFilters => {
                 json!({"message":"Filters must include all and only primary key columns with 'eq' operators"})
@@ -208,10 +204,10 @@ impl Error {
             //TODO!!! message i wrong, the error contains the name of the "unfound" schema
             Error::UnacceptableSchema { schemas } => json!({ "message": format!("The schema must be one of the following: {}", schemas.join(", ")) }),
             Error::UnknownRelation { relation } => {
-                json!({ "message": format!("Unknown relation '{}'", relation) })
+                json!({ "message": format!("Unknown relation '{relation}'") })
             }
             Error::NotFound { target } => {
-                json!({ "message": format!("Entry '{}' not found", target) })
+                json!({ "message": format!("Entry '{target}' not found") })
             }
             Error::UnsupportedVerb => json!({"message":"Unsupported HTTP verb"}),
             Error::NoRpc {
@@ -227,24 +223,23 @@ impl Error {
                     (true, _, _) => " function with a single json or jsonb parameter".to_string(),
                     (_, true, &TextCSV) => " function with a single unnamed text parameter".to_string(),
                     //(_, true, CTOctetStream)     => " function with a single unnamed bytea parameter",
-                    (_, true, &ApplicationJSON) => format!(
-                        "{} function or the {}.{} function with a single unnamed json or jsonb parameter",
-                        prms, schema, proc_name
-                    ),
-                    _ => format!("{} function", prms),
+                    (_, true, &ApplicationJSON) => {
+                        format!("{prms} function or the {schema}.{proc_name} function with a single unnamed json or jsonb parameter")
+                    }
+                    _ => format!("{prms} function"),
                 };
                 json!({
                     "hint": "If a new function was created in the database with this name and parameters, try reloading the schema cache.",
-                    "message": format!("Could not find the {}.{}{} in the schema cache", schema, proc_name, msg_part)
+                    "message": format!("Could not find the {schema}.{proc_name}{msg_part} in the schema cache")
                 })
             }
-            Error::JsonDeserialize { .. } => json!({ "message": format!("{}", self) }),
-            Error::CsvDeserialize { .. } => json!({ "message": format!("{}", self) }),
-            Error::Utf8Deserialize { .. } => json!({ "message": format!("{}", self) }),
-            Error::JsonSerialize { .. } => json!({ "message": format!("{}", self) }),
+            Error::JsonDeserialize { .. } => json!({ "message": format!("{self}") }),
+            Error::CsvDeserialize { .. } => json!({ "message": format!("{self}") }),
+            Error::Utf8Deserialize { .. } => json!({ "message": format!("{self}") }),
+            Error::JsonSerialize { .. } => json!({ "message": format!("{self}") }),
             Error::SingularityError { count, content_type } => json!({
                 "message": "JSON object requested, multiple (or no) rows returned",
-                "details": format!("Results contain {} rows, {} requires 1 row", count, content_type)
+                "details": format!("Results contain {count} rows, {content_type} requires 1 row")
             }),
         }
     }

@@ -51,7 +51,7 @@ pub fn include_files(template: String) -> String {
                 let parts = &s[2..(s.len() - 1)].split('#').collect::<Vec<&str>>();
                 debug!("parts {:?}", parts);
                 let file_name = parts[0];
-                let missing_msg = format!("{{not found @{}}}", file_name);
+                let missing_msg = format!("{{not found @{file_name}}}");
                 let default_val = parts.get(1).unwrap_or(&(missing_msg.as_str())).to_owned();
                 //TODO!!! this allows including any file, should this be restricted in some way?
                 let contents = fs::read_to_string(Path::new(file_name)).unwrap_or_else(|_| String::from(default_val));
@@ -89,7 +89,7 @@ mod tests {
         let seperator = Regex::new(r"[ ,.]+").expect("Invalid regex");
         let splits = split_keep(&seperator, "this... is a, test");
         //for split in splits {
-        println!("{:?}", splits);
+        println!("{splits:?}");
         //}
         // assert!(false)
     }
@@ -98,7 +98,7 @@ mod tests {
     fn test_include_files() {
         let template = "this  in included =>{@include.html}<=".to_owned();
         let result = include_files(template);
-        println!("{}", result);
+        println!("{result}");
         // assert!(false)
     }
 }

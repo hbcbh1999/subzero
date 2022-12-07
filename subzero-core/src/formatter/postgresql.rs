@@ -90,7 +90,7 @@ mod tests {
         let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
         let p = Payload(Cow::Borrowed(payload), None);
         let pp: Vec<&SqlParam> = vec![&p];
-        assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
+        assert_eq!(format!("{parameters:?}"), format!("{pp:?}"));
         let re = Regex::new(r"\s+").unwrap();
         assert_eq!(
             re.replace_all(query_str.as_str(), " "),
@@ -281,7 +281,7 @@ mod tests {
         let p1: &SqlParam = &SingleVal(cow("50"), None);
         let p = Payload(Cow::Borrowed(payload), None);
         let pp: Vec<&SqlParam> = vec![&p, p1, p0];
-        assert_eq!(format!("{:?}", parameters), format!("{:?}", pp));
+        assert_eq!(format!("{parameters:?}"), format!("{pp:?}"));
         let re = Regex::new(r"\s+").unwrap();
         assert_eq!(
             re.replace_all(query_str.as_str(), " "),
@@ -507,7 +507,7 @@ mod tests {
 
         let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
         assert_eq!(
-            format!("{:?}", parameters),
+            format!("{parameters:?}"),
             "[SingleVal(\"50\", None), ListVal([\"51\", \"52\"], None), SingleVal(\"5\", None), SingleVal(\"10\", None)]"
         );
         let re = Regex::new(r"\s+").unwrap();

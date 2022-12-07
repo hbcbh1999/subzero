@@ -171,30 +171,30 @@ impl Error {
             Error::Internal { message } => json!({ "message": message }),
             #[cfg(feature = "clickhouse")]
             Error::HttpRequest { source } => {
-                json!({ "message": format!("{}", source) })
+                json!({ "message": format!("{source}") })
             }
             #[cfg(feature = "clickhouse")]
             Error::Hyper { source } => {
-                json!({ "message": format!("{}", source) })
+                json!({ "message": format!("{source}") })
             }
             Error::Core { source } => source.json_body(),
             #[cfg(feature = "sqlite")]
             Error::Thread { .. } => json!({"message":"internal thread error"}),
             #[cfg(feature = "postgresql")]
             Error::PgDbPool { source } => {
-                json!({ "message": format!("Db pool error {}", source) })
+                json!({ "message": format!("Db pool error {source}") })
             }
             #[cfg(feature = "clickhouse")]
             Error::ClickhouseDbPool { source } => {
-                json!({ "message": format!("Db pool error {}", source) })
+                json!({ "message": format!("Db pool error {source}") })
             }
             #[cfg(feature = "sqlite")]
             Error::SqliteDbPool { source } => {
-                json!({ "message": format!("Db pool error {}", source) })
+                json!({ "message": format!("Db pool error {source}") })
             }
             #[cfg(feature = "clickhouse")]
             Error::ClickhouseDb { source, .. } => {
-                json!({ "message": format!("Unhandled db error: {}", source) })
+                json!({ "message": format!("Unhandled db error: {source}") })
             }
             #[cfg(feature = "postgresql")]
             Error::PgDb { source, .. } => match source.as_db_error() {
@@ -210,12 +210,12 @@ impl Error {
                         "hint": match db_err.hint() {Some(v) => v.into(), None => JsonValue::Null}
                     }),
                 },
-                None => json!({ "message": format!("Unhandled db error {}", source) }),
+                None => json!({ "message": format!("Unhandled db error {source}") }),
             },
 
             #[cfg(feature = "sqlite")]
             Error::SqliteDb { source, .. } => {
-                json!({ "message": format!("Unhandled db error: {}", source) })
+                json!({ "message": format!("Unhandled db error: {source}") })
             }
         }
     }

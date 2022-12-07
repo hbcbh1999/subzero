@@ -848,7 +848,7 @@ where
                     Err(serde::de::Error::custom("The number is neither 1.0 nor 0.0"))
                 }
             } else {
-                Err(serde::de::Error::custom(format!("Could not parse boolean from a string: {}", string)))
+                Err(serde::de::Error::custom(format!("Could not parse boolean from a string: {string}")))
             }
         }
     }
@@ -1066,7 +1066,7 @@ mod tests {
 
         let deserialized_result = serde_json::from_str::<DbSchema>(json_schema);
 
-        println!("deserialized_result = {:?}", deserialized_result);
+        println!("deserialized_result = {deserialized_result:?}");
 
         let deserialized = deserialized_result.unwrap_or(DbSchema {
             use_internal_permissions: false,
@@ -1098,7 +1098,7 @@ mod tests {
             ]
         }"#;
         let deserialized_result = serde_json::from_str::<DbSchema>(ss);
-        println!("deserialized_result = {:?}", deserialized_result);
+        println!("deserialized_result = {deserialized_result:?}");
         assert!(deserialized_result.is_ok());
     }
 
@@ -1188,14 +1188,14 @@ mod tests {
         "#;
 
         let serialized_result = serde_json::to_string(&conditions).unwrap();
-        println!("serialized_result = {}", serialized_result);
+        println!("serialized_result = {serialized_result}");
         assert_eq!(
             serde_json::from_str::<JsonValue>(conditions_json).unwrap(),
             serde_json::from_str::<JsonValue>(&serialized_result).unwrap()
         );
 
         let deserialized_result = serde_json::from_str::<Vec<Condition>>(conditions_json);
-        println!("deserialized_result = {:?}", deserialized_result);
+        println!("deserialized_result = {deserialized_result:?}");
         assert_eq!(deserialized_result.unwrap(), conditions);
     }
 
@@ -1338,7 +1338,7 @@ mod tests {
         assert_eq!(
             db_schema
                 .get_join(&s("api"), &s("projects"), &s("tasks"), &None)
-                .map_err(|e| format!("{}", e)),
+                .map_err(|e| format!("{e}")),
             Ok(Child(ForeignKey {
                 name: "project_id_fk",
                 table: Qi("api", "tasks"),
@@ -1350,7 +1350,7 @@ mod tests {
         assert_eq!(
             db_schema
                 .get_join(&s("api"), &s("tasks"), &s("projects"), &None)
-                .map_err(|e| format!("{}", e)),
+                .map_err(|e| format!("{e}")),
             Ok(Parent(ForeignKey {
                 name: "project_id_fk",
                 table: Qi("api", "tasks"),
@@ -1362,7 +1362,7 @@ mod tests {
         assert_eq!(
             db_schema
                 .get_join(&s("api"), &s("clients"), &s("projects"), &None)
-                .map_err(|e| format!("{}", e)),
+                .map_err(|e| format!("{e}")),
             Ok(Child(ForeignKey {
                 name: "client_id_fk",
                 table: Qi("api", "projects"),
@@ -1372,9 +1372,7 @@ mod tests {
             }))
         );
         assert_eq!(
-            db_schema
-                .get_join(&s("api"), &s("tasks"), &s("users"), &None)
-                .map_err(|e| format!("{}", e)),
+            db_schema.get_join(&s("api"), &s("tasks"), &s("users"), &None).map_err(|e| format!("{e}")),
             Ok(Many(
                 Qi("api", "users_tasks"),
                 ForeignKey {
@@ -1396,7 +1394,7 @@ mod tests {
         assert_eq!(
             db_schema
                 .get_join(&s("api"), &s("tasks"), &s("users"), &Some("users_tasks"))
-                .map_err(|e| format!("{}", e)),
+                .map_err(|e| format!("{e}")),
             Ok(Many(
                 Qi("api", "users_tasks"),
                 ForeignKey {

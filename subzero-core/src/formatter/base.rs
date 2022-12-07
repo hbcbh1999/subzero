@@ -1383,7 +1383,7 @@ macro_rules! fmt_json_operand {
 pub(super) use fmt_json_operand;
 
 #[allow(unused)]
-pub fn return_representation<'a>(method: &str, query: &'a Query, preferences: &Option<Preferences>) -> bool {
+pub fn return_representation(method: &str, query: &Query, preferences: &Option<Preferences>) -> bool {
     !matches!(
         (method, &query.node, preferences),
         ("POST", Insert { .. }, None)

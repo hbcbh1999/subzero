@@ -120,7 +120,7 @@ async fn handle_request(
         TextCSV => Ok(HTTPContentType::CSV),
         ApplicationJSON => Ok(HTTPContentType::JSON),
         Other(t) => Err(CoreError::ContentTypeError {
-            message: format!("None of these Content-Types are available: {}", t),
+            message: format!("None of these Content-Types are available: {t}"),
         }),
     }
     .context(CoreSnafu)

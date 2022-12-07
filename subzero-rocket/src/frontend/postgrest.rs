@@ -75,17 +75,17 @@ fn get_env<'a>(
                 .iter()
                 .map(|(k, &v)| (format!("request.header.{}", k.to_lowercase()).into(), v.into())),
         );
-        env.extend(request.cookies.iter().map(|(&k, &v)| (format!("request.cookie.{}", k).into(), v.into())));
-        env.extend(request.get.iter().map(|&(k, v)| (format!("request.get.{}", k).into(), v.into())));
+        env.extend(request.cookies.iter().map(|(&k, &v)| (format!("request.cookie.{k}").into(), v.into())));
+        env.extend(request.get.iter().map(|&(k, v)| (format!("request.get.{k}").into(), v.into())));
         match jwt_claims {
             Some(v) => {
                 if let Some(claims) = v.as_object() {
                     env.extend(claims.iter().map(|(k, v)| {
                         (
-                            format!("request.jwt.claim.{}", k).into(),
+                            format!("request.jwt.claim.{k}").into(),
                             match v {
                                 JsonValue::String(s) => s.into(),
-                                _ => format!("{}", v).into(),
+                                _ => format!("{v}").into(),
                             },
                         )
                     }));
@@ -190,8 +190,8 @@ pub async fn handle<'a>(
                                 Ok(Some(c.claims))
                             }
                             Err(err) => match *err.kind() {
-                                ErrorKind::InvalidToken => Err(Error::JwtTokenInvalid { message: format!("{}", err) }),
-                                _ => Err(Error::JwtTokenInvalid { message: format!("{}", err) }),
+                                ErrorKind::InvalidToken => Err(Error::JwtTokenInvalid { message: format!("{err}") }),
+                                _ => Err(Error::JwtTokenInvalid { message: format!("{err}") }),
                             },
                         }
                     }
@@ -210,7 +210,7 @@ pub async fn handle<'a>(
                 [JsonValue::String(s)] => Ok((Some(s), true)),
                 _ => Ok((config.db_anon_role.as_ref(), true)),
             },
-            Err(e) => Err(Error::JwtTokenInvalid { message: format!("{}", e) }),
+            Err(e) => Err(Error::JwtTokenInvalid { message: format!("{e}") }),
         },
         None => Ok((config.db_anon_role.as_ref(), false)),
     }
@@ -347,15 +347,15 @@ pub async fn handle<'a>(
 
 fn content_range_header(lower: i64, upper: i64, total: Option<i64>) -> String {
     let range_string = if total != Some(0) && lower <= upper {
-        format!("{}-{}", lower, upper)
+        format!("{lower}-{upper}")
     } else {
         "*".to_string()
     };
     let total_string = match total {
-        Some(t) => format!("{}", t),
+        Some(t) => format!("{t}"),
         None => "*".to_string(),
     };
-    format!("{}/{}", range_string, total_string)
+    format!("{range_string}/{total_string}")
 }
 
 fn content_range_status(lower: i64, upper: i64, total: Option<i64>) -> u16 {

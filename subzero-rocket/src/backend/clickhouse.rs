@@ -92,7 +92,7 @@ async fn execute(
     if uri.username() != "" {
         http_request = http_request.header(
             hyper::header::AUTHORIZATION,
-            format!("Basic {}", base64::encode(&format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
+            format!("Basic {}", base64::encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
         );
     }
 
@@ -202,7 +202,7 @@ impl Backend for ClickhouseBackend {
         //read db schema
         let db_schema: DbSchemaWrap = match config.db_schema_structure.clone() {
             SqlFile(f) => match fs::read_to_string(
-                vec![&f, &format!("clickhouse_{}", f)]
+                vec![&f, &format!("clickhouse_{f}")]
                     .into_iter()
                     .find(|f| Path::new(f).exists())
                     .unwrap_or(&f),
@@ -233,7 +233,7 @@ impl Backend for ClickhouseBackend {
                         if uri.username() != "" {
                             http_request = http_request.header(
                                 hyper::header::AUTHORIZATION,
-                                format!("Basic {}", base64::encode(&format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
+                                format!("Basic {}", base64::encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
                             );
                         }
 
@@ -260,7 +260,7 @@ impl Backend for ClickhouseBackend {
                         println!("successfully replaced json_str");
                         let s = serde_json::to_string_pretty(&v).context(JsonSerializeSnafu).context(CoreSnafu)?;
 
-                        println!("json schema repalced:\n{:?}\n", s);
+                        println!("json schema repalced:\n{s:?}\n");
                         //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;
                         //println!("schema {:?}", schema);
                         Ok(DbSchemaWrap::new(s, |s| {
@@ -289,7 +289,7 @@ impl Backend for ClickhouseBackend {
         }?;
 
         if let Err(e) = db_schema.with_schema(|s| s.as_ref()) {
-            let message = format!("Backend init failed: {}", e);
+            let message = format!("Backend init failed: {e}");
             return Err(crate::Error::Internal { message });
         }
 

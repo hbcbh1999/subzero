@@ -602,10 +602,10 @@ impl<'de> serde::Deserialize<'de> for TrileanVal {
                 if s == "unknown" {
                     Ok(TrileanVal::TriUnknown)
                 } else {
-                    Err(serde::de::Error::custom(format!("invalid trilean value: {}", s)))
+                    Err(serde::de::Error::custom(format!("invalid trilean value: {s}")))
                 }
             }
-            _ => Err(serde::de::Error::custom(format!("invalid trilean value: {}", v))),
+            _ => Err(serde::de::Error::custom(format!("invalid trilean value: {v}"))),
         }
     }
 }
@@ -740,7 +740,7 @@ impl<'a> serde::Serialize for JsonOperand<'a> {
         S: serde::Serializer,
     {
         match self {
-            Self::JKey(s) => serializer.serialize_str(format!("'{}'", s).as_str()),
+            Self::JKey(s) => serializer.serialize_str(format!("'{s}'").as_str()),
             Self::JIdx(s) => serializer.serialize_str(s),
         }
     }

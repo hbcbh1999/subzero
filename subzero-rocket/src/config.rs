@@ -143,9 +143,9 @@ mod test {
 
         let deserialized_result = serde_json::from_str::<Config>(json_config);
 
-        println!("deserialized_result = {:?}", deserialized_result);
+        println!("deserialized_result = {deserialized_result:?}");
 
-        assert_eq!(deserialized_result.map_err(|e| format!("{}", e)), Ok(config));
+        assert_eq!(deserialized_result.map_err(|e| format!("{e}")), Ok(config));
         // let serialized_result = serde_json::to_string(&config);
         // println!("serialized_result = {:?}", serialized_result);
         //let serialized = serialized_result.unwrap_or("failed to serialize".to_string());

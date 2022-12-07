@@ -124,7 +124,7 @@ demonstrate! {
         it "simple get two" {
             let client = CLIENT.get().await;
             let response = client.get("/rest/projects?select=id&id=gt.1&name=eq.IOS").dispatch().await;
-            println!("{:?}", response);
+            println!("{response:?}");
             assert_eq!(response.status(), Status::Ok);
             assert_eq!(response.into_string().await.unwrap(), r#"[{"id":3}]"#);
 

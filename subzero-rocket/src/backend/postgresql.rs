@@ -133,7 +133,7 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
             _ => s.as_str(),
         };
 
-        let pre_request_statement = format!(r#"select "{}".* from "{}"."{}"()"#, f, fn_schema, f);
+        let pre_request_statement = format!(r#"select "{f}".* from "{fn_schema}"."{f}"()"#);
         debug!("pre_statement {}", pre_request_statement);
         let pre_request_stm = transaction
             .prepare_cached(pre_request_statement.as_str())
@@ -243,7 +243,7 @@ impl Backend for PostgreSQLBackend {
         //read db schema
         let db_schema: DbSchemaWrap = match config.db_schema_structure.clone() {
             SqlFile(f) => match fs::read_to_string(
-                vec![&f, &format!("postgresql_{}", f)]
+                vec![&f, &format!("postgresql_{f}")]
                     .into_iter()
                     .find(|f| Path::new(f).exists())
                     .unwrap_or(&f),
@@ -297,7 +297,7 @@ impl Backend for PostgreSQLBackend {
         }?;
 
         if let Err(e) = db_schema.with_schema(|s| s.as_ref()) {
-            let message = format!("Backend init failed: {}", e);
+            let message = format!("Backend init failed: {e}");
             return Err(crate::Error::Internal { message });
         }
 
@@ -317,7 +317,7 @@ async fn wait_for_pg_connection(vhost: &String, db_pool: &Pool) -> Result<Object
     let max_retry_interval = 30;
     let mut client = db_pool.get().await;
     while let Err(e) = client {
-        println!("[{}] Failed to connect to PostgreSQL {:?}", vhost, e);
+        println!("[{vhost}] Failed to connect to PostgreSQL {e:?}");
         let time = Duration::from_secs(i);
         println!("[{}] Retrying the PostgreSQL connection in {:?} seconds..", vhost, time.as_secs());
         sleep(time).await;
@@ -333,7 +333,7 @@ async fn wait_for_pg_connection(vhost: &String, db_pool: &Pool) -> Result<Object
     }
     match client {
         Err(_) => {}
-        _ => println!("[{}] Connection to PostgreSQL successful", vhost),
+        _ => println!("[{vhost}] Connection to PostgreSQL successful"),
     }
     client
 }
