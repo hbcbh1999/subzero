@@ -83,15 +83,13 @@ export class SqliteTwoStepStatement {
       throw new Error('ids of the mutated rows are not set')
     }
     let { query, parameters } = this.select
-
-    // iterate over the parameters array, find the first occurrence of an array with a single string element
-    // with the value of '_subzero_ids_placeholder_' and replace it with the actual ids
-    let ids_placeholder_index = parameters.findIndex((p) => Array.isArray(p) && p.length == 1 && p[0] == '_subzero_ids_placeholder_')
-    if (ids_placeholder_index == -1) {
-      throw new Error('could not find the ids placeholder in the select query')
-    }
-    parameters[ids_placeholder_index] = this.ids
-
+    let placeholder = '["_subzero_ids_placeholder_"]'
+    // replace placeholder with the actual ids in json format
+    parameters.forEach((p, i) => {
+      if (p == placeholder) {
+        parameters[i] = JSON.stringify(this.ids)
+      }
+    })
     return { query, parameters }
   }
 
@@ -110,24 +108,28 @@ export class SqliteTwoStepStatement {
 
 export class Subzero {
   private backend: Backend
+  private dbType: DbType
+  private allowed_select_functions?: string[]
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(dbType: DbType, schema: any, allowed_select_functions?: string[]) {
     try {
+      this.dbType = dbType
+      this.allowed_select_functions = allowed_select_functions
       this.backend = Backend.init(JSON.stringify(schema), dbType, allowed_select_functions)
     } catch (e:any) {
       throw toSubzeroError(e)
     }
   }
 
-  // setSchema(schema: any) {
-  //   try {
-  //     this.backend.set_schema(JSON.stringify(schema))
-  //   } catch (e: any) {
-  //     throw toSubzeroError(e)
-  //   }
-  // }
- 
+  setSchema(schema: any) {
+    try {
+      this.backend = Backend.init(JSON.stringify(schema), this.dbType, this.allowed_select_functions)
+    } catch (e: any) {
+      throw toSubzeroError(e)
+    }
+  }
+
   private async normalizeRequest(request: SubzeroHttpRequest): Promise<void> {
     // try to accomodate for different request types
 
@@ -210,6 +212,7 @@ export class Subzero {
       throw toSubzeroError(e)
     }
   }
+
 }
 
 export function getRawIntrospectionQuery(dbType: DbType): Query {

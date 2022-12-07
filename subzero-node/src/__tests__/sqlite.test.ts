@@ -44,26 +44,25 @@ beforeAll(async () => {
 
 // execute teh queries for a given parsed request
 async function run(role: string, request: Request, env?: Env) {
-  const subzeroRequest = await subzero.parse('public', '/rest/', role, request);
   env = env || [];
+  
+  
   if (request.method == 'GET') {
-    const { query, parameters } = subzero.fmtSqliteMutateQuery(subzeroRequest, env);
+    const { query, parameters } = await subzero.fmtStatement('public', '/rest/', role, request, env);
     //console.log(query,"\n",parameters);
     const result = await db.get(query, parameters);
     //console.log(result);
     return JSON.parse(result.body);
   } else {
-    const { query: mutate_query, parameters: mutate_parameters } = subzero.fmtSqliteMutateQuery(subzeroRequest, env);
+    const statement = await subzero.fmtSqliteTwoStepStatement('public', '/rest/', role, request, env);
+    const { query: mutate_query, parameters: mutate_parameters } = statement.fmtMutateStatement();
     //console.log(mutate_query,"\n",mutate_parameters);
     const result = await db.all(mutate_query, mutate_parameters);
+    statement.setMutatedRows(result);
     //console.log(result);
-    const ids = result.map((r) => r[Object.keys(r)[0]].toString());
+    //const ids = result.map((r) => r[Object.keys(r)[0]].toString());
     //console.log('ids',ids);
-    const { query: select_query, parameters: select_parameters } = subzero.fmtSqliteSecondStageSelect(
-      subzeroRequest,
-      ids,
-      env,
-    );
+    const { query: select_query, parameters: select_parameters } = statement.fmtSelectStatement();
     //console.log(select_query,"\n",select_parameters);
     const result2 = await db.get(select_query, select_parameters);
     //console.log(result2);
@@ -138,7 +137,7 @@ describe('select', () => {
 
 describe('insert', () => {
   test('insert query', async () => {
-    const request = await subzero.parse(
+    const statement = await subzero.fmtSqliteTwoStepStatement(
       'public',
       '/rest/',
       'anonymous',
@@ -150,9 +149,10 @@ describe('insert', () => {
         },
         body: JSON.stringify({ name: 'new client' }),
       }),
+      [['env_var', 'env_value']]
     );
 
-    expect(normalize_statement(subzero.fmtSqliteMutateQuery(request, [['env_var', 'env_value']]))).toStrictEqual(
+    expect(normalize_statement(statement.fmtMutateStatement())).toStrictEqual(
       normalize_statement({
         query: `
                 with
@@ -170,9 +170,9 @@ describe('insert', () => {
         parameters: ['env_value', '{"name":"new client"}'],
       }),
     );
-
+    statement.setMutatedRows([{ rowid: 1, _subzero_check__constraint: 1 }]);
     expect(
-      normalize_statement(subzero.fmtSqliteSecondStageSelect(request, ['1'], [['env_var', 'env_value']])),
+      normalize_statement(statement.fmtSelectStatement()),
     ).toStrictEqual(
       normalize_statement({
         query: `

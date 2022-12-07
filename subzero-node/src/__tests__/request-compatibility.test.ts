@@ -55,36 +55,38 @@ const base_url = 'http://localhost:3000/rest';
 const subzero = new Subzero('postgresql', schema);
 
 test('fetch request', async () => {
-  expect(await subzero.parse('public', '/rest/', 'anonymous',
+  expect(await subzero.fmtStatement('public', '/rest/', 'anonymous',
     new Request(`${base_url}/tasks?id=eq.1`, {
       method: 'GET',
       headers: {
         Accept: 'application/json',
       },
     }),
+    []
   )).toBeTruthy()
 });
 
 test('node request get', async () => {
-  expect(await subzero.parse('public', '/rest/', 'anonymous',
+  expect(await subzero.fmtStatement('public', '/rest/', 'anonymous',
     createRequest<ApiRequest>({
       method: 'GET',
       url: `${base_url}/tasks?id=eq.1`,
       headers: {
         Accept: 'application/json',
       }
-    })
+    }),
+    []
   )).toBeTruthy()
 });
 
-  test('node request post', async () => {
-    const request = createRequest<ApiRequest>({
-        method: 'POST',
-        url: `${base_url}/tasks`,
-        headers: {
-          Accept: 'application/json',
-        },
-        body: {"id": 1, "name": "test"}
-    })
-    expect(await subzero.parse('public', '/rest/', 'anonymous',request)).toBeTruthy()
-  });
+test('node request post', async () => {
+  const request = createRequest<ApiRequest>({
+      method: 'POST',
+      url: `${base_url}/tasks`,
+      headers: {
+        Accept: 'application/json',
+      },
+      body: {"id": 1, "name": "test"}
+  })
+  expect(await subzero.fmtStatement('public', '/rest/', 'anonymous',request, [])).toBeTruthy()
+});
