@@ -66,10 +66,9 @@ pub fn convert_error<I: core::ops::Deref<Target = str>>(input: I, e: VerboseErro
                 VerboseErrorKind::Char(c) => {
                     write!(&mut result, "{}: expected '{}', got empty input\n\n", i, c)
                 }
-                
+
                 VerboseErrorKind::Nom(e) => write!(&mut result, "{}: in {:?}, got empty input\n\n", i, e),
                 VerboseErrorKind::Context(s) => write!(&mut result, "{}: in {}, got empty input\n\n", i, s),
-
             }
         } else {
             let prefix = &input.as_bytes()[..offset];
@@ -2374,7 +2373,7 @@ fn to_app_error(s: &str, e: nom::Err<nom::error::VerboseError<&str>>) -> Error {
             let message = format!("\"{} ({})\" (line 1, column {})", message, s, position);
             //let details = details.replace('\n', " ").trim().to_string();
             //println!("Parse error:\n{}", details);
-            
+
             Error::ParseRequestError { message, details }
         }
         nom::Err::Incomplete(_e) => {

@@ -142,7 +142,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let emtpy_hashmap0 = HashMap::new();
     let emtpy_hashmap1 = HashMap::new();
     let emtpy_hashmap2 = HashMap::new();
-    
+
     let request = parse(
         "api",
         "projects",

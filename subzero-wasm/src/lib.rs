@@ -18,10 +18,7 @@ use subzero_core::{
     parser::postgrest::parse,
     schema::DbSchema,
     formatter::{Param::*, ToParam},
-    api::{
-        SingleVal, ListVal, Payload, Query, Field, QueryNode::*, SelectItem, Condition, Filter,
-        DEFAULT_SAFE_SELECT_FUNCTIONS,
-    },
+    api::{SingleVal, ListVal, Payload, Query, Field, QueryNode::*, SelectItem, Condition, Filter, DEFAULT_SAFE_SELECT_FUNCTIONS},
     permissions::{check_privileges, check_safe_functions, insert_policy_conditions},
     error::Error as CoreError,
 };
@@ -88,14 +85,19 @@ impl Backend {
     //     });
     // }
     #[allow(clippy::too_many_arguments)]
-    fn parse<'a, 'b: 'a>(&'b self, schema_name: &'a str, root: &'a str, method: &'a str, path: &'a str, get: Vec<(&'a str, &'a str)>, body: &'a str, role: &'a str, headers: HashMap<&'a str, &'a str>,cookies: HashMap<&'a str, &'a str>, max_rows: Option<&'a str>,
+    fn parse<'a, 'b: 'a>(
+        &'b self, schema_name: &'a str, root: &'a str, method: &'a str, path: &'a str, get: Vec<(&'a str, &'a str)>, body: &'a str, role: &'a str,
+        headers: HashMap<&'a str, &'a str>, cookies: HashMap<&'a str, &'a str>, max_rows: Option<&'a str>,
     ) -> Result<ApiRequest<'a>, CoreError> {
-        
         let backend = self.borrow_inner();
-        let B {db_schema, allowed_select_functions, ..} = &backend;
+        let B {
+            db_schema,
+            allowed_select_functions,
+            ..
+        } = &backend;
         let body = if body.is_empty() { None } else { Some(body) };
-        
-        let mut request = parse(schema_name,root,db_schema,method,path,get,body,headers,cookies,max_rows)?;
+
+        let mut request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, max_rows)?;
 
         // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
         // of the "authenticator" role unless the DbSchema has internal privileges set
@@ -106,9 +108,12 @@ impl Backend {
 
         Ok(request)
     }
-    
+
     #[allow(clippy::too_many_arguments)]
-    pub fn fmt_main_query(&self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue, cookies: JsValue, env: JsValue, max_rows: Option<String>) -> Result<Vec<JsValue>, JsError> {
+    pub fn fmt_main_query(
+        &self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue,
+        cookies: JsValue, env: JsValue, max_rows: Option<String>,
+    ) -> Result<Vec<JsValue>, JsError> {
         if !["GET", "POST", "PUT", "DELETE", "PATCH"].contains(&method.as_str()) {
             return Err(JsError::new("invalid method"));
         }
@@ -125,29 +130,35 @@ impl Backend {
         let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
 
-        let request = self.parse(&schema_name, &root, &method, &path, get, &body, &role, headers, cookies, max_rows.as_deref()).map_err(cast_core_err)?;
+        let request = self
+            .parse(&schema_name, &root, &method, &path, get, &body, &role, headers, cookies, max_rows.as_deref())
+            .map_err(cast_core_err)?;
 
-        let ApiRequest { method, schema_name, query, preferences, accept_content_type, .. } = request;
+        let ApiRequest {
+            method,
+            schema_name,
+            query,
+            preferences,
+            accept_content_type,
+            ..
+        } = request;
         let (main_statement, main_parameters, _) = match db_type {
             #[cfg(feature = "postgresql")]
             "postgresql" => {
-                let query = 
-                    postgresql::fmt_main_query_internal(schema_name,method,&accept_content_type,&query,&preferences,&env)
-                        .map_err(cast_core_err)?;
+                let query = postgresql::fmt_main_query_internal(schema_name, method, &accept_content_type, &query, &preferences, &env)
+                    .map_err(cast_core_err)?;
                 Ok(postgresql::generate(query))
             }
             #[cfg(feature = "clickhouse")]
             "clickhouse" => {
-                let query = 
-                    clickhouse::fmt_main_query_internal(schema_name,method,&accept_content_type,&query,&preferences,&env)
-                        .map_err(cast_core_err)?;
+                let query = clickhouse::fmt_main_query_internal(schema_name, method, &accept_content_type, &query, &preferences, &env)
+                    .map_err(cast_core_err)?;
                 Ok(clickhouse::generate(query))
             }
             #[cfg(feature = "sqlite")]
             "sqlite" => {
                 let query =
-                    sqlite::fmt_main_query_internal(schema_name, method, &accept_content_type, &query, &preferences, &env)
-                        .map_err(cast_core_err)?;
+                    sqlite::fmt_main_query_internal(schema_name, method, &accept_content_type, &query, &preferences, &env).map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
             }
             _ => Err(JsError::new("unsupported database type")),
@@ -156,10 +167,10 @@ impl Backend {
         Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
     }
 
-    fn fmt_sqlite_first_stage_mutate(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue,JsValue), JsError> {
+    fn fmt_sqlite_first_stage_mutate(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue, JsValue), JsError> {
         let backend = self.borrow_inner();
-        let &B{db_type, ..} = backend;
-        
+        let &B { db_type, .. } = backend;
+
         //sqlite does not support returining in CTEs so we must do a two step process
         let primary_key_column = "rowid"; //every table has this (TODO!!! check)
         let primary_key_field = Field {
@@ -168,7 +179,7 @@ impl Backend {
         };
 
         // create a clone of the request
-        let mut request= original_request.clone();
+        let mut request = original_request.clone();
         let is_delete = matches!(original_request.query.node, Delete { .. });
 
         // destructure the cloned request and eliminate the sub_selects and also select back
@@ -219,14 +230,21 @@ impl Backend {
             }
             _ => {}
         }
-        
-        let ApiRequest { method, schema_name, query, preferences, accept_content_type, .. } = request;
-        
+
+        let ApiRequest {
+            method,
+            schema_name,
+            query,
+            preferences,
+            accept_content_type,
+            ..
+        } = request;
+
         let (main_statement, main_parameters, _) = match db_type {
             #[cfg(feature = "sqlite")]
             "sqlite" => {
-                let query = sqlite::fmt_main_query_internal(schema_name,method,&accept_content_type,&query,&preferences,env)
-                    .map_err(cast_core_err)?;
+                let query =
+                    sqlite::fmt_main_query_internal(schema_name, method, &accept_content_type, &query, &preferences, env).map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
             }
             _ => Err(JsError::new("unsupported database type for two step mutation")),
@@ -237,9 +255,9 @@ impl Backend {
 
     fn fmt_sqlite_second_stage_select(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue, JsValue), JsError> {
         let backend = self.borrow_inner();
-        let &B {db_type, ..} = backend;
-        let ids:Vec<String> = vec!["_subzero_ids_placeholder_".to_string()];
-        
+        let &B { db_type, .. } = backend;
+        let ids: Vec<String> = vec!["_subzero_ids_placeholder_".to_string()];
+
         // create a clone of the request
         let mut request = original_request.clone();
 
@@ -318,13 +336,16 @@ impl Backend {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn fmt_sqlite_two_stage_query(&self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue, cookies: JsValue, env: JsValue, max_rows: Option<String>) -> Result<Vec<JsValue>, JsError> {
+    pub fn fmt_sqlite_two_stage_query(
+        &self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue,
+        cookies: JsValue, env: JsValue, max_rows: Option<String>,
+    ) -> Result<Vec<JsValue>, JsError> {
         if !["GET", "POST", "PUT", "DELETE", "PATCH"].contains(&method.as_str()) {
             return Err(JsError::new("invalid method"));
         }
 
         let backend = self.borrow_inner();
-        let &B {db_type, ..} = backend;
+        let &B { db_type, .. } = backend;
         // check if backend is sqlite
         if db_type != "sqlite" {
             return Err(JsError::new("fmt_sqlite_two_stage_query is only supported for sqlite backend"));
@@ -339,7 +360,9 @@ impl Backend {
         let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
 
-        let request = self.parse(&schema_name, &root, &method, &path, get, &body, &role, headers, cookies, max_rows.as_deref()).map_err(cast_core_err)?;
+        let request = self
+            .parse(&schema_name, &root, &method, &path, get, &body, &role, headers, cookies, max_rows.as_deref())
+            .map_err(cast_core_err)?;
         let (mutate_statement, mutate_parameters) = self.fmt_sqlite_first_stage_mutate(&request, &env)?;
         let (select_statement, select_parameters) = self.fmt_sqlite_second_stage_select(&request, &env)?;
 

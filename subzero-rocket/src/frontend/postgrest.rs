@@ -50,14 +50,16 @@ fn get_current_timestamp() -> u64 {
 //     }
 // }
 
-fn get_env<'a>(role: Option<&'a str>, request: &'a ApiRequest, jwt_claims: &'a Option<JsonValue>, use_legacy_gucs: bool) -> HashMap<Cow<'a, str>, Cow<'a, str>> {
-    let mut env:HashMap<Cow<'a, str>, Cow<'a, str>> = HashMap::new();
+fn get_env<'a>(
+    role: Option<&'a str>, request: &'a ApiRequest, jwt_claims: &'a Option<JsonValue>, use_legacy_gucs: bool,
+) -> HashMap<Cow<'a, str>, Cow<'a, str>> {
+    let mut env: HashMap<Cow<'a, str>, Cow<'a, str>> = HashMap::new();
     let search_path = &[String::from(request.schema_name)];
     if let Some(r) = role {
         env.insert("role".into(), r.into());
     }
 
-    env.insert("request.method".into(),request.method.into());
+    env.insert("request.method".into(), request.method.into());
     env.insert("request.path".into(), request.path.into());
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
 
@@ -94,15 +96,21 @@ fn get_env<'a>(role: Option<&'a str>, request: &'a ApiRequest, jwt_claims: &'a O
     } else {
         env.insert(
             "request.headers".into(),
-            serde_json::to_string(&request.headers.iter().map(|(k, v)| (k.to_lowercase(), v)).collect::<Vec<_>>()).unwrap().into(),
+            serde_json::to_string(&request.headers.iter().map(|(k, v)| (k.to_lowercase(), v)).collect::<Vec<_>>())
+                .unwrap()
+                .into(),
         );
         env.insert(
             "request.cookies".into(),
-            serde_json::to_string(&request.cookies.iter().map(|(k, v)| (k, v)).collect::<Vec<_>>()).unwrap().into(),
+            serde_json::to_string(&request.cookies.iter().map(|(k, v)| (k, v)).collect::<Vec<_>>())
+                .unwrap()
+                .into(),
         );
         env.insert(
             "request.get".into(),
-            serde_json::to_string(&request.get.iter().map(|(k, v)| (k, v)).collect::<Vec<_>>()).unwrap().into(),
+            serde_json::to_string(&request.get.iter().map(|(k, v)| (k, v)).collect::<Vec<_>>())
+                .unwrap()
+                .into(),
         );
         match jwt_claims {
             Some(v) => {
