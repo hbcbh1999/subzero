@@ -22,6 +22,14 @@ create table permissions_check (
     public boolean
 );
 
+create table permissions_check_child (
+    id int primary key,
+    value text,
+    role text,
+    public boolean,
+    parent_id int references permissions_check(id)
+);
+
 create table clients (
     id integer primary key,
     name text NOT NULL
@@ -104,3 +112,17 @@ insert into permissions_check values (2, 'Two Bob Public', 'Hidden', 'bob', true
 insert into permissions_check values (3, 'Three Charlie Public', 'Hidden', 'charlie', true);
 insert into permissions_check values (10, 'Ten Alice Private', 'Hidden', 'alice', false);
 insert into permissions_check values (20, 'Twenty Bob Private', 'Hidden', 'bob', false);
+
+insert into permissions_check_child values (1, 'One Alice Public', 'alice', true, 1);
+insert into permissions_check_child values (2, 'Two Bob Public', 'bob', true, 2);
+insert into permissions_check_child values (3, 'Three Charlie Public', 'charlie', true, 3);
+insert into permissions_check_child values (10, 'Ten Alice Private', 'alice', false, 10);
+insert into permissions_check_child values (11, 'Eleven Alice Public', 'alice', true, 10);
+insert into permissions_check_child values (12, 'Twelve Alice Public', 'alice', true, 10);
+insert into permissions_check_child values (13, 'Thirteen Alice Private', 'alice', false, 10);
+insert into permissions_check_child values (20, 'Twenty Bob Private', 'bob', false, 20);
+insert into permissions_check_child values (21, 'Twenty One Bob Public', 'bob', true, 20);
+insert into permissions_check_child values (22, 'Twenty Two Bob Public', 'bob', true, 20);
+insert into permissions_check_child values (23, 'Twenty Three Bob Private', 'bob', false, 20);
+
+

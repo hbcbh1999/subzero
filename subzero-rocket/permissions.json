@@ -32,6 +32,15 @@
         "check": [{"sql":"true"}]
     },
     {
+        "name": "admin allow all",
+        "table_schema": "public", "table_name": "permissions_check_child",
+        "role": "admin",
+        "grant": ["select", "insert", "update", "delete"],
+        "policy_for": ["select", "insert", "update", "delete"],
+        "using": [{"sql":"true"}],
+        "check": [{"sql":"true"}]
+    },
+    {
         "name": "alice allow owned",
         "table_schema": "public","table_name": "permissions_check",
         "role": "alice",
@@ -41,6 +50,15 @@
         "check": [{"column":"role","op":"=","env":"request.jwt.claims","env_part":"role"}]
     },
     {
+        "name": "alice allow owned public in child",
+        "table_schema": "public","table_name": "permissions_check_child",
+        "role": "alice",
+        "grant": ["all"],
+        "policy_for": ["select", "insert", "update", "delete"],
+        "using": [{"column":"role","op":"=","env":"request.jwt.claims","env_part":"role"}, {"column":"public","op":"=","val":"1"}],
+        "check": [{"column":"role","op":"=","env":"request.jwt.claims","env_part":"role"}, {"column":"public","op":"=","val":"1"}]
+    },
+    {
         "name": "bob allow owned",
         "table_schema": "public","table_name": "permissions_check",
         "role": "bob",
@@ -48,6 +66,15 @@
         "policy_for": ["all"],
         "using": [{"column":"role","op":"=","val":"bob"}],
         "check": [{"column":"role","op":"=","val":"bob"}]
+    },
+    {
+        "name": "bob allow owned public",
+        "table_schema": "public","table_name": "permissions_check_child",
+        "role": "bob",
+        "grant": ["all"],
+        "policy_for": ["all"],
+        "using": [{"column":"role","op":"=","val":"bob"}, {"column":"public","op":"=","val":"1"}],
+        "check": [{"column":"role","op":"=","val":"bob"}, {"column":"public","op":"=","val":"1"}]
     },
 
     { "table_schema": "public", "table_name": "tbl1", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },

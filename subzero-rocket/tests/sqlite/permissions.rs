@@ -17,10 +17,15 @@ feature "permissions"
         request methodGet "/permissions_check?select=id,value,hidden" [auth] ""
           shouldRespondWith
           { matchStatus = 200 }
-      it "anonymous can select not select hidden column" $ do
+      it "anonymous can not select hidden column" $ do
         get "/permissions_check?select=id,value,hidden"
           shouldRespondWith
           [json|r#"{"details":"no Select privileges for 'public.permissions_check(hidden)'","message":"Permission denied"}"#|]
+          { matchStatus = 403}
+      it "anonymous can not select permissions_check_child" $ do
+        get "/permissions_check_child?select=id,value"
+          shouldRespondWith
+          [json|r#"{"details":"no Select privileges for 'public.permissions_check_child' table","message":"Permission denied"}"#|]
           { matchStatus = 403}
       it "anonymous can select permitted columns with rows filtered" $ do
         get "/permissions_check?select=id,value"
@@ -44,6 +49,18 @@ feature "permissions"
             {"id":20,"value":"Twenty Bob Private","hidden":"Hidden"}
           ]"#|]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "admin can select all rows with embeds" $ do
+          let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4ifQ.aMYD4kILQ5BBlRNB3HvK55sfex_OngpB_d28iAMq-WU"
+          request methodGet "/permissions_check?select=id,value,permissions_check_child(id)" [auth] ""
+            shouldRespondWith
+            [json|r#"[
+              {"id":1,"value":"One Alice Public","permissions_check_child":[{"id":1}]},
+              {"id":2,"value":"Two Bob Public","permissions_check_child":[{"id":2}]},
+              {"id":3,"value":"Three Charlie Public","permissions_check_child":[{"id":3}]},
+              {"id":10,"value":"Ten Alice Private","permissions_check_child":[{"id":10},{"id":11},{"id":12},{"id":13}]},
+              {"id":20,"value":"Twenty Bob Private","permissions_check_child":[{"id":20},{"id":21},{"id":22},{"id":23}]}
+            ]"#|]
+            { matchHeaders = ["Content-Type" <:> "application/json"] }
 
       it "anonymous can select public rows" $ do
         get "/permissions_check?select=id,value"
@@ -65,6 +82,17 @@ feature "permissions"
               {"id":10,"value":"Ten Alice Private","hidden":"Hidden","public":0,"role":"alice"}
             ]"#|]
             { matchHeaders = ["Content-Type" <:> "application/json"] }
+      it "alice can select public rows and her private rows with embeds" $ do
+        let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk"
+        request methodGet "/permissions_check?select=id,value,public,role,permissions_check_child(id,public,role)" [auth] ""
+          shouldRespondWith
+          [json|r#"[
+            {"id":1,"value":"One Alice Public","public":1,"role":"alice","permissions_check_child":[{"id":1,"public":1,"role":"alice"}]},
+            {"id":2,"value":"Two Bob Public","public":1,"role":"bob","permissions_check_child":[]},
+            {"id":3,"value":"Three Charlie Public","public":1,"role":"charlie","permissions_check_child":[]},
+            {"id":10,"value":"Ten Alice Private","public":0,"role":"alice","permissions_check_child":[{"id":11,"public":1,"role":"alice"},{"id":12,"public":1,"role":"alice"}]}
+          ]"#|]
+          { matchHeaders = ["Content-Type" <:> "application/json"] }
     describe "insert" $
       it "admin can insert everything" $
         request methodPost "/permissions_check?select=id,value,hidden,public,role"

@@ -41,14 +41,11 @@ pub struct Permissions<'a> {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct Policy<'a> {
-    //#[serde(default, skip_serializing_if = "is_default")]
     pub name: Option<&'a str>,
-    //#[serde(default, skip_serializing_if = "is_default")]
     pub restrictive: bool,
-    //#[serde(default, skip_serializing_if = "is_default")]
     #[serde(borrow)]
     pub using: Option<Vec<Condition<'a>>>,
-    //#[serde(default, skip_serializing_if = "is_default")]
+    #[serde(borrow)]
     pub check: Option<Vec<Condition<'a>>>,
 }
 

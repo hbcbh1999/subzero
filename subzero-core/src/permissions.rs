@@ -85,7 +85,17 @@ fn add_security_quals<'a>(security_quals: &mut Vec<Condition<'a>>, restrictive_p
     let mut permissive_quals = vec![];
     for p in permissive_policies {
         if let Some(using) = &p.using {
-            permissive_quals.extend(using.clone());
+            if using.len() > 1 {
+                permissive_quals.push(Condition::Group {
+                    negate: false,
+                    tree: ConditionTree {
+                        operator: And,
+                        conditions: using.clone(),
+                    },
+                });
+            } else {
+                permissive_quals.extend(using.clone());
+            }
         }
     }
 
@@ -146,7 +156,17 @@ fn add_with_check_options<'a>(
 
     for p in permissive_policies {
         if let Some(qual) = QUAL_FOR_WCO!(force_using, p) {
-            permissive_quals.extend(qual.clone());
+            if qual.len() > 1 {
+                permissive_quals.push(Condition::Group {
+                    negate: false,
+                    tree: ConditionTree {
+                        operator: And,
+                        conditions: qual.clone(),
+                    },
+                });
+            } else {
+                permissive_quals.extend(qual.clone());
+            }
         }
     }
 
