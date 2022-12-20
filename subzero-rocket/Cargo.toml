@@ -18,7 +18,7 @@ http = "0.2"
 regex = { version="1.6.0", features=["default", "pattern"]}
 async-trait = "0.1.52"
 lazy_static = "1.4.0"
-snafu = "0.7.3"
+snafu = "0.7.4"
 figment = { version = "0.10.6", features = ["toml", "env"] }
 hyper = { version = "0.14", features = ["full"] }
 jsonwebtoken = "7.2.0"
