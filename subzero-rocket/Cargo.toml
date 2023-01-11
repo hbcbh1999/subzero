@@ -16,7 +16,7 @@ rocket = "0.5.0-rc.2"
 subzero-core = { version = "0.1.4", path = "../subzero-core" }
 http = "0.2"
 regex = { version="1.6.0", features=["default", "pattern"]}
-async-trait = "0.1.52"
+async-trait = "0.1.61"
 lazy_static = "1.4.0"
 snafu = "0.7.3"
 figment = { version = "0.10.6", features = ["toml", "env"] }
