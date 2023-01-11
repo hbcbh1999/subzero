@@ -25,6 +25,7 @@ use std::{fs};
 use std::path::Path;
 use serde_json::{Value as JsonValue};
 use http::Method;
+use base64::{Engine as _, engine::general_purpose};
 
 type HttpClient = (Url, Uri, Client<HttpConnector>);
 type Pool = managed::Pool<Manager>;
@@ -92,7 +93,7 @@ async fn execute(
     if uri.username() != "" {
         http_request = http_request.header(
             hyper::header::AUTHORIZATION,
-            format!("Basic {}", base64::encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
+            format!("Basic {}",general_purpose::STANDARD_NO_PAD.encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
         );
     }
 
@@ -198,7 +199,6 @@ impl Backend for ClickhouseBackend {
         //setup db connection
         let mgr = Manager { uri: config.db_uri.clone() };
         let pool = Pool::builder(mgr).max_size(config.db_pool).build().unwrap();
-
         //read db schema
         let db_schema: DbSchemaWrap = match config.db_schema_structure.clone() {
             SqlFile(f) => match fs::read_to_string(
@@ -233,7 +233,7 @@ impl Backend for ClickhouseBackend {
                         if uri.username() != "" {
                             http_request = http_request.header(
                                 hyper::header::AUTHORIZATION,
-                                format!("Basic {}", base64::encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
+                                format!("Basic {}", general_purpose::STANDARD_NO_PAD.encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
                             );
                         }
 

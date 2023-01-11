@@ -16,6 +16,7 @@ use super::super::start;
 pub static INIT_DB: Once = Once::new();
 pub static INIT_CLIENT: Once = Once::new();
 lazy_static! {
+    //pub static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
     static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
     static ref RUNTIME: tokio::runtime::Runtime = Builder::new_multi_thread().enable_all().build().unwrap();
     pub static ref CLIENT: &'static AsyncOnce<Client> = {

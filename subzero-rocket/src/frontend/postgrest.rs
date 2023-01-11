@@ -175,10 +175,9 @@ pub async fn handle<'a>(
                 let token_str: Vec<&str> = a.split(' ').collect();
                 match token_str[..] {
                     ["Bearer", t] | ["bearer", t] => {
-                        let validation = Validation {
-                            validate_exp: false,
-                            ..Default::default()
-                        };
+                        let mut validation = Validation::default();
+                        validation.validate_exp = false;
+                        validation.set_required_spec_claims::<&str>(&[]);
                         match decode::<JsonValue>(t, &DecodingKey::from_secret(key.as_bytes()), &validation) {
                             Ok(c) => {
                                 if let Some(exp) = c.claims.get("exp") {

@@ -42,6 +42,12 @@ begin
 end
 $$ stable language plpgsql;
 
+create or replace function guc_is_set(guc_name text) returns boolean as $$
+begin
+  return current_setting(guc_name, true) is not null and current_setting(guc_name, true) != '';
+end
+$$ stable language plpgsql;
+
 create view test.protected_books as 
   select id, title, publication_year, author_id,
   current_setting('request.get.author_id', true) as v_author_id,
@@ -53,9 +59,9 @@ create view test.protected_books as
       --(current_setting('request.path', true) != '/rest/protected_books') or -- do not check for filters when the view is embeded
       ( -- check at least one filter is set
         -- this branch is activated only when request.path = /protected_books
-        (current_setting('request.get.author_id', true) is not null) or
-        (current_setting('request.get.id', true) is not null) or
-        (current_setting('request.get.publication_year', true) is not null)
+        guc_is_set('request.get.author_id') or
+        guc_is_set('request.get.id') or
+        guc_is_set('request.get.publication_year')
         
       ),
       'Filter parameters not provided',

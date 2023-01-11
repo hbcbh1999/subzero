@@ -10,20 +10,20 @@ autobenches = false
 # env_logger = "0.9.0"
 ouroboros = "0.15"
 serde = "1.0"
-serde_json = "1.0.68"
+serde_json = "1.0.91"
 bytes = "1.1.0"
 rocket = "0.5.0-rc.2"
 subzero-core = { version = "0.1.4", path = "../subzero-core" }
 http = "0.2"
 regex = { version="1.6.0", features=["default", "pattern"]}
-async-trait = "0.1.52"
+async-trait = "0.1.61"
 lazy_static = "1.4.0"
-snafu = "0.7.3"
+snafu = "0.7.4"
 figment = { version = "0.10.6", features = ["toml", "env"] }
 hyper = { version = "0.14", features = ["full"] }
-jsonwebtoken = "7.2.0"
+jsonwebtoken = "8.2.0"
 jsonpath_lib = "0.3.0"
-tokio = { version = "1.6.1", features=[ "rt-multi-thread","process"] }
+tokio = { version = "1.24.1", features=[ "rt-multi-thread","process"] }
 # hyper-reverse-proxy = "0.5"
 url = { version = "2.2.2", optional = true }
 postgres-types = { version = "0.2.2", optional = true }
@@ -35,7 +35,7 @@ deadpool = { version = "0.9.2", optional = true }
 rusqlite = { version = "0.28.0", features = ["array","bundled","window","series"], optional = true }
 r2d2 = { version = "0.8.10", optional = true }
 r2d2_sqlite = { version = "0.21.0", optional = true }
-base64 = { version = "0.13.1", optional = true }
+base64 = { version = "0.21.0", optional = true }
 formdata = { version = "0.13.0", optional = true }
 openssl = { version="0.10", optional = true }
 mysql_async = { version = "0.31", optional = true }
@@ -62,4 +62,4 @@ speculate = "0.1.2"
 demonstrate = "0.4.5"
 async_once = "0.2.1"
 rand = "0.8.5"
-serde_json = "1.0.68"
+serde_json = "1.0.91"
