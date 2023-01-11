@@ -155,7 +155,7 @@ macro_rules! generate_fn {
                                 Some(s) => &*s,
                                 None => &default,
                             };
-                            sql.push_str(format!(param_placeholder_format!(), pos=pos, data_type=data_type).as_str());
+                            sql.push_str(format!(param_placeholder_format!(), pos=pos.to_string(), data_type=data_type).as_str());
                             params.push(p);
                             (sql, params, pos + 1)
                         }

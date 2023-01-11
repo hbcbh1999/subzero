@@ -43,16 +43,20 @@ end
 $$ stable language plpgsql;
 
 create view test.protected_books as 
-  select id, title, publication_year, author_id 
+  select id, title, publication_year, author_id,
+  current_setting('request.get.author_id', true) as v_author_id,
+  current_setting('request.get.id', true) as v_id,
+  current_setting('request.get.publication_year', true) as v_publication_year
   from private.books 
   where 
     validate(
       --(current_setting('request.path', true) != '/rest/protected_books') or -- do not check for filters when the view is embeded
       ( -- check at least one filter is set
         -- this branch is activated only when request.path = /protected_books
+        (current_setting('request.get.author_id', true) is not null) or
         (current_setting('request.get.id', true) is not null) or
-        (current_setting('request.get.publication_year', true) is not null) or
-        (current_setting('request.get.author_id', true) is not null)
+        (current_setting('request.get.publication_year', true) is not null)
+        
       ),
       'Filter parameters not provided',
       'Please provide at least one of id, publication_year, author_id filters'

@@ -27,6 +27,9 @@ use http::Error as HttpError;
 #[cfg(feature = "clickhouse")]
 use hyper::Error as SourceHyperError;
 
+#[cfg(feature = "mysql")]
+use mysql_async::Error as MysqlError;
+
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
@@ -48,6 +51,10 @@ pub enum Error {
     #[cfg(feature = "postgresql")]
     #[snafu(display("DbError {}", source))]
     PgDb { source: PgError, authenticated: bool },
+
+    #[cfg(feature = "mysql")]
+    #[snafu(display("DbError {}", source))]
+    MysqlDb { source: MysqlError, authenticated: bool },
 
     #[cfg(feature = "sqlite")]
     #[snafu(display("DbError {}", source))]
@@ -118,6 +125,9 @@ impl Error {
 
             #[cfg(feature = "sqlite")]
             Error::SqliteDb { .. } => 500,
+
+            #[cfg(feature = "mysql")]
+            Error::MysqlDb { .. } => 500,
 
             #[cfg(feature = "postgresql")]
             Error::PgDb { source, authenticated } => match source.code() {
@@ -196,6 +206,12 @@ impl Error {
             Error::ClickhouseDb { source, .. } => {
                 json!({ "message": format!("Unhandled db error: {source}") })
             }
+
+            #[cfg(feature = "mysql")]
+            Error::MysqlDb { source, .. } => {
+                json!({ "message": format!("Unhandled db error: {source}") })
+            }
+
             #[cfg(feature = "postgresql")]
             Error::PgDb { source, .. } => match source.as_db_error() {
                 Some(db_err) => match db_err.code().code().chars().collect::<Vec<char>>()[..] {
@@ -210,7 +226,7 @@ impl Error {
                         "hint": match db_err.hint() {Some(v) => v.into(), None => JsonValue::Null}
                     }),
                 },
-                None => json!({ "message": format!("Unhandled db error {source}") }),
+                None => json!({ "message": format!("Unhandled db error: {source}") }),
             },
 
             #[cfg(feature = "sqlite")]

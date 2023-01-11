@@ -32,6 +32,7 @@ use super::base::{
     star_select_item_format,
     //fmt_select_item_function,
     fmt_function_call,
+    get_body_snippet,
 };
 use std::collections::HashMap;
 pub use super::base::return_representation;
@@ -52,6 +53,27 @@ macro_rules! cast_select_item_format {
     };
 }
 
+macro_rules! body_snippet {
+    (json_array) => {
+        "json_group_array(json(_subzero_t.row))"
+    };
+    (json_object) => {
+        "coalesce((json_agg(_subzero_t)->0)::text, 'null')"
+    };
+    (csv) => {
+        "''"
+    }; // TODO!! unimplemented
+    (function_scalar) => {
+        "''"
+    }; // unreachable
+    (function_scalar_array) => {
+        "''"
+    }; // unreachable
+    (function_any) => {
+        "''"
+    }; // unreachable
+}
+
 fmt_main_query!();
 pub fn fmt_main_query_internal<'a>(
     schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
@@ -66,60 +88,7 @@ pub fn fmt_main_query_internal<'a>(
     );
 
     let return_representation = return_representation(method, query, preferences);
-    let body_snippet = match (return_representation, accept_content_type, &query.node) {
-        (false, _, _) => Ok("''"),
-        (true, SingularJSON, FunctionCall { is_scalar: true, .. })
-        | (
-            true,
-            ApplicationJSON,
-            FunctionCall {
-                returns_single: true,
-                is_multiple_call: false,
-                is_scalar: true,
-                ..
-            },
-        ) => Ok("coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')"),
-        (
-            true,
-            ApplicationJSON,
-            FunctionCall {
-                returns_single: false,
-                is_multiple_call: false,
-                is_scalar: true,
-                ..
-            },
-        ) => Ok("coalesce((json_agg(_subzero_t.subzero_scalar))::text, '[]')"),
-        (true, SingularJSON, FunctionCall { is_scalar: false, .. })
-        | (
-            true,
-            ApplicationJSON,
-            FunctionCall {
-                returns_single: true,
-                is_multiple_call: false,
-                is_scalar: false,
-                ..
-            },
-        ) => Ok("coalesce((json_agg(_subzero_t)->0)::text, 'null')"),
-
-        (true, ApplicationJSON, _) => Ok("json_group_array(json(_subzero_t.row))"),
-        (true, SingularJSON, _) => Ok("coalesce((json_agg(_subzero_t)->0)::text, 'null')"),
-        (true, TextCSV, _) => Ok(r#"
-            (SELECT coalesce(string_agg(a.k, ','), '')
-              FROM (
-                SELECT json_object_keys(r)::text as k
-                FROM ( 
-                  SELECT row_to_json(hh) as r from _subzero_query as hh limit 1
-                ) s
-              ) a
-            )
-            || chr(10) ||
-            coalesce(string_agg(substring(_subzero_t::text, 2, length(_subzero_t::text) - 2), chr(10)), '')
-        "#),
-        (_, Other(t), _) => Err(Error::ContentTypeError {
-            message: format!("None of these Content-Types are available: {t}"),
-        }),
-    }?;
-
+    let body_snippet = get_body_snippet!(return_representation, accept_content_type, query)?;
     let run_unwrapped_query = matches!(query.node, Insert { .. } | Update { .. } | Delete { .. });
     let has_payload_cte = matches!(query.node, Insert { .. } | Update { .. });
     let wrap_cte_name = if run_unwrapped_query { None } else { Some("_subzero_query") };

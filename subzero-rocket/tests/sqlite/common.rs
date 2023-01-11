@@ -1,20 +1,37 @@
-//use super::super::start; //super in
-//use rocket::local::asynchronous::Client;
 use rocket::http::{Cookie, Header};
 use rocket::local::asynchronous::LocalRequest;
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Once;
-//use async_once::AsyncOnce;
 use lazy_static::LazyStatic;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use std::env::temp_dir;
 use std::fs::File;
+pub use demonstrate::demonstrate;
 pub use crate::haskell_test;
+use std::thread;
+use tokio::runtime::Builder;
+use rocket::local::asynchronous::Client;
+use async_once::AsyncOnce;
+use super::super::start;
 
 pub static INIT_DB: Once = Once::new();
+pub static INIT_CLIENT: Once = Once::new();
+lazy_static! {
+    static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
+    static ref RUNTIME: tokio::runtime::Runtime = Builder::new_multi_thread().enable_all().build().unwrap();
+    pub static ref CLIENT: &'static AsyncOnce<Client> = {
+        thread::spawn(move || {
+            RUNTIME.block_on(async {
+                CLIENT_INNER.get().await;
+            })
+        }).join().expect("Thread panicked");
+        &*CLIENT_INNER
+    };
+}
+
 pub fn setup_db(init_db_once: &Once) {
     //let _ = env_logger::builder().is_test(true).try_init();
     init_db_once.call_once(|| {

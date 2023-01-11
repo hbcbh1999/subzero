@@ -257,10 +257,8 @@ impl Backend for ClickhouseBackend {
                         // println!("json value before replace:\n{:?}\n", v);
                         // recursively iterate through the json and apply the f function
                         replace_json_str(&mut v)?;
-                        println!("successfully replaced json_str");
                         let s = serde_json::to_string_pretty(&v).context(JsonSerializeSnafu).context(CoreSnafu)?;
 
-                        println!("json schema repalced:\n{s:?}\n");
                         //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;
                         //println!("schema {:?}", schema);
                         Ok(DbSchemaWrap::new(s, |s| {

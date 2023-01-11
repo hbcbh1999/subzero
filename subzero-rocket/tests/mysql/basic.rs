@@ -1,3 +1,4 @@
+
 use super::common::*;
 
 haskell_test! {
@@ -218,7 +219,7 @@ feature "basic"
       , matchHeaders = ["Content-Type" <:> "application/json"]
       }
     it "with cast" $
-      get "/tbl1?select=one,two::text" shouldRespondWith
+      get "/tbl1?select=one,two::char" shouldRespondWith
         [json| r#"
             [
                 {"one":"hello!","two":"10"},

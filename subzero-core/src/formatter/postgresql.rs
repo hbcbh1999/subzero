@@ -3,7 +3,7 @@ use super::base::{
     fmt_env_var, fmt_identity, fmt_in_filter, fmt_json_operand, fmt_json_operation, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_main_query,
     fmt_main_query_internal, fmt_offset, fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_query, fmt_select_item,
     fmt_select_name, fmt_sub_select_item, return_representation, simple_select_item_format, star_select_item_format, fmt_function_param,
-    fmt_select_item_function, fmt_function_call, fmt_env_query,
+    fmt_select_item_function, fmt_function_call, fmt_env_query, body_snippet, get_body_snippet,
 };
 use std::borrow::Cow;
 use std::collections::HashMap;

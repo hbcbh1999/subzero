@@ -1,17 +1,5 @@
-use super::super::start;
+//TODO!!!! checks for not updated are invalid since the tests are configured to rollback all actions
 use super::common::*;
-use async_once::AsyncOnce;
-use demonstrate::demonstrate;
-use rocket::local::asynchronous::Client;
-use std::sync::Once;
-static INIT_CLIENT: Once = Once::new();
-
-lazy_static! {
-  static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async{
-    //TODO!!!! checks for not updated are invalid since the tests are configured to rollback all actions
-    Client::untracked(start().await.unwrap()).await.expect("valid client")
-  });
-}
 
 haskell_test! {
 feature "singular"

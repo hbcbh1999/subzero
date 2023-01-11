@@ -1,24 +1,25 @@
+//use super::super::start; //super in
+//use rocket::local::asynchronous::Client;
 pub use demonstrate::demonstrate;
 use rocket::http::{Cookie, Header};
 use rocket::local::asynchronous::LocalRequest;
-pub use std::env;
+use std::env;
 use std::path::PathBuf;
 use std::process::Command;
-pub use std::sync::Once;
+use std::sync::Once;
 use lazy_static::LazyStatic;
 pub use crate::haskell_test;
-pub use std::thread;
+use std::thread;
 use tokio::runtime::Builder;
-pub use rocket::local::asynchronous::Client;
-pub use async_once::AsyncOnce;
+use rocket::local::asynchronous::Client;
+use async_once::AsyncOnce;
 use super::super::start;
 
 pub static INIT_DB: Once = Once::new();
 pub static INIT_CLIENT: Once = Once::new();
-
 lazy_static! {
     static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
-    pub static ref RUNTIME: tokio::runtime::Runtime = Builder::new_multi_thread().enable_all().build().unwrap();
+    static ref RUNTIME: tokio::runtime::Runtime = Builder::new_multi_thread().enable_all().build().unwrap();
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
@@ -34,24 +35,43 @@ pub fn setup_db(init_db_once: &Once) {
     init_db_once.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let init_file = project_dir.join("tests/postgresql/fixtures/load.sql");
+        let fixtures_dir = project_dir.join("tests/mysql/fixtures");
 
-        let postgresql_db_uri = option_env!("POSTGRESQL_DB_URI");
-        let db_uri: String = match postgresql_db_uri {
+        let mysql_db_uri = option_env!("MYSQL_DB_URI");
+        let db_uri: String = match mysql_db_uri {
             Some(db_uri) => db_uri.to_owned(),
             None => {
-                let tmp_pg_cmd = project_dir.join("tests/bin/pg_tmp.sh");
-
-                let output = Command::new(tmp_pg_cmd)
+                // bin/ephemerial_db.sh -t mysql -s $(pwd)"/mysql/fixtures" -w 5 -u john -p "securepass" -q mydb
+                let tmp_db_cmd = project_dir.join("tests/bin/ephemerial_db.sh");
+                let start_time = std::time::Instant::now();
+                println!("starting tmp db");
+                // random int between 1 and 1000
+                let random_int = rand::random::<u16>();
+                let container_name = format!("mysql_test_db_{random_int}");
+                let output = Command::new(tmp_db_cmd)
                     .arg("-t")
+                    .arg("mysql")
                     .arg("-u")
-                    .arg("postgrest_test_authenticator")
+                    .arg("authenticator")
+                    .arg("-p")
+                    .arg("authenticator")
+                    .arg("-d")
+                    .arg("app")
+                    .arg("-s")
+                    .arg(fixtures_dir.to_str().unwrap())
+                    .arg("-w")
+                    .arg("60")
+                    .arg("-q")
+                    .arg(&container_name)
                     .output()
-                    .expect("failed to start temporary pg process");
+                    .expect("failed to start temporary db process");
+                println!("started tmp db in {}s", start_time.elapsed().as_secs());
                 if !output.status.success() {
                     println!("status: {}", output.status);
                     println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
                     println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+                } else {
+                    println!("stdout success: {}", String::from_utf8_lossy(&output.stdout));
                 }
 
                 assert!(output.status.success());
@@ -61,47 +81,32 @@ pub fn setup_db(init_db_once: &Once) {
             }
         };
 
-        let output = Command::new("psql")
-            .arg("-f")
-            .arg(init_file.to_str().unwrap())
-            .arg(db_uri.as_str())
-            .output()
-            .expect("failed to execute process");
-
-        if !output.status.success() {
-            println!("status: {}", output.status);
-            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-        }
-        assert!(output.status.success());
-
         env::set_var("SUBZERO_DB_URI", db_uri);
     });
 }
 
-pub fn setup_client<T>(init_client_once: &Once, client: &T)
+pub fn setup_client<T>(init_client_once: &Once, client: &'static T)
 where
-    T: LazyStatic,
+    T: LazyStatic + Send + Sync + 'static,
+// pub fn setup_client<T>(init_client_once: &Once, client: &AsyncOnce<Client>)
 {
+    println!("setup_client");
     init_client_once.call_once(|| {
         env::set_var("SUBZERO_CONFIG", "inexistent_config.toml");
-        env::set_var("SUBZERO_DB_ANON_ROLE", "postgrest_test_anonymous");
+        env::set_var("SUBZERO_DB_ANON_ROLE", "mysql_test_anonymous");
         env::set_var("SUBZERO_DB_TX_ROLLBACK", "true");
-        env::set_var("SUBZERO_DB_TYPE", "postgresql");
-        env::set_var("SUBZERO_DB_SCHEMAS", "[test]");
-        env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
+        env::set_var("SUBZERO_DB_TYPE", "mysql");
+        env::set_var("SUBZERO_DB_SCHEMAS", "[app]");
+        //env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
-        env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "true");
+        //env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "true");
         env::set_var("SUBZERO_URL_PREFIX", "/rest");
-        // env::set_var(
-        //     "SUBZERO_DB_SCHEMA_STRUCTURE",
-        //     "{sql_file=../subzero-rocket/tests/postgresql/custom_introspection/postgresql_introspection_query.sql}",
-        // );
-        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/postgresql_introspection_query.sql}");
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/mysql_introspection_query.sql}");
         env::set_var("SUBZERO_DISABLE_INTERNAL_PERMISSIONS", "true");
         env::remove_var("SUBZERO_DB_MAX_ROWS");
         lazy_static::initialize(client);
     });
+    println!("setup_client done");
 }
 
 pub fn normalize_url(url: &str) -> String { url.replace(' ', "%20").replace('"', "%22").replace('>', "%3E") }

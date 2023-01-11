@@ -37,127 +37,105 @@ macro_rules! cast_select_item_format {
 pub(super) use cast_select_item_format;
 
 #[allow(unused_macros)]
-macro_rules! fmt_main_query_internal { () => {
-pub fn fmt_main_query_internal<'a>(schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+macro_rules! get_body_snippet {
+    ($return_representation:ident, $accept_content_type:ident, $query:ident ) => {
+        match ($return_representation, $accept_content_type, &$query.node) {
+            (false, _, _) => Ok("''"),
+            (true, SingularJSON, FunctionCall { is_scalar: true, .. })
+            | (
+                true,
+                ApplicationJSON,
+                FunctionCall {
+                    returns_single: true,
+                    is_multiple_call: false,
+                    is_scalar: true,
+                    ..
+                },
+            ) => Ok(body_snippet!(function_scalar)),
+            (
+                true,
+                ApplicationJSON,
+                FunctionCall {
+                    returns_single: false,
+                    is_multiple_call: false,
+                    is_scalar: true,
+                    ..
+                },
+            ) => Ok(body_snippet!(function_scalar_array)),
+            (true, SingularJSON, FunctionCall { is_scalar: false, .. })
+            | (
+                true,
+                ApplicationJSON,
+                FunctionCall {
+                    returns_single: true,
+                    is_multiple_call: false,
+                    is_scalar: false,
+                    ..
+                },
+            ) => Ok(body_snippet!(function_any)),
 
-    let count = match preferences {
-        Some(Preferences {
-            count: Some(Count::ExactCount),
-            ..
-        }) => true,
-        _ => false,
+            (true, ApplicationJSON, _) => Ok(body_snippet!(json_array)),
+            (true, SingularJSON, _) => Ok(body_snippet!(json_object)),
+            (true, TextCSV, _) => Ok(body_snippet!(csv)),
+            (_, Other(t), _) => Err(Error::ContentTypeError {
+                message: format!("None of these Content-Types are available: {}", t),
+            }),
+        }
     };
-
-    let check_constraints = matches!(query.node, Insert{..} | Update{..} );
-    let return_representation = return_representation(method, query, preferences);
-    let body_snippet = match (
-        return_representation,
-        accept_content_type,
-        &query.node,
-    ) {
-        (false, _, _) => Ok("''"),
-        (
-            true,
-            SingularJSON,
-            FunctionCall {
-                is_scalar: true, ..
-            },
-        )
-        | (
-            true,
-            ApplicationJSON,
-            FunctionCall {
-                returns_single: true,
-                is_multiple_call: false,
-                is_scalar: true,
-                ..
-            },
-        ) => Ok("coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')"),
-        (
-            true,
-            ApplicationJSON,
-            FunctionCall {
-                returns_single: false,
-                is_multiple_call: false,
-                is_scalar: true,
-                ..
-            },
-        ) => Ok("coalesce((json_agg(_subzero_t.subzero_scalar))::text, '[]')"),
-        (
-            true,
-            SingularJSON,
-            FunctionCall {
-                is_scalar: false, ..
-            },
-        )
-        | (
-            true,
-            ApplicationJSON,
-            FunctionCall {
-                returns_single: true,
-                is_multiple_call: false,
-                is_scalar: false,
-                ..
-            },
-        ) => Ok("coalesce((json_agg(_subzero_t)->0)::text, 'null')"),
-
-        (true, ApplicationJSON, _) => Ok("coalesce(json_agg(_subzero_t), '[]')::character varying"),
-        (true, SingularJSON, _) => Ok("coalesce((json_agg(_subzero_t)->0)::text, 'null')"),
-        (true, TextCSV, _) => {
-            Ok(r#"
-            (SELECT coalesce(string_agg(a.k, ','), '')
-              FROM (
-                SELECT json_object_keys(r)::text as k
-                FROM ( 
-                  SELECT row_to_json(hh) as r from _subzero_query as hh limit 1
-                ) s
-              ) a
-            )
-            || chr(10) ||
-            coalesce(string_agg(substring(_subzero_t::text, 2, length(_subzero_t::text) - 2), chr(10)), '')
-        "#)
-        },
-        (_,Other(t),_) => Err(Error::ContentTypeError {
-            message: format!("None of these Content-Types are available: {}", t),
-        }),
-    }?;
-
-    //let env = env_map.iter().map(|(k,v)| (k.to_string(), v.to_string())).collect::<HashMap<_,_>>();
-    Ok(
-        sql("with")
-        + " env as materialized (" + fmt_env_query(&env)+ ")"
-        + " , "
-        + fmt_query(
-            &schema,
-            return_representation,
-            Some("_subzero_query"),
-            query,
-            &None,
-        )?  + " , "
-
-        + if count {
-            fmt_count_query(schema, Some("_subzero_count_query"), query)?
-        } else {
-            sql("_subzero_count_query AS (select 1)")
-        }
-        + " select"
-        + " pg_catalog.count(_subzero_t) as page_total, "
-        + if count {
-            "(SELECT pg_catalog.count(*) FROM _subzero_count_query)"
-        } else {
-            "null::bigint"
-        }
-        + " as total_result_set, "
-        + body_snippet + " as body, "
-        + if check_constraints {"(select coalesce(bool_and(_subzero_check__constraint),true) from subzero_source) as constraints_satisfied, "
-        } else {"true as constraints_satisfied, "}
-        + " nullif(current_setting('response.headers', true), '') as response_headers, "
-        + " nullif(current_setting('response.status', true), '') as response_status "
-
-        + " from ( select * from _subzero_query ) _subzero_t"
-    )
 }
-}}
+#[allow(unused_imports)]
+pub(super) use get_body_snippet;
+
+#[allow(unused_macros)]
+macro_rules! fmt_main_query_internal {
+    () => {
+        pub fn fmt_main_query_internal<'a>(
+            schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
+            env: &'a HashMap<&'a str, &'a str>,
+        ) -> Result<Snippet<'a>> {
+            let count = matches!(
+                preferences,
+                Some(Preferences {
+                    count: Some(Count::ExactCount),
+                    ..
+                })
+            );
+            let check_constraints = matches!(query.node, Insert { .. } | Update { .. });
+            let return_representation = return_representation(method, query, preferences);
+            let body_snippet = get_body_snippet!(return_representation, accept_content_type, query)?;
+            Ok(sql("with")
+                + " env as materialized ("
+                + fmt_env_query(env)
+                + ")"
+                + " , "
+                + fmt_query(schema, return_representation, Some("_subzero_query"), query, &None)?
+                + " , "
+                + if count {
+                    fmt_count_query(schema, Some("_subzero_count_query"), query)?
+                } else {
+                    sql("_subzero_count_query AS (select 1)")
+                }
+                + " select"
+                + " pg_catalog.count(_subzero_t) as page_total, "
+                + if count {
+                    "(SELECT pg_catalog.count(*) FROM _subzero_count_query)"
+                } else {
+                    "null::bigint"
+                }
+                + " as total_result_set, "
+                + body_snippet
+                + " as body, "
+                + if check_constraints {
+                    "(select coalesce(bool_and(_subzero_check__constraint),true) from subzero_source) as constraints_satisfied, "
+                } else {
+                    "true as constraints_satisfied, "
+                }
+                + " nullif(current_setting('response.headers', true), '') as response_headers, "
+                + " nullif(current_setting('response.status', true), '') as response_status "
+                + " from ( select * from _subzero_query ) _subzero_t")
+        }
+    };
+}
 #[allow(unused_imports)]
 pub(super) use fmt_main_query_internal;
 
@@ -227,7 +205,7 @@ pub fn fmt_query<'a>(
                     let bb: &SqlParam = payload;
                     (sql(" "), param(bb))
                 },
-                CallParams::KeyParams(p) if p.len() == 0 => (sql(" "), sql("")),
+                CallParams::KeyParams(p) if p.is_empty() => (sql(" "), sql("")),
                 CallParams::KeyParams(prms) => (
                     fmt_body(payload)
                         + ", subzero_args as ( "
@@ -235,7 +213,7 @@ pub fn fmt_query<'a>(
                         + prms
                             .iter()
                             //.map(|p| format!("{} {}", fmt_identity(&p.name), p.type_))
-                            .map(|p| vec![fmt_identity(&p.name), p.type_.to_string()].join(" "))
+                            .map(|p| vec![fmt_identity(p.name), p.type_.to_string()].join(" "))
                             .collect::<Vec<_>>()
                             .join(", ")
                         + ")"
@@ -244,7 +222,7 @@ pub fn fmt_query<'a>(
                         .iter()
                         .map(|p| {
                             let variadic = if p.variadic { "variadic" } else { "" };
-                            let ident = fmt_identity(&p.name);
+                            let ident = fmt_identity(p.name);
                             if *is_multiple_call {
                                 //format!("{} {} := subzero_args.{}", variadic, ident, ident)
                                 vec![variadic, ident.as_str(), ":= subzero_args.", ident.as_str()].join(" ")
@@ -261,7 +239,7 @@ pub fn fmt_query<'a>(
                 ),
             };
             let call_it = fmt_qi(fn_name) + "(" + arg_frag + ") ";
-            let returned_columns = if returning.len() == 0 {
+            let returned_columns = if returning.is_empty() {
                 "*".to_string()
             } else {
                 returning
@@ -269,10 +247,10 @@ pub fn fmt_query<'a>(
                     .map(|&r| {
                         if r == "*" {
                             //format!("{}.*", fmt_identity(&fn_name.1))
-                            vec![fmt_identity(&fn_name.1).as_str(), ".*"].join("")
+                            vec![fmt_identity(fn_name.1).as_str(), ".*"].join("")
                         } else {
                             //format!("{}.{}", fmt_identity(&fn_name.1), fmt_identity(r))
-                            vec![fmt_identity(&fn_name.1), fmt_identity(r)].join(".")
+                            vec![fmt_identity(fn_name.1), fmt_identity(r)].join(".")
                         }
                     })
                     .collect::<Vec<_>>()
@@ -284,17 +262,15 @@ pub fn fmt_query<'a>(
                     "select " + call_it + " subzero_scalar from subzero_args, env"
                 } else {
                     format!(
-                        "select subzero_lat_args.* from subzero_args, lateral ( select {} from ",
-                        returned_columns
+                        "select subzero_lat_args.* from subzero_args, lateral ( select {returned_columns} from "
+
                     ) + call_it + ", env"
                         + " ) subzero_lat_args"
                 }
-            } else {
-                if *is_scalar {
+            } else if *is_scalar {
                     "select " + call_it + " as subzero_scalar from env"
-                } else {
-                    format!("select {} from ", returned_columns) + call_it + " , env"
-                }
+            } else {
+                    format!("select {returned_columns} from ") + call_it + " , env"
             };
 
             let qi_subzero_source = &Qi("", "subzero_source");
@@ -315,11 +291,11 @@ pub fn fmt_query<'a>(
                 " select "
                     + select.join(", ")
                     + " from "
-                    + fmt_identity(&"subzero_source".to_string())
+                    + fmt_identity("subzero_source")
                     + " "
                     + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
                     + " "
-                    + if where_.conditions.len() > 0 {
+                    + if !where_.conditions.is_empty() {
                         "where " + fmt_condition_tree(qi_subzero_source, where_)?
                     } else {
                         sql("")
@@ -377,7 +353,7 @@ pub fn fmt_query<'a>(
                     + " from "
                     + from_snippet
                     + if add_env_tbl_to_from { ", env " } else { "" }
-                    + if join_tables.len() > 0 {
+                    + if !join_tables.is_empty() {
                         // format!(
                         //     ", {}",
                         //     join_tables
@@ -399,7 +375,7 @@ pub fn fmt_query<'a>(
                     + " "
                     + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
                     + " "
-                    + if where_.conditions.len() > 0 {
+                    + if !where_.conditions.is_empty() {
                         "where " + fmt_condition_tree(qi, where_)?
                     } else {
                         sql("")
@@ -437,7 +413,7 @@ pub fn fmt_query<'a>(
                 .into_iter()
                 .unzip();
             select.extend(sub_selects.into_iter());
-            let returned_columns = if returning.len() == 0 {
+            let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
                 returning
@@ -454,7 +430,7 @@ pub fn fmt_query<'a>(
                     .join(",")
             };
 
-            let into_columns = if columns.len() > 0 {
+            let into_columns = if !columns.is_empty() {
                 // format!(
                 //     "({})",
                 //     columns
@@ -486,13 +462,13 @@ pub fn fmt_query<'a>(
                     " insert into " + fmt_qi(qi) + " " +into_columns +
                     " select " + select_columns +
                     " from json_populate_recordset(null::" + fmt_qi(qi) + ", (select val from subzero_body)) _ " +
-                    " " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(&Qi("", "_"), where_)? } else { sql("") } + // this line is only relevant for upsert
+                    " " + if !where_.conditions.is_empty() { "where " + fmt_condition_tree(&Qi("", "_"), where_)? } else { sql("") } + // this line is only relevant for upsert
                     match on_conflict {
-                        Some((r,cols)) if cols.len()>0 => {
+                        Some((r,cols)) if !cols.is_empty() => {
                             let on_c = format!("on conflict({})",cols.iter().map(|&c| fmt_identity(c)).collect::<Vec<_>>().join(", "));
                             let on_do = match (r, columns.len()) {
                                 (Resolution::IgnoreDuplicates, _) |
-                                (_, 0) => format!("do nothing"),
+                                (_, 0) => "do nothing".to_string(),
                                 _ => format!(
                                     "do update set {}",
                                     columns.iter().map(|c|
@@ -500,7 +476,7 @@ pub fn fmt_query<'a>(
                                     ).collect::<Vec<_>>().join(", ")
                                 )
                             };
-                            format!("{} {}", on_c, on_do)
+                            format!("{on_c} {on_do}")
                         },
                         _ => String::new()
                     } +
@@ -513,11 +489,11 @@ pub fn fmt_query<'a>(
                     " select "
                         + select.join(", ")
                         + " from "
-                        + fmt_identity(&"subzero_source".to_string())
+                        + fmt_identity("subzero_source")
                         + " "
                         + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
                         + " "
-                        + if where_.conditions.len() > 0 {
+                        + if !where_.conditions.is_empty() {
                             "where " + fmt_condition_tree(qi_subzero_source, where_)?
                         } else {
                             sql("")
@@ -525,7 +501,7 @@ pub fn fmt_query<'a>(
                 } else {
                     sql(format!(
                         " select * from {}",
-                        fmt_identity(&"subzero_source".to_string())
+                        fmt_identity("subzero_source")
                     ))
                 },
             )
@@ -550,14 +526,14 @@ pub fn fmt_query<'a>(
                 .into_iter()
                 .unzip();
             select.extend(sub_selects.into_iter());
-            let returned_columns = if returning.len() == 0 {
+            let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
                 returning
                     .iter()
                     .map(|&r| {
                         if r == "*" {
-                            format!("*")
+                            "*".to_string()
                         } else {
                             fmt_identity(r)
                         }
@@ -572,7 +548,7 @@ pub fn fmt_query<'a>(
                         + " delete from "
                         + fmt_qi(qi)
                         + " "
-                        + if where_.conditions.len() > 0 {
+                        + if !where_.conditions.is_empty() {
                             "where " + fmt_condition_tree(qi, where_)?
                         } else {
                             sql("")
@@ -585,11 +561,11 @@ pub fn fmt_query<'a>(
                     " select "
                         + select.join(", ")
                         + " from "
-                        + fmt_identity(&"subzero_source".to_string())
+                        + fmt_identity("subzero_source")
                         + " "
                         + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
                         + " "
-                        + if where_.conditions.len() > 0 {
+                        + if !where_.conditions.is_empty() {
                             "where " + fmt_condition_tree(qi_subzero_source, where_)?
                         } else {
                             sql("")
@@ -597,7 +573,7 @@ pub fn fmt_query<'a>(
                 } else {
                     sql(format!(
                         " select * from {}",
-                        fmt_identity(&"subzero_source".to_string())
+                        fmt_identity("subzero_source")
                     ))
                 },
             )
@@ -625,7 +601,7 @@ pub fn fmt_query<'a>(
                 .into_iter()
                 .unzip();
             select.extend(sub_selects.into_iter());
-            let returned_columns = if returning.len() == 0 {
+            let returned_columns = if returning.is_empty() {
                 "1".to_string()
             } else {
                 returning
@@ -648,17 +624,17 @@ pub fn fmt_query<'a>(
                 .join(",");
 
             (
-                if columns.len() == 0 {
-                    let sel = if returning.len() == 0 {
+                if columns.is_empty() {
+                    let sel = if returning.is_empty() {
                         "null".to_string()
                     } else {
                         returning
                             .iter()
                             .map(|&r| {
                                 if r == "*" {
-                                    format!("{}.*", table)
+                                    format!("{table}.*")
                                 } else {
-                                    format!("{}.{}", table, r)
+                                    format!("{table}.{r}")
                                 }
                             })
                             .collect::<Vec<_>>()
@@ -679,8 +655,8 @@ pub fn fmt_query<'a>(
                             + set_columns
                             + " from (select * from json_populate_recordset (null::"+ fmt_qi(qi)+ " , (select val from subzero_body) )) _ "
                             + " "
-                            + if where_.conditions.len() > 0 {
-                                "where " + fmt_condition_tree(&qi, where_)?
+                            + if !where_.conditions.is_empty() {
+                                "where " + fmt_condition_tree(qi, where_)?
                             } else {
                                 sql("")
                             }
@@ -695,14 +671,14 @@ pub fn fmt_query<'a>(
                     " select "
                         + select.join(", ")
                         + " from "
-                        + fmt_identity(&"subzero_source".to_string())
+                        + fmt_identity("subzero_source")
                         + " "
                         + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
-                    //" " + if where_.conditions.len() > 0 { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
+                    //" " + if !where_.conditions.is_empty() { "where " + fmt_condition_tree(qi_subzero_source, where_) } else { sql("") }
                 } else {
                     sql(format!(
                         " select * from {}",
-                        fmt_identity(&"subzero_source".to_string())
+                        fmt_identity("subzero_source")
                     ))
                 },
             )
@@ -713,9 +689,9 @@ pub fn fmt_query<'a>(
     match wrapin_cte {
         Some(cte_name) => match cte_snippet {
             Some(cte) => {
-                " " + cte + " , " + format!("{} as ( ", cte_name) + query_snippet + " )"
+                " " + cte + " , " + format!("{cte_name} as ( ") + query_snippet + " )"
             }
-            None => format!(" {} as ( ", cte_name) + query_snippet + " )",
+            None => format!(" {cte_name} as ( ") + query_snippet + " )",
         },
         None => match cte_snippet {
             Some(cte) => " " + cte + query_snippet,
@@ -733,7 +709,7 @@ macro_rules! fmt_count_query {
     () => {
         fn fmt_count_query<'a>(schema: &'a str, wrapin_cte: Option<&'static str>, q: &'a Query) -> Result<Snippet<'a>> {
             let query_snippet = match &q.node {
-                FunctionCall { .. } => sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string()))),
+                FunctionCall { .. } => sql(format!(" select 1 from {}", fmt_identity("subzero_source"))),
                 Select {
                     from: (table, _),
                     join_tables,
@@ -761,15 +737,15 @@ macro_rules! fmt_count_query {
                         + " "
                         + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
                         + " "
-                        + if where_.conditions.len() > 0 {
+                        + if !where_.conditions.is_empty() {
                             "where " + fmt_condition_tree(qi, where_)?
                         } else {
                             sql("")
                         }
                 }
-                Insert { .. } => sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string()))),
-                Update { .. } => sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string()))),
-                Delete { .. } => sql(format!(" select 1 from {}", fmt_identity(&"subzero_source".to_string()))),
+                Insert { .. } => sql(format!(" select 1 from {}", fmt_identity("subzero_source"))),
+                Update { .. } => sql(format!(" select 1 from {}", fmt_identity("subzero_source"))),
+                Delete { .. } => sql(format!(" select 1 from {}", fmt_identity("subzero_source"))),
             };
 
             Ok(match wrapin_cte {
@@ -1026,54 +1002,53 @@ pub(super) use fmt_select_item;
 macro_rules! fmt_sub_select_item {
     () => {
         fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
-            match i {
-                SubSelect { query, alias, join, .. } => match join {
-                    Some(j) => match j {
-                        Parent(fk) => {
-                            let alias_or_name = alias.as_ref().unwrap_or(&fk.referenced_table.1);
-                            let local_table_name = format!("{}_{}", qi.1, alias_or_name);
-                            let subquery = fmt_query(schema, true, None, query, join)?;
+            let SubSelect { query, alias, join, .. } = i;
+            match join {
+                Some(j) => match j {
+                    Parent(fk) => {
+                        let alias_or_name = alias.as_ref().unwrap_or(&fk.referenced_table.1);
+                        let local_table_name = format!("{}_{}", qi.1, alias_or_name);
+                        let subquery = fmt_query(schema, true, None, query, join)?;
 
-                            Ok((
-                                sql(format!("row_to_json({}.*) as {}", fmt_identity(&local_table_name), fmt_identity(alias_or_name))),
-                                vec!["left join lateral (" + subquery + ") as " + sql(fmt_identity(&local_table_name)) + " on true"],
-                            ))
-                        }
-                        Child(fk) => {
-                            let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk.table.1));
-                            let local_table_name = fmt_identity(&fk.table.1);
-                            let subquery = fmt_query(schema, true, None, query, join)?;
-                            Ok((
-                                ("coalesce((select json_agg("
-                                    + sql(local_table_name.clone())
-                                    + ".*) from ("
-                                    + subquery
-                                    + ") as "
-                                    + sql(local_table_name.clone())
-                                    + "), '[]') as "
-                                    + sql(alias_or_name)),
-                                vec![],
-                            ))
-                        }
-                        Many(_table, _fk1, fk2) => {
-                            let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1.as_ref()));
-                            let local_table_name = fmt_identity(&fk2.referenced_table.1);
-                            let subquery = fmt_query(schema, true, None, query, join)?;
-                            Ok((
-                                ("coalesce((select json_agg("
-                                    + sql(local_table_name.clone())
-                                    + ".*) from ("
-                                    + subquery
-                                    + ") as "
-                                    + sql(local_table_name.clone())
-                                    + "), '[]') as "
-                                    + sql(alias_or_name)),
-                                vec![],
-                            ))
-                        }
-                    },
-                    None => panic!("unable to format join query without matching relation"),
+                        Ok((
+                            sql(format!("row_to_json({}.*) as {}", fmt_identity(&local_table_name), fmt_identity(alias_or_name))),
+                            vec!["left join lateral (" + subquery + ") as " + sql(fmt_identity(&local_table_name)) + " on true"],
+                        ))
+                    }
+                    Child(fk) => {
+                        let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk.table.1));
+                        let local_table_name = fmt_identity(fk.table.1);
+                        let subquery = fmt_query(schema, true, None, query, join)?;
+                        Ok((
+                            ("coalesce((select json_agg("
+                                + sql(local_table_name.clone())
+                                + ".*) from ("
+                                + subquery
+                                + ") as "
+                                + sql(local_table_name)
+                                + "), '[]') as "
+                                + sql(alias_or_name)),
+                            vec![],
+                        ))
+                    }
+                    Many(_table, _fk1, fk2) => {
+                        let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
+                        let local_table_name = fmt_identity(fk2.referenced_table.1);
+                        let subquery = fmt_query(schema, true, None, query, join)?;
+                        Ok((
+                            ("coalesce((select json_agg("
+                                + sql(local_table_name.clone())
+                                + ".*) from ("
+                                + subquery
+                                + ") as "
+                                + sql(local_table_name)
+                                + "), '[]') as "
+                                + sql(alias_or_name)),
+                            vec![],
+                        ))
+                    }
                 },
+                None => panic!("unable to format join query without matching relation"),
             }
         }
     };
@@ -1449,71 +1424,28 @@ pub fn return_representation(method: &str, query: &Query, preferences: &Option<P
     )
 }
 
-// #[allow(unused_imports)]
-// pub(super) use cast_select_item_format;
-// #[allow(unused_imports)]
-// pub(super) use fmt_as;
-// #[allow(unused_imports)]
-// pub(super) use fmt_body;
-// #[allow(unused_imports)]
-// pub(super) use fmt_condition;
-// #[allow(unused_imports)]
-// pub(super) use fmt_condition_tree;
-// #[allow(unused_imports)]
-// pub(super) use fmt_count_query;
-// #[allow(unused_imports)]
-// pub(super) use fmt_field;
-// #[allow(unused_imports)]
-// pub(super) use fmt_field_format;
-// #[allow(unused_imports)]
-// pub(super) use fmt_filter;
-// #[allow(unused_imports)]
-// pub(super) use fmt_env_var;
-// #[allow(unused_imports)]
-// pub(super) use fmt_identity;
-// #[allow(unused_imports)]
-// pub(super) use fmt_in_filter;
-// #[allow(unused_imports)]
-// pub(super) use fmt_json_operand;
-// #[allow(unused_imports)]
-// pub(super) use fmt_json_operation;
-// #[allow(unused_imports)]
-// pub(super) use fmt_json_path;
-// #[allow(unused_imports)]
-// pub(super) use fmt_limit;
-// #[allow(unused_imports)]
-// pub(super) use fmt_logic_operator;
-// #[allow(unused_imports)]
-// pub(super) use fmt_main_query;
-// #[allow(unused_imports)]
-// pub(super) use fmt_offset;
-// #[allow(unused_imports)]
-// pub(super) use fmt_operator;
-// #[allow(unused_imports)]
-// pub(super) use fmt_order;
-// #[allow(unused_imports)]
-// pub(super) use fmt_order_term;
-// #[allow(unused_imports)]
-// pub(super) use fmt_groupby;
-// #[allow(unused_imports)]
-// pub(super) use fmt_groupby_term;
-// #[allow(unused_imports)]
-// pub(super) use fmt_qi;
-// #[allow(unused_imports)]
-// pub(super) use fmt_query;
-// #[allow(unused_imports)]
-// pub(super) use fmt_function_call;
-// #[allow(unused_imports)]
-// pub(super) use fmt_select_item_function;
-// #[allow(unused_imports)]
-// pub(super) use fmt_select_item;
-// #[allow(unused_imports)]
-// pub(super) use fmt_select_name;
-// #[allow(unused_imports)]
-// pub(super) use fmt_sub_select_item;
-// #[allow(unused_imports)]
-// pub(super) use simple_select_item_format;
-// #[allow(unused_imports)]
-// pub(super) use star_select_item_format;
-// #[allow(unused_imports)]
-// pub(super) use fmt_function_param;
+#[allow(unused_macros)]
+macro_rules! body_snippet {
+    (function_scalar) => { "coalesce((json_agg(_subzero_t.subzero_scalar)->0)::text, 'null')" };
+    (function_scalar_array) => { "coalesce((json_agg(_subzero_t.subzero_scalar))::text, '[]')" };
+    (function_any) => { "coalesce((json_agg(_subzero_t)->0)::text, 'null')" };
+    (json_array) => { "coalesce(json_agg(_subzero_t), '[]')::character varying" };
+    (json_object) => { "coalesce((json_agg(_subzero_t)->0)::text, 'null')" };
+    (csv) => {
+        r#"
+            (SELECT coalesce(string_agg(a.k, ','), '')
+                FROM (
+                    SELECT json_object_keys(r)::text as k
+                    FROM ( 
+                    SELECT row_to_json(hh) as r from _subzero_query as hh limit 1
+                    ) s
+                ) a
+            )
+            || chr(10) ||
+            coalesce(string_agg(substring(_subzero_t::text, 2, length(_subzero_t::text) - 2), chr(10)), '')
+        "#
+    };
+}
+
+#[allow(unused_imports)]
+pub(super) use body_snippet;

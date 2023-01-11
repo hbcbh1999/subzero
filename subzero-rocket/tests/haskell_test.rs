@@ -159,16 +159,14 @@ macro_rules! haskell_test {
                   $(
                     #[rocket::async_test]
                     async describe $describe {
-                    use super::{setup_db, setup_client, INIT_DB, INIT_CLIENT, CLIENT, normalize_url, haskell_test, add_header};
-                    use pretty_assertions::assert_eq;
-                    use rocket::http::{Accept, Header};
-                    //use rocket::local::asynchronous::Client;
-                    use serde_json::Value;
-                    use std::str::FromStr;
-                    before { setup_db(&INIT_DB); setup_client(&INIT_CLIENT, &CLIENT);}
-                    //{
-                    //  describe $describe {
+                      use super::{setup_db, setup_client, INIT_DB, INIT_CLIENT, CLIENT, normalize_url, haskell_test, add_header};
+                      use pretty_assertions::assert_eq;
+                      use rocket::http::{Accept, Header};
+                      use serde_json::Value;
+                      use std::str::FromStr;
+                      before { setup_db(&INIT_DB); setup_client(&INIT_CLIENT, &CLIENT);}
                           $(
+                              
                               it $it {
                                   $(
                                       {
@@ -308,8 +306,7 @@ macro_rules! haskell_test {
                                   )?
                               }
                           )*
-                    //}
-                    }
+                      }
                   )*
             // }
             )*

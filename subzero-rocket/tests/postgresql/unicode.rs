@@ -1,16 +1,16 @@
-use super::super::start;
 use super::common::*;
-use async_once::AsyncOnce;
-use demonstrate::demonstrate;
-use rocket::local::asynchronous::Client;
-use std::sync::Once;
+use super::super::start;
+
 static INIT_CLIENT: Once = Once::new();
-use std::env;
 lazy_static! {
-    static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async {
-        env::set_var("SUBZERO_DB_SCHEMAS", "[تست]");
-        Client::untracked(start().await.unwrap()).await.expect("valid client")
-    });
+  static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async {
+    env::set_var("SUBZERO_DB_SCHEMAS", "[تست]");
+    Client::untracked(start().await.unwrap()).await.expect("valid client")
+  });
+  static ref CLIENT: &'static AsyncOnce<Client> = {
+      thread::spawn(move || { RUNTIME.block_on(async { CLIENT_INNER.get().await;})}).join().expect("Thread panicked");
+      &*CLIENT_INNER
+  };
 }
 
 haskell_test! {

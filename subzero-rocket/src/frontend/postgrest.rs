@@ -136,6 +136,7 @@ pub async fn handle<'a>(
     let mut response_headers = vec![];
     let config = backend.config();
     let db_schema = backend.db_schema();
+    let disable_internal_permissions = matches!(config.disable_internal_permissions, Some(true));
     let schema_name = &(match (config.db_schemas.len() > 1, method, headers.get("accept-profile"), headers.get("content-profile")) {
         (false, ..) => Ok(config.db_schemas.get(0).unwrap().clone()),
         (_, &Method::DELETE, _, Some(content_profile))
@@ -237,12 +238,20 @@ pub async fn handle<'a>(
     let mut request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, max_rows).context(CoreSnafu)?;
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
-    check_privileges(db_schema, schema_name, role, &request).map_err(to_core_error)?;
+    if !disable_internal_permissions {
+        check_privileges(db_schema, schema_name, role, &request).map_err(to_core_error)?;
+    }
     check_safe_functions(&request, &db_allowed_select_functions).map_err(to_core_error)?;
-    insert_policy_conditions(db_schema, schema_name, role, &mut request.query).map_err(to_core_error)?;
+    if !disable_internal_permissions {
+        insert_policy_conditions(db_schema, schema_name, role, &mut request.query).map_err(to_core_error)?;
+    }
 
     // when using internal privileges not switch "current_role"
-    let env_role = if db_schema.use_internal_permissions { None } else { Some(role) };
+    let env_role = if !disable_internal_permissions && db_schema.use_internal_permissions {
+        None
+    } else {
+        Some(role)
+    };
 
     let _env = get_env(env_role, &request, &jwt_claims, config.db_use_legacy_gucs);
     let env = _env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect::<HashMap<_, _>>();
@@ -256,6 +265,9 @@ pub async fn handle<'a>(
 
         #[cfg(feature = "sqlite")]
         "sqlite" => task::block_in_place(|| backend.execute(authenticated, &request, &env)).await?,
+
+        #[cfg(feature = "mysql")]
+        "mysql" => backend.execute(authenticated, &request, &env).await?,
 
         t => panic!("unsuported database type: {}", t),
     };
@@ -316,14 +328,14 @@ pub async fn handle<'a>(
 
     #[rustfmt::skip]
     let mut status = match (method, &request.query.node, page_total, total_result_set, &request.preferences) {
-        (&Method::POST, Insert { .. }, ..) => 201,
+        (&Method::POST,   Insert { .. }, ..) => 201,
         (&Method::DELETE, Delete { .. }, ..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
         (&Method::DELETE, Delete { .. }, ..) => 204,
-        (&Method::PATCH, Update { columns, .. }, 0, _, _) if !columns.is_empty() => 404,
-        (&Method::PATCH, Update { .. }, ..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
-        (&Method::PATCH, Update { .. }, ..) => 204,
-        (&Method::PUT,Insert { .. },..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
-        (&Method::PUT, Insert { .. }, ..) => 204,
+        (&Method::PATCH,  Update { columns, .. }, 0, _, _) if !columns.is_empty() => 404,
+        (&Method::PATCH,  Update { .. }, ..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
+        (&Method::PATCH,  Update { .. }, ..) => 204,
+        (&Method::PUT,    Insert { .. },..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
+        (&Method::PUT,    Insert { .. }, ..) => 204,
         (.., pt, t, _) => content_range_status(top_level_offset, top_level_offset + pt - 1, t),
     };
 

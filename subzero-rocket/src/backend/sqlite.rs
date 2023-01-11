@@ -425,7 +425,7 @@ impl Backend for SQLiteBackend {
                     Ok(conn) => task::block_in_place(|| {
                         let authenticated = false;
                         let query = include_files(q);
-                        println!("schema query: {query}");
+                        //println!("schema query: {query}");
                         let mut stmt = conn.prepare(query.as_str()).context(SqliteDbSnafu { authenticated })?;
                         let mut rows = stmt.query([]).context(SqliteDbSnafu { authenticated })?;
                         match rows.next().context(SqliteDbSnafu { authenticated })? {

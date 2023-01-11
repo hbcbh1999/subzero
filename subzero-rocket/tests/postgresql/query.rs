@@ -1,14 +1,4 @@
-use super::super::start;
 use super::common::*;
-use async_once::AsyncOnce;
-use demonstrate::demonstrate;
-use rocket::local::asynchronous::Client;
-use std::sync::Once;
-static INIT_CLIENT: Once = Once::new();
-
-lazy_static! {
-    static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
-}
 
 haskell_test! {
 feature "query"

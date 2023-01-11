@@ -81,6 +81,8 @@ pub struct VhostConfig {
     pub jwt_aud: Option<String>,
     #[serde(default = "role_claim_key")]
     pub role_claim_key: String,
+    #[serde(default)]
+    pub disable_internal_permissions: Option<bool>,
 }
 
 fn db_allowed_select_functions() -> Vec<String> { DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect() }
@@ -134,6 +136,7 @@ mod test {
                     role_claim_key: ".role".to_string(),
                     db_pool: 10,
                     db_max_rows: None,
+                    disable_internal_permissions: None,
                 },
             )]),
         };

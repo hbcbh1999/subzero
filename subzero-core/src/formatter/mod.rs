@@ -6,6 +6,8 @@ use std::borrow::Cow;
 pub mod base;
 #[cfg(feature = "clickhouse")]
 pub mod clickhouse;
+#[cfg(feature = "mysql")]
+pub mod mysql;
 #[cfg(feature = "postgresql")]
 pub mod postgresql;
 #[cfg(feature = "sqlite")]

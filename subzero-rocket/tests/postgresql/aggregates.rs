@@ -1,13 +1,5 @@
-use super::super::start;
 use super::common::*;
-use async_once::AsyncOnce;
-use demonstrate::demonstrate;
-use rocket::local::asynchronous::Client;
-use std::sync::Once;
-static INIT_CLIENT: Once = Once::new();
-lazy_static! {
-    static ref CLIENT: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
-}
+
 
 haskell_test! {
 feature "aggregates"
@@ -127,7 +119,7 @@ feature "aggregates"
           { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "fails when no filters provided" $
-        get "/protected_books?limit=1" shouldRespondWith
+        get "/protected_books?select=id,v_id,v_publication_year,v_author_id&limit=1" shouldRespondWith
             [json|r#"{
                 "hint":"",
                 "details":"Please provide at least one of id, publication_year, author_id filters",

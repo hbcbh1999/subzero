@@ -39,6 +39,9 @@ use backend::clickhouse::ClickhouseBackend;
 #[cfg(feature = "sqlite")]
 use backend::sqlite::SQLiteBackend;
 
+#[cfg(feature = "mysql")]
+use backend::mysql::MySQLBackend;
+
 mod rocket_util;
 use rocket_util::{AllHeaders, ApiResponse, QueryString, RocketError};
 
@@ -176,6 +179,8 @@ async fn start() -> Result<Rocket<Build>, Error> {
         "clickhouse" => Box::new(ClickhouseBackend::init("default".to_string(), vhost_config.clone()).await?),
         #[cfg(feature = "sqlite")]
         "sqlite" => Box::new(SQLiteBackend::init("default".to_string(), vhost_config.clone()).await?),
+        #[cfg(feature = "mysql")]
+        "mysql" => Box::new(MySQLBackend::init("default".to_string(), vhost_config.clone()).await?),
         t => panic!("unsupported database type: {}", t),
     };
 
@@ -223,3 +228,8 @@ mod sqlite;
 #[cfg(test)]
 #[path = "../tests/clickhouse/mod.rs"]
 mod clickhouse;
+
+#[cfg(feature = "mysql")]
+#[cfg(test)]
+#[path = "../tests/mysql/mod.rs"]
+mod mysql;
