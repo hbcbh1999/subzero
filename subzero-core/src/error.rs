@@ -91,7 +91,7 @@ pub enum Error {
     ContentTypeError { message: String },
 
     #[snafu(display("SingularityError {}", count))]
-    SingularityError { count: i64, content_type: String },
+    SingularityError { count: u64, content_type: String },
 
     #[snafu(display("LimitOffsetNotAllowedError"))]
     LimitOffsetNotAllowedError,

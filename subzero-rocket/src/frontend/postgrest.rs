@@ -356,7 +356,7 @@ pub async fn handle<'a>(
     Ok((status, content_type, response_headers, response.body))
 }
 
-fn content_range_header(lower: i64, upper: i64, total: Option<i64>) -> String {
+fn content_range_header(lower: u64, upper: u64, total: Option<u64>) -> String {
     let range_string = if total != Some(0) && lower <= upper {
         format!("{lower}-{upper}")
     } else {
@@ -369,7 +369,7 @@ fn content_range_header(lower: i64, upper: i64, total: Option<i64>) -> String {
     format!("{range_string}/{total_string}")
 }
 
-fn content_range_status(lower: i64, upper: i64, total: Option<i64>) -> u16 {
+fn content_range_status(lower: u64, upper: u64, total: Option<u64>) -> u16 {
     match (lower, upper, total) {
         //(_, _, None) => 200,
         (l, _, Some(t)) if l > t => 406,

@@ -13,6 +13,8 @@ use std::thread;
 use tokio::runtime::Builder;
 use rocket::local::asynchronous::Client;
 use async_once::AsyncOnce;
+use mysql::*;
+use mysql::prelude::*;
 use super::super::start;
 
 pub static INIT_DB: Once = Once::new();
@@ -20,6 +22,7 @@ pub static INIT_CLIENT: Once = Once::new();
 lazy_static! {
     static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
     static ref RUNTIME: tokio::runtime::Runtime = Builder::new_multi_thread().enable_all().build().unwrap();
+    static ref MYSQL_POOL: Pool = Pool::new(option_env!("MYSQL_DB_URI").unwrap_or("")).unwrap();
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
@@ -31,7 +34,6 @@ lazy_static! {
 }
 
 pub fn setup_db(init_db_once: &Once) {
-    //let _ = env_logger::builder().is_test(true).try_init();
     init_db_once.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -82,7 +84,11 @@ pub fn setup_db(init_db_once: &Once) {
         };
 
         env::set_var("SUBZERO_DB_URI", db_uri);
+        
     });
+
+    let mut conn = MYSQL_POOL.get_conn().unwrap();
+    conn.query_drop("call reset_auto_increment()");
 }
 
 pub fn setup_client<T>(init_client_once: &Once, client: &'static T)

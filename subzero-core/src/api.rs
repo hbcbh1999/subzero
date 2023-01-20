@@ -102,9 +102,9 @@ pub struct ApiRequest<'a> {
 
 #[derive(Debug)]
 pub struct ApiResponse {
-    pub page_total: i64,
-    pub total_result_set: Option<i64>,
-    pub top_level_offset: i64,
+    pub page_total: u64,
+    pub total_result_set: Option<u64>,
+    pub top_level_offset: u64,
     pub response_headers: Option<String>,
     pub response_status: Option<String>,
     pub body: String,

@@ -1,3 +1,27 @@
+-- stored procedure to reset all auto_increment values to 0
+drop procedure if exists reset_auto_increment;
+delimiter //
+create procedure reset_auto_increment()
+begin
+    declare done int default 0;
+    declare total_rows int default 0;
+    declare v_table_name varchar(255);
+    declare tables cursor for select table_name from information_schema.tables where table_schema = database() and table_type = 'BASE TABLE';
+    declare continue handler for not found set done = 1;
+    open tables;
+    select found_rows() into total_rows;
+    read_loop: loop
+        fetch next from tables into v_table_name;
+        if done then
+            leave read_loop;
+        end if;
+        set @reset = concat('alter table ', v_table_name, ' auto_increment = 0;');
+        prepare stmt from @reset;
+        execute stmt;
+        deallocate prepare stmt;
+    end loop;
+    close tables;
+end//
 
 drop table if exists tbl1;
 drop table if exists users_tasks;
@@ -14,7 +38,7 @@ create table tbl1 (
 );
 
 create table permissions_check (
-    id int primary key,
+    id int primary key auto_increment,
     value text,
     hidden text,
     role text,
@@ -22,7 +46,7 @@ create table permissions_check (
 );
 
 create table permissions_check_child (
-    id int primary key,
+    id int primary key auto_increment,
     value text,
     role text,
     public boolean,
@@ -31,12 +55,12 @@ create table permissions_check_child (
 );
 
 create table clients (
-    id integer primary key,
+    id integer primary key auto_increment,
     name text NOT NULL
 );
 
 create table projects (
-    id integer primary key,
+    id integer primary key auto_increment,
     name text NOT NULL,
     client_id integer, -- references clients(id)
     foreign key (client_id) references clients(id)
@@ -45,14 +69,14 @@ create table projects (
 create view projects_view as select * from projects;
 
 create table tasks (
-    id integer primary key,
+    id integer primary key auto_increment,
     name text NOT NULL,
     project_id integer, -- references projects(id)
     foreign key (project_id) references projects(id)
 );
 
 create table users (
-    id integer primary key,
+    id integer primary key auto_increment,
     name text NOT NULL
 );
 

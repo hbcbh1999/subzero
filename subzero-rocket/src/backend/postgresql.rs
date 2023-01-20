@@ -173,8 +173,8 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
     }
 
     let api_response = ApiResponse {
-        page_total: rows[0].get("page_total"),
-        total_result_set: rows[0].get("total_result_set"),
+        page_total: rows[0].get::<_, i64>("page_total") as u64,
+        total_result_set: rows[0].get::<_, Option<i64>>("total_result_set").map(|v| v as u64),
         top_level_offset: 0,
         response_headers: rows[0].get("response_headers"),
         response_status: rows[0].get("response_status"),

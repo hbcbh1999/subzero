@@ -1,13 +1,16 @@
 use mysql_async::prelude::*;
 use mysql_async::{Pool, Error as MysqlError, Conn, TxOpts, IsolationLevel, Value, Row, FromRowError, Opts};
 
-use snafu::ResultExt;
+use snafu::{ResultExt, OptionExt};
 use subzero_core::error::JsonSerializeSnafu;
 use tokio::time::{Duration, sleep};
 use crate::config::{VhostConfig, SchemaStructure::*};
 // use log::{debug};
 use subzero_core::{
-    api::{ApiRequest, ApiResponse, ContentType::*, SingleVal, ListVal, Payload},
+    api::{
+        ApiRequest, ApiResponse, ContentType::*, SingleVal, ListVal, Payload, QueryNode::*,
+        Condition, Filter, Query, Field,
+    },
     error::{
         Error::{SingularityError, PutMatchingPkError, PermissionDenied},
     },
@@ -15,7 +18,7 @@ use subzero_core::{
     formatter::{
         Param,
         Param::*,
-        mysql::{fmt_main_query, generate},
+        mysql::{fmt_main_query, generate, return_representation},
         ToParam, Snippet, SqlParam,
     },
     error::{JsonDeserializeSnafu},
@@ -26,6 +29,7 @@ use async_trait::async_trait;
 
 use super::{Backend, DbSchemaWrap, include_files};
 
+use std::borrow::Cow;
 use std::{collections::HashMap, fs};
 use std::path::Path;
 use http::Method;
@@ -72,54 +76,9 @@ impl ToValue for WrapParam<'_> {
             WrapParam(Str(v)) => Value::Bytes(v.as_bytes().to_vec()),
             WrapParam(StrOwned(v)) => Value::Bytes(v.as_bytes().to_vec()),
             WrapParam(PL(Payload(v, ..))) => Value::Bytes(v.as_bytes().to_vec()),
-            WrapParam(LV(ListVal(v, ..))) => Value::Bytes(serde_json::to_string(v).unwrap_or_default().as_bytes().to_vec()), //WrapParam(LV(ListVal(v, ..))) => Ok(ToSqlOutput::Owned(Text(serde_json::to_string(v).unwrap_or_default()))),
+            WrapParam(LV(ListVal(v, ..))) => Value::Bytes(serde_json::to_string(v).unwrap_or_default().as_bytes().to_vec()),
         }
     }
-    // fn to_sql(&self, _ty: &Type, out: &mut BytesMut) -> Result<IsNull, Box<dyn Error + Sync + Send>> {
-    //     match self {
-    //         WrapParam(SV(SingleVal(v, ..))) => {
-    //             out.put_slice(v.as_bytes());
-    //             Ok(IsNull::No)
-    //         }
-    //         WrapParam(Str(v)) => {
-    //             out.put_slice(v.as_bytes());
-    //             Ok(IsNull::No)
-    //         }
-    //         WrapParam(StrOwned(v)) => {
-    //             out.put_slice(v.as_bytes());
-    //             Ok(IsNull::No)
-    //         }
-    //         WrapParam(PL(Payload(v, ..))) => {
-    //             out.put_slice(v.as_bytes());
-    //             Ok(IsNull::No)
-    //         }
-    //         WrapParam(LV(ListVal(v, ..))) => {
-    //             if !v.is_empty() {
-    //                 out.put_slice(
-    //                     format!(
-    //                         "{{\"{}\"}}",
-    //                         v.iter()
-    //                             .map(|e| e.replace('\\', "\\\\").replace('\"', "\\\""))
-    //                             .collect::<Vec<_>>()
-    //                             .join("\",\"")
-    //                     )
-    //                     .as_str()
-    //                     .as_bytes(),
-    //                 );
-    //             } else {
-    //                 out.put_slice(r#"{}"#.as_bytes());
-    //             }
-
-    //             Ok(IsNull::No)
-    //         }
-    //     }
-    // }
-
-    // fn accepts(_ty: &Type) -> bool { true }
-
-    // fn encode_format(&self) -> Format { Format::Text }
-
-    // to_sql_checked!();
 }
 
 fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> { WrapParam(p.to_param()) }
@@ -136,10 +95,10 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
 
 async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, config: &VhostConfig) -> Result<ApiResponse> {
     // println!("------------ pool before {:?}", pool);
+    let return_representation = return_representation(request.method, &request.query, &request.preferences);
     let mut client = pool.get_conn().await.context(MysqlDbSnafu { authenticated })?;
 
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu)?);
-
+    
     let opts = TxOpts::default()
         .with_readonly(request.read_only)
         .with_isolation_level(Some(IsolationLevel::ReadCommitted))
@@ -148,12 +107,6 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
     let mut transaction = client.start_transaction(opts).await.context(MysqlDbSnafu { authenticated })?;
     let (env_query, env_parameters, _) = generate(fmt_env_query(env));
     debug!("env_query: {}\n{:?}", env_query, env_parameters);
-    // let env_stm = transaction
-    //     .prep(env_query.as_str())
-    //     .await
-    //     .context(MysqlDbSnafu { authenticated })?;
-
-    // let _ = transaction.exec(env_stm, env_parameters).await.context(MysqlDbSnafu { authenticated })?;
     transaction
         .exec_drop(
             &env_query,
@@ -181,15 +134,9 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
     //     //     .context(PgDbSnafu { authenticated })?;
     //     transaction.query_drop(&pre_request_statement).await.context(MysqlDbSnafu { authenticated })?;
     // }
-
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu)?);
     debug!("main_statement {}\n{:?}", main_statement, main_parameters);
-
-    // let main_stm = transaction
-    //     .prepare_cached(main_statement.as_str())
-    //     .await
-    //     .context(PgDbSnafu { authenticated })?;
-
-    let response: DbResponse = transaction
+    let response: Option<DbResponse> = transaction
         .exec_first(
             &main_statement,
             main_parameters
@@ -201,25 +148,128 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
                 .collect::<Vec<_>>(),
         )
         .await
-        .context(MysqlDbSnafu { authenticated })?
-        .unwrap();
+        .context(MysqlDbSnafu { authenticated })?;
 
-    let constraints_satisfied: bool = response.constraints_satisfied;
-    if !constraints_satisfied {
-        transaction.rollback().await.context(MysqlDbSnafu { authenticated })?;
-        return Err(to_core_error(PermissionDenied {
-            details: "check constraint of an insert/update permission has failed".to_string(),
-        }));
-    }
+    
+    let api_response = match request.query.node {
+        Insert {..} if return_representation => {
+            let primary_key_column = "id";
+            let primary_key_field = Field {
+                name: primary_key_column,
+                json_path: None,
+            };
+            let last_insert_id = transaction.last_insert_id();
+            let affected_rows = transaction.affected_rows();
+            let ids = match (last_insert_id, affected_rows) {
+                (None, _) => vec![],
+                (Some(last_insert_id), 1) => vec![last_insert_id],
+                (Some(last_insert_id), affected_rows) => {
+                    let mut ids = Vec::new();
+                    for i in 0..affected_rows {
+                        ids.push(last_insert_id + i);
+                    }
+                    ids
+                }
+            };
+            
+            let mut select_request = request.clone();
+            select_request.method = "GET";
+            let node = select_request.query.node;
+            let sub_selects = select_request.query.sub_selects.to_vec();
+            let mut where_ = node.where_().to_owned();
+            let table = node.name();
+            let select = node.select().to_vec();
+            where_.conditions.insert(
+                0,
+                Condition::Single {
+                    field: primary_key_field,
+                    filter: Filter::In(ListVal(ids.iter().map(|i| Cow::Owned(i.to_string())).collect(), None)),
+                    negate: false,
+                },
+            );
+            select_request.query = Query {
+                node: Select {
+                    from: (table, Some("subzero_source")),
+                    join_tables: vec![], //todo!! this should probably not be empty
+                    where_,
+                    select,
+                    limit: None,
+                    offset: None,
+                    order: vec![],
+                    groupby: vec![],
+                },
+                sub_selects,
+            };
 
-    let api_response = ApiResponse {
-        page_total: response.page_total,
-        total_result_set: response.total_result_set,
-        top_level_offset: 0,
-        response_headers: response.response_headers,
-        response_status: response.response_status,
-        body: response.body,
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(select_request.schema_name, &select_request, env).context(CoreSnafu)?);
+            debug!("main_statement_select {}\n{:?}", main_statement, main_parameters);
+            let response: DbResponse = transaction
+                .exec_first(
+                    &main_statement,
+                    main_parameters
+                        .into_iter()
+                        .map(wrap_param)
+                        .collect::<Vec<_>>()
+                        .iter()
+                        .map(to_value)
+                        .collect::<Vec<_>>(),
+                )
+                .await
+                .context(MysqlDbSnafu { authenticated })?
+                .unwrap();
+            ApiResponse {
+                page_total: response.page_total as u64,
+                total_result_set: response.total_result_set.map(|i| i as u64),
+                top_level_offset: 0,
+                response_headers: response.response_headers,
+                response_status: response.response_status,
+                body: response.body,
+            }
+
+        },
+        Insert {..} | Update {..} | Delete {..} if !return_representation => {
+            let affected_rows = transaction.affected_rows();
+            ApiResponse {
+                page_total: affected_rows,
+                total_result_set: None,
+                top_level_offset: 0,
+                response_headers: None,
+                response_status: None,
+                body: String::from(""),
+            }
+        },
+
+        _ => {
+            let response = response.unwrap();
+            ApiResponse {
+                page_total: response.page_total as u64,
+                total_result_set: response.total_result_set.map(|i| i as u64),
+                top_level_offset: 0,
+                response_headers: response.response_headers,
+                response_status: response.response_status,
+                body: response.body,
+            }
+        },
     };
+
+    // let constraints_satisfied: bool = response.constraints_satisfied;
+    // if !constraints_satisfied {
+    //     transaction.rollback().await.context(MysqlDbSnafu { authenticated })?;
+    //     return Err(to_core_error(PermissionDenied {
+    //         details: "check constraint of an insert/update permission has failed".to_string(),
+    //     }));
+    // }
+
+    // let api_response = ApiResponse {
+    //     page_total: response.page_total,
+    //     total_result_set: response.total_result_set,
+    //     top_level_offset: 0,
+    //     response_headers: response.response_headers,
+    //     response_status: response.response_status,
+    //     body: response.body,
+    // };
+
+    
 
     if request.accept_content_type == SingularJSON && api_response.page_total != 1 {
         transaction.rollback().await.context(MysqlDbSnafu { authenticated })?;
@@ -243,6 +293,7 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
     } else {
         transaction.commit().await.context(MysqlDbSnafu { authenticated })?;
     }
+
 
     // println!("------------ pool after {:?}", pool);
     Ok(api_response)

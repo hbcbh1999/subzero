@@ -227,8 +227,8 @@ fn execute(
                     conn.execute_batch("COMMIT").context(SqliteDbSnafu { authenticated })?;
                 }
                 return Ok(ApiResponse {
-                    page_total: ids.len() as i64,
-                    total_result_set: if count { Some(ids.len() as i64) } else { None },
+                    page_total: ids.len() as u64,
+                    total_result_set: if count { Some(ids.len() as u64) } else { None },
                     top_level_offset: 0,
                     body: if return_representation {
                         serde_json::to_string(&ids.iter().map(|(i, _)| json!({ primary_key_column: i })).collect::<Vec<_>>())
