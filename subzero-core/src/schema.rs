@@ -89,7 +89,9 @@ impl<'a> DbSchema<'a> {
     pub fn get_object(&self, schema: &'a str, object: &'a str) -> Result<&Object<'a>> {
         self.schemas
             .get(schema)
-            .context(UnacceptableSchemaSnafu { schemas: vec![schema.to_owned()] })?
+            .context(UnacceptableSchemaSnafu {
+                schemas: vec![schema.to_owned()],
+            })?
             .objects
             .get(object)
             .context(UnknownRelationSnafu { relation: object.to_owned() })
@@ -1194,10 +1196,7 @@ mod tests {
 
         let serialized_result = serde_json::to_string(&conditions).unwrap();
         println!("serialized_result = {serialized_result}");
-        assert_eq!(
-            serde_json::from_str::<JsonValue>(conditions_json).unwrap(),
-            serde_json::from_str::<JsonValue>(&serialized_result).unwrap()
-        );
+        assert_eq!(serde_json::from_str::<JsonValue>(conditions_json).unwrap(), serde_json::from_str::<JsonValue>(&serialized_result).unwrap());
 
         let deserialized_result = serde_json::from_str::<Vec<Condition>>(conditions_json);
         println!("deserialized_result = {deserialized_result:?}");
@@ -1458,9 +1457,6 @@ mod tests {
         //     get_join(&s("api"), &db_schema, &s("users"), &s("addresses"), &mut None),
         //     1
         // );
-        assert!(matches!(
-            db_schema.get_join(&s("api"), &s("users"), &s("addresses"), &None),
-            Err(AppError::AmbiguousRelBetween { .. })
-        ));
+        assert!(matches!(db_schema.get_join(&s("api"), &s("users"), &s("addresses"), &None), Err(AppError::AmbiguousRelBetween { .. })));
     }
 }

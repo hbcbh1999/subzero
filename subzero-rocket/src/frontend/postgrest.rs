@@ -51,8 +51,7 @@ fn get_current_timestamp() -> u64 {
 // }
 
 fn get_env<'a>(
-    db_type: &str,
-    role: Option<&'a str>, request: &'a ApiRequest, jwt_claims: &'a Option<JsonValue>, use_legacy_gucs: bool,
+    db_type: &str, role: Option<&'a str>, request: &'a ApiRequest, jwt_claims: &'a Option<JsonValue>, use_legacy_gucs: bool,
 ) -> HashMap<Cow<'a, str>, Cow<'a, str>> {
     let mut env: HashMap<Cow<'a, str>, Cow<'a, str>> = HashMap::new();
     let search_path = &[String::from(request.schema_name)];
@@ -65,12 +64,10 @@ fn get_env<'a>(
         "mysql" => {
             env.insert("subzero_ids".into(), "[]".into());
             env.insert("subzero_ignored_ids".into(), "[]".into());
-        },
+        }
         _ => {}
     }
-    
 
-    
     env.insert("request.method".into(), request.method.into());
     env.insert("request.path".into(), request.path.into());
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
@@ -301,9 +298,6 @@ pub async fn handle<'a>(
         _ => ApplicationJSON,
     };
 
-    
-
-    
     if let Some(response_headers_str) = response.response_headers {
         match serde_json::from_str(response_headers_str.as_str()) {
             Ok(JsonValue::Array(headers_json)) => {
@@ -332,7 +326,6 @@ pub async fn handle<'a>(
         }
         .context(CoreSnafu)?
     }
-
 
     let lower = top_level_offset as i64;
     let upper = top_level_offset as i64 + page_total as i64 - 1;

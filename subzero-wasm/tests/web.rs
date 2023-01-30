@@ -18,10 +18,7 @@ fn pass() {
 
 #[wasm_bindgen_test]
 fn js_value_conversion() {
-    assert_eq!(
-        vs(vec![("a", "1"), ("b", "2")]),
-        from_js_value::<Vec<(String, String)>>(to_js_value(&json!({"a":"1","b":"2"})).unwrap()).unwrap()
-    );
+    assert_eq!(vs(vec![("a", "1"), ("b", "2")]), from_js_value::<Vec<(String, String)>>(to_js_value(&json!({"a":"1","b":"2"})).unwrap()).unwrap());
 
     assert_eq!(
         vs(vec![("a", "1"), ("b", "2")]),

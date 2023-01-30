@@ -16,7 +16,6 @@ lazy_static! {
   };
 }
 
-
 haskell_test! {
 feature "permissions"
     describe "grants" $ do

@@ -345,12 +345,7 @@ fn get_row_security_policies<'a>(
                     &mut conflict_select_permissive_policies,
                     &mut conflict_select_restrictive_policies,
                 );
-                add_with_check_options(
-                    &mut with_check_options,
-                    &conflict_select_restrictive_policies,
-                    &conflict_select_permissive_policies,
-                    true,
-                );
+                add_with_check_options(&mut with_check_options, &conflict_select_restrictive_policies, &conflict_select_permissive_policies, true);
             }
 
             /* Enforce the WITH CHECK clauses of the UPDATE policies */
@@ -363,12 +358,7 @@ fn get_row_security_policies<'a>(
              * are required for this relation.
              */
             if apply_select_policies {
-                add_with_check_options(
-                    &mut with_check_options,
-                    &conflict_select_restrictive_policies,
-                    &conflict_select_permissive_policies,
-                    true,
-                );
+                add_with_check_options(&mut with_check_options, &conflict_select_restrictive_policies, &conflict_select_permissive_policies, true);
             }
         }
     }

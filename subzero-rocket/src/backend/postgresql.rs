@@ -96,7 +96,9 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
                 .join(",")
         }
 }
-async fn execute<'a>(schema: &DbSchema<'a>,pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, config: &VhostConfig) -> Result<ApiResponse> {
+async fn execute<'a>(
+    schema: &DbSchema<'a>, pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, config: &VhostConfig,
+) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(PgDbPoolSnafu)?;
     let (main_statement, main_parameters, _) = generate(fmt_main_query(schema, request.schema_name, request, env).context(CoreSnafu)?);
 

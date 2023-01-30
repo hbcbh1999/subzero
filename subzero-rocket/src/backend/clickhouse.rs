@@ -55,8 +55,8 @@ impl managed::Manager for Manager {
     async fn recycle(&self, _: &mut HttpClient) -> managed::RecycleResult<HttpError> { Ok(()) }
 }
 
-async fn execute<'a>(schema: &DbSchema<'a>,
-    pool: &Pool, _authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, _config: &VhostConfig,
+async fn execute<'a>(
+    schema: &DbSchema<'a>, pool: &Pool, _authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, _config: &VhostConfig,
 ) -> Result<ApiResponse> {
     let o = pool.get().await.unwrap(); //.context(ClickhouseDbPoolError)?;
     let uri = &o.0;
@@ -85,15 +85,15 @@ async fn execute<'a>(schema: &DbSchema<'a>,
     let boundary = generate_boundary();
     write_formdata(&mut http_body, &boundary, &formdata).expect("write_formdata error");
 
-    let mut http_request = hyper::Request::builder().uri(base_url).method(http::Method::POST).header(
-        "Content-Type",
-        format!("multipart/form-data; boundary={}", std::str::from_utf8(boundary.as_slice()).unwrap()),
-    );
+    let mut http_request = hyper::Request::builder()
+        .uri(base_url)
+        .method(http::Method::POST)
+        .header("Content-Type", format!("multipart/form-data; boundary={}", std::str::from_utf8(boundary.as_slice()).unwrap()));
     //.body(Body::from(http_body)).context(HttpRequestError)?;
     if uri.username() != "" {
         http_request = http_request.header(
             hyper::header::AUTHORIZATION,
-            format!("Basic {}",general_purpose::STANDARD_NO_PAD.encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
+            format!("Basic {}", general_purpose::STANDARD_NO_PAD.encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
         );
     }
 
@@ -225,15 +225,18 @@ impl Backend for ClickhouseBackend {
                         let boundary = generate_boundary();
                         write_formdata(&mut http_body, &boundary, &formdata).expect("write_formdata error");
 
-                        let mut http_request = hyper::Request::builder().uri(base_url).method(http::Method::POST).header(
-                            "Content-Type",
-                            format!("multipart/form-data; boundary={}", std::str::from_utf8(boundary.as_slice()).unwrap()),
-                        );
+                        let mut http_request = hyper::Request::builder()
+                            .uri(base_url)
+                            .method(http::Method::POST)
+                            .header("Content-Type", format!("multipart/form-data; boundary={}", std::str::from_utf8(boundary.as_slice()).unwrap()));
                         //.body(Body::from(http_body)).context(HttpRequestError)?;
                         if uri.username() != "" {
                             http_request = http_request.header(
                                 hyper::header::AUTHORIZATION,
-                                format!("Basic {}", general_purpose::STANDARD_NO_PAD.encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
+                                format!(
+                                    "Basic {}",
+                                    general_purpose::STANDARD_NO_PAD.encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))
+                                ),
                             );
                         }
 

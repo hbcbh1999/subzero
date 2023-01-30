@@ -76,9 +76,9 @@ macro_rules! body_snippet {
 }
 
 fmt_main_query!();
-pub fn fmt_main_query_internal<'a>(db_schema: &'a DbSchema<'_>, 
-    schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
-    env: &'a HashMap<&'a str, &'a str>,
+pub fn fmt_main_query_internal<'a>(
+    db_schema: &'a DbSchema<'_>, schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query,
+    preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>,
 ) -> Result<Snippet<'a>> {
     let count = matches!(
         preferences,
@@ -133,8 +133,8 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
 }
 
 //fmt_query!();
-pub fn fmt_query<'a>( db_schema: &'a DbSchema<'_>,
-    schema: &'a str, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
+pub fn fmt_query<'a>(
+    db_schema: &'a DbSchema<'_>, schema: &'a str, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
     let add_env_tbl_to_from = wrapin_cte.is_some();
 

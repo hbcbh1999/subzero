@@ -897,24 +897,12 @@ mod tests {
         assert_eq!(serde_json::from_str::<LogicOperator>(r#""and""#).unwrap(), LogicOperator::And);
         assert_eq!(r#""10""#, serde_json::to_string(&SingleVal(cow("10"), None)).unwrap());
         assert_eq!(serde_json::from_str::<SingleVal>(r#""10""#).unwrap(), SingleVal(cow("10"), None));
-        assert_eq!(
-            r#"["1","2","3"]"#,
-            serde_json::to_string(&ListVal(vec![cow("1"), cow("2"), cow("3")], None)).unwrap()
-        );
-        assert_eq!(
-            serde_json::from_str::<ListVal>(r#"["1","2","3"]"#).unwrap(),
-            ListVal(vec![cow("1"), cow("2"), cow("3")], None)
-        );
+        assert_eq!(r#"["1","2","3"]"#, serde_json::to_string(&ListVal(vec![cow("1"), cow("2"), cow("3")], None)).unwrap());
+        assert_eq!(serde_json::from_str::<ListVal>(r#"["1","2","3"]"#).unwrap(), ListVal(vec![cow("1"), cow("2"), cow("3")], None));
         assert_eq!(r#"{"column":"id"}"#, serde_json::to_string(&Field { name: "id", json_path: None }).unwrap());
         assert_eq!(serde_json::from_str::<Field>(r#"{"column":"id"}"#).unwrap(), Field { name: "id", json_path: None });
-        assert_eq!(
-            r#"{"op":"eq","val":"10"}"#,
-            serde_json::to_string(&Filter::Op("eq", SingleVal(cow("10"), None))).unwrap()
-        );
-        assert_eq!(
-            serde_json::from_str::<Filter>(r#"{"op":"eq","val":"10"}"#).unwrap(),
-            Filter::Op("eq", SingleVal(cow("10"), None))
-        );
+        assert_eq!(r#"{"op":"eq","val":"10"}"#, serde_json::to_string(&Filter::Op("eq", SingleVal(cow("10"), None))).unwrap());
+        assert_eq!(serde_json::from_str::<Filter>(r#"{"op":"eq","val":"10"}"#).unwrap(), Filter::Op("eq", SingleVal(cow("10"), None)));
         assert_eq!(
             r#"{"column":"id","json_path":[{"->":"'id'"},{"->>":"0"}]}"#,
             serde_json::to_string(&Field {

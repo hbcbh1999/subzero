@@ -119,7 +119,7 @@ impl Backend {
         }
 
         let backend = self.borrow_inner();
-        let B {db_schema,..} = &backend;
+        let B { db_schema, .. } = &backend;
         let db_type = backend.db_type;
 
         let get = from_js_value::<Vec<(String, String)>>(get).map_err(cast_serde_err)?;
@@ -158,8 +158,8 @@ impl Backend {
             }
             #[cfg(feature = "sqlite")]
             "sqlite" => {
-                let query =
-                    sqlite::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, &env).map_err(cast_core_err)?;
+                let query = sqlite::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, &env)
+                    .map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
             }
             _ => Err(JsError::new("unsupported database type")),
@@ -244,8 +244,8 @@ impl Backend {
         let (main_statement, main_parameters, _) = match *db_type {
             #[cfg(feature = "sqlite")]
             "sqlite" => {
-                let query =
-                    sqlite::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, env).map_err(cast_core_err)?;
+                let query = sqlite::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, env)
+                    .map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
             }
             _ => Err(JsError::new("unsupported database type for two step mutation")),

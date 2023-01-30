@@ -29,9 +29,9 @@ macro_rules! param_placeholder_format {
 generate_fn!(true, "String");
 
 fmt_main_query!();
-pub fn fmt_main_query_internal<'a>(_db_schema: &DbSchema<'a>, 
-    schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
-    env: &'a HashMap<&'a str, &'a str>,
+pub fn fmt_main_query_internal<'a>(
+    _db_schema: &DbSchema<'a>, schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query,
+    preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>,
 ) -> Result<Snippet<'a>> {
     let _count = match preferences {
         Some(Preferences {

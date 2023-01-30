@@ -27,7 +27,9 @@ lazy_static! {
             RUNTIME.block_on(async {
                 CLIENT_INNER.get().await;
             })
-        }).join().expect("Thread panicked");
+        })
+        .join()
+        .expect("Thread panicked");
         &*CLIENT_INNER
     };
 }
@@ -39,10 +41,7 @@ pub fn setup_db(init_db_once: &Once) {
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let init_file = project_dir.join("tests/sqlite/fixtures/load.sql");
         let mut db = temp_dir();
-        db.push(format!(
-            "{}.sqlite",
-            thread_rng().sample_iter(&Alphanumeric).take(30).map(char::from).collect::<String>()
-        ));
+        db.push(format!("{}.sqlite", thread_rng().sample_iter(&Alphanumeric).take(30).map(char::from).collect::<String>()));
 
         let file = File::create(&db).unwrap();
         drop(file);

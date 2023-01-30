@@ -89,9 +89,9 @@ pub(super) use get_body_snippet;
 #[allow(unused_macros)]
 macro_rules! fmt_main_query_internal {
     () => {
-        pub fn fmt_main_query_internal<'a>(db_schema: &'a DbSchema<'_>, 
-            schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
-            env: &'a HashMap<&'a str, &'a str>,
+        pub fn fmt_main_query_internal<'a>(
+            db_schema: &'a DbSchema<'_>, schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query,
+            preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>,
         ) -> Result<Snippet<'a>> {
             let count = matches!(
                 preferences,
@@ -142,7 +142,9 @@ pub(super) use fmt_main_query_internal;
 #[allow(unused_macros)]
 macro_rules! fmt_main_query {
     () => {
-        pub fn fmt_main_query<'a>(db_schema: &'a DbSchema<'_>, schema: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+        pub fn fmt_main_query<'a>(
+            db_schema: &'a DbSchema<'_>, schema: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>,
+        ) -> Result<Snippet<'a>> {
             fmt_main_query_internal(db_schema, schema, &request.method, &request.accept_content_type, &request.query, &request.preferences, env)
         }
     };
@@ -1002,7 +1004,9 @@ pub(super) use fmt_select_item;
 #[allow(unused_macros)]
 macro_rules! fmt_sub_select_item {
     () => {
-        fn fmt_sub_select_item<'a, 'b, 'c>(db_schema: &'a DbSchema<'c>, schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
+        fn fmt_sub_select_item<'a, 'b, 'c>(
+            db_schema: &'a DbSchema<'c>, schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect,
+        ) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
             let SubSelect { query, alias, join, .. } = i;
             match join {
                 Some(j) => match j {

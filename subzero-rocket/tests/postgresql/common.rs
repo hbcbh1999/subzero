@@ -24,7 +24,9 @@ lazy_static! {
             RUNTIME.block_on(async {
                 CLIENT_INNER.get().await;
             })
-        }).join().expect("Thread panicked");
+        })
+        .join()
+        .expect("Thread panicked");
         &*CLIENT_INNER
     };
 }

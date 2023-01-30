@@ -63,8 +63,9 @@ fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> { WrapParam(p.to_par
 //generate_fn!();
 
 //TODO: refactor transaction rollback
-fn execute(schema: &DbSchema<'_>,
-    pool: &Pool<SqliteConnectionManager>, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>, config: &VhostConfig,
+fn execute(
+    db_schema: &DbSchema<'_>, pool: &Pool<SqliteConnectionManager>, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>,
+    config: &VhostConfig,
 ) -> Result<ApiResponse> {
     let conn = pool.get().unwrap();
 
@@ -101,7 +102,14 @@ fn execute(schema: &DbSchema<'_>,
             ..
         } => {
             //sqlite does not support returining in CTEs so we must do a two step process
-            let primary_key_column = "rowid"; //every table has this (TODO!!! check)
+            let schema_obj = db_schema.get_object(request.schema_name, table).context(CoreSnafu)?;
+            let primary_key_column = schema_obj
+                .columns
+                .iter()
+                .find(|&(_, c)| c.primary_key)
+                .map(|(_, c)| c.name)
+                .unwrap_or("rowid");
+            //let primary_key_column = "rowid"; //every table has this (TODO!!! check)
             let primary_key_field = Field {
                 name: primary_key_column,
                 json_path: None,
@@ -162,7 +170,7 @@ fn execute(schema: &DbSchema<'_>,
             //debug!("mutated request query: {:?}", mutate_request.query);
             let env1 = env.clone();
             let (mutate_statement, mutate_parameters, _) = generate(
-                fmt_main_query(schema, request.schema_name, &mutate_request, &env1)
+                fmt_main_query(db_schema, request.schema_name, &mutate_request, &env1)
                     .context(CoreSnafu)
                     .map_err(|e| {
                         let _ = conn.execute_batch("ROLLBACK");
@@ -272,7 +280,7 @@ fn execute(schema: &DbSchema<'_>,
             };
 
             let (main_statement, main_parameters, _) = generate(
-                fmt_main_query(schema, select_request.schema_name, &select_request, env)
+                fmt_main_query(db_schema, select_request.schema_name, &select_request, env)
                     .context(CoreSnafu)
                     .map_err(|e| {
                         let _ = conn.execute_batch("ROLLBACK");
@@ -325,11 +333,14 @@ fn execute(schema: &DbSchema<'_>,
             })?
         }
         _ => {
-            let (main_statement, main_parameters, _) =
-                generate(fmt_main_query(schema, request.schema_name, request, env).context(CoreSnafu).map_err(|e| {
-                    let _ = conn.execute_batch("ROLLBACK");
-                    e
-                })?);
+            let (main_statement, main_parameters, _) = generate(
+                fmt_main_query(db_schema, request.schema_name, request, env)
+                    .context(CoreSnafu)
+                    .map_err(|e| {
+                        let _ = conn.execute_batch("ROLLBACK");
+                        e
+                    })?,
+            );
             debug!("main_statement: {}\n{:?}", main_statement, main_parameters);
             let mut main_stm = conn
                 .prepare_cached(main_statement.as_str())

@@ -87,7 +87,7 @@ mod tests {
             },
             sub_selects: vec![],
         };
-        let db_schema:DbSchema = serde_json::from_str("[]").unwrap();
+        let db_schema: DbSchema = serde_json::from_str("[]").unwrap();
         let (query_str, parameters, _) = generate(fmt_query(&db_schema, "api", true, None, &q, &None).unwrap());
         let p = Payload(Cow::Borrowed(payload), None);
         let pp: Vec<&SqlParam> = vec![&p];
@@ -276,7 +276,7 @@ mod tests {
                 },
             ],
         };
-        let db_schema:DbSchema = serde_json::from_str("[]").unwrap();
+        let db_schema: DbSchema = serde_json::from_str("[]").unwrap();
         let (query_str, parameters, _) = generate(fmt_query(&db_schema, "api", true, None, &q, &None).unwrap());
         let p0: &SqlParam = &ListVal(vec![cow("51"), cow("52")], None);
         let p1: &SqlParam = &SingleVal(cow("50"), None);
@@ -506,7 +506,7 @@ mod tests {
             ],
         };
 
-        let db_schema:DbSchema = serde_json::from_str("[]").unwrap();
+        let db_schema: DbSchema = serde_json::from_str("[]").unwrap();
         let (query_str, parameters, _) = generate(fmt_query(&db_schema, "api", true, None, &q, &None).unwrap());
         assert_eq!(
             format!("{parameters:?}"),
@@ -632,10 +632,7 @@ mod tests {
                     .unwrap()
                 )
             ),
-            format!(
-                "{:?}",
-                (s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1"), vec![&SingleVal(cow("2"), None)], 2)
-            )
+            format!("{:?}", (s("to_jsonb(\"schema\".\"table\".\"name\")->'key'->>21 > $1"), vec![&SingleVal(cow("2"), None)], 2))
         );
 
         assert_eq!(
@@ -656,10 +653,7 @@ mod tests {
                     .unwrap()
                 )
             ),
-            format!(
-                "{:?}",
-                (s("not(\"schema\".\"table\".\"name\" = any ($1))"), vec![ListVal(vec![cow("5"), cow("6")], None)], 2)
-            )
+            format!("{:?}", (s("not(\"schema\".\"table\".\"name\" = any ($1))"), vec![ListVal(vec![cow("5"), cow("6")], None)], 2))
         );
     }
 
@@ -674,10 +668,7 @@ mod tests {
             format!("{:?}", (&s("= any ($1)"), vec![ListVal(vec![cow("5"), cow("6")], None)], 2))
         );
         assert_eq!(
-            format!(
-                "{:?}",
-                generate(fmt_filter(&Fts(s("@@ to_tsquery"), Some(SingleVal(cow("eng"), None)), SingleVal(cow("2"), None))).unwrap())
-            ),
+            format!("{:?}", generate(fmt_filter(&Fts(s("@@ to_tsquery"), Some(SingleVal(cow("eng"), None)), SingleVal(cow("2"), None))).unwrap())),
             r#"("@@ to_tsquery ($1,$2)", [SingleVal("eng", None), SingleVal("2", None)], 3)"#.to_string()
         );
         let p: Vec<&SqlParam> = vec![];

@@ -143,19 +143,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let emtpy_hashmap1 = HashMap::new();
     let emtpy_hashmap2 = HashMap::new();
 
-    let request = parse(
-        "api",
-        "projects",
-        &DB_SCHEMA,
-        "GET",
-        "/projects",
-        PARAMETERS.to_vec(),
-        None,
-        emtpy_hashmap1,
-        emtpy_hashmap2,
-        None,
-    )
-    .unwrap();
+    let request = parse("api", "projects", &DB_SCHEMA, "GET", "/projects", PARAMETERS.to_vec(), None, emtpy_hashmap1, emtpy_hashmap2, None).unwrap();
     c.bench_function("parse request", |b| {
         b.iter(|| {
             parse(

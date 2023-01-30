@@ -1072,10 +1072,7 @@ where
 fn dash(i: &str) -> Parsed<&str> { terminated(tag("-"), peek(is_not(">")))(i) }
 
 fn field_name(i: &str) -> Parsed<&str> {
-    alt((
-        quoted_value,
-        map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| s.trim()),
-    ))(i)
+    alt((quoted_value, map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| s.trim())))(i)
 }
 
 //done
@@ -1094,10 +1091,7 @@ fn field_name(i: &str) -> Parsed<&str> {
 //     )))
 // }
 fn function_name(i: &str) -> Parsed<&str> {
-    alt((
-        quoted_value,
-        map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| s.trim()),
-    ))(i)
+    alt((quoted_value, map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| s.trim())))(i)
 }
 
 //done
@@ -1193,10 +1187,7 @@ fn json_path(i: &str) -> Parsed<Vec<JsonOperation>> {
     }))(i)
 }
 fn signed_number(i: &str) -> Parsed<&str> {
-    recognize(preceded(
-        opt(char('-')),
-        terminated(digit1, peek(alt((tag("->"), tag("::"), tag("."), tag(","), eof)))),
-    ))(i)
+    recognize(preceded(opt(char('-')), terminated(digit1, peek(alt((tag("->"), tag("::"), tag("."), tag(","), eof))))))(i)
 }
 fn json_operand(i: &str) -> Parsed<JsonOperand> { alt((map(signed_number, JsonOperand::JIdx), map(field_name, JsonOperand::JKey)))(i) }
 //done
@@ -1262,11 +1253,9 @@ fn dot(i: &str) -> Parsed<&str> { tag(".")(i) }
 //         })
 // }
 fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> {
-    map(tuple((separated_list1(dot, field_name), opt(json_path))), |(names, json_path)| {
-        match names.split_last() {
-            Some((name, path)) => (path.to_vec(), Field { name, json_path }),
-            None => unreachable!("failed to parse tree path"),
-        }
+    map(tuple((separated_list1(dot, field_name), opt(json_path))), |(names, json_path)| match names.split_last() {
+        Some((name, path)) => (path.to_vec(), Field { name, json_path }),
+        None => unreachable!("failed to parse tree path"),
     })(i)
 }
 
@@ -1392,11 +1381,7 @@ fn function_param(i: &str) -> Parsed<FunctionParam> {
 // }
 fn function_call(i: &str) -> Parsed<(&str, Vec<FunctionParam>)> {
     map(
-        tuple((
-            char('$'),
-            function_name,
-            delimited(ws(char('(')), separated_list0(ws(char(',')), function_param), ws(char(')'))),
-        )),
+        tuple((char('$'), function_name, delimited(ws(char('(')), separated_list0(ws(char(',')), function_param), ws(char(')'))))),
         |(_, fn_name, parameters)| (fn_name, parameters),
     )(i)
 }
@@ -1742,9 +1727,7 @@ fn filter_common<'a, 'b>(
             },
             _ => Filter::Op(o, SingleVal(v, dt)),
         }),
-        map(tuple((tag("in"), char('.'), apply(data_type, list_value))), |(_, _, ListVal(v, dt))| {
-            Filter::In(ListVal(v, dt))
-        }),
+        map(tuple((tag("in"), char('.'), apply(data_type, list_value))), |(_, _, ListVal(v, dt))| Filter::In(ListVal(v, dt))),
         map(
             tuple((
                 fts_operator,
@@ -1854,14 +1837,8 @@ fn order_term(i: &str) -> Parsed<OrderTerm> {
     map(
         tuple((
             field,
-            opt(preceded(
-                dot,
-                alt((value(OrderDirection::Asc, tag("asc")), value(OrderDirection::Desc, tag("desc")))),
-            )),
-            opt(preceded(
-                dot,
-                alt((value(OrderNulls::NullsFirst, tag("nullsfirst")), value(OrderNulls::NullsLast, tag("nullslast")))),
-            )),
+            opt(preceded(dot, alt((value(OrderDirection::Asc, tag("asc")), value(OrderDirection::Desc, tag("desc")))))),
+            opt(preceded(dot, alt((value(OrderNulls::NullsFirst, tag("nullsfirst")), value(OrderNulls::NullsLast, tag("nullslast")))))),
         )),
         |(term, direction, null_order)| OrderTerm { term, direction, null_order },
     )(i)
@@ -2101,14 +2078,11 @@ fn logic_condition<'a, 'b>(n: Option<&'b bool>, lo: Option<&'b LogicOperator>, i
         }
         _ => alt((
             //single
-            ws(map(
-                tuple((field, char('.'), opt(tag("not.")), |ii| logic_filter(&None, ii))),
-                |(field, _, negate, filter)| Condition::Single {
-                    field,
-                    filter,
-                    negate: negate.is_some(),
-                },
-            )),
+            ws(map(tuple((field, char('.'), opt(tag("not.")), |ii| logic_filter(&None, ii))), |(field, _, negate, filter)| Condition::Single {
+                field,
+                filter,
+                negate: negate.is_some(),
+            })),
             //group
             map(
                 tuple((
@@ -2618,18 +2592,7 @@ pub mod tests {
                 sub_selects: vec![],
             },
         };
-        let a = parse(
-            "api",
-            "myfunction",
-            &db_schema,
-            "GET",
-            "dummy",
-            vec![("id", "10")],
-            None,
-            emtpy_hashmap.clone(),
-            emtpy_hashmap.clone(),
-            None,
-        );
+        let a = parse("api", "myfunction", &db_schema, "GET", "dummy", vec![("id", "10")], None, emtpy_hashmap.clone(), emtpy_hashmap.clone(), None);
 
         assert_eq!(a.unwrap(), api_request);
 
@@ -2638,18 +2601,7 @@ pub mod tests {
         api_request.read_only = false;
 
         let body = r#"{"id":"10"}"#;
-        let b = parse(
-            "api",
-            "myfunction",
-            &db_schema,
-            "POST",
-            "dummy",
-            vec![],
-            Some(body),
-            emtpy_hashmap.clone(),
-            emtpy_hashmap.clone(),
-            None,
-        );
+        let b = parse("api", "myfunction", &db_schema, "POST", "dummy", vec![], Some(body), emtpy_hashmap.clone(), emtpy_hashmap.clone(), None);
         assert_eq!(b.unwrap(), api_request);
     }
 
@@ -3609,10 +3561,7 @@ pub mod tests {
     fn parse_filter() {
         assert_eq!(filter(&None, "gte.5"), Ok(("", Filter::Op(">=", SingleVal(cow("5"), None)))));
         assert_eq!(filter(&None, "in.(1,2,3)"), Ok(("", Filter::In(ListVal(["1", "2", "3"].map(cow).to_vec(), None)))));
-        assert_eq!(
-            filter(&None, "fts.word"),
-            Ok(("", Filter::Fts("@@ to_tsquery", None, SingleVal(cow("word"), None))))
-        );
+        assert_eq!(filter(&None, "fts.word"), Ok(("", Filter::Fts("@@ to_tsquery", None, SingleVal(cow("word"), None)))));
     }
 
     #[test]
@@ -3769,22 +3718,10 @@ pub mod tests {
     fn parse_list_value() {
         assert_eq!(list_value(&None, "()"), Ok(("", ListVal(vec![], None))));
         assert_eq!(list_value(&None, "(any 123 value)"), Ok(("", ListVal(vec![cow("any 123 value")], None))));
-        assert_eq!(
-            list_value(&None, "(any123value,another)"),
-            Ok(("", ListVal(vec![cow("any123value"), cow("another")], None)))
-        );
-        assert_eq!(
-            list_value(&None, "(\"any123 value\", another)"),
-            Ok(("", ListVal(vec![cow("any123 value"), cow("another")], None)))
-        );
-        assert_eq!(
-            list_value(&None, "(\"any123 value\", 123)"),
-            Ok(("", ListVal(vec![cow("any123 value"), cow("123")], None)))
-        );
-        assert_eq!(
-            list_value(&None, "(\"Double\\\"Quote\\\"McGraw\\\"\")"),
-            Ok(("", ListVal(vec![cow("Double\"Quote\"McGraw\"")], None)))
-        );
+        assert_eq!(list_value(&None, "(any123value,another)"), Ok(("", ListVal(vec![cow("any123value"), cow("another")], None))));
+        assert_eq!(list_value(&None, "(\"any123 value\", another)"), Ok(("", ListVal(vec![cow("any123 value"), cow("another")], None))));
+        assert_eq!(list_value(&None, "(\"any123 value\", 123)"), Ok(("", ListVal(vec![cow("any123 value"), cow("123")], None))));
+        assert_eq!(list_value(&None, "(\"Double\\\"Quote\\\"McGraw\\\"\")"), Ok(("", ListVal(vec![cow("Double\"Quote\"McGraw\"")], None))));
     }
 
     #[test]

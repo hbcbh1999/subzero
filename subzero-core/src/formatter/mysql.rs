@@ -1,8 +1,7 @@
 use super::base::{
-    fmt_as, fmt_condition, fmt_condition_tree, fmt_count_query, fmt_field, fmt_filter,
-    fmt_env_var, fmt_in_filter, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_main_query, fmt_offset,
-    fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_select_item, fmt_select_name,
-    star_select_item_format, fmt_function_param, fmt_function_call, fmt_env_query, get_body_snippet,
+    fmt_as, fmt_condition, fmt_condition_tree, fmt_count_query, fmt_field, fmt_filter, fmt_env_var, fmt_in_filter, fmt_json_path, fmt_limit,
+    fmt_logic_operator, fmt_main_query, fmt_offset, fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_select_item,
+    fmt_select_name, star_select_item_format, fmt_function_param, fmt_env_query, get_body_snippet,
 };
 pub use super::base::return_representation;
 use crate::schema::DbSchema;
@@ -60,9 +59,9 @@ macro_rules! body_snippet {
 
 generate_fn!();
 fmt_main_query!();
-pub fn fmt_main_query_internal<'a>(db_schema: &'a DbSchema<'_>, 
-    schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
-    env: &'a HashMap<&'a str, &'a str>,
+pub fn fmt_main_query_internal<'a>(
+    db_schema: &'a DbSchema<'_>, schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query,
+    preferences: &'a Option<Preferences>, env: &'a HashMap<&'a str, &'a str>,
 ) -> Result<Snippet<'a>> {
     let count = matches!(
         preferences,
@@ -76,44 +75,43 @@ pub fn fmt_main_query_internal<'a>(db_schema: &'a DbSchema<'_>,
     let body_snippet = get_body_snippet!(return_representation, accept_content_type, query)?;
     let run_unwrapped_query = matches!(query.node, Insert { .. } | Update { .. } | Delete { .. });
     //let has_payload_cte = matches!(query.node, Insert { .. } | Update { .. });
-    
+
     let main_query = if run_unwrapped_query {
         fmt_query(db_schema, schema, return_representation, None, query, &None, Some("with env as (" + fmt_env_query(env) + ") "))?
     } else {
         let source_query = fmt_query(db_schema, schema, return_representation, Some("_subzero_query"), query, &None, None)?;
         sql("with")
-        + " env as ("
-        + fmt_env_query(env)
-        + ")"
-        + " , "
-        + source_query
-        + " , "
-        + if count {
-            fmt_count_query(db_schema, schema, Some("_subzero_count_query"), query)?
-        } else {
-            sql("_subzero_count_query AS (select 1)")
-        }
-        + " select"
-        + " count(*) as page_total, "
-        + if count { "(SELECT count(*) FROM _subzero_count_query)" } else { "null" }
-        + " as total_result_set, "
-        + body_snippet
-        + " as body, "
-        + if check_constraints {
-            "(select coalesce(bool_and(_subzero_check__constraint),true) from subzero_source) as constraints_satisfied, "
-        } else {
-            "true as constraints_satisfied, "
-        }
-        + " nullif(@response.headers, '') as response_headers, "
-        + " nullif(@response.status, '') as response_status "
-        + " from ( select * from _subzero_query ) _subzero_t"
+            + " env as ("
+            + fmt_env_query(env)
+            + ")"
+            + " , "
+            + source_query
+            + " , "
+            + if count {
+                fmt_count_query(db_schema, schema, Some("_subzero_count_query"), query)?
+            } else {
+                sql("_subzero_count_query AS (select 1)")
+            }
+            + " select"
+            + " count(*) as page_total, "
+            + if count { "(SELECT count(*) FROM _subzero_count_query)" } else { "null" }
+            + " as total_result_set, "
+            + body_snippet
+            + " as body, "
+            + if check_constraints {
+                "(select coalesce(bool_and(_subzero_check__constraint),true) from subzero_source) as constraints_satisfied, "
+            } else {
+                "true as constraints_satisfied, "
+            }
+            + " nullif(@response.headers, '') as response_headers, "
+            + " nullif(@response.status, '') as response_status "
+            + " from ( select * from _subzero_query ) _subzero_t"
     };
     Ok(main_query)
 }
 //fmt_query!();
 pub fn fmt_query<'a>(
-    db_schema: &DbSchema<'a>,
-    schema: &'a str, return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
+    db_schema: &DbSchema<'a>, schema: &'a str, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
     extra_cte: Option<Snippet<'a>>,
 ) -> Result<Snippet<'a>> {
     let add_env_tbl_to_from = wrapin_cte.is_some();
@@ -322,7 +320,7 @@ pub fn fmt_query<'a>(
             ..
         } => {
             let schema_obj = db_schema.get_object(schema, into)?;
-            let primary_key = schema_obj.columns.iter().find(|&(_,c)| c.primary_key).map(|(_,c)| c.name).unwrap_or("");
+            let primary_key = schema_obj.columns.iter().find(|&(_, c)| c.primary_key).map(|(_, c)| c.name).unwrap_or("");
             let qi = &Qi(schema, into);
             //let qi_subzero_source = &Qi("", "subzero_source");
             // let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
@@ -358,8 +356,7 @@ pub fn fmt_query<'a>(
             };
             (
                 Some(
-                
-                fmt_body(payload, columns) +
+                    fmt_body(payload, columns) +
                 " select " +
                 columns.iter().map(|&c|
                     if c == primary_key {
@@ -386,19 +383,18 @@ pub fn fmt_query<'a>(
                         format!(" on duplicate key update  {on_do}")
                     },
                     _ => String::new()
-                }
-                // + " returning " + returned_columns +
-                
-                // // for each row add a column if it passes the internal permissions check defined for the schema
-                // if !check.conditions.is_empty() { 
-                //     ", " + fmt_condition_tree(qi, check)? + " as _subzero_check__constraint "
-                // } 
-                // else { 
-                //     sql(", true  as _subzero_check__constraint ") 
-                // } +
-                // " )"
+                }, // + " returning " + returned_columns +
+
+                                       // // for each row add a column if it passes the internal permissions check defined for the schema
+                                       // if !check.conditions.is_empty() {
+                                       //     ", " + fmt_condition_tree(qi, check)? + " as _subzero_check__constraint "
+                                       // }
+                                       // else {
+                                       //     sql(", true  as _subzero_check__constraint ")
+                                       // } +
+                                       // " )"
                 ),
-                sql("insert into ") + fmt_qi(qi) + " (" + into_columns + ") "
+                sql("insert into ") + fmt_qi(qi) + " (" + into_columns + ") ",
             )
         }
         Delete {
@@ -409,7 +405,7 @@ pub fn fmt_query<'a>(
             ..
         } => {
             let schema_obj = db_schema.get_object(schema, from)?;
-            let primary_key = schema_obj.columns.iter().find(|&(_,c)| c.primary_key).map(|(_,c)| c.name).unwrap_or("");
+            let primary_key = schema_obj.columns.iter().find(|&(_, c)| c.primary_key).map(|(_, c)| c.name).unwrap_or("");
             let qi = &Qi(schema, from);
             // let qi_subzero_source = &Qi("", "subzero_source");
             // let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
@@ -433,13 +429,13 @@ pub fn fmt_query<'a>(
             let collect_ids_condition = format!("(@subzero_ids := json_array_append(@subzero_ids, '$', `{primary_key}`)) <> '[]'");
             (
                 None,
-                sql(" delete from ")+
-                fmt_qi(qi) +
-                if !where_.conditions.is_empty() {
-                    " where " + fmt_condition_tree(qi, where_)? + " and " + collect_ids_condition
-                } else {
-                    sql(" where ") + collect_ids_condition
-                }
+                sql(" delete from ")
+                    + fmt_qi(qi)
+                    + if !where_.conditions.is_empty() {
+                        " where " + fmt_condition_tree(qi, where_)? + " and " + collect_ids_condition
+                    } else {
+                        sql(" where ") + collect_ids_condition
+                    },
             )
 
             // (
@@ -486,7 +482,7 @@ pub fn fmt_query<'a>(
             ..
         } => {
             let schema_obj = db_schema.get_object(schema, table)?;
-            let primary_key = schema_obj.columns.iter().find(|&(_,c)| c.primary_key).map(|(_,c)| c.name).unwrap_or("");
+            let primary_key = schema_obj.columns.iter().find(|&(_, c)| c.primary_key).map(|(_, c)| c.name).unwrap_or("");
             let qi = &Qi(schema, table);
             //let qi_subzero_source = &Qi("", "subzero_source");
             //let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
@@ -522,22 +518,22 @@ pub fn fmt_query<'a>(
                 .join(",");
             let collect_ids_condition = format!("(@subzero_ids := json_array_append(@subzero_ids, '$', `{primary_key}`)) <> '[]'");
             (
-                Some(
-                    fmt_body(payload, columns)
-                ),
+                Some(fmt_body(payload, columns)),
                 // update clients _, subzero_body
                 // set _.name = subzero_body.name
                 // where id > 0
                 // and ( (@ids := json_array_append(@ids, '$', id)) <> '[]' )
                 // ;
-                sql(" update ") + qi_fmt  + ", subzero_body" +
-                " set " +
-                set_columns +
-                if !where_.conditions.is_empty() {
-                    " where " + fmt_condition_tree(qi, where_)? + " and " + collect_ids_condition
-                } else {
-                    sql(" where ") + collect_ids_condition
-                }
+                sql(" update ")
+                    + qi_fmt
+                    + ", subzero_body"
+                    + " set "
+                    + set_columns
+                    + if !where_.conditions.is_empty() {
+                        " where " + fmt_condition_tree(qi, where_)? + " and " + collect_ids_condition
+                    } else {
+                        sql(" where ") + collect_ids_condition
+                    },
             )
 
             // (
@@ -593,7 +589,7 @@ pub fn fmt_query<'a>(
         }
     };
 
-    let cte_snippet = match (cte_snippet, extra_cte){
+    let cte_snippet = match (cte_snippet, extra_cte) {
         (Some(cte), Some(extra_cte)) => Some(extra_cte + " , " + cte),
         (Some(cte), None) => Some(cte),
         (None, Some(extra_cte)) => Some(extra_cte),
@@ -607,7 +603,7 @@ pub fn fmt_query<'a>(
         },
         None => match cte_snippet {
             Some(cte) if is_insert => query_snippet + " " + cte,
-            Some(cte) => cte + " " +  query_snippet,
+            Some(cte) => cte + " " + query_snippet,
             None => query_snippet,
         },
     })
@@ -618,16 +614,20 @@ fmt_count_query!();
 fn fmt_body<'a>(payload: &'a Payload, columns: &[&'a str]) -> Snippet<'a> {
     let payload_param: &SqlParam = payload;
     let payload_columns = columns.iter().map(|&c| format!("`{c}` text path '$.{c}'")).collect::<Vec<_>>().join(",");
-    " subzero_payload as ( select " + param(payload_param) + " as val )," +
-    " subzero_body as ("+
-    "   select t.*" +
-    "   from subzero_payload p," +
-    "   json_table(" +
-    "     case when json_type(p.val) = 'ARRAY' then p.val else concat('[',p.val,']') end," +
-    "     '$[*]'" +
-    "     columns(" +payload_columns + ")" +
-    " ) t" +
-    ")"
+    " subzero_payload as ( select "
+        + param(payload_param)
+        + " as val ),"
+        + " subzero_body as ("
+        + "   select t.*"
+        + "   from subzero_payload p,"
+        + "   json_table("
+        + "     case when json_type(p.val) = 'ARRAY' then p.val else concat('[',p.val,']') end,"
+        + "     '$[*]'"
+        + "     columns("
+        + payload_columns
+        + ")"
+        + " ) t"
+        + ")"
 }
 fmt_condition_tree!();
 fmt_condition!();
@@ -656,9 +656,8 @@ fn fmt_select_item_function<'a, 'b>(
     qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>], partitions: &'a Vec<Field<'a>>, orders: &'a Vec<OrderTerm>,
     alias: &'a Option<&str>,
 ) -> Result<Snippet<'a>> {
-    Ok(
-        format!("'{}',", fmt_select_name(fn_name, &None, alias).unwrap_or(String::new()).as_str()) +
-        fmt_function_call(qi, fn_name, parameters)?
+    Ok(format!("'{}',", fmt_select_name(fn_name, &None, alias).unwrap_or(String::new()).as_str())
+        + fmt_function_call(qi, fn_name, parameters)?
         + if partitions.is_empty() && orders.is_empty() {
             sql("")
         } else {
@@ -669,19 +668,16 @@ fn fmt_select_item_function<'a, 'b>(
                     sql("partition by ") + partitions.iter().map(|p| fmt_field(qi, p)).collect::<Result<Vec<_>>>()?.join(",")
                 }
                 + " "
-                + if orders.is_empty() {
-                    "".to_string()
-                } else {
-                    fmt_order(qi, orders)?
-                }
+                + if orders.is_empty() { "".to_string() } else { fmt_order(qi, orders)? }
                 + " )"
-        }
-    )
+        })
 }
 fmt_select_item!();
 fmt_function_param!();
 //fmt_sub_select_item!();
-fn fmt_sub_select_item<'a, 'b>(db_schema: &DbSchema<'a>, schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
+fn fmt_sub_select_item<'a, 'b>(
+    db_schema: &DbSchema<'a>, schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect,
+) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
     let SubSelect { query, alias, join, .. } = i;
     match join {
         Some(j) => match j {
@@ -706,8 +702,7 @@ fn fmt_sub_select_item<'a, 'b>(db_schema: &DbSchema<'a>, schema: &'a str, qi: &'
                         + subquery
                         + ") as "
                         + sql(local_table_name)
-                        + "), json_array())"
-                    ),
+                        + "), json_array())"),
                     vec![],
                 ))
             }
@@ -722,8 +717,7 @@ fn fmt_sub_select_item<'a, 'b>(db_schema: &DbSchema<'a>, schema: &'a str, qi: &'
                         + subquery
                         + ") as "
                         + sql(local_table_name)
-                        + "), json_array())"
-                    ),
+                        + "), json_array())"),
                     vec![],
                 ))
             }

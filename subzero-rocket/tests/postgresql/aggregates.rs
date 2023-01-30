@@ -1,6 +1,5 @@
 use super::common::*;
 
-
 haskell_test! {
 feature "aggregates"
 

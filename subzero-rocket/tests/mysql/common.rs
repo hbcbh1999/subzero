@@ -28,7 +28,9 @@ lazy_static! {
             RUNTIME.block_on(async {
                 CLIENT_INNER.get().await;
             })
-        }).join().expect("Thread panicked");
+        })
+        .join()
+        .expect("Thread panicked");
         &*CLIENT_INNER
     };
 }
@@ -84,7 +86,6 @@ pub fn setup_db(init_db_once: &Once) {
         };
 
         env::set_var("SUBZERO_DB_URI", db_uri);
-        
     });
 
     let mut conn = MYSQL_POOL.get_conn().unwrap();
@@ -94,7 +95,7 @@ pub fn setup_db(init_db_once: &Once) {
 pub fn setup_client<T>(init_client_once: &Once, client: &'static T)
 where
     T: LazyStatic + Send + Sync + 'static,
-// pub fn setup_client<T>(init_client_once: &Once, client: &AsyncOnce<Client>)
+    // pub fn setup_client<T>(init_client_once: &Once, client: &AsyncOnce<Client>)
 {
     println!("setup_client");
     init_client_once.call_once(|| {

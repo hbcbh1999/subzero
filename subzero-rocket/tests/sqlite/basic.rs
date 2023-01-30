@@ -70,7 +70,7 @@ feature "basic"
 
       it "returns the deleted item and count if requested" $
         request methodDelete "/projects?id=eq.5" [("Prefer", "return=representation, count=exact")] ""
-          shouldRespondWith [json|r#"[{"rowid":5}]"#|]
+          shouldRespondWith [json|r#"[{"id":5}]"#|]
           { matchStatus  = 200
           , matchHeaders = ["Content-Range" <:> "*/1"]
           }

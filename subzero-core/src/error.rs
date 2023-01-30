@@ -111,10 +111,7 @@ impl Error {
         match self {
             Error::JwtTokenInvalid { message } => vec![
                 ("Content-Type".into(), "application/json".into()),
-                (
-                    "WWW-Authenticate".into(),
-                    format!("Bearer error=\"invalid_token\", error_description=\"{message}\""),
-                ),
+                ("WWW-Authenticate".into(), format!("Bearer error=\"invalid_token\", error_description=\"{message}\"")),
             ],
             _ => vec![("Content-Type".into(), "application/json".into())],
         }
