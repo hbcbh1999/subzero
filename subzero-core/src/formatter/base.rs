@@ -89,7 +89,7 @@ pub(super) use get_body_snippet;
 #[allow(unused_macros)]
 macro_rules! fmt_main_query_internal {
     () => {
-        pub fn fmt_main_query_internal<'a>(
+        pub fn fmt_main_query_internal<'a>(db_schema: &'a DbSchema<'_>, 
             schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
             env: &'a HashMap<&'a str, &'a str>,
         ) -> Result<Snippet<'a>> {
@@ -108,10 +108,10 @@ macro_rules! fmt_main_query_internal {
                 + fmt_env_query(env)
                 + ")"
                 + " , "
-                + fmt_query(schema, return_representation, Some("_subzero_query"), query, &None)?
+                + fmt_query(db_schema, schema, return_representation, Some("_subzero_query"), query, &None)?
                 + " , "
                 + if count {
-                    fmt_count_query(schema, Some("_subzero_count_query"), query)?
+                    fmt_count_query(db_schema, schema, Some("_subzero_count_query"), query)?
                 } else {
                     sql("_subzero_count_query AS (select 1)")
                 }
@@ -142,8 +142,8 @@ pub(super) use fmt_main_query_internal;
 #[allow(unused_macros)]
 macro_rules! fmt_main_query {
     () => {
-        pub fn fmt_main_query<'a>(schema: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
-            fmt_main_query_internal(schema, &request.method, &request.accept_content_type, &request.query, &request.preferences, env)
+        pub fn fmt_main_query<'a>(db_schema: &'a DbSchema<'_>, schema: &'a str, request: &'a ApiRequest, env: &'a HashMap<&'a str, &'a str>) -> Result<Snippet<'a>> {
+            fmt_main_query_internal(db_schema, schema, &request.method, &request.accept_content_type, &request.query, &request.preferences, env)
         }
     };
 }
@@ -178,6 +178,7 @@ pub(super) use fmt_env_query;
 #[allow(unused_macros)]
 macro_rules! fmt_query { () => {
 pub fn fmt_query<'a>(
+    db_schema: &'a DbSchema<'_>,
     schema: &'a str,
     return_representation: bool,
     wrapin_cte: Option<&'static str>,
@@ -281,7 +282,7 @@ pub fn fmt_query<'a>(
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
-                .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
+                .map(|s| fmt_sub_select_item(db_schema, schema, qi_subzero_source, s))
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
@@ -340,7 +341,7 @@ pub fn fmt_query<'a>(
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
-                .map(|s| fmt_sub_select_item(schema, qi, s))
+                .map(|s| fmt_sub_select_item(db_schema, schema, qi, s))
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
@@ -408,7 +409,7 @@ pub fn fmt_query<'a>(
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
-                .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
+                .map(|s| fmt_sub_select_item(db_schema, schema, qi_subzero_source, s))
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
@@ -521,7 +522,7 @@ pub fn fmt_query<'a>(
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
-                .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
+                .map(|s| fmt_sub_select_item(db_schema, schema, qi_subzero_source, s))
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
@@ -596,7 +597,7 @@ pub fn fmt_query<'a>(
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
-                .map(|s| fmt_sub_select_item(schema, qi_subzero_source, s))
+                .map(|s| fmt_sub_select_item(db_schema, schema, qi_subzero_source, s))
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
@@ -707,35 +708,35 @@ pub(super) use fmt_query;
 #[allow(unused_macros)]
 macro_rules! fmt_count_query {
     () => {
-        fn fmt_count_query<'a>(schema: &'a str, wrapin_cte: Option<&'static str>, q: &'a Query) -> Result<Snippet<'a>> {
+        fn fmt_count_query<'a>(_db_schema: &'a DbSchema<'_>, schema: &'a str, wrapin_cte: Option<&'static str>, q: &'a Query) -> Result<Snippet<'a>> {
             let query_snippet = match &q.node {
                 FunctionCall { .. } => sql(format!(" select 1 from {}", fmt_identity("subzero_source"))),
                 Select {
                     from: (table, _),
-                    join_tables,
+                    //join_tables,
                     where_,
                     ..
                 } => {
                     let qi = &Qi(schema, table);
                     //let (_, joins): (Vec<_>, Vec<_>) = select.iter().map(|s| fmt_select_item(&schema, qi, s)).unzip();
                     //let select: Vec<_> = select.iter().map(|s| fmt_select_item(&schema, qi, s)).collect();
-                    let (_, joins): (Vec<_>, Vec<_>) = q
-                        .sub_selects
-                        .iter()
-                        .map(|s| fmt_sub_select_item(schema, qi, s))
-                        .collect::<Result<Vec<_>>>()?
-                        .into_iter()
-                        .unzip();
+                    // let (_, joins): (Vec<_>, Vec<_>) = q
+                    //     .sub_selects
+                    //     .iter()
+                    //     .map(|s| fmt_sub_select_item(db_schema, schema, qi, s))
+                    //     .collect::<Result<Vec<_>>>()?
+                    //     .into_iter()
+                    //     .unzip();
                     //select.extend(sub_selects.into_iter());
                     sql(" select 1 from ")
                         + vec![table.clone()]
                             .iter()
-                            .chain(join_tables.iter())
+                            // .chain(join_tables.iter())
                             .map(|f| fmt_qi(&Qi(schema, f)))
                             .collect::<Vec<_>>()
                             .join(", ")
                         + " "
-                        + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
+                        // + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
                         + " "
                         + if !where_.conditions.is_empty() {
                             "where " + fmt_condition_tree(qi, where_)?
@@ -1001,14 +1002,14 @@ pub(super) use fmt_select_item;
 #[allow(unused_macros)]
 macro_rules! fmt_sub_select_item {
     () => {
-        fn fmt_sub_select_item<'a, 'b>(schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
+        fn fmt_sub_select_item<'a, 'b, 'c>(db_schema: &'a DbSchema<'c>, schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
             let SubSelect { query, alias, join, .. } = i;
             match join {
                 Some(j) => match j {
                     Parent(fk) => {
                         let alias_or_name = alias.as_ref().unwrap_or(&fk.referenced_table.1);
                         let local_table_name = format!("{}_{}", qi.1, alias_or_name);
-                        let subquery = fmt_query(schema, true, None, query, join)?;
+                        let subquery = fmt_query(db_schema, schema, true, None, query, join)?;
 
                         Ok((
                             sql(format!("row_to_json({}.*) as {}", fmt_identity(&local_table_name), fmt_identity(alias_or_name))),
@@ -1018,7 +1019,7 @@ macro_rules! fmt_sub_select_item {
                     Child(fk) => {
                         let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk.table.1));
                         let local_table_name = fmt_identity(fk.table.1);
-                        let subquery = fmt_query(schema, true, None, query, join)?;
+                        let subquery = fmt_query(db_schema, schema, true, None, query, join)?;
                         Ok((
                             ("coalesce((select json_agg("
                                 + sql(local_table_name.clone())
@@ -1034,7 +1035,7 @@ macro_rules! fmt_sub_select_item {
                     Many(_table, _fk1, fk2) => {
                         let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
                         let local_table_name = fmt_identity(fk2.referenced_table.1);
-                        let subquery = fmt_query(schema, true, None, query, join)?;
+                        let subquery = fmt_query(db_schema, schema, true, None, query, join)?;
                         Ok((
                             ("coalesce((select json_agg("
                                 + sql(local_table_name.clone())

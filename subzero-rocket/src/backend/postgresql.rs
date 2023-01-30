@@ -96,9 +96,9 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
                 .join(",")
         }
 }
-async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, config: &VhostConfig) -> Result<ApiResponse> {
+async fn execute<'a>(schema: &DbSchema<'a>,pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, config: &VhostConfig) -> Result<ApiResponse> {
     let mut client = pool.get().await.context(PgDbPoolSnafu)?;
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu)?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(schema, request.schema_name, request, env).context(CoreSnafu)?);
 
     let transaction = client
         .build_transaction()
@@ -304,7 +304,7 @@ impl Backend for PostgreSQLBackend {
         Ok(PostgreSQLBackend { config, pool, db_schema })
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
-        execute(&self.pool, authenticated, request, env, &self.config).await
+        execute(self.db_schema(), &self.pool, authenticated, request, env, &self.config).await
     }
     fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
     fn config(&self) -> &VhostConfig { &self.config }

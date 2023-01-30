@@ -1,15 +1,17 @@
 use mysql_async::prelude::*;
 use mysql_async::{Pool, Error as MysqlError, Conn, TxOpts, IsolationLevel, Value, Row, FromRowError, Opts};
 
+//use serde::__private::de;
 use snafu::{ResultExt, OptionExt};
 use subzero_core::error::JsonSerializeSnafu;
 use tokio::time::{Duration, sleep};
+use serde_json::{json};
 use crate::config::{VhostConfig, SchemaStructure::*};
 // use log::{debug};
 use subzero_core::{
     api::{
         ApiRequest, ApiResponse, ContentType::*, SingleVal, ListVal, Payload, QueryNode::*,
-        Condition, Filter, Query, Field,
+        Condition, Filter, Query, Field, Preferences, Count
     },
     error::{
         Error::{SingularityError, PutMatchingPkError, PermissionDenied},
@@ -89,11 +91,11 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
         + if env.is_empty() {
             sql("null")
         } else {
-            env.iter().map(|(k, v)| format!("@{k} = ") + param(v as &SqlParam)).join(",")
+            env.iter().map(|(k, v)| format!("@{k} := ") + param(v as &SqlParam)).join(",")
         }
 }
 
-async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, config: &VhostConfig) -> Result<ApiResponse> {
+async fn execute<'a>(db_schema: &DbSchema<'a>,pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, config: &VhostConfig) -> Result<ApiResponse> {
     // println!("------------ pool before {:?}", pool);
     let return_representation = return_representation(request.method, &request.query, &request.preferences);
     let mut client = pool.get_conn().await.context(MysqlDbSnafu { authenticated })?;
@@ -134,7 +136,7 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
     //     //     .context(PgDbSnafu { authenticated })?;
     //     transaction.query_drop(&pre_request_statement).await.context(MysqlDbSnafu { authenticated })?;
     // }
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu)?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(db_schema, request.schema_name, request, env).context(CoreSnafu)?);
     debug!("main_statement {}\n{:?}", main_statement, main_parameters);
     let response: Option<DbResponse> = transaction
         .exec_first(
@@ -152,8 +154,11 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
 
     
     let api_response = match request.query.node {
-        Insert {..} if return_representation => {
-            let primary_key_column = "id";
+        Insert {into:object, ..} | Update {table:object, ..} if return_representation => {
+            let schema_obj = db_schema.get_object(request.schema_name, object).context(CoreSnafu)?;
+            let primary_key_column = schema_obj.columns.iter().find(|&(_,c)| c.primary_key).map(|(_,c)| c.name).unwrap_or("");
+            
+            //let primary_key_column = "id";
             let primary_key_field = Field {
                 name: primary_key_column,
                 json_path: None,
@@ -161,8 +166,29 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
             let last_insert_id = transaction.last_insert_id();
             let affected_rows = transaction.affected_rows();
             let ids = match (last_insert_id, affected_rows) {
-                (None, _) => vec![],
-                (Some(last_insert_id), 1) => vec![last_insert_id],
+                (None, _) | (Some(0), _) => {
+                    let ids:Vec<u64> = transaction
+                        .query("
+                            select t.val 
+                            from
+                            json_table(
+                                @subzero_ids, 
+                                '$[*]' columns (val integer path '$')
+                            ) as t
+                            left join json_table(
+                                @subzero_ignored_ids, 
+                                '$[*]' columns (val integer path '$')
+                            ) as t2 on t.val = t2.val
+                            where t2.val is null;
+                        ")
+                        .await
+                        .context(MysqlDbSnafu { authenticated })?;
+                    debug!("ids from env_var: {:?}", &ids);
+                    ids
+                },
+                (Some(last_insert_id), 1) => {
+                    debug!("last_insert_id one: {:?}", last_insert_id);
+                    vec![last_insert_id]},
                 (Some(last_insert_id), affected_rows) => {
                     let mut ids = Vec::new();
                     for i in 0..affected_rows {
@@ -171,6 +197,10 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
                     ids
                 }
             };
+
+            debug!("ids: {:?}", ids);
+            debug!("last_insert_id: {:?}", last_insert_id);
+            debug!("affected_rows: {:?}", affected_rows);
             
             let mut select_request = request.clone();
             select_request.method = "GET";
@@ -201,7 +231,7 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
                 sub_selects,
             };
 
-            let (main_statement, main_parameters, _) = generate(fmt_main_query(select_request.schema_name, &select_request, env).context(CoreSnafu)?);
+            let (main_statement, main_parameters, _) = generate(fmt_main_query(db_schema, select_request.schema_name, &select_request, env).context(CoreSnafu)?);
             debug!("main_statement_select {}\n{:?}", main_statement, main_parameters);
             let response: DbResponse = transaction
                 .exec_first(
@@ -227,6 +257,38 @@ async fn execute(pool: &Pool, authenticated: bool, request: &ApiRequest<'_>, env
             }
 
         },
+        Delete {from:object, ..} if return_representation => {
+            let schema_obj = db_schema.get_object(request.schema_name, object).context(CoreSnafu)?;
+            let primary_key_column = schema_obj.columns.iter().find(|&(_,c)| c.primary_key).map(|(_,c)| c.name).unwrap_or("");
+            let affected_rows = transaction.affected_rows();
+            let count = matches!(
+                &request.preferences,
+                Some(Preferences {
+                    count: Some(Count::ExactCount),
+                    ..
+                })
+            );
+            let ids:Option<String> = transaction
+                .exec_first("select @subzero_ids", vec![] as Vec<&str>)
+                .await
+                .context(MysqlDbSnafu { authenticated })?
+                .unwrap();
+            debug!("ids from env_var: {:?}", &ids);
+            let ids2 = ids.unwrap_or(String::from("[]"));
+            debug!("ids unwrapped: {:?}",  serde_json::from_str::<Vec<String>>(&ids2));
+            let ids:Vec<u64> = serde_json::from_str(ids2.as_str()).unwrap_or(vec![]);
+
+            ApiResponse {
+                page_total: affected_rows,
+                total_result_set: if count { Some(ids.len() as u64) } else { None },
+                top_level_offset: 0,
+                body: serde_json::to_string(&ids.iter().map(|i| json!({ primary_key_column: i })).collect::<Vec<_>>())
+                        .context(JsonSerializeSnafu)
+                        .context(CoreSnafu)?,
+                response_headers: None,
+                response_status: None,
+            }
+        }
         Insert {..} | Update {..} | Delete {..} if !return_representation => {
             let affected_rows = transaction.affected_rows();
             ApiResponse {
@@ -366,7 +428,7 @@ impl Backend for MySQLBackend {
         Ok(MySQLBackend { config, pool, db_schema })
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
-        execute(&self.pool, authenticated, request, env, &self.config).await
+        execute(self.db_schema(), &self.pool, authenticated, request, env, &self.config).await
     }
     fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
     fn config(&self) -> &VhostConfig { &self.config }

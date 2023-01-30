@@ -86,6 +86,14 @@ pub struct DbSchema<'a> {
 }
 
 impl<'a> DbSchema<'a> {
+    pub fn get_object(&self, schema: &'a str, object: &'a str) -> Result<&Object<'a>> {
+        self.schemas
+            .get(schema)
+            .context(UnacceptableSchemaSnafu { schemas: vec![schema.to_owned()] })?
+            .objects
+            .get(object)
+            .context(UnknownRelationSnafu { relation: object.to_owned() })
+    }
     pub fn get_join(&self, current_schema: &'a str, origin: &'a str, target: &'a str, hint: &Option<&'a str>) -> Result<Join> {
         let schema = self.schemas.get(current_schema).context(UnacceptableSchemaSnafu {
             schemas: vec![current_schema.to_owned()],

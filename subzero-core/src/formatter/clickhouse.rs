@@ -11,6 +11,7 @@ use super::base::{
 use crate::api::{
     Condition::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *, ContentType::SingularJSON,
 };
+use crate::schema::DbSchema;
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn};
 use crate::error::{Result, *};
 use super::{ToParam, Snippet, SqlParam};
@@ -28,7 +29,7 @@ macro_rules! param_placeholder_format {
 generate_fn!(true, "String");
 
 fmt_main_query!();
-pub fn fmt_main_query_internal<'a>(
+pub fn fmt_main_query_internal<'a>(_db_schema: &DbSchema<'a>, 
     schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
     env: &'a HashMap<&'a str, &'a str>,
 ) -> Result<Snippet<'a>> {
@@ -713,7 +714,8 @@ mod tests {
         "#
         );
 
-        let (main_query_str, _parameters, _) = generate(fmt_main_query("default", &api_request, &HashMap::new()).unwrap());
+        let schema_sturcture: DbSchema = serde_json::from_str("[]").unwrap();
+        let (main_query_str, _parameters, _) = generate(fmt_main_query(&schema_sturcture, "default", &api_request, &HashMap::new()).unwrap());
         assert_eq!(re.replace_all(main_query_str.as_str(), " "), re.replace_all(expected_main_query_str.as_str(), " "));
     }
 }

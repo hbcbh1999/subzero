@@ -34,6 +34,7 @@ use super::base::{
     fmt_function_call,
     get_body_snippet,
 };
+use crate::schema::DbSchema;
 use std::collections::HashMap;
 pub use super::base::return_representation;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
@@ -75,7 +76,7 @@ macro_rules! body_snippet {
 }
 
 fmt_main_query!();
-pub fn fmt_main_query_internal<'a>(
+pub fn fmt_main_query_internal<'a>(db_schema: &'a DbSchema<'_>, 
     schema: &'a str, method: &'a str, accept_content_type: &ContentType, query: &'a Query, preferences: &'a Option<Preferences>,
     env: &'a HashMap<&'a str, &'a str>,
 ) -> Result<Snippet<'a>> {
@@ -92,7 +93,7 @@ pub fn fmt_main_query_internal<'a>(
     let run_unwrapped_query = matches!(query.node, Insert { .. } | Update { .. } | Delete { .. });
     let has_payload_cte = matches!(query.node, Insert { .. } | Update { .. });
     let wrap_cte_name = if run_unwrapped_query { None } else { Some("_subzero_query") };
-    let source_query = fmt_query(schema, return_representation, wrap_cte_name, query, &None)?;
+    let source_query = fmt_query(db_schema, schema, return_representation, wrap_cte_name, query, &None)?;
     let main_query = if run_unwrapped_query {
         "with env as materialized (" + fmt_env_query(env) + ") " + if has_payload_cte { ", " } else { "" } + source_query
     } else {
@@ -102,7 +103,7 @@ pub fn fmt_main_query_internal<'a>(
             + source_query
             + " , "
             + if count {
-                fmt_count_query(schema, Some("_subzero_count_query"), query)?
+                fmt_count_query(db_schema, schema, Some("_subzero_count_query"), query)?
             } else {
                 sql("_subzero_count_query as (select 1)")
             }
@@ -132,7 +133,7 @@ pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
 }
 
 //fmt_query!();
-pub fn fmt_query<'a>(
+pub fn fmt_query<'a>( db_schema: &'a DbSchema<'_>,
     schema: &'a str, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
 ) -> Result<Snippet<'a>> {
     let add_env_tbl_to_from = wrapin_cte.is_some();
@@ -166,7 +167,7 @@ pub fn fmt_query<'a>(
             let (sub_selects, joins): (Vec<_>, Vec<_>) = q
                 .sub_selects
                 .iter()
-                .map(|s| fmt_sub_select_item(schema, &qi, s))
+                .map(|s| fmt_sub_select_item(db_schema, schema, &qi, s))
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
@@ -452,21 +453,21 @@ fn fmt_select_item_function<'a>(
 fmt_select_item!();
 fmt_function_param!();
 //fmt_sub_select_item!();
-fn fmt_sub_select_item<'a>(schema: &'a str, _qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
+fn fmt_sub_select_item<'a>(db_schema: &'a DbSchema<'_>, schema: &'a str, _qi: &Qi, i: &'a SubSelect) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
     let SubSelect { query, alias, join, .. } = i;
     match join {
         Some(j) => match j {
             Parent(fk) => {
                 let alias_or_name = format!("'{}'", alias.as_ref().unwrap_or(&fk.referenced_table.1));
                 //let local_table_name = format!("{}_{}", qi.1, alias_or_name);
-                let subquery = fmt_query(schema, true, None, query, join)?;
+                let subquery = fmt_query(db_schema, schema, true, None, query, join)?;
 
                 Ok(((sql(alias_or_name) + ", " + "(" + subquery + ")"), vec![]))
             }
             Child(fk) => {
                 let alias_or_name = format!("'{}'", alias.as_ref().unwrap_or(&fk.table.1));
                 let local_table_name = fmt_identity(fk.table.1);
-                let subquery = fmt_query(schema, true, None, query, join)?;
+                let subquery = fmt_query(db_schema, schema, true, None, query, join)?;
                 Ok((
                     (sql(alias_or_name)
                         + ", "
@@ -485,7 +486,7 @@ fn fmt_sub_select_item<'a>(schema: &'a str, _qi: &Qi, i: &'a SubSelect) -> Resul
             Many(_table, _fk1, fk2) => {
                 let alias_or_name = fmt_identity(alias.as_ref().unwrap_or(&fk2.referenced_table.1));
                 let local_table_name = fmt_identity(fk2.referenced_table.1);
-                let subquery = fmt_query(schema, true, None, query, join)?;
+                let subquery = fmt_query(db_schema, schema, true, None, query, join)?;
                 Ok((
                     (sql(alias_or_name)
                         + ", "

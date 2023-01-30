@@ -51,6 +51,7 @@ fn get_current_timestamp() -> u64 {
 // }
 
 fn get_env<'a>(
+    db_type: &str,
     role: Option<&'a str>, request: &'a ApiRequest, jwt_claims: &'a Option<JsonValue>, use_legacy_gucs: bool,
 ) -> HashMap<Cow<'a, str>, Cow<'a, str>> {
     let mut env: HashMap<Cow<'a, str>, Cow<'a, str>> = HashMap::new();
@@ -59,6 +60,17 @@ fn get_env<'a>(
         env.insert("role".into(), r.into());
     }
 
+    match db_type {
+        #[cfg(feature = "mysql")]
+        "mysql" => {
+            env.insert("subzero_ids".into(), "[]".into());
+            env.insert("subzero_ignored_ids".into(), "[]".into());
+        },
+        _ => {}
+    }
+    
+
+    
     env.insert("request.method".into(), request.method.into());
     env.insert("request.path".into(), request.path.into());
     //pathSql = setConfigLocal mempty ("request.path", iPath req)
@@ -252,7 +264,7 @@ pub async fn handle<'a>(
         Some(role)
     };
 
-    let _env = get_env(env_role, &request, &jwt_claims, config.db_use_legacy_gucs);
+    let _env = get_env(&config.db_type, env_role, &request, &jwt_claims, config.db_use_legacy_gucs);
     let env = _env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect::<HashMap<_, _>>();
 
     let response: ApiResponse = match config.db_type.as_str() {
@@ -289,13 +301,9 @@ pub async fn handle<'a>(
         _ => ApplicationJSON,
     };
 
-    let content_range = match (method, &request.query.node, page_total, total_result_set) {
-        (&Method::POST, Insert { .. }, _pt, t) => content_range_header(1, 0, t),
-        (&Method::DELETE, Delete { .. }, pt, t) => content_range_header(1, top_level_offset + pt - 1, t),
-        (_, _, pt, t) => content_range_header(top_level_offset, top_level_offset + pt - 1, t),
-    };
+    
 
-    response_headers.push(("Content-Range".to_string(), content_range));
+    
     if let Some(response_headers_str) = response.response_headers {
         match serde_json::from_str(response_headers_str.as_str()) {
             Ok(JsonValue::Array(headers_json)) => {
@@ -325,17 +333,28 @@ pub async fn handle<'a>(
         .context(CoreSnafu)?
     }
 
+
+    let lower = top_level_offset as i64;
+    let upper = top_level_offset as i64 + page_total as i64 - 1;
+    let total = total_result_set.map(|t| t as i64);
+    let content_range = match (method, &request.query.node) {
+        (&Method::POST, Insert { .. }) => content_range_header(1, 0, total),
+        (&Method::DELETE, Delete { .. }) => content_range_header(1, upper, total),
+        _ => content_range_header(lower, upper, total),
+    };
+    response_headers.push(("Content-Range".to_string(), content_range));
+
     #[rustfmt::skip]
-    let mut status = match (method, &request.query.node, page_total, total_result_set, &request.preferences) {
+    let mut status = match (method, &request.query.node, page_total, &request.preferences) {
         (&Method::POST,   Insert { .. }, ..) => 201,
-        (&Method::DELETE, Delete { .. }, ..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
+        (&Method::DELETE, Delete { .. }, _, Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
         (&Method::DELETE, Delete { .. }, ..) => 204,
-        (&Method::PATCH,  Update { columns, .. }, 0, _, _) if !columns.is_empty() => 404,
-        (&Method::PATCH,  Update { .. }, ..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
+        (&Method::PATCH,  Update { columns, .. }, 0, _) if !columns.is_empty() => 404,
+        (&Method::PATCH,  Update { .. }, _,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
         (&Method::PATCH,  Update { .. }, ..) => 204,
-        (&Method::PUT,    Insert { .. },..,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
+        (&Method::PUT,    Insert { .. },_,Some(Preferences {representation: Some(Representation::Full),..}),) => 200,
         (&Method::PUT,    Insert { .. }, ..) => 204,
-        (.., pt, t, _) => content_range_status(top_level_offset, top_level_offset + pt - 1, t),
+        _ => content_range_status(lower, upper, total),
     };
 
     if let Some(Preferences { resolution: Some(r), .. }) = request.preferences {
@@ -356,7 +375,8 @@ pub async fn handle<'a>(
     Ok((status, content_type, response_headers, response.body))
 }
 
-fn content_range_header(lower: u64, upper: u64, total: Option<u64>) -> String {
+fn content_range_header(lower: i64, upper: i64, total: Option<i64>) -> String {
+    debug!("content_range_header: lower: {}, upper: {}, total: {:?}", lower, upper, total);
     let range_string = if total != Some(0) && lower <= upper {
         format!("{lower}-{upper}")
     } else {
@@ -369,7 +389,8 @@ fn content_range_header(lower: u64, upper: u64, total: Option<u64>) -> String {
     format!("{range_string}/{total_string}")
 }
 
-fn content_range_status(lower: u64, upper: u64, total: Option<u64>) -> u16 {
+fn content_range_status(lower: i64, upper: i64, total: Option<i64>) -> u16 {
+    debug!("content_range_status: lower: {}, upper: {}, total: {:?}", lower, upper, total);
     match (lower, upper, total) {
         //(_, _, None) => 200,
         (l, _, Some(t)) if l > t => 406,

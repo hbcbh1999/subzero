@@ -175,7 +175,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("generate query & prepare statement", |b| {
         b.iter(|| {
-            let q = fmt_main_query(black_box("api"), black_box(&request), &emtpy_hashmap0).unwrap();
+            let q = fmt_main_query(black_box(&DB_SCHEMA), black_box("api"), black_box(&request), &emtpy_hashmap0).unwrap();
             generate(q)
         })
     });

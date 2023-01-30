@@ -88,7 +88,7 @@ pub fn setup_db(init_db_once: &Once) {
     });
 
     let mut conn = MYSQL_POOL.get_conn().unwrap();
-    conn.query_drop("call reset_auto_increment()");
+    let _ = conn.query_drop("call reset_auto_increment()");
 }
 
 pub fn setup_client<T>(init_client_once: &Once, client: &'static T)

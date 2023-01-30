@@ -55,14 +55,14 @@ impl managed::Manager for Manager {
     async fn recycle(&self, _: &mut HttpClient) -> managed::RecycleResult<HttpError> { Ok(()) }
 }
 
-async fn execute(
+async fn execute<'a>(schema: &DbSchema<'a>,
     pool: &Pool, _authenticated: bool, request: &ApiRequest<'_>, env: &HashMap<&str, &str>, _config: &VhostConfig,
 ) -> Result<ApiResponse> {
     let o = pool.get().await.unwrap(); //.context(ClickhouseDbPoolError)?;
     let uri = &o.0;
     let base_url = &o.1;
     let client = &o.2;
-    let (main_statement, main_parameters, _) = generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu)?);
+    let (main_statement, main_parameters, _) = generate(fmt_main_query(schema, request.schema_name, request, env).context(CoreSnafu)?);
     debug!("main_statement {}", main_statement);
     let mut parameters = vec![("query".to_string(), main_statement)];
     for (k, v) in main_parameters.iter().enumerate() {
@@ -294,7 +294,7 @@ impl Backend for ClickhouseBackend {
         Ok(ClickhouseBackend { config, pool, db_schema })
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
-        execute(&self.pool, authenticated, request, env, &self.config).await
+        execute(self.db_schema(), &self.pool, authenticated, request, env, &self.config).await
     }
     fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
     fn config(&self) -> &VhostConfig { &self.config }

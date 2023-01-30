@@ -119,6 +119,7 @@ impl Backend {
         }
 
         let backend = self.borrow_inner();
+        let B {db_schema,..} = &backend;
         let db_type = backend.db_type;
 
         let get = from_js_value::<Vec<(String, String)>>(get).map_err(cast_serde_err)?;
@@ -145,20 +146,20 @@ impl Backend {
         let (main_statement, main_parameters, _) = match db_type {
             #[cfg(feature = "postgresql")]
             "postgresql" => {
-                let query = postgresql::fmt_main_query_internal(schema_name, method, &accept_content_type, &query, &preferences, &env)
+                let query = postgresql::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, &env)
                     .map_err(cast_core_err)?;
                 Ok(postgresql::generate(query))
             }
             #[cfg(feature = "clickhouse")]
             "clickhouse" => {
-                let query = clickhouse::fmt_main_query_internal(schema_name, method, &accept_content_type, &query, &preferences, &env)
+                let query = clickhouse::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, &env)
                     .map_err(cast_core_err)?;
                 Ok(clickhouse::generate(query))
             }
             #[cfg(feature = "sqlite")]
             "sqlite" => {
                 let query =
-                    sqlite::fmt_main_query_internal(schema_name, method, &accept_content_type, &query, &preferences, &env).map_err(cast_core_err)?;
+                    sqlite::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, &env).map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
             }
             _ => Err(JsError::new("unsupported database type")),
@@ -169,7 +170,7 @@ impl Backend {
 
     fn fmt_sqlite_first_stage_mutate(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue, JsValue), JsError> {
         let backend = self.borrow_inner();
-        let &B { db_type, .. } = backend;
+        let B { db_schema, db_type, .. } = backend;
 
         //sqlite does not support returining in CTEs so we must do a two step process
         let primary_key_column = "rowid"; //every table has this (TODO!!! check)
@@ -240,11 +241,11 @@ impl Backend {
             ..
         } = request;
 
-        let (main_statement, main_parameters, _) = match db_type {
+        let (main_statement, main_parameters, _) = match *db_type {
             #[cfg(feature = "sqlite")]
             "sqlite" => {
                 let query =
-                    sqlite::fmt_main_query_internal(schema_name, method, &accept_content_type, &query, &preferences, env).map_err(cast_core_err)?;
+                    sqlite::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, env).map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
             }
             _ => Err(JsError::new("unsupported database type for two step mutation")),
@@ -255,7 +256,7 @@ impl Backend {
 
     fn fmt_sqlite_second_stage_select(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue, JsValue), JsError> {
         let backend = self.borrow_inner();
-        let &B { db_type, .. } = backend;
+        let B { db_schema, db_type, .. } = backend;
         let ids: Vec<String> = vec!["_subzero_ids_placeholder_".to_string()];
 
         // create a clone of the request
@@ -315,10 +316,11 @@ impl Backend {
             _ => return Err(JsError::new("unsupported query type for two step mutation")),
         }
 
-        let (main_statement, main_parameters, _) = match db_type {
+        let (main_statement, main_parameters, _) = match *db_type {
             #[cfg(feature = "sqlite")]
             "sqlite" => {
                 let query = sqlite::fmt_main_query_internal(
+                    db_schema,
                     request.schema_name,
                     request.method,
                     &request.accept_content_type,

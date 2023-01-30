@@ -5,6 +5,7 @@ use super::base::{
     fmt_select_name, fmt_sub_select_item, return_representation, simple_select_item_format, star_select_item_format, fmt_function_param,
     fmt_select_item_function, fmt_function_call, fmt_env_query, body_snippet, get_body_snippet,
 };
+use crate::schema::DbSchema;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
@@ -86,8 +87,8 @@ mod tests {
             },
             sub_selects: vec![],
         };
-
-        let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
+        let db_schema:DbSchema = serde_json::from_str("[]").unwrap();
+        let (query_str, parameters, _) = generate(fmt_query(&db_schema, "api", true, None, &q, &None).unwrap());
         let p = Payload(Cow::Borrowed(payload), None);
         let pp: Vec<&SqlParam> = vec![&p];
         assert_eq!(format!("{parameters:?}"), format!("{pp:?}"));
@@ -275,8 +276,8 @@ mod tests {
                 },
             ],
         };
-
-        let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
+        let db_schema:DbSchema = serde_json::from_str("[]").unwrap();
+        let (query_str, parameters, _) = generate(fmt_query(&db_schema, "api", true, None, &q, &None).unwrap());
         let p0: &SqlParam = &ListVal(vec![cow("51"), cow("52")], None);
         let p1: &SqlParam = &SingleVal(cow("50"), None);
         let p = Payload(Cow::Borrowed(payload), None);
@@ -505,7 +506,8 @@ mod tests {
             ],
         };
 
-        let (query_str, parameters, _) = generate(fmt_query("api", true, None, &q, &None).unwrap());
+        let db_schema:DbSchema = serde_json::from_str("[]").unwrap();
+        let (query_str, parameters, _) = generate(fmt_query(&db_schema, "api", true, None, &q, &None).unwrap());
         assert_eq!(
             format!("{parameters:?}"),
             "[SingleVal(\"50\", None), ListVal([\"51\", \"52\"], None), SingleVal(\"5\", None), SingleVal(\"10\", None)]"

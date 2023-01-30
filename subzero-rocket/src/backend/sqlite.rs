@@ -63,7 +63,7 @@ fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> { WrapParam(p.to_par
 //generate_fn!();
 
 //TODO: refactor transaction rollback
-fn execute(
+fn execute(schema: &DbSchema<'_>,
     pool: &Pool<SqliteConnectionManager>, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>, config: &VhostConfig,
 ) -> Result<ApiResponse> {
     let conn = pool.get().unwrap();
@@ -162,7 +162,7 @@ fn execute(
             //debug!("mutated request query: {:?}", mutate_request.query);
             let env1 = env.clone();
             let (mutate_statement, mutate_parameters, _) = generate(
-                fmt_main_query(request.schema_name, &mutate_request, &env1)
+                fmt_main_query(schema, request.schema_name, &mutate_request, &env1)
                     .context(CoreSnafu)
                     .map_err(|e| {
                         let _ = conn.execute_batch("ROLLBACK");
@@ -272,7 +272,7 @@ fn execute(
             };
 
             let (main_statement, main_parameters, _) = generate(
-                fmt_main_query(select_request.schema_name, &select_request, env)
+                fmt_main_query(schema, select_request.schema_name, &select_request, env)
                     .context(CoreSnafu)
                     .map_err(|e| {
                         let _ = conn.execute_batch("ROLLBACK");
@@ -326,7 +326,7 @@ fn execute(
         }
         _ => {
             let (main_statement, main_parameters, _) =
-                generate(fmt_main_query(request.schema_name, request, env).context(CoreSnafu).map_err(|e| {
+                generate(fmt_main_query(schema, request.schema_name, request, env).context(CoreSnafu).map_err(|e| {
                     let _ = conn.execute_batch("ROLLBACK");
                     e
                 })?);
@@ -468,7 +468,7 @@ impl Backend for SQLiteBackend {
         Ok(SQLiteBackend { config, pool, db_schema })
     }
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
-        execute(&self.pool, authenticated, request, env, &self.config)
+        execute(self.db_schema(), &self.pool, authenticated, request, env, &self.config)
     }
     fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
     fn config(&self) -> &VhostConfig { &self.config }

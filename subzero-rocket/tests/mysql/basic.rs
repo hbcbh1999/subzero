@@ -71,7 +71,7 @@ feature "basic"
 
       it "returns the deleted item and count if requested" $
         request methodDelete "/projects?id=eq.5" [("Prefer", "return=representation, count=exact")] ""
-          shouldRespondWith [json|r#"[{"rowid":5}]"#|]
+          shouldRespondWith [json|r#"[{"id":5}]"#|]
           { matchStatus  = 200
           , matchHeaders = ["Content-Range" <:> "*/1"]
           }
@@ -92,7 +92,7 @@ feature "basic"
     it "INSERTs and ignores rows on pk conflict" $
       request methodPost "/clients?select=id,name" [("Prefer", "return=representation"), ("Prefer", "resolution=ignore-duplicates")]
         [json| r#"[
-          { "id": 1, "name": "Microsoft"},
+          { "id": 1, "name": "Microsoft Changed"},
           { "id": 3, "name": "Oracle"}
         ]"#|] shouldRespondWith [json| r#"[
           { "id": 3, "name": "Oracle"}
@@ -197,12 +197,12 @@ feature "basic"
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "obtains a json subfield two levels with casting (int)" $
-      get "/complex_items?id=eq.1&select=settings->foo->>int::integer" shouldRespondWith
+      get "/complex_items?id=eq.1&select=settings->foo->>int::unsigned" shouldRespondWith
         [json| r#"[{"int":1}]"# |] //-- the value in the db is an int, but here we expect a string for now
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "renames json subfield two levels with casting (int)" $
-      get "/complex_items?id=eq.1&select=myInt:settings->foo->>int::integer" shouldRespondWith
+      get "/complex_items?id=eq.1&select=myInt:settings->foo->>int::unsigned" shouldRespondWith
         [json| r#"[{"myInt":1}]"# |] //-- the value in the db is an int, but here we expect a string for now
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
