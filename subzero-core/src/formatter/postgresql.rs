@@ -87,7 +87,7 @@ mod tests {
             },
             sub_selects: vec![],
         };
-        let db_schema: DbSchema = serde_json::from_str("[]").unwrap();
+        let db_schema: DbSchema = serde_json::from_str("{\"use_internal_permissions\": false, \"schemas\":[]}").unwrap();
         let (query_str, parameters, _) = generate(fmt_query(&db_schema, "api", true, None, &q, &None).unwrap());
         let p = Payload(Cow::Borrowed(payload), None);
         let pp: Vec<&SqlParam> = vec![&p];
@@ -276,7 +276,7 @@ mod tests {
                 },
             ],
         };
-        let db_schema: DbSchema = serde_json::from_str("[]").unwrap();
+        let db_schema: DbSchema = serde_json::from_str("{\"use_internal_permissions\": false, \"schemas\":[]}").unwrap();
         let (query_str, parameters, _) = generate(fmt_query(&db_schema, "api", true, None, &q, &None).unwrap());
         let p0: &SqlParam = &ListVal(vec![cow("51"), cow("52")], None);
         let p1: &SqlParam = &SingleVal(cow("50"), None);
@@ -506,7 +506,7 @@ mod tests {
             ],
         };
 
-        let db_schema: DbSchema = serde_json::from_str("[]").unwrap();
+        let db_schema: DbSchema = serde_json::from_str("{\"use_internal_permissions\": false, \"schemas\":[]}").unwrap();
         let (query_str, parameters, _) = generate(fmt_query(&db_schema, "api", true, None, &q, &None).unwrap());
         assert_eq!(
             format!("{parameters:?}"),
