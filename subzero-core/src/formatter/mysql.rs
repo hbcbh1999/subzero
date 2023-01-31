@@ -1,7 +1,7 @@
 use super::base::{
-    fmt_as, fmt_condition, fmt_condition_tree, fmt_count_query, fmt_field, fmt_filter, fmt_env_var, fmt_in_filter, fmt_json_path, fmt_limit,
-    fmt_logic_operator, fmt_main_query, fmt_offset, fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_select_item,
-    fmt_select_name, star_select_item_format, fmt_function_param, fmt_env_query, get_body_snippet,
+    fmt_as, fmt_condition, fmt_condition_tree, fmt_count_query, fmt_field, fmt_filter, fmt_in_filter, fmt_json_path, fmt_limit, fmt_logic_operator,
+    fmt_main_query, fmt_offset, fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_select_item, fmt_select_name,
+    star_select_item_format, fmt_function_param, fmt_env_query, get_body_snippet,
 };
 pub use super::base::return_representation;
 use crate::schema::DbSchema;
@@ -631,7 +631,13 @@ fn fmt_body<'a>(payload: &'a Payload, columns: &[&'a str]) -> Snippet<'a> {
 }
 fmt_condition_tree!();
 fmt_condition!();
-fmt_env_var!();
+//fmt_env_var!();
+fn fmt_env_var(e: &EnvVar) -> String {
+    match e {
+        EnvVar { var, part: None } => format!("(select {} from env)", fmt_identity(var)),
+        EnvVar { var, part: Some(part) } => format!("(select {}->>'$.{}' from env)", fmt_identity(var), part),
+    }
+}
 macro_rules! fmt_in_filter {
     ($p:ident) => {
         fmt_operator(&"= any")? // + ("( select value from json_each(" + param($p) + ") )")

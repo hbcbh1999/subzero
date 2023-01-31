@@ -22,6 +22,9 @@ lazy_static! {
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
+                let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                let fixtures_dir = project_dir.join("tests/postgresql/fixtures");
+                assert!(env::set_current_dir(&fixtures_dir).is_ok());
                 CLIENT_INNER.get().await;
             })
         })
@@ -99,7 +102,7 @@ where
         //     "SUBZERO_DB_SCHEMA_STRUCTURE",
         //     "{sql_file=../subzero-rocket/tests/postgresql/custom_introspection/postgresql_introspection_query.sql}",
         // );
-        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/postgresql_introspection_query.sql}");
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../../../../introspection/postgresql_introspection_query.sql}");
         env::set_var("SUBZERO_DISABLE_INTERNAL_PERMISSIONS", "true");
         env::remove_var("SUBZERO_DB_MAX_ROWS");
         lazy_static::initialize(client);

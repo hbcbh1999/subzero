@@ -22,6 +22,9 @@ lazy_static! {
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
+                let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                let fixtures_dir = project_dir.join("tests/clickhouse/fixtures");
+                assert!(env::set_current_dir(&fixtures_dir).is_ok());
                 CLIENT_INNER.get().await;
             })
         }).join().expect("Thread panicked");
@@ -87,7 +90,7 @@ pub fn setup_db(init_db_once: &Once) {
         assert!(output.status.success());
 
         env::set_var("SUBZERO_DB_URI", &*db_uri);
-        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/clickhouse_introspection_query.sql}");
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../../../../introspection/clickhouse_introspection_query.sql}");
         debug!("db init ok clickhouse");
     });
 }

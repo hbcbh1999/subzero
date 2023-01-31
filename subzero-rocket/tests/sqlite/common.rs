@@ -25,6 +25,9 @@ lazy_static! {
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
+                let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                let fixtures_dir = project_dir.join("tests/sqlite/fixtures");
+                assert!(env::set_current_dir(&fixtures_dir).is_ok());
                 CLIENT_INNER.get().await;
             })
         })
@@ -68,7 +71,7 @@ pub fn setup_db(init_db_once: &Once) {
         //     format!(r#"{{json_file={}}}"#, schema_file.to_str().unwrap()),
         // );
 
-        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/sqlite_introspection_query.sql}");
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../../../../introspection/sqlite_introspection_query.sql}");
     });
 }
 

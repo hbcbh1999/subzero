@@ -26,6 +26,9 @@ lazy_static! {
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
+                let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                let fixtures_dir = project_dir.join("tests/mysql/fixtures");
+                assert!(env::set_current_dir(&fixtures_dir).is_ok());
                 CLIENT_INNER.get().await;
             })
         })
@@ -60,7 +63,7 @@ pub fn setup_db(init_db_once: &Once) {
                     .arg("-p")
                     .arg("authenticator")
                     .arg("-d")
-                    .arg("app")
+                    .arg("public")
                     .arg("-s")
                     .arg(fixtures_dir.to_str().unwrap())
                     .arg("-w")
@@ -103,13 +106,13 @@ where
         env::set_var("SUBZERO_DB_ANON_ROLE", "mysql_test_anonymous");
         env::set_var("SUBZERO_DB_TX_ROLLBACK", "true");
         env::set_var("SUBZERO_DB_TYPE", "mysql");
-        env::set_var("SUBZERO_DB_SCHEMAS", "[app]");
+        env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
         //env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
         //env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "true");
         env::set_var("SUBZERO_URL_PREFIX", "/rest");
-        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../introspection/mysql_introspection_query.sql}");
-        env::set_var("SUBZERO_DISABLE_INTERNAL_PERMISSIONS", "true");
+        env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../../../../introspection/mysql_introspection_query.sql}");
+        //env::set_var("SUBZERO_DISABLE_INTERNAL_PERMISSIONS", "true");
         env::remove_var("SUBZERO_DB_MAX_ROWS");
         lazy_static::initialize(client);
     });

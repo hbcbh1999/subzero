@@ -384,7 +384,6 @@ impl Backend for MySQLBackend {
                         let schemas_json = serde_json::to_string(&config.db_schemas).context(JsonSerializeSnafu).context(CoreSnafu)?;
                         match client.exec_first(&query, vec![schemas_json]).await {
                             Ok(Some(s)) => {
-                                //println!("db schema loaded: {s}");
                                 //let s: String = row.get(0);
                                 Ok(DbSchemaWrap::new(s, |s| {
                                     serde_json::from_str::<DbSchema>(s.as_str())

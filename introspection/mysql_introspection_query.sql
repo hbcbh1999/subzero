@@ -89,7 +89,7 @@ with used_schemas as (
         _check as "check",
         _using as "using"
     from json_table(
-        '[{@permissions.json#[]}]',
+        '{@permissions.json#[]}',
         '$[*]' columns (
             name text path '$.name',
             restrictive boolean path '$.restrictive',
