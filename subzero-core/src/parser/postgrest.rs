@@ -1509,7 +1509,7 @@ fn select_item(i: &str) -> Parsed<SelectKind> {
                         offset: None,
                         order: vec![],
                         groupby: vec![],
-                        check: None
+                        check: None,
                     },
                     sub_selects: sub_sel,
                 },
@@ -2627,7 +2627,7 @@ pub mod tests {
                     operator: And,
                     conditions: vec![],
                 },
-                check: None
+                check: None,
             },
             sub_selects: vec![SubSelect {
                 query: Query {
@@ -2647,7 +2647,7 @@ pub mod tests {
                             operator: And,
                             conditions: vec![],
                         },
-                        check: None
+                        check: None,
                     },
                     sub_selects: vec![],
                 },

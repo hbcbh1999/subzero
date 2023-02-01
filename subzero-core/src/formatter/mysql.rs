@@ -70,7 +70,7 @@ pub fn fmt_main_query_internal<'a>(
             ..
         })
     );
-    let check_constraints = matches!(query.node, Insert { .. } | Update { .. } | Select {check: Some(_), ..});
+    let check_constraints = matches!(query.node, Insert { .. } | Update { .. } | Select { check: Some(_), .. });
     let return_representation = return_representation(method, query, preferences);
     let body_snippet = get_body_snippet!(return_representation, accept_content_type, query)?;
     let run_unwrapped_query = matches!(query.node, Insert { .. } | Update { .. } | Delete { .. });
@@ -275,7 +275,7 @@ pub fn fmt_query<'a>(
             // for databases that do not support returning clause
             let check_condition = match check {
                 Some(c) if !c.conditions.is_empty() => ", " + fmt_condition_tree(qi, c)? + " as _subzero_check__constraint",
-                _ => sql("")
+                _ => sql(""),
             };
 
             (
