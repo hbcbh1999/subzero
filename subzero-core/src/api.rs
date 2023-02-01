@@ -366,6 +366,7 @@ pub enum QueryNode<'a> {
         from: (&'a str, /*alias_sufix*/ Option<&'a str>),
         join_tables: Vec<&'a str>,
         where_: ConditionTree<'a>,
+        check: Option<ConditionTree<'a>>, //used only for second stages select in cases where the db does not support returning
         limit: Option<SingleVal<'a>>,
         offset: Option<SingleVal<'a>>,
         order: Vec<OrderTerm<'a>>,

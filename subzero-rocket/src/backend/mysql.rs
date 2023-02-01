@@ -48,6 +48,7 @@ impl FromRow for DbResponse {
     where
         Self: Sized,
     {
+        debug!("row: {:?}", row);
         let page_total: i64 = row.get(0).unwrap();
         let total_result_set: Option<i64> = row.get(1).unwrap();
         let body: String = row.get(2).unwrap();
@@ -150,8 +151,8 @@ async fn execute<'a>(
         .await
         .context(MysqlDbSnafu { authenticated })?;
 
-    let api_response = match request.query.node {
-        Insert { into: object, .. } | Update { table: object, .. } if return_representation => {
+    let (constraints_satisfied, api_response) = match &request.query.node {
+        Insert { into: object, check, .. } | Update { table: object, check, .. } if return_representation => {
             let schema_obj = db_schema.get_object(request.schema_name, object).context(CoreSnafu)?;
             let primary_key_column = schema_obj.columns.iter().find(|&(_, c)| c.primary_key).map(|(_, c)| c.name).unwrap_or("");
 
@@ -217,8 +218,14 @@ async fn execute<'a>(
                     negate: false,
                 },
             );
+            let select_check = if check.conditions.is_empty() {
+                None
+            } else {
+                Some(check.clone())
+            };
             select_request.query = Query {
                 node: Select {
+                    check: select_check,
                     from: (table, Some("subzero_source")),
                     join_tables: vec![], //todo!! this should probably not be empty
                     where_,
@@ -248,14 +255,17 @@ async fn execute<'a>(
                 .await
                 .context(MysqlDbSnafu { authenticated })?
                 .unwrap();
-            ApiResponse {
-                page_total: response.page_total as u64,
-                total_result_set: response.total_result_set.map(|i| i as u64),
-                top_level_offset: 0,
-                response_headers: response.response_headers,
-                response_status: response.response_status,
-                body: response.body,
-            }
+            (
+                response.constraints_satisfied,
+                ApiResponse {
+                    page_total: response.page_total as u64,
+                    total_result_set: response.total_result_set.map(|i| i as u64),
+                    top_level_offset: 0,
+                    response_headers: response.response_headers,
+                    response_status: response.response_status,
+                    body: response.body,
+                }
+            )
         }
         Delete { from: object, .. } if return_representation => {
             let schema_obj = db_schema.get_object(request.schema_name, object).context(CoreSnafu)?;
@@ -278,49 +288,55 @@ async fn execute<'a>(
             debug!("ids unwrapped: {:?}", serde_json::from_str::<Vec<String>>(&ids2));
             let ids: Vec<u64> = serde_json::from_str(ids2.as_str()).unwrap_or(vec![]);
 
-            ApiResponse {
-                page_total: affected_rows,
-                total_result_set: if count { Some(ids.len() as u64) } else { None },
-                top_level_offset: 0,
-                body: serde_json::to_string(&ids.iter().map(|i| json!({ primary_key_column: i })).collect::<Vec<_>>())
-                    .context(JsonSerializeSnafu)
-                    .context(CoreSnafu)?,
-                response_headers: None,
-                response_status: None,
-            }
+            (   true, 
+                ApiResponse {
+                    page_total: affected_rows,
+                    total_result_set: if count { Some(ids.len() as u64) } else { None },
+                    top_level_offset: 0,
+                    body: serde_json::to_string(&ids.iter().map(|i| json!({ primary_key_column: i })).collect::<Vec<_>>())
+                        .context(JsonSerializeSnafu)
+                        .context(CoreSnafu)?,
+                    response_headers: None,
+                    response_status: None,
+                }
+            )
         }
         Insert { .. } | Update { .. } | Delete { .. } if !return_representation => {
             let affected_rows = transaction.affected_rows();
-            ApiResponse {
-                page_total: affected_rows,
-                total_result_set: None,
-                top_level_offset: 0,
-                response_headers: None,
-                response_status: None,
-                body: String::from(""),
-            }
+            (
+                true,
+                ApiResponse {
+                    page_total: affected_rows,
+                    total_result_set: None,
+                    top_level_offset: 0,
+                    response_headers: None,
+                    response_status: None,
+                    body: String::from(""),
+                }
+            )
         }
 
         _ => {
             let response = response.unwrap();
-            ApiResponse {
-                page_total: response.page_total as u64,
-                total_result_set: response.total_result_set.map(|i| i as u64),
-                top_level_offset: 0,
-                response_headers: response.response_headers,
-                response_status: response.response_status,
-                body: response.body,
-            }
+            (   response.constraints_satisfied,
+                ApiResponse {
+                    page_total: response.page_total as u64,
+                    total_result_set: response.total_result_set.map(|i| i as u64),
+                    top_level_offset: 0,
+                    response_headers: response.response_headers,
+                    response_status: response.response_status,
+                    body: response.body,
+                }
+            )
         }
     };
 
-    // let constraints_satisfied: bool = response.constraints_satisfied;
-    // if !constraints_satisfied {
-    //     transaction.rollback().await.context(MysqlDbSnafu { authenticated })?;
-    //     return Err(to_core_error(PermissionDenied {
-    //         details: "check constraint of an insert/update permission has failed".to_string(),
-    //     }));
-    // }
+    if !constraints_satisfied {
+        transaction.rollback().await.context(MysqlDbSnafu { authenticated })?;
+        return Err(to_core_error(PermissionDenied {
+            details: "check constraint of an insert/update permission has failed".to_string(),
+        }));
+    }
 
     // let api_response = ApiResponse {
     //     page_total: response.page_total,
@@ -369,7 +385,6 @@ pub struct MySQLBackend {
 impl Backend for MySQLBackend {
     async fn init(vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
-
         let opts = Opts::from_url(&config.db_uri).map_err(|_| Error::Internal {
             message: "invalid mysql connection string".to_string(),
         })?;

@@ -267,6 +267,7 @@ fn execute(
             // set the request query to be a select
             select_request.query = Query {
                 node: Select {
+                    check: None,
                     from: (table.to_owned(), Some("subzero_source")),
                     join_tables: vec![], //todo!! this should probably not be empty
                     where_: select_where,

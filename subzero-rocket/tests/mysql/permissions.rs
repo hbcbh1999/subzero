@@ -37,7 +37,9 @@ feature "permissions"
             {"id":2,"value":"Two Bob Public","hidden":"Hidden"},
             {"id":3,"value":"Three Charlie Public","hidden":"Hidden"},
             {"id":10,"value":"Ten Alice Private","hidden":"Hidden"},
-            {"id":20,"value":"Twenty Bob Private","hidden":"Hidden"}
+            {"id":11,"value":"Eleven Alice Private","hidden":"Hidden"},
+            {"id":20,"value":"Twenty Bob Private","hidden":"Hidden"},
+            {"id":21,"value":"Twenty One Bob Private","hidden":"Hidden"}
           ]"#|]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
       it "admin can select all rows with embeds" $ do
@@ -49,7 +51,9 @@ feature "permissions"
               {"id":2,"value":"Two Bob Public","permissions_check_child":[{"id":2}]},
               {"id":3,"value":"Three Charlie Public","permissions_check_child":[{"id":3}]},
               {"id":10,"value":"Ten Alice Private","permissions_check_child":[{"id":10},{"id":11},{"id":12},{"id":13}]},
-              {"id":20,"value":"Twenty Bob Private","permissions_check_child":[{"id":20},{"id":21},{"id":22},{"id":23}]}
+              {"id":11,"value":"Eleven Alice Private","permissions_check_child":[]},
+              {"id":20,"value":"Twenty Bob Private","permissions_check_child":[{"id":20},{"id":21},{"id":22},{"id":23}]},
+              {"id":21,"value":"Twenty One Bob Private","permissions_check_child":[]}
             ]"#|]
             { matchHeaders = ["Content-Type" <:> "application/json"] }
 
@@ -70,7 +74,8 @@ feature "permissions"
               {"id":1,"value":"One Alice Public","hidden":"Hidden","public":1,"role":"alice"},
               {"id":2,"value":"Two Bob Public","hidden":"Hidden","public":1,"role":"bob"},
               {"id":3,"value":"Three Charlie Public","hidden":"Hidden","public":1,"role":"charlie"},
-              {"id":10,"value":"Ten Alice Private","hidden":"Hidden","public":0,"role":"alice"}
+              {"id":10,"value":"Ten Alice Private","hidden":"Hidden","public":0,"role":"alice"},
+              {"id":11,"value":"Eleven Alice Private","hidden":"Hidden","public":0,"role":"alice"}
             ]"#|]
             { matchHeaders = ["Content-Type" <:> "application/json"] }
       it "alice can select public rows and her private rows with embeds" $ do
@@ -81,9 +86,29 @@ feature "permissions"
             {"id":1,"value":"One Alice Public","public":1,"role":"alice","permissions_check_child":[{"id":1,"public":1,"role":"alice"}]},
             {"id":2,"value":"Two Bob Public","public":1,"role":"bob","permissions_check_child":[]},
             {"id":3,"value":"Three Charlie Public","public":1,"role":"charlie","permissions_check_child":[]},
-            {"id":10,"value":"Ten Alice Private","public":0,"role":"alice","permissions_check_child":[{"id":11,"public":1,"role":"alice"},{"id":12,"public":1,"role":"alice"}]}
+            {"id":10,"value":"Ten Alice Private","public":0,"role":"alice","permissions_check_child":[{"id":11,"public":1,"role":"alice"},{"id":12,"public":1,"role":"alice"}]},
+            {"id":11,"value":"Eleven Alice Private","public":0,"role":"alice","permissions_check_child":[]}
           ]"#|]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
+    describe "delete" $
+      it "anonymouse can not delete" $
+        request methodDelete "/permissions_check?id=eq.1" ""
+        shouldRespondWith 403
+      it "alice can delete her private rows" $
+        request methodDelete "/permissions_check?id=eq.11&select=id"
+        [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
+        ""
+        shouldRespondWith
+        [json|r#"[{"id":11}]"#|]
+        { matchStatus  = 200 }
+      it "alice can not delete rows for bob" $
+        request methodDelete "/permissions_check?id=eq.21&select=id"
+        [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
+        ""
+        shouldRespondWith
+        [json|r#"[]"#|]
+        { matchStatus  = 200 }
+
     describe "insert" $
       it "admin can insert everything" $
         request methodPost "/permissions_check?select=id,value,hidden,public,role"
@@ -125,7 +150,7 @@ feature "permissions"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4ifQ.aMYD4kILQ5BBlRNB3HvK55sfex_OngpB_d28iAMq-WU", ("Prefer", "return=representation") ]
           [json| r#"{"hidden":"Hidden changed"}"# |]
           shouldRespondWith
-          [json|r#"[{"id":1},{"id":2},{"id":3},{"id":10},{"id":20}]"#|]
+          [json|r#"[{"id":1},{"id":2},{"id":3},{"id":10},{"id":11},{"id":20},{"id":21}]"#|]
           { matchStatus  = 200 }
       it "alice can update her private rows" $
         request methodPatch "/permissions_check?id=eq.10&select=id,value,hidden,public,role"
@@ -138,7 +163,7 @@ feature "permissions"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
           [json| r#"{"hidden":"Hidden changed","public":1}"# |]
           shouldRespondWith
-          [json|r#"[{"id":1},{"id":10}]"#|]
+          [json|r#"[{"id":1},{"id":10},{"id":11}]"#|]
           { matchStatus  = 200 }
       it "alice can not update rows for bob even if they are public" $
         request methodPatch "/permissions_check?id=eq.2&select=id,value,hidden,public,role"

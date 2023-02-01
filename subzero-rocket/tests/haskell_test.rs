@@ -84,6 +84,7 @@ macro_rules! haskell_test {
 
                     $(request methodDelete $delete_url:literal
                         $([
+                            $(authHeaderJWT $delete_jwt_token:literal , )?
                             ($delete_header_nn0:literal,$delete_header_v0:literal)
                             $(
                               ,($delete_header_nn1:literal,$delete_header_v1:literal)
@@ -227,6 +228,9 @@ macro_rules! haskell_test {
                                             //$(request.add_header(Accept::from_str($delete_accept_header).unwrap());)?
 
                                             $(
+                                              $(
+                                                request.add_header(Header::new("Authorization", format!("Bearer {}",$delete_jwt_token)));
+                                              )?
                                               haskell_test!(@add_header request $delete_header_nn0 $delete_header_v0);
                                               $(
                                                 haskell_test!(@add_header request $delete_header_nn1 $delete_header_v1);

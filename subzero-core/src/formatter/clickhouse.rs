@@ -95,6 +95,7 @@ pub fn fmt_query<'a>(
             offset,
             order,
             groupby,
+            ..
         } => {
             //let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
             let (_qi, from_snippet) = match table_alias {
@@ -478,6 +479,7 @@ mod tests {
     fn test_fmt_select_query() {
         let q = Query {
             node: Select {
+                check: None,
                 order: vec![],
                 groupby: vec![],
                 limit: None,
@@ -518,6 +520,7 @@ mod tests {
                 SubSelect {
                     query: Query {
                         node: Select {
+                            check: None,
                             order: vec![],
                             groupby: vec![],
                             limit: None,
@@ -575,6 +578,7 @@ mod tests {
                 SubSelect {
                     query: Query {
                         node: Select {
+                            check: None,
                             order: vec![],
                             groupby: vec![],
                             limit: None,
@@ -714,8 +718,8 @@ mod tests {
         "#
         );
 
-        let schema_sturcture: DbSchema = serde_json::from_str("[]").unwrap();
-        let (main_query_str, _parameters, _) = generate(fmt_main_query(&schema_sturcture, "default", &api_request, &HashMap::new()).unwrap());
+        let db_schema: DbSchema = serde_json::from_str("{\"use_internal_permissions\": false, \"schemas\":[]}").unwrap();
+        let (main_query_str, _parameters, _) = generate(fmt_main_query(&db_schema, "default", &api_request, &HashMap::new()).unwrap());
         assert_eq!(re.replace_all(main_query_str.as_str(), " "), re.replace_all(expected_main_query_str.as_str(), " "));
     }
 }

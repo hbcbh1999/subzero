@@ -112,7 +112,7 @@ where
         //env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "true");
         env::set_var("SUBZERO_URL_PREFIX", "/rest");
         env::set_var("SUBZERO_DB_SCHEMA_STRUCTURE", "{sql_file=../../../../introspection/mysql_introspection_query.sql}");
-        //env::set_var("SUBZERO_DISABLE_INTERNAL_PERMISSIONS", "true");
+        env::set_var("SUBZERO_DISABLE_INTERNAL_PERMISSIONS", "false");
         env::remove_var("SUBZERO_DB_MAX_ROWS");
         lazy_static::initialize(client);
     });

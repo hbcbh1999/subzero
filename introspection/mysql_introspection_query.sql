@@ -111,7 +111,7 @@ select json_object(
 from (
     select json_object(
         'name', schema_name,
-        'objects', (
+        'objects', coalesce((
             select json_arrayagg(o.row) from (
                 select json_object(
                     'kind', t.kind, 
@@ -157,7 +157,7 @@ from (
                 from tables t
                 where s.schema_name = t.table_schema
             ) o
-        )
+        ), json_array())
     ) as "row"
     from schemas_ s
 ) s

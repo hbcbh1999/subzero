@@ -70,7 +70,7 @@ pub fn fmt_main_query_internal<'a>(
             ..
         })
     );
-    let check_constraints = matches!(query.node, Insert { .. } | Update { .. });
+    let check_constraints = matches!(query.node, Insert { .. } | Update { .. } | Select {check: Some(_), ..});
     let return_representation = return_representation(method, query, preferences);
     let body_snippet = get_body_snippet!(return_representation, accept_content_type, query)?;
     let run_unwrapped_query = matches!(query.node, Insert { .. } | Update { .. } | Delete { .. });
@@ -99,7 +99,8 @@ pub fn fmt_main_query_internal<'a>(
             + body_snippet
             + " as body, "
             + if check_constraints {
-                "(select coalesce(bool_and(_subzero_check__constraint),true) from subzero_source) as constraints_satisfied, "
+                //"(select coalesce(bool_and(_subzero_check__constraint),true) from subzero_source) as constraints_satisfied, "
+                "( select coalesce(min(case when _subzero_check__constraint then 1 else 0 end) = 1,true)  from _subzero_query) as constraints_satisfied, "
             } else {
                 "true as constraints_satisfied, "
             }
@@ -244,6 +245,7 @@ pub fn fmt_query<'a>(
             offset,
             order,
             groupby,
+            check,
         } => {
             //let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
             let (_qi, from_snippet) = match table_alias {
@@ -269,11 +271,19 @@ pub fn fmt_query<'a>(
                 .unzip();
             select.extend(sub_selects.into_iter());
 
+            // this check field is relevant in secend stage select (after a mutation)
+            // for databases that do not support returning clause
+            let check_condition = match check {
+                Some(c) if !c.conditions.is_empty() => ", " + fmt_condition_tree(qi, c)? + " as _subzero_check__constraint",
+                _ => sql("")
+            };
+
             (
                 None,
                 " select json_object("
                     + select.join(", ")
                     + ") as row_"
+                    + check_condition
                     + " from "
                     + from_snippet
                     + if add_env_tbl_to_from { ", env " } else { "" }
@@ -407,6 +417,7 @@ pub fn fmt_query<'a>(
             let schema_obj = db_schema.get_object(schema, from)?;
             let primary_key = schema_obj.columns.iter().find(|&(_, c)| c.primary_key).map(|(_, c)| c.name).unwrap_or("");
             let qi = &Qi(schema, from);
+            let fmt_qi = fmt_qi(qi);
             // let qi_subzero_source = &Qi("", "subzero_source");
             // let mut select: Vec<_> = select.iter().map(|s| fmt_select_item(qi_subzero_source, s)).collect::<Result<Vec<_>>>()?;
             // let (sub_selects, joins): (Vec<_>, Vec<_>) = q
@@ -426,11 +437,11 @@ pub fn fmt_query<'a>(
             //         .collect::<Vec<_>>()
             //         .join(",")
             // };
-            let collect_ids_condition = format!("(@subzero_ids := json_array_append(@subzero_ids, '$', `{primary_key}`)) <> '[]'");
+            let collect_ids_condition = format!("(@subzero_ids := json_array_append(@subzero_ids, '$', {fmt_qi}.`{primary_key}`)) <> '[]'");
             (
                 None,
                 sql(" delete from ")
-                    + fmt_qi(qi)
+                    + fmt_qi
                     + if !where_.conditions.is_empty() {
                         " where " + fmt_condition_tree(qi, where_)? + " and " + collect_ids_condition
                     } else {
@@ -516,7 +527,7 @@ pub fn fmt_query<'a>(
                 .map(|c| format!("{qi_fmt}.{} = subzero_body.{}", fmt_identity(c), fmt_identity(c)))
                 .collect::<Vec<_>>()
                 .join(",");
-            let collect_ids_condition = format!("(@subzero_ids := json_array_append(@subzero_ids, '$', `{primary_key}`)) <> '[]'");
+            let collect_ids_condition = format!("(@subzero_ids := json_array_append(@subzero_ids, '$', {qi_fmt}.`{primary_key}`)) <> '[]'");
             (
                 Some(fmt_body(payload, columns)),
                 // update clients _, subzero_body

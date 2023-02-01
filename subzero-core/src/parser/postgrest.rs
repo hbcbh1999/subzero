@@ -749,6 +749,7 @@ pub fn parse<'a>(
                     offset: None,
                     order: vec![],
                     groupby: groupbys,
+                    check: None,
                 },
                 sub_selects,
             };
@@ -1508,6 +1509,7 @@ fn select_item(i: &str) -> Parsed<SelectKind> {
                         offset: None,
                         order: vec![],
                         groupby: vec![],
+                        check: None
                     },
                     sub_selects: sub_sel,
                 },
@@ -2625,6 +2627,7 @@ pub mod tests {
                     operator: And,
                     conditions: vec![],
                 },
+                check: None
             },
             sub_selects: vec![SubSelect {
                 query: Query {
@@ -2644,6 +2647,7 @@ pub mod tests {
                             operator: And,
                             conditions: vec![],
                         },
+                        check: None
                     },
                     sub_selects: vec![],
                 },
@@ -2676,7 +2680,8 @@ pub mod tests {
                     where_: ConditionTree {
                         operator: And,
                         conditions: vec![condition.clone()]
-                    }
+                    },
+                    check: None
                 },
                 sub_selects: vec![SubSelect {
                     query: Query {
@@ -2696,7 +2701,8 @@ pub mod tests {
                             where_: ConditionTree {
                                 operator: And,
                                 conditions: vec![condition]
-                            }
+                            },
+                            check: None
                         },
                         sub_selects: vec![]
                     },
@@ -2800,13 +2806,15 @@ pub mod tests {
                                     }
                                 }
                             ]
-                        }
+                        },
+                        check: None
                     },
                     sub_selects: vec![
                         SubSelect {
                             query: Query {
                                 sub_selects: vec![],
                                 node: Select {
+                                    check: None,
                                     order: vec![],
                                     groupby: vec![],
                                     limit: None,
@@ -2849,6 +2857,7 @@ pub mod tests {
                             query: Query {
                                 sub_selects: vec![],
                                 node: Select {
+                                    check: None,
                                     order: vec![],
                                     groupby: vec![],
                                     limit: None,
@@ -3283,6 +3292,7 @@ pub mod tests {
                             query: Query {
                                 sub_selects: vec![],
                                 node: Select {
+                                    check: None,
                                     order: vec![],
                                     groupby: vec![],
                                     limit: None,
@@ -3329,6 +3339,7 @@ pub mod tests {
                             query: Query {
                                 sub_selects: vec![],
                                 node: Select {
+                                    check: None,
                                     order: vec![],
                                     groupby: vec![],
                                     limit: None,
@@ -4069,6 +4080,7 @@ pub mod tests {
                     query: Query {
                         sub_selects: vec![],
                         node: Select {
+                            check: None,
                             order: vec![],
                             groupby: vec![],
                             limit: None,
@@ -4123,6 +4135,7 @@ pub mod tests {
                     query: Query {
                         sub_selects: vec![],
                         node: Select {
+                            check: None,
                             order: vec![],
                             groupby: vec![],
                             limit: None,

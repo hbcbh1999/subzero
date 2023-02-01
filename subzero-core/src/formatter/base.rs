@@ -320,6 +320,7 @@ pub fn fmt_query<'a>(
             offset,
             order,
             groupby,
+            ..
         } => {
             //let table_alias = table_alias_suffix.map(|s| format!("{}{}", table, s)).unwrap_or_default();
             let (_qi, from_snippet) = match table_alias {

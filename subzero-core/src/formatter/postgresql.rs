@@ -165,6 +165,7 @@ mod tests {
                 SubSelect {
                     query: Query {
                         node: Select {
+                            check: None,
                             order: vec![],
                             limit: None,
                             offset: None,
@@ -212,6 +213,7 @@ mod tests {
                 SubSelect {
                     query: Query {
                         node: Select {
+                            check: None,
                             order: vec![],
                             groupby: vec![],
                             limit: None,
@@ -344,6 +346,7 @@ mod tests {
     fn test_fmt_select_query() {
         let q = Query {
             node: Select {
+                check: None,
                 order: vec![],
                 groupby: vec![],
                 limit: None,
@@ -394,6 +397,7 @@ mod tests {
                 SubSelect {
                     query: Query {
                         node: Select {
+                            check: None,
                             order: vec![],
                             groupby: vec![],
                             limit: None,
@@ -441,6 +445,7 @@ mod tests {
                 SubSelect {
                     query: Query {
                         node: Select {
+                            check: None,
                             order: vec![],
                             groupby: vec![],
                             limit: None,
