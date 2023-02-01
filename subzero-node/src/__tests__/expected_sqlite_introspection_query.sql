@@ -59,7 +59,6 @@ relations as (
         select * from custom_relations
         union
         select * from foreign_keys
-    
     )
 ),
 

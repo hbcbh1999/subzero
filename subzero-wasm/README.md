@@ -4,5 +4,6 @@ It's Responsible parsing and formatting queries.
 build with
 
 ```
+wasm-pack build --target web
 wasm-pack build --target nodejs
 ```
