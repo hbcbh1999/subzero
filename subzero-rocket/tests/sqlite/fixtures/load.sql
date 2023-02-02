@@ -111,7 +111,9 @@ insert into permissions_check values (1, 'One Alice Public', 'Hidden', 'alice', 
 insert into permissions_check values (2, 'Two Bob Public', 'Hidden', 'bob', true);
 insert into permissions_check values (3, 'Three Charlie Public', 'Hidden', 'charlie', true);
 insert into permissions_check values (10, 'Ten Alice Private', 'Hidden', 'alice', false);
+insert into permissions_check values (11, 'Eleven Alice Private', 'Hidden', 'alice', false);
 insert into permissions_check values (20, 'Twenty Bob Private', 'Hidden', 'bob', false);
+insert into permissions_check values (21, 'Twenty One Bob Private', 'Hidden', 'bob', false);
 
 insert into permissions_check_child values (1, 'One Alice Public', 'alice', true, 1);
 insert into permissions_check_child values (2, 'Two Bob Public', 'bob', true, 2);

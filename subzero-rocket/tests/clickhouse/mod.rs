@@ -2,7 +2,7 @@
 
 #[allow(unused_imports)]
 mod basic;
-mod common;
+mod setup;
 #[allow(unused_imports)]
 mod permissions;
 #[allow(unused_imports)]

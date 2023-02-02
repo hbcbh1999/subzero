@@ -1,41 +1,5 @@
 [
     {
-        "constraint_name": "tasks_project_id_fkey",
-        "table_schema": "public",
-        "table_name": "tasks",
-        "columns": ["project_id"],
-        "foreign_table_schema": "public",
-        "foreign_table_name": "projects",
-        "foreign_columns": ["id"]
-    },
-    {
-        "constraint_name": "projects_client_id_fkey",
-        "table_schema": "public",
-        "table_name": "projects",
-        "columns": ["client_id"],
-        "foreign_table_schema": "public",
-        "foreign_table_name": "clients",
-        "foreign_columns": ["id"]
-    },
-    {
-        "constraint_name": "pickup_fkey",
-        "table_schema": "public",
-        "table_name": "trips",
-        "columns": ["pickup_nyct2010_gid"],
-        "foreign_table_schema": "public",
-        "foreign_table_name": "taxi_zone_dictionary",
-        "foreign_columns": ["LocationID"]
-    },
-    {
-        "constraint_name": "dropoff_fkey",
-        "table_schema": "public",
-        "table_name": "trips",
-        "columns": ["dropoff_nyct2010_gid"],
-        "foreign_table_schema": "public",
-        "foreign_table_name": "taxi_zone_dictionary",
-        "foreign_columns": ["LocationID"]
-    },
-    {
         "constraint_name": "no_fk_projects_client_id_fkey",
         "table_schema":"test", 
         "table_name":"no_fk_projects", 

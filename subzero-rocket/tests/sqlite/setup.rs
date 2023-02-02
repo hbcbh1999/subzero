@@ -1,9 +1,9 @@
 use rocket::http::{Cookie, Header};
 use rocket::local::asynchronous::LocalRequest;
-use std::env;
+pub use std::env;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::Once;
+pub use std::sync::Once;
 use lazy_static::LazyStatic;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -11,23 +11,20 @@ use std::env::temp_dir;
 use std::fs::File;
 pub use demonstrate::demonstrate;
 pub use crate::haskell_test;
-use std::thread;
+pub use std::thread;
 use tokio::runtime::Builder;
-use rocket::local::asynchronous::Client;
-use async_once::AsyncOnce;
+pub use rocket::local::asynchronous::Client;
+pub use async_once::AsyncOnce;
 use super::super::start;
 
 pub static INIT_DB: Once = Once::new();
-pub static INIT_CLIENT: Once = Once::new();
+//pub static INIT_CLIENT: Once = Once::new();
 lazy_static! {
     static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
-    static ref RUNTIME: tokio::runtime::Runtime = Builder::new_multi_thread().enable_all().build().unwrap();
+    pub static ref RUNTIME: tokio::runtime::Runtime = Builder::new_multi_thread().enable_all().build().unwrap();
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
-                let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                let fixtures_dir = project_dir.join("tests/sqlite/fixtures");
-                assert!(env::set_current_dir(&fixtures_dir).is_ok());
                 CLIENT_INNER.get().await;
             })
         })
@@ -42,6 +39,8 @@ pub fn setup_db(init_db_once: &Once) {
     init_db_once.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let fixtures_dir = project_dir.join("tests/sqlite/fixtures");
+        assert!(env::set_current_dir(fixtures_dir).is_ok());
         let init_file = project_dir.join("tests/sqlite/fixtures/load.sql");
         let mut db = temp_dir();
         db.push(format!("{}.sqlite", thread_rng().sample_iter(&Alphanumeric).take(30).map(char::from).collect::<String>()));

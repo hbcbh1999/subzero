@@ -1,4 +1,4 @@
-use super::common::*;
+use super::setup::*;
 haskell_test! {
 feature "insert"
     describe "disparate json types" $ do

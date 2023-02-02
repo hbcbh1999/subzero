@@ -22,9 +22,6 @@ lazy_static! {
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
-                let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                let fixtures_dir = project_dir.join("tests/postgresql/fixtures");
-                assert!(env::set_current_dir(&fixtures_dir).is_ok());
                 CLIENT_INNER.get().await;
             })
         })
@@ -39,6 +36,8 @@ pub fn setup_db(init_db_once: &Once) {
     init_db_once.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let fixtures_dir = project_dir.join("tests/postgresql/fixtures");
+        assert!(env::set_current_dir(fixtures_dir).is_ok());
         let init_file = project_dir.join("tests/postgresql/fixtures/load.sql");
 
         let postgresql_db_uri = option_env!("POSTGRESQL_DB_URI");

@@ -1,5 +1,5 @@
 //TODO!!!! checks for not updated are invalid since the tests are configured to rollback all actions
-use super::common::*;
+use super::setup::*;
 
 haskell_test! {
 feature "singular"

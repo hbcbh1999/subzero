@@ -1,4 +1,4 @@
-use super::common::*;
+use super::setup::*;
 haskell_test! {
 feature "json operators"
   describe "Shaping response with select parameter" $ do

@@ -1,4 +1,19 @@
-use super::common::*;
+use super::setup::*;
+use super::super::start;
+
+static INIT_CLIENT: Once = Once::new();
+lazy_static! {
+  static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async {
+    env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
+    env::remove_var("SUBZERO_DB_PRE_REQUEST");
+    env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "false");
+    Client::untracked(start().await.unwrap()).await.expect("valid client")
+  });
+  static ref CLIENT: &'static AsyncOnce<Client> = {
+      thread::spawn(move || { RUNTIME.block_on(async { CLIENT_INNER.get().await;})}).join().expect("Thread panicked");
+      &*CLIENT_INNER
+  };
+}
 
 haskell_test! {
 feature "basic"
@@ -175,33 +190,33 @@ feature "basic"
 
   describe "json operators" $ do
     it "obtains a json subfield one level with casting" $
-      get "/complex_items?id=eq.1&select=settings->>foo" shouldRespondWith
+      get "/complex_items?id=eq.1&select=settings->foo" shouldRespondWith
         [json| r#"[{"foo":{"int":1,"bar":"baz"}}]"# |] //-- the value of foo here is of type "text"
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "renames json subfield one level with casting" $
-      get "/complex_items?id=eq.1&select=myFoo:settings->>foo" shouldRespondWith
+      get "/complex_items?id=eq.1&select=myFoo:settings->foo" shouldRespondWith
         [json| r#"[{"myFoo":{"int":1,"bar":"baz"}}]"# |] //-- the value of foo here is of type "text"
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
 
     it "obtains a json subfield two levels (string)" $
-      get "/complex_items?id=eq.1&select=settings->foo->>bar" shouldRespondWith
+      get "/complex_items?id=eq.1&select=settings->foo->bar" shouldRespondWith
         [json| r#"[{"bar":"baz"}]"# |]
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "renames json subfield two levels (string)" $
-      get "/complex_items?id=eq.1&select=myBar:settings->foo->>bar" shouldRespondWith
+      get "/complex_items?id=eq.1&select=myBar:settings->foo->bar" shouldRespondWith
         [json| r#"[{"myBar":"baz"}]"# |]
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "obtains a json subfield two levels with casting (int)" $
-      get "/complex_items?id=eq.1&select=settings->foo->>int::unsigned" shouldRespondWith
+      get "/complex_items?id=eq.1&select=settings->foo->int::unsigned" shouldRespondWith
         [json| r#"[{"int":1}]"# |] //-- the value in the db is an int, but here we expect a string for now
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
     it "renames json subfield two levels with casting (int)" $
-      get "/complex_items?id=eq.1&select=myInt:settings->foo->>int::unsigned" shouldRespondWith
+      get "/complex_items?id=eq.1&select=myInt:settings->foo->int::unsigned" shouldRespondWith
         [json| r#"[{"myInt":1}]"# |] //-- the value in the db is an int, but here we expect a string for now
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 

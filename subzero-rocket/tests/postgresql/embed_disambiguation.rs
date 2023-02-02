@@ -1,4 +1,4 @@
-use super::common::*;
+use super::setup::*;
 haskell_test! {
 feature "embed_disambiguation"
   describe "resource embedding disambiguation" $ do

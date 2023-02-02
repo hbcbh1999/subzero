@@ -22,9 +22,6 @@ lazy_static! {
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
-                let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                let fixtures_dir = project_dir.join("tests/clickhouse/fixtures");
-                assert!(env::set_current_dir(&fixtures_dir).is_ok());
                 CLIENT_INNER.get().await;
             })
         }).join().expect("Thread panicked");
@@ -37,7 +34,8 @@ pub fn setup_db(init_db_once: &Once) {
     init_db_once.call_once(|| {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-
+        let fixtures_dir = project_dir.join("tests/clickhouse/fixtures");
+        assert!(env::set_current_dir(fixtures_dir).is_ok());
         let tmp_ch_cmd = project_dir.join("tests/bin/clickhouse_tmp.sh");
         let fixtures_dir = project_dir.join("tests/clickhouse/fixtures/");
         let init_file = fixtures_dir.join("load.sql");

@@ -19,7 +19,7 @@
 // QuerySpec.hs
 // RpcSpec.hs
 
-mod common;
+mod setup;
 
 #[allow(unused_imports)]
 mod aggregates;
@@ -41,8 +41,8 @@ mod json_operator;
 mod limits;
 #[allow(unused_imports)]
 mod multiple_schemas;
-#[allow(unused_imports)]
-mod permissions;
+// #[allow(unused_imports)]
+// mod permissions;
 #[allow(unused_imports)]
 mod query;
 #[allow(unused_imports)]
@@ -55,3 +55,13 @@ mod unicode;
 mod update;
 #[allow(unused_imports)]
 mod upsert;
+
+#[allow(clippy::duplicate_mod)]
+#[allow(unused_imports)]
+#[path = "../common/permissions.rs"]
+mod permissions;
+
+#[allow(clippy::duplicate_mod)]
+#[allow(unused_imports)]
+#[path = "../common/basic.rs"]
+mod basic;

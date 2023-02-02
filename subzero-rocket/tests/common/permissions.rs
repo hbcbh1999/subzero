@@ -1,4 +1,20 @@
-use super::common::*;
+use super::setup::*;
+use super::super::start;
+
+static INIT_CLIENT: Once = Once::new();
+lazy_static! {
+  static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async {
+    env::set_var("SUBZERO_DISABLE_INTERNAL_PERMISSIONS", "false");
+    env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
+    env::remove_var("SUBZERO_DB_PRE_REQUEST");
+    env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "false");
+    Client::untracked(start().await.unwrap()).await.expect("valid client")
+  });
+  static ref CLIENT: &'static AsyncOnce<Client> = {
+      thread::spawn(move || { RUNTIME.block_on(async { CLIENT_INNER.get().await;})}).join().expect("Thread panicked");
+      &*CLIENT_INNER
+  };
+}
 
 haskell_test! {
 feature "permissions"
@@ -68,26 +84,26 @@ feature "permissions"
           { matchStatus = 200 }
       it "alice can select public rows and her private rows" $ do
           let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk"
-          request methodGet "/permissions_check?select=id,value,hidden,public,role" [auth] ""
+          request methodGet "/permissions_check?select=id,value,hidden,role" [auth] ""
             shouldRespondWith
             [json|r#"[
-              {"id":1,"value":"One Alice Public","hidden":"Hidden","public":1,"role":"alice"},
-              {"id":2,"value":"Two Bob Public","hidden":"Hidden","public":1,"role":"bob"},
-              {"id":3,"value":"Three Charlie Public","hidden":"Hidden","public":1,"role":"charlie"},
-              {"id":10,"value":"Ten Alice Private","hidden":"Hidden","public":0,"role":"alice"},
-              {"id":11,"value":"Eleven Alice Private","hidden":"Hidden","public":0,"role":"alice"}
+              {"id":1,"value":"One Alice Public","hidden":"Hidden","role":"alice"},
+              {"id":2,"value":"Two Bob Public","hidden":"Hidden","role":"bob"},
+              {"id":3,"value":"Three Charlie Public","hidden":"Hidden","role":"charlie"},
+              {"id":10,"value":"Ten Alice Private","hidden":"Hidden","role":"alice"},
+              {"id":11,"value":"Eleven Alice Private","hidden":"Hidden","role":"alice"}
             ]"#|]
             { matchHeaders = ["Content-Type" <:> "application/json"] }
       it "alice can select public rows and her private rows with embeds" $ do
         let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk"
-        request methodGet "/permissions_check?select=id,value,public,role,permissions_check_child(id,public,role)" [auth] ""
+        request methodGet "/permissions_check?select=id,value,role,permissions_check_child(id,role)" [auth] ""
           shouldRespondWith
           [json|r#"[
-            {"id":1,"value":"One Alice Public","public":1,"role":"alice","permissions_check_child":[{"id":1,"public":1,"role":"alice"}]},
-            {"id":2,"value":"Two Bob Public","public":1,"role":"bob","permissions_check_child":[]},
-            {"id":3,"value":"Three Charlie Public","public":1,"role":"charlie","permissions_check_child":[]},
-            {"id":10,"value":"Ten Alice Private","public":0,"role":"alice","permissions_check_child":[{"id":11,"public":1,"role":"alice"},{"id":12,"public":1,"role":"alice"}]},
-            {"id":11,"value":"Eleven Alice Private","public":0,"role":"alice","permissions_check_child":[]}
+            {"id":1,"value":"One Alice Public","role":"alice","permissions_check_child":[{"id":1,"role":"alice"}]},
+            {"id":2,"value":"Two Bob Public","role":"bob","permissions_check_child":[]},
+            {"id":3,"value":"Three Charlie Public","role":"charlie","permissions_check_child":[]},
+            {"id":10,"value":"Ten Alice Private","role":"alice","permissions_check_child":[{"id":11,"role":"alice"},{"id":12,"role":"alice"}]},
+            {"id":11,"value":"Eleven Alice Private","role":"alice","permissions_check_child":[]}
           ]"#|]
           { matchHeaders = ["Content-Type" <:> "application/json"] }
     describe "delete" $
@@ -111,21 +127,21 @@ feature "permissions"
 
     describe "insert" $
       it "admin can insert everything" $
-        request methodPost "/permissions_check?select=id,value,hidden,public,role"
+        request methodPost "/permissions_check?select=id,value,hidden,role"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4ifQ.aMYD4kILQ5BBlRNB3HvK55sfex_OngpB_d28iAMq-WU", ("Prefer", "return=representation") ]
           [json| r#"{"id":30,"value":"Thirty Alice Private","hidden":"Hidden","public":0,"role":"alice"}"# |]
           shouldRespondWith
-          [json|r#"[{"id":30,"value":"Thirty Alice Private","hidden":"Hidden","public":0,"role":"alice"}]"#|]
+          [json|r#"[{"id":30,"value":"Thirty Alice Private","hidden":"Hidden","role":"alice"}]"#|]
           { matchStatus  = 201 }
       it "alice can insert her private rows" $
-        request methodPost "/permissions_check?select=id,value,hidden,public,role"
+        request methodPost "/permissions_check?select=id,value,hidden,role"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
           [json| r#"{"id":30,"value":"Thirty Alice Private","hidden":"Hidden","public":0,"role":"alice"}"# |]
           shouldRespondWith
-          [json|r#"[{"id":30,"value":"Thirty Alice Private","hidden":"Hidden","public":0,"role":"alice"}]"#|]
+          [json|r#"[{"id":30,"value":"Thirty Alice Private","hidden":"Hidden","role":"alice"}]"#|]
           { matchStatus  = 201 }
       it "alice can not insert rows for bob" $
-        request methodPost "/permissions_check?select=id,value,hidden,public,role"
+        request methodPost "/permissions_check?select=id,value,hidden,role"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
           [json| r#"{"id":30,"value":"Thirty Bob Private","hidden":"Hidden","public":0,"role":"bob"}"# |]
           shouldRespondWith
@@ -140,11 +156,11 @@ feature "permissions"
           { matchStatus  = 403 }
     describe "update" $
       it "admin can update everything" $
-        request methodPatch "/permissions_check?id=eq.10&select=id,value,hidden,public,role"
+        request methodPatch "/permissions_check?id=eq.10&select=id,value,hidden,role"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4ifQ.aMYD4kILQ5BBlRNB3HvK55sfex_OngpB_d28iAMq-WU", ("Prefer", "return=representation") ]
           [json| r#"{"hidden":"Hidden changed"}"# |]
           shouldRespondWith
-          [json|r#"[{"id":10,"value":"Ten Alice Private","hidden":"Hidden changed","public":0,"role":"alice"}]"#|]
+          [json|r#"[{"id":10,"value":"Ten Alice Private","hidden":"Hidden changed","role":"alice"}]"#|]
           { matchStatus  = 200 }
         request methodPatch "/permissions_check?select=id"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4ifQ.aMYD4kILQ5BBlRNB3HvK55sfex_OngpB_d28iAMq-WU", ("Prefer", "return=representation") ]
@@ -153,11 +169,11 @@ feature "permissions"
           [json|r#"[{"id":1},{"id":2},{"id":3},{"id":10},{"id":11},{"id":20},{"id":21}]"#|]
           { matchStatus  = 200 }
       it "alice can update her private rows" $
-        request methodPatch "/permissions_check?id=eq.10&select=id,value,hidden,public,role"
+        request methodPatch "/permissions_check?id=eq.10&select=id,value,hidden,role"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
           [json| r#"{"hidden":"Hidden changed","public":1}"# |]
           shouldRespondWith
-          [json|r#"[{"id":10,"value":"Ten Alice Private","hidden":"Hidden changed","public":1,"role":"alice"}]"#|]
+          [json|r#"[{"id":10,"value":"Ten Alice Private","hidden":"Hidden changed","role":"alice"}]"#|]
           { matchStatus  = 200 }
         request methodPatch "/permissions_check?select=id"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
@@ -166,7 +182,7 @@ feature "permissions"
           [json|r#"[{"id":1},{"id":10},{"id":11}]"#|]
           { matchStatus  = 200 }
       it "alice can not update rows for bob even if they are public" $
-        request methodPatch "/permissions_check?id=eq.2&select=id,value,hidden,public,role"
+        request methodPatch "/permissions_check?id=eq.2&select=id,value,hidden,role"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
           [json| r#"{"hidden":"Hidden changed"}"# |]
           shouldRespondWith
@@ -181,14 +197,14 @@ feature "permissions"
           { matchStatus  = 403 }
     describe "validation" $
       it "admin can not insert invalid values for hidden" $
-        request methodPost "/permissions_check?select=id,value,hidden,public,role"
+        request methodPost "/permissions_check?select=id,value,hidden,role"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4ifQ.aMYD4kILQ5BBlRNB3HvK55sfex_OngpB_d28iAMq-WU", ("Prefer", "return=representation") ]
           [json| r#"{"id":30,"value":"Thirty Alice Private","hidden":"Hidden invalid","public":0,"role":"alice"}"# |]
           shouldRespondWith
           [json|r#"{"details":"check constraint of an insert/update permission has failed","message":"Permission denied"}"#|]
           { matchStatus  = 403 }
       it "alice can not insert invalid values for hidden" $
-        request methodPost "/permissions_check?select=id,value,hidden,public,role"
+        request methodPost "/permissions_check?select=id,value,hidden,role"
           [ authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWxpY2UifQ.BHodFXgm4db4iFEIBdrFUdfmlNST3Ff9ilrfotJO1Jk", ("Prefer", "return=representation") ]
           [json| r#"{"id":30,"value":"Thirty Alice Private","hidden":"Hidden invalid","public":0,"role":"alice"}"# |]
           shouldRespondWith

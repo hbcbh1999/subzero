@@ -3,32 +3,29 @@
 pub use demonstrate::demonstrate;
 use rocket::http::{Cookie, Header};
 use rocket::local::asynchronous::LocalRequest;
-use std::env;
+pub use std::env;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::Once;
+pub use std::sync::Once;
 use lazy_static::LazyStatic;
 pub use crate::haskell_test;
-use std::thread;
+pub use std::thread;
 use tokio::runtime::Builder;
-use rocket::local::asynchronous::Client;
-use async_once::AsyncOnce;
+pub use rocket::local::asynchronous::Client;
+pub use async_once::AsyncOnce;
 use mysql::*;
 use mysql::prelude::*;
 use super::super::start;
 
 pub static INIT_DB: Once = Once::new();
-pub static INIT_CLIENT: Once = Once::new();
+//pub static INIT_CLIENT: Once = Once::new();
 lazy_static! {
     static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
-    static ref RUNTIME: tokio::runtime::Runtime = Builder::new_multi_thread().enable_all().build().unwrap();
+    pub static ref RUNTIME: tokio::runtime::Runtime = Builder::new_multi_thread().enable_all().build().unwrap();
     static ref MYSQL_POOL: Pool = Pool::new(option_env!("MYSQL_DB_URI").unwrap_or("")).unwrap();
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
-                let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                let fixtures_dir = project_dir.join("tests/mysql/fixtures");
-                assert!(env::set_current_dir(&fixtures_dir).is_ok());
                 CLIENT_INNER.get().await;
             })
         })
@@ -43,7 +40,7 @@ pub fn setup_db(init_db_once: &Once) {
         // initialization code here
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let fixtures_dir = project_dir.join("tests/mysql/fixtures");
-
+        assert!(env::set_current_dir(&fixtures_dir).is_ok());
         let mysql_db_uri = option_env!("MYSQL_DB_URI");
         let db_uri: String = match mysql_db_uri {
             Some(db_uri) => db_uri.to_owned(),
