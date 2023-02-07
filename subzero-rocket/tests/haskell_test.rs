@@ -159,9 +159,9 @@ macro_rules! haskell_test {
                       use std::str::FromStr;
 
                       before { setup_db(&INIT_DB); setup_client(&INIT_CLIENT, &CLIENT);}
-                      
+
                       $(
-                          
+
                           #[rocket::async_test]
                           async it $it {
                               $(

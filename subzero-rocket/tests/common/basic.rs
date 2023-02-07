@@ -3,16 +3,22 @@ use super::super::start;
 
 static INIT_CLIENT: Once = Once::new();
 lazy_static! {
-  static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async {
-    env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
-    env::remove_var("SUBZERO_DB_PRE_REQUEST");
-    env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "false");
-    Client::untracked(start().await.unwrap()).await.expect("valid client")
-  });
-  static ref CLIENT: &'static AsyncOnce<Client> = {
-      thread::spawn(move || { RUNTIME.block_on(async { CLIENT_INNER.get().await;})}).join().expect("Thread panicked");
-      &*CLIENT_INNER
-  };
+    static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async {
+        env::set_var("SUBZERO_DB_SCHEMAS", "[public]");
+        env::remove_var("SUBZERO_DB_PRE_REQUEST");
+        env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "false");
+        Client::untracked(start().await.unwrap()).await.expect("valid client")
+    });
+    static ref CLIENT: &'static AsyncOnce<Client> = {
+        thread::spawn(move || {
+            RUNTIME.block_on(async {
+                CLIENT_INNER.get().await;
+            })
+        })
+        .join()
+        .expect("Thread panicked");
+        &*CLIENT_INNER
+    };
 }
 
 haskell_test! {
@@ -187,7 +193,7 @@ feature "basic"
                               //, "Location" <:> "/projects?id=eq.6"
                               , "Content-Range" <:> "*/*" ]
           }
-  
+
   describe "json operators" $ do
     it "obtains a json subfield one level with casting" $
       get "/complex_items?id=eq.1&select=settings->foo" shouldRespondWith
