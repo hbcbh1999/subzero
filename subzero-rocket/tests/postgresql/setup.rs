@@ -38,7 +38,7 @@ pub fn setup_db(init_db_once: &Once) {
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let fixtures_dir = project_dir.join("tests/postgresql/fixtures");
         assert!(env::set_current_dir(fixtures_dir).is_ok());
-        let init_file = project_dir.join("tests/postgresql/fixtures/load.sql");
+        
 
         let postgresql_db_uri = option_env!("POSTGRESQL_DB_URI");
         let db_uri: String = match postgresql_db_uri {
@@ -59,25 +59,26 @@ pub fn setup_db(init_db_once: &Once) {
                 }
 
                 assert!(output.status.success());
+                let db_uri = String::from_utf8_lossy(&output.stdout).into_owned();
+                let init_file = project_dir.join("tests/postgresql/fixtures/load.sql");
+                let output = Command::new("psql")
+                    .arg("-f")
+                    .arg(init_file.to_str().unwrap())
+                    .arg(db_uri.as_str())
+                    .output()
+                    .expect("failed to execute process");
 
-                let db_uri = String::from_utf8_lossy(&output.stdout);
-                db_uri.into_owned()
+                if !output.status.success() {
+                    println!("status: {}", output.status);
+                    println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+                    println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+                }
+                assert!(output.status.success());
+                db_uri
             }
         };
-
-        let output = Command::new("psql")
-            .arg("-f")
-            .arg(init_file.to_str().unwrap())
-            .arg(db_uri.as_str())
-            .output()
-            .expect("failed to execute process");
-
-        if !output.status.success() {
-            println!("status: {}", output.status);
-            println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
-            println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-        }
-        assert!(output.status.success());
+        
+        
 
         env::set_var("SUBZERO_DB_URI", db_uri);
     });

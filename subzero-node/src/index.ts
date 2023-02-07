@@ -21,7 +21,7 @@ type SubzeroHttpRequest = HttpRequest & {
 initSync(wasmbin)
 //init(wasmbin)
 
-export type DbType = 'postgresql' | 'sqlite' | 'clickhouse'
+export type DbType = 'postgresql' | 'sqlite' | 'clickhouse' | 'mysql'
 export type Query = string
 export type Parameters = (string | number | boolean | null | (string | number | boolean | null)[])[]
 export type Statement = { query: Query, parameters: Parameters }
@@ -134,8 +134,11 @@ export class Subzero {
     // try to accomodate for different request types
 
     if (request instanceof Request) {
+      // @ts-ignore
       request.parsedUrl = new URL(request.url)
+      // @ts-ignore
       request.textBody = request.method === 'GET' ? '' : await request.text()
+      // @ts-ignore
       request.headersSequence = request.headers
     }
     else {

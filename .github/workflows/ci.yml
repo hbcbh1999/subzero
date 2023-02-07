@@ -18,9 +18,16 @@ env:
   SCCACHE_BUCKET: subzero-sccache
   RUST_TOOLCHAIN: nightly
   NODE_VERSION: 18
+
   POSTGRES_USER: postgrest_test_authenticator
   POSTGRES_PASSWORD: pass
   POSTGRES_DB: app
+
+  MYSQL_USER: mysql_test_authenticator
+  MYSQL_PASSWORD: pass
+  MYSQL_DATABASE: public
+  MYSQL_ROOT_PASSWORD: pass
+
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_REGION: us-east-1
@@ -33,6 +40,7 @@ jobs:
       - name: "Set environmental variables"
         run: |
           echo "POSTGRESQL_DB_URI=postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@localhost:5432/$POSTGRES_DB" >> $GITHUB_ENV
+          echo "MYSQL_DB_URI=mysql://$MYSQL_USER:$MYSQL_PASSWORD@localhost:3306/$MYSQL_DATABASE" >> $GITHUB_ENV
 
       - uses: actions/checkout@v2
         if: ${{ !env.ACT }}
@@ -65,10 +73,11 @@ jobs:
         working-directory: subzero-node
 
       - name: Bring up db services
-        run: docker-compose --file .github/docker-compose.yml up -d
+        run: docker-compose --file .github/docker-compose.yml --env-file .github/.env up -d
 
-      - run: cargo test --workspace --exclude subzero-wasm sqlite
-      - run: cargo test --workspace --exclude subzero-wasm postgresql -- --test-threads=1
+      - run: cargo test sqlite
+      - run: cargo test postgresql -- --test-threads=1
+      - run: cargo test mysql -- --test-threads=1
 
       - run: npm test
         working-directory: subzero-node
@@ -76,4 +85,4 @@ jobs:
       - run: sccache --show-stats
 
       - name: Bring down db services
-        run: docker-compose --file .github/docker-compose.yml down
+        run: docker-compose --file .github/docker-compose.yml --env-file .github/.env down

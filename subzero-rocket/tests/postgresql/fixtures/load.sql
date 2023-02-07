@@ -2,20 +2,20 @@
 
 \set ON_ERROR_STOP on
 
-\ir database.sql
-\ir roles.sql
-\ir schema.sql
-\ir jwt.sql
-\ir jsonschema.sql
-\ir privileges.sql
-\ir data.sql
+\ir sql/database.sql
+\ir sql/roles.sql
+\ir sql/schema.sql
+\ir sql/jwt.sql
+\ir sql/jsonschema.sql
+\ir sql/privileges.sql
+\ir sql/data.sql
 
-\ir subzero.request.sql
-\ir subzero.firebase.sql
-\ir subzero.basecamp.sql
-\ir subzero.cities.sql
-\ir subzero.odata.sql
-\ir subzero.aggregates.sql
-\ir subzero.custom_relations.sql
-\ir subzero.permissions.sql
-\ir subzero.basic.sql
+\ir sql/subzero.request.sql
+\ir sql/subzero.firebase.sql
+\ir sql/subzero.basecamp.sql
+\ir sql/subzero.cities.sql
+\ir sql/subzero.odata.sql
+\ir sql/subzero.aggregates.sql
+\ir sql/subzero.custom_relations.sql
+\ir sql/subzero.permissions.sql
+\ir sql/subzero.basic.sql
