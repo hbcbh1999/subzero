@@ -150,167 +150,162 @@ macro_rules! haskell_test {
     ) => {
         demonstrate! {
             $(
-            // #[rocket::async_test]
-            // async describe $feature {
-            //     use super::*;
-            //     before {
-            //         setup_db(&INIT_DB);
-            //         setup_client(&INIT_CLIENT, &CLIENT);
-            //     }
                   $(
-                    #[rocket::async_test]
-                    async describe $describe {
+                    describe $describe {
                       use super::{setup_db, setup_client, INIT_DB, INIT_CLIENT, CLIENT, normalize_url, haskell_test, add_header};
                       use pretty_assertions::assert_eq;
                       use rocket::http::{Accept, Header};
                       use serde_json::Value;
                       use std::str::FromStr;
+
                       before { setup_db(&INIT_DB); setup_client(&INIT_CLIENT, &CLIENT);}
-                          $(
+                      
+                      $(
+                          
+                          #[rocket::async_test]
+                          async it $it {
+                              $(
+                                  {
+                                      let client = CLIENT.get().await;
 
-                              it $it {
-                                  $(
-                                      {
-                                          let client = CLIENT.get().await;
-
+                                      $(
+                                        let url = format!("/rest{}",$get1_url);
+                                        let mut request = client.get(normalize_url(&url));
+                                        request.add_header(Accept::from_str("*/*").unwrap());
+                                      )?
+                                      $(
+                                        let url = format!("/rest{}",$get2_url);
+                                        let mut request = client.get(normalize_url(&url));
+                                        request.add_header(Accept::from_str("*/*").unwrap());
+                                        $(request.add_header(Accept::from_str($get2_accept_header).unwrap());)?
+                                        //$($(request.add_header(Header::new($get_2_header_nn,$get_2_header_v));),+)?
+                                        $(
+                                          haskell_test!(@add_header request $get_2_header_nn0 $get_2_header_v0);
                                           $(
-                                            let url = format!("/rest{}",$get1_url);
-                                            let mut request = client.get(normalize_url(&url));
-                                            request.add_header(Accept::from_str("*/*").unwrap());
+                                              haskell_test!(@add_header request $get_2_header_nn1 $get_2_header_v1);
                                           )?
+                                        )?
+                                      )?
+
+                                      $(
+                                        let url = format!("/rest{}",$post_url);
+                                        let mut request = client.post(normalize_url(&url))
+                                            .body($json_body);
+                                        request.add_header(Accept::from_str("*/*").unwrap());
+                                      )?
+
+                                      $(
+                                        let url = format!("/rest{}",$post2_url);
+                                        let mut request = client.post(normalize_url(&url))
+                                            .body($($text2_body)? $($json2_body)? $($json22_body)?);
+                                        request.add_header(Accept::from_str("*/*").unwrap());
+                                        $(request.add_header(Accept::from_str($post2_accept_header).unwrap());)?
+
+                                        $(
                                           $(
-                                            let url = format!("/rest{}",$get2_url);
-                                            let mut request = client.get(normalize_url(&url));
-                                            request.add_header(Accept::from_str("*/*").unwrap());
-                                            $(request.add_header(Accept::from_str($get2_accept_header).unwrap());)?
-                                            //$($(request.add_header(Header::new($get_2_header_nn,$get_2_header_v));),+)?
-                                            $(
-                                              haskell_test!(@add_header request $get_2_header_nn0 $get_2_header_v0);
-                                              $(
-                                                  haskell_test!(@add_header request $get_2_header_nn1 $get_2_header_v1);
-                                              )?
-                                            )?
+                                            request.add_header(Header::new("Authorization", format!("Bearer {}",$post_2_jwt_token)));
                                           )?
-
+                                          haskell_test!(@add_header request $post_2_header_nn0 $post_2_header_v0);
                                           $(
-                                            let url = format!("/rest{}",$post_url);
-                                            let mut request = client.post(normalize_url(&url))
-                                                .body($json_body);
-                                            request.add_header(Accept::from_str("*/*").unwrap());
+                                              haskell_test!(@add_header request $post_2_header_nn1 $post_2_header_v1);
+                                              $(
+                                                haskell_test!(@add_header request $post_2_header_nn2 $post_2_header_v2);
+                                              )?
                                           )?
+                                        )?
+                                      )?
 
+                                      $(
+                                        let url = format!("/rest{}",$delete_url);
+                                        let mut request = client.delete(normalize_url(&url))
+                                            .body($($delete_body)?);
+                                        request.add_header(Accept::from_str("*/*").unwrap());
+                                        //$(request.add_header(Accept::from_str($delete_accept_header).unwrap());)?
+
+                                        $(
                                           $(
-                                            let url = format!("/rest{}",$post2_url);
-                                            let mut request = client.post(normalize_url(&url))
-                                                .body($($text2_body)? $($json2_body)? $($json22_body)?);
-                                            request.add_header(Accept::from_str("*/*").unwrap());
-                                            $(request.add_header(Accept::from_str($post2_accept_header).unwrap());)?
-
-                                            $(
-                                              $(
-                                                request.add_header(Header::new("Authorization", format!("Bearer {}",$post_2_jwt_token)));
-                                              )?
-                                              haskell_test!(@add_header request $post_2_header_nn0 $post_2_header_v0);
-                                              $(
-                                                  haskell_test!(@add_header request $post_2_header_nn1 $post_2_header_v1);
-                                                  $(
-                                                    haskell_test!(@add_header request $post_2_header_nn2 $post_2_header_v2);
-                                                  )?
-                                              )?
-                                            )?
+                                            request.add_header(Header::new("Authorization", format!("Bearer {}",$delete_jwt_token)));
                                           )?
-
+                                          haskell_test!(@add_header request $delete_header_nn0 $delete_header_v0);
                                           $(
-                                            let url = format!("/rest{}",$delete_url);
-                                            let mut request = client.delete(normalize_url(&url))
-                                                .body($($delete_body)?);
-                                            request.add_header(Accept::from_str("*/*").unwrap());
-                                            //$(request.add_header(Accept::from_str($delete_accept_header).unwrap());)?
-
-                                            $(
+                                            haskell_test!(@add_header request $delete_header_nn1 $delete_header_v1);
                                               $(
-                                                request.add_header(Header::new("Authorization", format!("Bearer {}",$delete_jwt_token)));
+                                                haskell_test!(@add_header request $delete_header_nn2 $delete_header_v2);
                                               )?
-                                              haskell_test!(@add_header request $delete_header_nn0 $delete_header_v0);
-                                              $(
-                                                haskell_test!(@add_header request $delete_header_nn1 $delete_header_v1);
-                                                  $(
-                                                    haskell_test!(@add_header request $delete_header_nn2 $delete_header_v2);
-                                                  )?
-                                              )?
-                                            )?
                                           )?
+                                        )?
+                                      )?
 
+                                      $(
+                                        let url = format!("/rest{}",$patch_url);
+                                        let mut request = client.patch(normalize_url(&url))
+                                            .body($($patch_text_body)? $($patch_json_body)? $($patch_body)?);
+                                        request.add_header(Accept::from_str("*/*").unwrap());
+                                        $(request.add_header(Accept::from_str($patch_accept_header).unwrap());)?
+
+                                        $(
                                           $(
-                                            let url = format!("/rest{}",$patch_url);
-                                            let mut request = client.patch(normalize_url(&url))
-                                                .body($($patch_text_body)? $($patch_json_body)? $($patch_body)?);
-                                            request.add_header(Accept::from_str("*/*").unwrap());
-                                            $(request.add_header(Accept::from_str($patch_accept_header).unwrap());)?
-
-                                            $(
-                                              $(
-                                                request.add_header(Header::new("Authorization", format!("Bearer {}",$patch_jwt_token)));
-                                              )?
-                                              haskell_test!(@add_header request $patch_header_nn0 $patch_header_v0);
-                                              $(
-                                                  haskell_test!(@add_header request $patch_header_nn1 $patch_header_v1);
-                                                  $(
-                                                    haskell_test!(@add_header request $patch_header_nn2 $patch_header_v2);
-                                                  )?
-                                              )?
-                                            )?
+                                            request.add_header(Header::new("Authorization", format!("Bearer {}",$patch_jwt_token)));
                                           )?
-
+                                          haskell_test!(@add_header request $patch_header_nn0 $patch_header_v0);
                                           $(
-                                            let url = format!("/rest{}",$put_url);
-                                            let mut request = client.put(normalize_url(&url))
-                                                .body($($put_text_body)? $($put_json_body)? $($put_body)?);
-                                            request.add_header(Accept::from_str("*/*").unwrap());
-                                            $(request.add_header(Accept::from_str($put_accept_header).unwrap());)?
-
-                                            $(
+                                              haskell_test!(@add_header request $patch_header_nn1 $patch_header_v1);
                                               $(
-                                                request.add_header(Header::new("Authorization", format!("Bearer {}",$put_jwt_token)));
+                                                haskell_test!(@add_header request $patch_header_nn2 $patch_header_v2);
                                               )?
-                                              haskell_test!(@add_header request $put_header_nn0 $put_header_v0);
-                                              $(
-                                                  haskell_test!(@add_header request $put_header_nn1 $put_header_v1);
-                                                  $(
-                                                    haskell_test!(@add_header request $put_header_nn2 $put_header_v2);
-                                                  )?
-                                              )?
-                                            )?
                                           )?
+                                        )?
+                                      )?
 
+                                      $(
+                                        let url = format!("/rest{}",$put_url);
+                                        let mut request = client.put(normalize_url(&url))
+                                            .body($($put_text_body)? $($put_json_body)? $($put_body)?);
+                                        request.add_header(Accept::from_str("*/*").unwrap());
+                                        $(request.add_header(Accept::from_str($put_accept_header).unwrap());)?
 
-                                          println!("url ===\n{:?}\n", url);
-                                          //request.add_header(Accept::from_str("*/*").unwrap());
-
-
-
+                                        $(
                                           $(
-                                            request.add_header(Header::new("Authorization", format!("Bearer {}",$jwt_token)));
+                                            request.add_header(Header::new("Authorization", format!("Bearer {}",$put_jwt_token)));
                                           )?
-                                          //println!("request ===\n{:?}\n", request);
-                                          let response = request.dispatch().await;
-                                          let _status_code = response.status().code;
-                                          let _headers = response.headers().iter().map(|h| (h.name().to_string(), h.value().to_string())).collect::<Vec<_>>();
-                                          //let _headers = response.headers().clone();
-                                          //println!("response ===\n{:?}\n", response);
-                                          $(haskell_test!(@body_json response $json);)?
-                                          $(haskell_test!(@body_text response $text);)?
-                                          $(haskell_test!(@body_str response $str);)?
+                                          haskell_test!(@add_header request $put_header_nn0 $put_header_v0);
+                                          $(
+                                              haskell_test!(@add_header request $put_header_nn1 $put_header_v1);
+                                              $(
+                                                haskell_test!(@add_header request $put_header_nn2 $put_header_v2);
+                                              )?
+                                          )?
+                                        )?
+                                      )?
 
-                                          $(haskell_test!(@status _status_code $status_simple);)?
-                                          $($(haskell_test!(@status _status_code $status);)?)?
-                                          $($($(haskell_test!(@header _headers $header_name $header_value);)*)?)?
-                                          //assert!(false);
-                                      }
-                                  )?
-                              }
-                          )*
-                      }
+
+                                      println!("url ===\n{:?}\n", url);
+                                      //request.add_header(Accept::from_str("*/*").unwrap());
+
+
+
+                                      $(
+                                        request.add_header(Header::new("Authorization", format!("Bearer {}",$jwt_token)));
+                                      )?
+                                      //println!("request ===\n{:?}\n", request);
+                                      let response = request.dispatch().await;
+                                      let _status_code = response.status().code;
+                                      let _headers = response.headers().iter().map(|h| (h.name().to_string(), h.value().to_string())).collect::<Vec<_>>();
+                                      //let _headers = response.headers().clone();
+                                      //println!("response ===\n{:?}\n", response);
+                                      $(haskell_test!(@body_json response $json);)?
+                                      $(haskell_test!(@body_text response $text);)?
+                                      $(haskell_test!(@body_str response $str);)?
+
+                                      $(haskell_test!(@status _status_code $status_simple);)?
+                                      $($(haskell_test!(@status _status_code $status);)?)?
+                                      $($($(haskell_test!(@header _headers $header_name $header_value);)*)?)?
+                                      //assert!(false);
+                                  }
+                              )?
+                          }
+                      )*
+                    }
                   )*
             // }
             )*

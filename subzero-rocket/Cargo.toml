@@ -58,7 +58,6 @@ bench = false
 
 [dev-dependencies]
 pretty_assertions = "1.0.0"
-speculate = "0.1.2"
 demonstrate = "0.4.5"
 async_once = "0.2.1"
 rand = "0.8.5"

@@ -8,7 +8,6 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Once;
-extern crate speculate;
 use async_once::AsyncOnce;
 use demonstrate::demonstrate;
 static INIT: Once = Once::new();

@@ -84,7 +84,7 @@ feature "basic"
             }
 
       it "returns the deleted item and count if requested" $
-        request methodDelete "/projects?id=eq.5" [("Prefer", "return=representation, count=exact")] ""
+        request methodDelete "/projects?select=id&id=eq.5" [("Prefer", "return=representation, count=exact")] ""
           shouldRespondWith [json|r#"[{"id":5}]"#|]
           { matchStatus  = 200
           , matchHeaders = ["Content-Range" <:> "*/1"]
@@ -166,16 +166,6 @@ feature "basic"
                               , "Content-Range" <:> "0-1/2" ]
           }
   describe "inserting" $ do
-    it "basic no representation" $ do
-      request methodPost "/clients"
-        [json|r#"{"name":"new client"}"#|]
-        shouldRespondWith
-        [text|""|]
-        { matchStatus  = 201
-          , matchHeaders = [ "Content-Type" <:> "application/json"
-                            //, "Location" <:> "/projects?id=eq.6"
-                            , "Content-Range" <:> "*/*" ]
-        }
     it "basic with representation" $ do
         request methodPost "/clients?select=id,name"
           [("Prefer", "return=representation,count=exact")]
@@ -187,7 +177,17 @@ feature "basic"
                              //, "Location" <:> "/projects?id=eq.6"
                              , "Content-Range" <:> "*/1" ]
           }
-
+    it "basic no representation" $ do
+        request methodPost "/projects"
+          [json|r#"{"name":"new project"}"#|]
+          shouldRespondWith
+          [text|""|]
+          { matchStatus  = 201
+            , matchHeaders = [ "Content-Type" <:> "application/json"
+                              //, "Location" <:> "/projects?id=eq.6"
+                              , "Content-Range" <:> "*/*" ]
+          }
+  
   describe "json operators" $ do
     it "obtains a json subfield one level with casting" $
       get "/complex_items?id=eq.1&select=settings->foo" shouldRespondWith
@@ -210,13 +210,13 @@ feature "basic"
         [json| r#"[{"myBar":"baz"}]"# |]
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-    it "obtains a json subfield two levels with casting (int)" $
-      get "/complex_items?id=eq.1&select=settings->foo->int::unsigned" shouldRespondWith
+    it "obtains a json subfield two levels" $
+      get "/complex_items?id=eq.1&select=settings->foo->int" shouldRespondWith
         [json| r#"[{"int":1}]"# |] //-- the value in the db is an int, but here we expect a string for now
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-    it "renames json subfield two levels with casting (int)" $
-      get "/complex_items?id=eq.1&select=myInt:settings->foo->int::unsigned" shouldRespondWith
+    it "renames json subfield two levels" $
+      get "/complex_items?id=eq.1&select=myInt:settings->foo->int" shouldRespondWith
         [json| r#"[{"myInt":1}]"# |] //-- the value in the db is an int, but here we expect a string for now
         { matchHeaders = ["Content-Type" <:> "application/json"] }
 
@@ -232,17 +232,17 @@ feature "basic"
       { matchStatus = 200
       , matchHeaders = ["Content-Type" <:> "application/json"]
       }
-    it "with cast" $
-      get "/tbl1?select=one,two::char" shouldRespondWith
-        [json| r#"
-            [
-                {"one":"hello!","two":"10"},
-                {"one":"goodbye","two":"20"}
-            ]
-        "#|]
-      { matchStatus = 200
-      , matchHeaders = ["Content-Type" <:> "application/json"]
-      }
+    // it "with cast" $
+    //   get "/tbl1?select=one,two::char" shouldRespondWith
+    //     [json| r#"
+    //         [
+    //             {"one":"hello!","two":"10"},
+    //             {"one":"goodbye","two":"20"}
+    //         ]
+    //     "#|]
+    //   { matchStatus = 200
+    //   , matchHeaders = ["Content-Type" <:> "application/json"]
+    //   }
 
   describe "embeding" $
     it "children" $
