@@ -305,8 +305,8 @@ declare
   user_id text;
 Begin
   user_id = case when current_setting('server_version_num')::int >= 140000
-            then (current_setting('request.jwt.claims')::json->>'id')::text
-            else current_setting('request.jwt.claim.id')::text
+            then (coalesce(current_setting('request.jwt.claims',true),'{"id":0}')::json->>'id')::text
+            else current_setting('request.jwt.claim.id',true)::text
             end;
   if user_id = '1'::text then
     execute 'set local role postgrest_test_author';
@@ -1120,12 +1120,12 @@ create function test.single_article(id integer) returns test.articles as $$
 $$ language sql;
 
 create function test.get_guc_value(name text) returns text as $$
-  select nullif(current_setting(name), '')::text;
+  select nullif(current_setting(name, true), '')::text;
 $$ language sql;
 
 -- Get the GUC values for Postgres v14.0 and up
 create function test.get_guc_value(prefix text, name text) returns text as $$
-select nullif(current_setting(prefix)::json->>name, '')::text;
+select nullif(current_setting(prefix, true)::json->>name, '')::text;
 $$ language sql;
 
 create table w_or_wo_comma_names ( name text );

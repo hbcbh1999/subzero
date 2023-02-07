@@ -480,7 +480,7 @@ pub fn fmt_query<'a>(
                                     ).collect::<Vec<_>>().join(", ")
                                 )
                             };
-                            format!("{on_c} {on_do}")
+                            format!(" {on_c} {on_do}")
                         },
                         _ => String::new()
                     } +
