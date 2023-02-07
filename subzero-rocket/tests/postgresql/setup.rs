@@ -38,7 +38,6 @@ pub fn setup_db(init_db_once: &Once) {
         let project_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let fixtures_dir = project_dir.join("tests/postgresql/fixtures");
         assert!(env::set_current_dir(fixtures_dir).is_ok());
-        
 
         let postgresql_db_uri = option_env!("POSTGRESQL_DB_URI");
         let db_uri: String = match postgresql_db_uri {
@@ -77,8 +76,6 @@ pub fn setup_db(init_db_once: &Once) {
                 db_uri
             }
         };
-        
-        
 
         env::set_var("SUBZERO_DB_URI", db_uri);
     });
