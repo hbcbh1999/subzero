@@ -568,12 +568,12 @@ pub fn fmt_query<'a>(
                         + fmt_identity("subzero_source")
                         + " "
                         + joins.into_iter().flatten().collect::<Vec<_>>().join(" ")
-                        + " "
-                        + if !where_.conditions.is_empty() {
-                            "where " + fmt_condition_tree(qi_subzero_source, where_)?
-                        } else {
-                            sql("")
-                        }
+                        // + " "
+                        // + if !where_.conditions.is_empty() {
+                        //     "where " + fmt_condition_tree(qi_subzero_source, where_)?
+                        // } else {
+                        //     sql("")
+                        // }
                 } else {
                     sql(format!(
                         " select * from {}",

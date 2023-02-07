@@ -59,7 +59,8 @@ pub fn setup_db(init_db_once: &Once) {
 
         let db_uri = String::from_utf8_lossy(&output.stdout);
 
-        let output = Command::new("tests/bin/ch_run_sql.sh")
+        let ch_run_sql = project_dir.join("tests/bin/ch_run_sql.sh");
+        let output = Command::new(&ch_run_sql)
             .arg(init_file.to_str().unwrap())
             .arg(db_uri.clone().into_owned())
             .output()
@@ -74,7 +75,7 @@ pub fn setup_db(init_db_once: &Once) {
 
         //let init_file_2 = project_dir.join("tests/clickhouse/fixtures/nyc_taxi.sql");
         let init_file_2 = fixtures_dir.join("nyc_taxi.sql");
-        let output = Command::new("tests/bin/ch_run_sql.sh")
+        let output = Command::new(&ch_run_sql)
             .arg(init_file_2.to_str().unwrap())
             .arg(db_uri.clone().into_owned())
             .output()
