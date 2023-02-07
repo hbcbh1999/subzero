@@ -51,7 +51,7 @@ async function run(role: string, request: Request, env?: Env) {
     const { query, parameters } = await subzero.fmtStatement('public', '/rest/', role, request, env);
     //console.log(query,"\n",parameters);
     const result = await db.get(query, parameters);
-    //console.log(result);
+    // console.log('result', result.body);
     return JSON.parse(result.body);
   } else {
     const statement = await subzero.fmtSqliteTwoStepStatement('public', '/rest/', role, request, env);
@@ -81,6 +81,7 @@ describe('permissions', () => {
       { id: 2, value: 'Two Bob Public', hidden: 'Hidden', public: 1, role: 'bob' },
       { id: 3, value: 'Three Charlie Public', hidden: 'Hidden', public: 1, role: 'charlie' },
       { id: 10, value: 'Ten Alice Private', hidden: 'Hidden', public: 0, role: 'alice' },
+      { id: 11, value: 'Eleven Alice Private', hidden: 'Hidden', public: 0, role: 'alice' },
     ]);
   });
 });
