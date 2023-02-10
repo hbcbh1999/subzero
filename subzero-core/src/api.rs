@@ -38,7 +38,7 @@ pub const DEFAULT_SAFE_SELECT_FUNCTIONS: &[&str] = &[
     "percentile_disc",
     "row_number",
     "rank",
-    " dense_rank",
+    "dense_rank",
     "cume_dist",
     "percent_rank",
     "first_value",
