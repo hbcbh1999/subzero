@@ -1,6 +1,6 @@
 [package]
 name = "subzero-rocket"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2018"
 autobins = false
 autobenches = false
@@ -13,7 +13,7 @@ serde = "1.0"
 serde_json = "1.0.91"
 bytes = "1.1.0"
 rocket = "0.5.0-rc.2"
-subzero-core = { version = "0.1.5", path = "../subzero-core" }
+subzero-core = { version = "0.1.6", path = "../subzero-core" }
 http = "0.2"
 regex = { version="1.6.0", features=["default", "pattern"]}
 async-trait = "0.1.61"
