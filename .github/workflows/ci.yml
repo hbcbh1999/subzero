@@ -64,8 +64,14 @@ jobs:
 
       - run: cargo build --workspace --exclude subzero-wasm
 
-      - run: wasm-pack build --dev --target web
+      - name: Build subzero-wasm 
         working-directory: subzero-wasm
+        # run: wasm-pack build --release --target web
+        run: |
+          cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release
+          wasm-bindgen --out-dir=pkg-web --target=web --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+          wasm-bindgen --out-dir=pkg-node --target=nodejs --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+
 
       - run: npm ci
         working-directory: subzero-node
