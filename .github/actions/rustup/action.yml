@@ -14,7 +14,8 @@ runs:
           rustup update --no-self-update ${{ inputs.version }}
           rustup default ${{ inputs.version }}
           rustup component add rustfmt
-          rustup target add wasm32-unknown-unknown 
+          rustup target add wasm32-unknown-unknown
+          cargo install -f wasm-bindgen-cli
     - name: Install wasm-pack
       shell: bash
       run: |
