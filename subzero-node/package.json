@@ -2,21 +2,16 @@
   "name": "subzerocloud",
   "version": "0.1.6",
   "description": "Automated REST and GraphQL api for your database",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "type": "module",
-  "files": [
-    "dist/**/*",
-    "LICENSE.txt",
-    "README.md"
-  ],
   "scripts": {
-    "build": "node esbuild.config.cjs && tsc  --declaration --emitDeclarationOnly --outDir dist && npx rollup --config",
+    "build": "npm run esbuild && npm run declarations && npm run rollup",
+    "declarations": "tsc --declaration --emitDeclarationOnly --outDir declarations",
+    "cpdeclarations": "cp declarations/*.d.ts dist-worker/ && cp declarations/*.d.ts dist-nodejs/",
+    "esbuild": "node esbuild.config.cjs",
+    "rollup": "npx rollup --config",
     "test": "jest --config jestconfig.json",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "eslint src",
-    "prepare": "npm run build",
-    "prepack": "cp ../LICENSE.txt .",
     "prepublishOnly": "npm test && npm run lint",
     "preversion": "npm run lint"
   },
@@ -26,16 +21,18 @@
     "postgrest",
     "postgresql",
     "sqlite",
-    "clickhouse"
+    "clickhouse",
+    "mysql"
   ],
   "author": "Ruslan Talpa <ruslan.talpa@subzero.cloud>",
   "license": "SEE LICENSE.txt",
   "devDependencies": {
+    "esbuild-plugin-copy": "^2.0.2",
     "@types/express": "^4.17.14",
     "@types/jest": "^29.1.2",
     "@types/koa": "^2.13.5",
     "@types/next": "^9.0.0",
-    "@types/node": "^16.11.68",
+    "@types/node": "^18.13.0",
     "@types/react": "^18.0.21",
     "@types/react-dom": "^18.0.6",
     "@typescript-eslint/eslint-plugin": "^5.40.0",

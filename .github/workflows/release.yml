@@ -56,21 +56,26 @@ jobs:
         run: |
           echo "VERSION_TAG: $VERSION_TAG"
           echo "PACKAGE_VERSION: $(node -p "require('./package.json').version")"
-          if [ "$VERSION_TAG" != "v$(node -p "require('./package.json').version")" ]; then
+          if [ "$VERSION_TAG" != "$(node -p "require('./package.json').version")" ]; then
             echo "Version tag $VERSION_TAG does not match package version $(node -p "require('./package.json').version")"
             exit 1
           fi  
 
       - name: Build subzero-wasm 
         working-directory: subzero-wasm
-        run: wasm-pack build --release --target web
+        # run: wasm-pack build --release --target web
+        run: |
+          cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release
+          wasm-bindgen --out-dir=pkg-web --target=web --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+          wasm-bindgen --out-dir=pkg-node --target=nodejs --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
 
       # note, this has to be after building wasm
       - name: Build subzero-node
         working-directory: subzero-node
         run: |
           npm ci
-          npm pack
+          npm run lint
+          npm run build
 
       - name: Set package version as env var
         working-directory: subzero-node
@@ -78,13 +83,21 @@ jobs:
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
       
+      - name: Pack worker package
+        working-directory: subzero-node/dist-worker
+        run: npm pack
+
+      - name: Pack nodejs package
+        working-directory: subzero-node/dist-nodejs
+        run: npm pack
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
           name: npm-package-${{ env.VERSION_TAG }}
           path: |
-            subzero-node/subzerocloud-${{ env.PACKAGE_VERSION }}.tgz
+            subzero-node/dist-worker/subzerocloud-worker-${{ env.PACKAGE_VERSION }}.tgz
+            subzero-node/dist-nodejs/subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
       
       - run: sccache --show-stats
 
@@ -281,6 +294,9 @@ jobs:
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
 
-      - run: npm publish subzerocloud-${{ env.PACKAGE_VERSION }}.tgz
+      - name: Publish npm packages
+        run: |
+          npm publish dist-worker/subzerocloud-worker-${{ env.PACKAGE_VERSION }}.tgz
+          npm publish dist-nodejs/subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

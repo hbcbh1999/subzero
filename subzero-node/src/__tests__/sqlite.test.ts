@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
-import { Subzero, Statement, getIntrospectionQuery, Env } from '../index';
+import { Subzero, Statement, getIntrospectionQuery, Env } from '../nodejs';
 
 // Declare global variables
 sqlite3.verbose();
@@ -37,6 +37,7 @@ beforeAll(async () => {
 
   //initialize the subzero instance
   subzero = new Subzero('sqlite', schema);
+  await subzero.init();
 
   //let t = await db.all('select rowid as rowid from projects where id in (select value from json_each($1))', ['[1, 2, 3]']);
   //console.log('test', t);

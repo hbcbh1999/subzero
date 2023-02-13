@@ -1,25 +1,25 @@
 import {default as sqlite_introspection_query } from '../introspection/sqlite_introspection_query.sql'
 import {default as postgresql_introspection_query } from '../introspection/postgresql_introspection_query.sql'
 import {default as clickhouse_introspection_query } from '../introspection/clickhouse_introspection_query.sql'
-
-import { default as wasmbin } from '../../subzero-wasm/pkg/subzero_wasm_bg.wasm'
-import /*init, */{ initSync, Backend } from '../../subzero-wasm/pkg/subzero_wasm.js'
 import type { IncomingMessage } from 'http'
 import type { NextApiRequest } from 'next'
 import type { Request as ExpressRequest } from 'express'
 import type { Request as KoaRequest } from 'koa'
-
 type HttpRequest = Request | IncomingMessage | NextApiRequest | ExpressRequest | KoaRequest
 type SubzeroHttpRequest = HttpRequest & {
   parsedUrl?: URL,
   textBody?: string,
   body?: unknown,
   headersSequence?: unknown,
+  text?: unknown
 }
-/* tslint:disable */
-/* eslint-disable */
-initSync(wasmbin)
-//init(wasmbin)
+//import { default as wasmbin } from '../../subzero-wasm/pkg/subzero_wasm_bg.wasm'
+//import /*init, */{ initSync, Backend } from '../../subzero-wasm/pkg/subzero_wasm.js'
+//import init, { Backend } from '../../subzero-wasm/pkg/subzero_wasm.js'
+//import init, { Backend } from '../../subzero-wasm/pkg/subzero_wasm.js'
+//import wasmbin from '../../subzero-wasm/pkg/subzero_wasm_bg.wasm'
+//const wasmPromise = init('file:./subzero_wasm_bg.wasm')
+//const wasmPromise = init(wasmbin)
 
 export type DbType = 'postgresql' | 'sqlite' | 'clickhouse' | 'mysql'
 export type Query = string
@@ -49,15 +49,15 @@ export class SubzeroError extends Error {
       return this.status
   }
   toJSONString():string {
-    let { message, description } = this
+    const { message, description } = this
     return JSON.stringify({ message, description })
   }
 }
 
 function toSubzeroError(err: any) {
-  let wasm_err: string = err.message
+  const wasm_err: string = err.message
   try {
-    let ee: any = JSON.parse(wasm_err)
+    const ee = JSON.parse(wasm_err)
     return new SubzeroError(ee.message, ee.status, ee.description)
   } catch(e) {
     return new SubzeroError(wasm_err)
@@ -82,8 +82,8 @@ export class SqliteTwoStepStatement {
     if (!this.ids) {
       throw new Error('ids of the mutated rows are not set')
     }
-    let { query, parameters } = this.select
-    let placeholder = '["_subzero_ids_placeholder_"]'
+    const { query, parameters } = this.select
+    const placeholder = '["_subzero_ids_placeholder_"]'
     // replace placeholder with the actual ids in json format
     parameters.forEach((p, i) => {
       if (p == placeholder) {
@@ -96,7 +96,7 @@ export class SqliteTwoStepStatement {
   setMutatedRows(rows: any[]) {
     const constraints_satisfied = rows.every((r) => r['_subzero_check__constraint'] == 1)
     if (constraints_satisfied) {
-      let idColumnName = rows[0] ? Object.keys(rows[0])[0] : ''
+      const idColumnName = rows[0] ? Object.keys(rows[0])[0] : ''
       const ids = rows.map((r) => r[idColumnName].toString())
       this.ids = ids
     }
@@ -106,39 +106,48 @@ export class SqliteTwoStepStatement {
   }
 }
 
-export class Subzero {
-  private backend: Backend
+export class SubzeroInternal {
+  private backend?: any
+  private wasmBackend: any
   private dbType: DbType
+  private schema: any
   private allowed_select_functions?: string[]
+  private wasmInitialized = false
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(dbType: DbType, schema: any, allowed_select_functions?: string[]) {
+  constructor(wasmBackend: any, dbType: DbType, schema: any, allowed_select_functions?: string[]) {
+    this.dbType = dbType
+    this.allowed_select_functions = allowed_select_functions
+    this.schema = schema
+    this.wasmBackend = wasmBackend
+  }
+
+  async init(wasmPromise: Promise<any>) {
+    if (!this.wasmInitialized) {
+      await wasmPromise
+      this.wasmInitialized = true
+    }
+    await this.initBackend()
+  }
+  async initBackend() {
     try {
-      this.dbType = dbType
-      this.allowed_select_functions = allowed_select_functions
-      this.backend = Backend.init(JSON.stringify(schema), dbType, allowed_select_functions)
-    } catch (e:any) {
+      this.backend = this.wasmBackend.init(JSON.stringify(this.schema), this.dbType, this.allowed_select_functions)
+    } catch (e: any) {
       throw toSubzeroError(e)
     }
   }
 
-  setSchema(schema: any) {
-    try {
-      this.backend = Backend.init(JSON.stringify(schema), this.dbType, this.allowed_select_functions)
-    } catch (e: any) {
-      throw toSubzeroError(e)
-    }
+  async setSchema(schema: any) {
+    this.schema = schema
+    await this.initBackend()
   }
 
   private async normalizeRequest(request: SubzeroHttpRequest): Promise<void> {
     // try to accomodate for different request types
 
     if (request instanceof Request) {
-      // @ts-ignore
       request.parsedUrl = new URL(request.url)
-      // @ts-ignore
       request.textBody = request.method === 'GET' ? '' : await request.text()
-      // @ts-ignore
       request.headersSequence = request.headers
     }
     else {
@@ -150,9 +159,7 @@ export class Subzero {
       else {
         if (!request.body) {
           // the body was not read yet
-          // @ts-ignore
           if (typeof request.text === 'function') {
-            // @ts-ignore
             request.textBody = await request.text()
           }
           else {
@@ -168,9 +175,12 @@ export class Subzero {
 
   async fmtStatement(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest,  env: Env, maxRows?: number,): Promise<Statement> {
     try {
+      if (!this.backend) {
+        throw new Error('Subzero is not initialized')
+      }
       await this.normalizeRequest(request);
-      let parsedUrl = request.parsedUrl || new URL('');
-      let maxRowsStr = maxRows !== undefined ? maxRows.toString() : undefined;
+      const parsedUrl = request.parsedUrl || new URL('');
+      const maxRowsStr = maxRows !== undefined ? maxRows.toString() : undefined;
       
       const [query, parameters] = this.backend.fmt_main_query(
             schemaName,
@@ -186,16 +196,19 @@ export class Subzero {
             maxRowsStr
       )
       return { query, parameters }
-    } catch (e: any) {
+    } catch (e) {
       throw toSubzeroError(e)
     }
   }
 
   async fmtSqliteTwoStepStatement(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest,  env: Env, maxRows?: number,): Promise<SqliteTwoStepStatement> {
     try {
+      if (!this.backend) {
+        throw new Error('Subzero is not initialized')
+      }
       await this.normalizeRequest(request);
-      let parsedUrl = request.parsedUrl || new URL('');
-      let maxRowsStr = maxRows !== undefined ? maxRows.toString() : undefined;
+      const parsedUrl = request.parsedUrl || new URL('');
+      const maxRowsStr = maxRows !== undefined ? maxRows.toString() : undefined;
       
       const [mutate_query, mutate_parameters, select_query, select_parameters] = this.backend.fmt_sqlite_two_stage_query(
             schemaName,
@@ -290,10 +303,10 @@ export function fmtContentRangeHeader(lower: number, upper: number, total?: numb
 }
 
 export function fmtPostgreSqlEnv(env: Env): Statement {
-  let parameters = env.flat()
-  let query = 'select ' + parameters.reduce((acc:string[], _, i) => {
+  const parameters = env.flat()
+  const query = 'select ' + parameters.reduce((acc:string[], _, i) => {
       if (i % 2 !== 0) {
-        acc.push(`set_config(\$${i}, \$${i+1}, true)`)
+        acc.push(`set_config($${i}, $${i+1}, true)`)
       }
       return acc
     }

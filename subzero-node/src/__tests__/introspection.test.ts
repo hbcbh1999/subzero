@@ -1,5 +1,5 @@
 import { expect, test } from '@jest/globals';
-import { getRawIntrospectionQuery, getIntrospectionQuery } from '../index';
+import { getRawIntrospectionQuery, getIntrospectionQuery } from '../nodejs';
 import * as fs from 'fs';
 
 test('getRawIntrospectionQuery', () => {

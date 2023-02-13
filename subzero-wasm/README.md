@@ -7,3 +7,9 @@ build with
 wasm-pack build --target web
 wasm-pack build --target nodejs
 ```
+
+new mode
+```
+cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release
+wasm-bindgen --out-dir=pkg --target=web --omit-default-module-path ./target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+```

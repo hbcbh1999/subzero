@@ -3,5 +3,6 @@
 Cargo.lock
 bin/
 pkg/
+pkg-*
 wasm-pack.log
 test/node_modules
