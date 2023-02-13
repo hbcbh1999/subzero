@@ -84,9 +84,9 @@ jobs:
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
       
-      - name: Pack worker package
-        working-directory: subzero-node/dist-worker
-        run: npm pack
+      # - name: Pack worker package
+      #   working-directory: subzero-node/dist-worker
+      #   run: npm pack
 
       - name: Pack nodejs package
         working-directory: subzero-node/dist-nodejs
@@ -297,6 +297,7 @@ jobs:
 
       - name: Publish npm packages
         run: |
+          ls -al
           npm publish dist-worker/subzerocloud-worker-${{ env.PACKAGE_VERSION }}.tgz
           npm publish dist-nodejs/subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
         env:
