@@ -1204,7 +1204,7 @@ dependencies = [
  "indexmap",
  "slab",
  "tokio",
- "tokio-util 0.7.6",
+ "tokio-util 0.7.7",
  "tracing",
 ]
 
@@ -1794,7 +1794,7 @@ dependencies = [
  "mime 0.3.16",
  "spin 0.9.5",
  "tokio",
- "tokio-util 0.7.6",
+ "tokio-util 0.7.7",
  "version_check 0.9.4",
 ]
 
@@ -1852,7 +1852,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-native-tls",
- "tokio-util 0.7.6",
+ "tokio-util 0.7.7",
  "twox-hash",
  "url 2.3.1",
 ]
@@ -2741,7 +2741,7 @@ dependencies = [
  "time 0.3.17",
  "tokio",
  "tokio-stream",
- "tokio-util 0.7.6",
+ "tokio-util 0.7.7",
  "ubyte",
  "version_check 0.9.4",
  "yansi",
@@ -3025,9 +3025,9 @@ checksum = "43b2853a4d09f215c24cc5489c992ce46052d359b5109343cbafbf26bc62f8a3"
 
 [[package]]
 name = "signal-hook-registry"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e51e73328dc4ac0c7ccbda3a494dfa03df1de2f46018127f60c693f2648455b0"
+checksum = "d8229b473baa5980ac72ef434c4415e70c4b5e71b423043adb4ba059f89c99a1"
 dependencies = [
  "libc",
 ]
@@ -3171,7 +3171,7 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "subzero-core"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "criterion",
  "csv",
@@ -3187,7 +3187,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-rocket"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "async-trait",
  "async_once",
@@ -3227,7 +3227,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-wasm"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
@@ -3323,9 +3323,9 @@ dependencies = [
 
 [[package]]
 name = "thread_local"
-version = "1.1.6"
+version = "1.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50f297120ff9d4efe680df143d5631bba9c75fa371992b7fcb33eb3453cb0a07"
+checksum = "3fdd6f064ccff2d6567adcb3873ca630700f00b5ad3f060c25b5dcfd9a4ce152"
 dependencies = [
  "cfg-if 1.0.0",
  "once_cell",
@@ -3495,9 +3495,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.6"
+version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc6a3b08b64e6dfad376fa2432c7b1f01522e37a623c3050bc95db2d3ff21583"
+checksum = "5427d89453009325de0d8f342c9490009f76e999cb7672d77e46267448f7e6b2"
 dependencies = [
  "bytes",
  "futures-core",
@@ -3602,7 +3602,7 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "rand 0.8.5",
  "static_assertions",
 ]
