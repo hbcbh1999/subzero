@@ -53,9 +53,9 @@ const schema = {
 
 const base_url = 'http://localhost:3000/rest';
 const subzero = new Subzero('postgresql', schema);
-beforeAll(async () => {
-  await subzero.init();
-});
+// beforeAll(async () => {
+//   await subzero.init();
+// });
 
 test('fetch request', async () => {
   expect(await subzero.fmtStatement('public', '/rest/', 'anonymous',

@@ -82,9 +82,9 @@ function normalize_statement(s: Statement) {
 }
 const base_url = 'http://localhost:3000/rest';
 const subzero = new Subzero('postgresql', schema);
-beforeAll(async () => {
-  await subzero.init();
-});
+// beforeAll(async () => {
+//   await subzero.init();
+// });
 
 test('main query', async () => {
   // const request = await subzero.parse(

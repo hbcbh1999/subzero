@@ -112,7 +112,7 @@ export class SubzeroInternal {
   private dbType: DbType
   private schema: any
   private allowed_select_functions?: string[]
-  private wasmInitialized = false
+  //private wasmInitialized = false
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   constructor(wasmBackend: any, dbType: DbType, schema: any, allowed_select_functions?: string[]) {
@@ -120,16 +120,17 @@ export class SubzeroInternal {
     this.allowed_select_functions = allowed_select_functions
     this.schema = schema
     this.wasmBackend = wasmBackend
+    this.initBackend()
   }
 
-  async init(wasmPromise: Promise<any>) {
-    if (!this.wasmInitialized) {
-      await wasmPromise
-      this.wasmInitialized = true
-    }
-    await this.initBackend()
-  }
-  async initBackend() {
+  // async init(wasmPromise: Promise<any>) {
+  //   if (!this.wasmInitialized) {
+  //     await wasmPromise
+  //     this.wasmInitialized = true
+  //   }
+  //   await this.initBackend()
+  // }
+  initBackend() {
     try {
       this.backend = this.wasmBackend.init(JSON.stringify(this.schema), this.dbType, this.allowed_select_functions)
     } catch (e: any) {
@@ -137,9 +138,9 @@ export class SubzeroInternal {
     }
   }
 
-  async setSchema(schema: any) {
+  setSchema(schema: any) {
     this.schema = schema
-    await this.initBackend()
+    this.initBackend()
   }
 
   private async normalizeRequest(request: SubzeroHttpRequest): Promise<void> {

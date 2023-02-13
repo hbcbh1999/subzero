@@ -37,7 +37,7 @@ beforeAll(async () => {
 
   //initialize the subzero instance
   subzero = new Subzero('sqlite', schema);
-  await subzero.init();
+  // await subzero.init();
 
   //let t = await db.all('select rowid as rowid from projects where id in (select value from json_each($1))', ['[1, 2, 3]']);
   //console.log('test', t);
