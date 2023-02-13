@@ -28,15 +28,15 @@ runs:
                 target/
             key: ${{ runner.os }}-${{ runner.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
             restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-
-        - name: Save sccache
-          if: ${{ !env.ACT }}
-          uses: actions/cache@v2
-          continue-on-error: false
-          with:
-              path: ${{ env.SCCACHE_DIR }}
-              key: ${{ runner.os }}-${{ runner.arch }}-sccache-${{ hashFiles('**/Cargo.lock') }}
-              restore-keys: |
-                  ${{ runner.os }}-${{ runner.arch }}-sccache-
+        # - name: Save sccache
+        #   if: ${{ !env.ACT }}
+        #   uses: actions/cache@v2
+        #   continue-on-error: false
+        #   with:
+        #       path: ${{ env.SCCACHE_DIR }}
+        #       key: ${{ runner.os }}-${{ runner.arch }}-sccache-${{ hashFiles('**/Cargo.lock') }}
+        #       restore-keys: |
+        #           ${{ runner.os }}-${{ runner.arch }}-sccache-
         - name: Start sccache server
           shell: bash
           run: sccache --start-server || true
