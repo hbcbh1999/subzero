@@ -14,8 +14,8 @@ env:
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
   SCCACHE_CACHE_SIZE: 2G
   RUSTC_WRAPPER: sccache
-  # SCCACHE_DIR: ${{ github.workspace }}/.sccache
-  SCCACHE_BUCKET: subzero-sccache
+  SCCACHE_DIR: ${{ github.workspace }}/.sccache
+  # SCCACHE_BUCKET: subzero-sccache
   RUST_TOOLCHAIN: nightly
   NODE_VERSION: 18
 

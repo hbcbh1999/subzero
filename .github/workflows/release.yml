@@ -11,16 +11,16 @@ env:
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
   SCCACHE_CACHE_SIZE: 2G
   RUSTC_WRAPPER: sccache
-  # SCCACHE_DIR: ${{ github.workspace }}/.sccache
-  SCCACHE_BUCKET: subzero-sccache
+  SCCACHE_DIR: ${{ github.workspace }}/.sccache
+  # SCCACHE_BUCKET: subzero-sccache
   RUST_TOOLCHAIN: nightly
   NODE_VERSION: 18
   # POSTGRES_USER: postgrest_test_authenticator
   # POSTGRES_PASSWORD: pass
   # POSTGRES_DB: app
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  AWS_REGION: us-east-1
+  # AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  # AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  # AWS_REGION: us-east-1
   VERSION_TAG: ${{ github.ref_name }}
 
 jobs:
