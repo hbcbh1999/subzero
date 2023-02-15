@@ -1,5 +1,5 @@
 import { expect, test } from '@jest/globals';
-import { Subzero, Statement, /*init_wasm*/ } from '../nodejs';
+import Subzero, { Statement, /*init_wasm*/ } from '../nodejs';
 
 const schema = {
   schemas: [

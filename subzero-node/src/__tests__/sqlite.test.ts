@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
-import { Subzero, Statement, getIntrospectionQuery, Env } from '../nodejs';
+import Subzero, { Statement, getIntrospectionQuery, Env } from '../nodejs';
 
 // Declare global variables
 sqlite3.verbose();
