@@ -1,5 +1,6 @@
 node_modules
 dist
 dist-nodejs
-dist-worker
+dist-web
+dist-deno
 declarations

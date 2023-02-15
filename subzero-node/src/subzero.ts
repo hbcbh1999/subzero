@@ -109,18 +109,24 @@ export class SqliteTwoStepStatement {
 export class SubzeroInternal {
   private backend?: any
   private wasmBackend: any
+  private wasmPromise?: Promise<any>
+  private wasmInitialized = false
   private dbType: DbType
   private schema: any
   private allowed_select_functions?: string[]
   //private wasmInitialized = false
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(wasmBackend: any, dbType: DbType, schema: any, allowed_select_functions?: string[]) {
+  constructor(wasmBackend: any, dbType: DbType, schema: any, allowed_select_functions?: string[], wasmPromise?: Promise<any>) {
     this.dbType = dbType
     this.allowed_select_functions = allowed_select_functions
     this.schema = schema
     this.wasmBackend = wasmBackend
-    this.initBackend()
+    this.wasmPromise = wasmPromise
+    if (!this.wasmPromise) {
+      this.wasmInitialized = true
+      this.initBackend()
+    }
   }
 
   // async init(wasmPromise: Promise<any>) {
@@ -130,12 +136,22 @@ export class SubzeroInternal {
   //   }
   //   await this.initBackend()
   // }
-  initBackend() {
+  private initBackend() {
+    if (!this.wasmInitialized) {
+      throw new Error('WASM not initialized')
+    }
     try {
       this.backend = this.wasmBackend.init(JSON.stringify(this.schema), this.dbType, this.allowed_select_functions)
     } catch (e: any) {
       throw toSubzeroError(e)
     }
+  }
+  async init() {
+    if (!this.wasmInitialized) {
+      await this.wasmPromise
+      this.wasmInitialized = true
+    }
+    this.initBackend()
   }
 
   setSchema(schema: any) {

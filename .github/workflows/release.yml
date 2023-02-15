@@ -63,12 +63,17 @@ jobs:
 
       - name: Build subzero-wasm 
         working-directory: subzero-wasm
-        # run: wasm-pack build --release --target web
         run: |
-          cargo install -f wasm-bindgen-cli
-          cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release
-          wasm-bindgen --out-dir=pkg-web --target=web --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
-          wasm-bindgen --out-dir=pkg-node --target=nodejs --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+          cargo install --git https://github.com/rustwasm/wasm-pack
+          wasm-pack build --release --target web --out-dir=pkg-web
+          wasm-pack build --release --target nodejs --out-dir=pkg-node
+          wasm-pack build --release --target deno --out-dir=pkg-deno
+        # run: |
+        #   cargo install -f wasm-bindgen-cli
+        #   cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release
+        #   wasm-bindgen --out-dir=pkg-web --target=web --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+        #   wasm-bindgen --out-dir=pkg-node --target=nodejs --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+        #   wasm-bindgen --out-dir=pkg-deno --target=deno --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
 
       # note, this has to be after building wasm
       - name: Build subzero-node
@@ -84,12 +89,16 @@ jobs:
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
       
-      - name: Pack worker package
-        working-directory: subzero-node/dist-worker
+      - name: Pack web package
+        working-directory: subzero-node/dist-web
         run: npm pack
 
       - name: Pack nodejs package
         working-directory: subzero-node/dist-nodejs
+        run: npm pack
+
+      - name: Pack deno package
+        working-directory: subzero-node/dist-deno
         run: npm pack
 
       - name: Upload artifacts
@@ -97,8 +106,9 @@ jobs:
         with:
           name: npm-package-${{ env.VERSION_TAG }}
           path: |
-            subzero-node/dist-worker/subzerocloud-worker-${{ env.PACKAGE_VERSION }}.tgz
+            subzero-node/dist-web/subzerocloud-web-${{ env.PACKAGE_VERSION }}.tgz
             subzero-node/dist-nodejs/subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
+            subzero-node/dist-deno/subzerocloud-deno-${{ env.PACKAGE_VERSION }}.tgz
       
       - run: sccache --show-stats
 
@@ -295,10 +305,10 @@ jobs:
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
 
-      - name: Publish worker npm packages
-        working-directory: dist-worker
+      - name: Publish web npm packages
+        working-directory: dist-web
         run: |
-          npm publish subzerocloud-worker-${{ env.PACKAGE_VERSION }}.tgz
+          npm publish subzerocloud-web-${{ env.PACKAGE_VERSION }}.tgz
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       
@@ -306,5 +316,12 @@ jobs:
         working-directory: dist-nodejs
         run: |
           npm publish subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish deno npm packages
+        working-directory: dist-deno
+        run: |
+          npm publish subzerocloud-deno-${{ env.PACKAGE_VERSION }}.tgz
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

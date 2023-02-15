@@ -68,10 +68,16 @@ jobs:
         working-directory: subzero-wasm
         # run: wasm-pack build --release --target web
         run: |
-          cargo install -f wasm-bindgen-cli
-          cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release
-          wasm-bindgen --out-dir=pkg-web --target=web --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
-          wasm-bindgen --out-dir=pkg-node --target=nodejs --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+          cargo install --git https://github.com/rustwasm/wasm-pack
+          wasm-pack build --release --target web --out-dir=pkg-web
+          wasm-pack build --release --target nodejs --out-dir=pkg-node
+          wasm-pack build --release --target deno --out-dir=pkg-deno
+        # run: |
+        #   cargo install -f wasm-bindgen-cli
+        #   cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release
+        #   wasm-bindgen --out-dir=pkg-web --target=web --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+        #   wasm-bindgen --out-dir=pkg-node --target=nodejs --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+        #   wasm-bindgen --out-dir=pkg-deno --target=deno --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
 
 
       - run: npm ci

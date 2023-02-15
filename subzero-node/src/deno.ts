@@ -1,4 +1,4 @@
-import { Backend } from '../../subzero-wasm/pkg-node/subzero_wasm.js'
+import { Backend } from '../../subzero-wasm/pkg-deno/subzero_wasm.js'
 import { DbType, SubzeroInternal } from './subzero'
 export default class Subzero extends SubzeroInternal {
     constructor(dbType: DbType, schema: any, allowed_select_functions?: string[]) {
