@@ -64,7 +64,13 @@ jobs:
       - name: Build subzero-wasm 
         working-directory: subzero-wasm
         run: |
-          cargo install --git https://github.com/rustwasm/wasm-pack
+          if ! command -v wasm-pack &> /dev/null
+          then
+              echo "wasm-pack could not be found, installing from git"
+              cargo install --git https://github.com/rustwasm/wasm-pack
+          else
+              echo "wasm-pack found"
+          fi
           wasm-pack build --release --target web --out-dir=pkg-web
           wasm-pack build --release --target nodejs --out-dir=pkg-node
           wasm-pack build --release --target deno --out-dir=pkg-deno
