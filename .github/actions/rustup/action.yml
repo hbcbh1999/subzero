@@ -16,7 +16,7 @@ runs:
           rustup component add rustfmt
           rustup target add wasm32-unknown-unknown
 
-    - name: Install wasm-pack
-      shell: bash
-      run: |
-        curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+    # - name: Install wasm-pack
+    #   shell: bash
+    #   run: |
+    #     curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
