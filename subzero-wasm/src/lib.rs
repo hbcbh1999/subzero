@@ -79,7 +79,7 @@ impl Backend {
             replace_json_str(&mut v).expect("invalid schema json");
             s = serde_json::to_string_pretty(&v).expect("invalid schema json");
         }
-        
+
         Backend::new(
             Box::new(BackendData {
                 db_schema: s,

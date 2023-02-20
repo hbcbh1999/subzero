@@ -869,7 +869,6 @@ where
 
 fn pg_catalog<'a>() -> &'a str { "pg_catalog" }
 
-
 pub fn replace_json_str(v: &mut JsonValue) -> Result<()> {
     match v {
         JsonValue::Object(o) => {
