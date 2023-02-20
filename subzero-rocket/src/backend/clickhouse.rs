@@ -9,7 +9,7 @@ use crate::config::{VhostConfig, SchemaStructure::*};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, SingleVal, Payload, ListVal},
     error::{Error, JsonDeserializeSnafu, JsonSerializeSnafu},
-    schema::{DbSchema},
+    schema::{DbSchema, replace_json_str},
     formatter::{
         Param::*,
         clickhouse::{fmt_main_query, generate},
@@ -161,37 +161,6 @@ pub struct ClickhouseBackend {
     pool: Pool,
     db_schema: DbSchemaWrap,
 }
-fn replace_json_str(v: &mut JsonValue) -> Result<()> {
-    match v {
-        JsonValue::Object(o) => {
-            if let Some(s) = o.get_mut("check_json_str") {
-                if let Some(ss) = s.as_str() {
-                    let j = serde_json::from_str::<JsonValue>(ss).context(JsonDeserializeSnafu).context(CoreSnafu)?;
-                    *s = JsonValue::Null;
-                    o.insert("check".to_string(), j);
-                }
-            }
-            if let Some(s) = o.get_mut("using_json_str") {
-                if let Some(ss) = s.as_str() {
-                    let j = serde_json::from_str::<JsonValue>(ss).context(JsonDeserializeSnafu).context(CoreSnafu)?;
-                    *s = JsonValue::Null;
-                    o.insert("using".to_string(), j);
-                }
-            }
-            for (_, v) in o {
-                replace_json_str(v)?;
-            }
-            Ok(())
-        }
-        JsonValue::Array(a) => {
-            for v in a {
-                replace_json_str(v)?;
-            }
-            Ok(())
-        }
-        _ => Ok(()),
-    }
-}
 
 #[async_trait]
 impl Backend for ClickhouseBackend {
@@ -259,7 +228,7 @@ impl Backend for ClickhouseBackend {
                         //recursivley iterate through the json and convert check_json_str and using_json_str into json
                         // println!("json value before replace:\n{:?}\n", v);
                         // recursively iterate through the json and apply the f function
-                        replace_json_str(&mut v)?;
+                        replace_json_str(&mut v).context(CoreSnafu)?;
                         let s = serde_json::to_string_pretty(&v).context(JsonSerializeSnafu).context(CoreSnafu)?;
 
                         //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;

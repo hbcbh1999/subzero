@@ -1,7 +1,9 @@
 use crate::api::{ForeignKey, Join, Join::*, ProcParam, Qi, Condition};
 use crate::error::*;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::{Value as JsonValue};
 use snafu::OptionExt;
+use snafu::ResultExt;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::iter::FromIterator;
 use log::debug;
@@ -866,6 +868,39 @@ where
 // }
 
 fn pg_catalog<'a>() -> &'a str { "pg_catalog" }
+
+
+pub fn replace_json_str(v: &mut JsonValue) -> Result<()> {
+    match v {
+        JsonValue::Object(o) => {
+            if let Some(s) = o.get_mut("check_json_str") {
+                if let Some(ss) = s.as_str() {
+                    let j = serde_json::from_str::<JsonValue>(ss).context(JsonDeserializeSnafu)?;
+                    *s = JsonValue::Null;
+                    o.insert("check".to_string(), j);
+                }
+            }
+            if let Some(s) = o.get_mut("using_json_str") {
+                if let Some(ss) = s.as_str() {
+                    let j = serde_json::from_str::<JsonValue>(ss).context(JsonDeserializeSnafu)?;
+                    *s = JsonValue::Null;
+                    o.insert("using".to_string(), j);
+                }
+            }
+            for (_, v) in o {
+                replace_json_str(v)?;
+            }
+            Ok(())
+        }
+        JsonValue::Array(a) => {
+            for v in a {
+                replace_json_str(v)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
 
 #[cfg(test)]
 mod tests {

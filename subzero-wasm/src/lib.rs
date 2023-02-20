@@ -7,6 +7,8 @@ use serde_wasm_bindgen::to_value as to_js_value;
 use serde_wasm_bindgen::Error as JsError;
 use std::borrow::Cow;
 use std::collections::HashMap;
+use serde_json::Value as JsonValue;
+
 mod utils;
 use utils::{
     set_panic_hook,
@@ -16,7 +18,7 @@ use utils::{
 };
 use subzero_core::{
     parser::postgrest::parse,
-    schema::DbSchema,
+    schema::{DbSchema, replace_json_str},
     formatter::{Param::*, ToParam},
     api::{SingleVal, ListVal, Payload, Query, Field, QueryNode::*, SelectItem, Condition, Filter, DEFAULT_SAFE_SELECT_FUNCTIONS},
     permissions::{check_privileges, check_safe_functions, insert_policy_conditions},
@@ -65,9 +67,22 @@ impl Backend {
             Some(v) => v,
             None => DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect(),
         };
+        let mut s = db_schema;
+        if db_type == "clickhouse" {
+            //println!("json schema original:\n{:?}\n", s);
+            // clickhouse query returns check_json_str and using_json_str as string
+            // so we first parse it into a JsonValue and then convert those two fileds into json
+            let mut v: JsonValue = serde_json::from_str(&s).expect("invalid schema json");
+            //recursivley iterate through the json and convert check_json_str and using_json_str into json
+            // println!("json value before replace:\n{:?}\n", v);
+            // recursively iterate through the json and apply the f function
+            replace_json_str(&mut v).expect("invalid schema json");
+            s = serde_json::to_string_pretty(&v).expect("invalid schema json");
+        }
+        
         Backend::new(
             Box::new(BackendData {
-                db_schema,
+                db_schema: s,
                 db_type,
                 allowed_select_functions,
             }),
