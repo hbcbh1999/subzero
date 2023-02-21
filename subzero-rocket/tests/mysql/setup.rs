@@ -22,7 +22,12 @@ pub static INIT_DB: Once = Once::new();
 lazy_static! {
     static ref CLIENT_INNER: AsyncOnce<Client> = AsyncOnce::new(async { Client::untracked(start().await.unwrap()).await.expect("valid client") });
     pub static ref RUNTIME: tokio::runtime::Runtime = Builder::new_multi_thread().enable_all().build().unwrap();
-    static ref MYSQL_POOL: Pool = Pool::new(option_env!("MYSQL_DB_URI").unwrap_or("")).unwrap();
+    static ref MYSQL_POOL: Pool = {
+        match std::env::var("SUBZERO_DB_URI") {
+            Ok(u) => Pool::new(u.as_str()).unwrap(),
+            Err(_) => panic!("SUBZERO_DB_URI not set"),
+        }
+    };
     pub static ref CLIENT: &'static AsyncOnce<Client> = {
         thread::spawn(move || {
             RUNTIME.block_on(async {
@@ -84,10 +89,8 @@ pub fn setup_db(init_db_once: &Once) {
                 db_uri.into_owned()
             }
         };
-
         env::set_var("SUBZERO_DB_URI", db_uri);
     });
-
     let mut conn = MYSQL_POOL.get_conn().unwrap();
     let _ = conn.query_drop("call reset_auto_increment()");
 }

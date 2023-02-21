@@ -30,6 +30,8 @@ use subzero_core::formatter::postgresql;
 use subzero_core::formatter::clickhouse;
 #[cfg(feature = "sqlite")]
 use subzero_core::formatter::sqlite;
+#[cfg(feature = "mysql")]
+use subzero_core::formatter::mysql;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -177,6 +179,12 @@ impl Backend {
                     .map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
             }
+            #[cfg(feature = "mysql")]
+            "mysql" => {
+                let query = mysql::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, &env)
+                    .map_err(cast_core_err)?;
+                Ok(mysql::generate(query))
+            }
             _ => Err(JsError::new("unsupported database type")),
         }?;
 
@@ -188,6 +196,7 @@ impl Backend {
         let B { db_schema, db_type, .. } = backend;
 
         //sqlite does not support returining in CTEs so we must do a two step process
+        //TODO!!! in rocket we dynamically generate the primary key column name
         let primary_key_column = "rowid"; //every table has this (TODO!!! check)
         let primary_key_field = Field {
             name: primary_key_column,
@@ -394,6 +403,7 @@ fn parameters_to_js_array(rust_parameters: Vec<&(dyn ToParam + Sync)>) -> JsArra
     for (i, p) in rust_parameters.into_iter().enumerate() {
         let v = match p.to_param() {
             LV(ListVal(v, _)) => to_js_value(&serde_json::to_string(v).unwrap_or_default()).unwrap_or_default(),
+            SV(SingleVal(v, Some(Cow::Borrowed("integer")))) => to_js_value(&(v.parse::<i32>().unwrap_or_default())).unwrap_or_default(),
             SV(SingleVal(v, _)) => to_js_value(&v).unwrap_or_default(),
             PL(Payload(v, _)) => to_js_value(&v).unwrap_or_default(),
             Str(v) => to_js_value(&v).unwrap_or_default(),

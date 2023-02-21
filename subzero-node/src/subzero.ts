@@ -1,6 +1,7 @@
 import {default as sqlite_introspection_query } from '../introspection/sqlite_introspection_query.sql'
 import {default as postgresql_introspection_query } from '../introspection/postgresql_introspection_query.sql'
-import {default as clickhouse_introspection_query } from '../introspection/clickhouse_introspection_query.sql'
+import { default as clickhouse_introspection_query } from '../introspection/clickhouse_introspection_query.sql'
+import { default as mysql_introspection_query } from '../introspection/mysql_introspection_query.sql'
 import type { IncomingMessage } from 'http'
 import type { NextApiRequest } from 'next'
 import type { Request as ExpressRequest } from 'express'
@@ -256,6 +257,8 @@ export function getRawIntrospectionQuery(dbType: DbType): Query {
       return sqlite_introspection_query
     case 'clickhouse':
       return clickhouse_introspection_query
+    case 'mysql':
+      return mysql_introspection_query
     default:
       throw new Error(`Unknown dbType: ${dbType}`)
   }

@@ -11,11 +11,12 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 # default = ["all", "console_error_panic_hook", ]
-default = ["all", ]
-all = ["postgresql", "sqlite", "clickhouse"]
+default = ["all"]
+all = ["postgresql", "sqlite", "clickhouse", "mysql"]
 postgresql = ["subzero-core/postgresql"]
 sqlite = ["subzero-core/sqlite"]
 clickhouse = ["subzero-core/clickhouse"]
+mysql = ["subzero-core/mysql"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

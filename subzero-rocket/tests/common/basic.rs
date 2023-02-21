@@ -238,6 +238,10 @@ feature "basic"
       { matchStatus = 200
       , matchHeaders = ["Content-Type" <:> "application/json"]
       }
+    it "limit offset" $
+      get "/projects?select=id&order=id&limit=3&offset=2" shouldRespondWith
+        [json| r#"[{"id":3},{"id":4},{"id":5}]"#|]
+        { matchStatus = 200}
     // it "with cast" $
     //   get "/tbl1?select=one,two::char" shouldRespondWith
     //     [json| r#"
