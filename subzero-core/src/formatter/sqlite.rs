@@ -38,11 +38,17 @@ use crate::schema::DbSchema;
 use std::collections::HashMap;
 pub use super::base::return_representation;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
-use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
+use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn};
 use crate::error::{Result, Error};
 use super::{ToParam, Snippet, SqlParam};
 use std::borrow::Cow;
+macro_rules! param_placeholder_format {
+    () => {
+        "?{pos:.0}{data_type:.0}"
+    };
+}
 generate_fn!();
+
 macro_rules! simple_select_item_format {
     () => {
         "'{select_name}', {field}{as:.0}"
