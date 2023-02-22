@@ -158,8 +158,8 @@ describe('insert', () => {
       normalize_statement({
         query: `
                 with
-                    env as materialized (select $1 as "env_var") ,
-                    subzero_payload as ( select $2 as json_data ),
+                    env as materialized (select ? as "env_var") ,
+                    subzero_payload as ( select ? as json_data ),
                     subzero_body as ( 
                         select json_extract(value, '$.name') as "name"
                         from (select value from json_each(( select case when json_type(json_data) = 'array' then json_data else json_array(json_data) end as val from subzero_payload )))
@@ -179,15 +179,15 @@ describe('insert', () => {
       normalize_statement({
         query: `
                 with 
-                    env as materialized (select $1 as "env_var"),
+                    env as materialized (select ? as "env_var"),
                     _subzero_query as (
                         select json_object('id', "subzero_source"."id", 'name', "subzero_source"."name") as row 
                         from "clients" as "subzero_source", env
-                        where "subzero_source"."rowid" in ( select value from json_each($2) )
+                        where "subzero_source"."rowid" in ( select value from json_each(?) )
                     ) ,
                     _subzero_count_query as (
                         select 1 from "clients"
-                        where "clients"."rowid" in ( select value from json_each($3) )
+                        where "clients"."rowid" in ( select value from json_each(?) )
                     )
                 select
                     count(_subzero_t.row) AS page_total,
