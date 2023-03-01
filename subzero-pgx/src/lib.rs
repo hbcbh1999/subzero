@@ -37,7 +37,7 @@ use subzero_core::formatter::{
 };
 use subzero_core::error::{*};
 use subzero_core::{
-    api::{ApiRequest, ApiResponse, SingleVal, ListVal, Payload, QueryNode::*, ContentType::*, Preferences, Representation},
+    api::{ApiRequest, ApiResponse, SingleVal, ListVal, Payload, QueryNode::*, ContentType::*, Preferences, Representation, Resolution},
     parser::postgrest::parse,
     permissions::{check_safe_functions, check_privileges, insert_policy_conditions},
 };
@@ -443,8 +443,8 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
         response_headers.push((
             "Preference-Applied".to_string(),
             match r {
-                MergeDuplicates => "resolution=merge-duplicates".to_string(),
-                IgnoreDuplicates => "resolution=ignore-duplicates".to_string(),
+                Resolution::MergeDuplicates => "resolution=merge-duplicates".to_string(),
+                Resolution::IgnoreDuplicates => "resolution=ignore-duplicates".to_string(),
             },
         ));
     }
