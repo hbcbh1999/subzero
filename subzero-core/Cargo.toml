@@ -14,6 +14,7 @@ serde = { version = "1.0", features = ["derive"], default-features = false }
 serde_json = { version = "1.0", features = ["raw_value"] }
 csv = "1.1.6"
 snafu = "0.7.4"
+regex = { version="1.6.0", features=["default", "pattern"]}
 
 [features]
 default = []

@@ -18,9 +18,11 @@ use rocket::{
 };
 mod frontend;
 use frontend::postgrest;
-mod config;
-use config::VhostConfig;
+//mod config;
+//use config::VhostConfig;
+pub use subzero_core::config;
 use subzero_core::{
+    config::{VhostConfig},
     error::{GucStatusSnafu, Error as CoreError},
     api::ContentType::{SingularJSON, TextCSV, ApplicationJSON, Other},
 };

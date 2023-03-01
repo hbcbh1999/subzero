@@ -4,6 +4,7 @@
 extern crate lazy_static;
 
 pub mod api;
+pub mod config;
 pub mod dynamic_statement;
 pub mod error;
 pub mod formatter;

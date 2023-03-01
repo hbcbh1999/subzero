@@ -3,13 +3,17 @@ members = [
     "subzero-core",
     "subzero-rocket",
     "subzero-wasm",
+    "subzero-pgx"
+]
+exclude = [
+    
 ]
 
-[patch.crates-io]
-tokio-postgres = { git = "https://github.com/subzerocloud/rust-postgres" }
-postgres-types = { git = "https://github.com/subzerocloud/rust-postgres" }
-postgres-openssl = { git = "https://github.com/subzerocloud/rust-postgres" }
-postgres-protocol = { git = "https://github.com/subzerocloud/rust-postgres" }
+# [patch.crates-io]
+# tokio-postgres = { git = "https://github.com/subzerocloud/rust-postgres" }
+# postgres-types = { git = "https://github.com/subzerocloud/rust-postgres" }
+# postgres-openssl = { git = "https://github.com/subzerocloud/rust-postgres" }
+# postgres-protocol = { git = "https://github.com/subzerocloud/rust-postgres" }
 
 [profile.release]
 strip = true  # Automatically strip symbols from the binary.

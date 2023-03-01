@@ -78,7 +78,7 @@ impl ToSql for WrapParam<'_> {
 
     fn accepts(_ty: &Type) -> bool { true }
 
-    fn encode_format(&self) -> Format { Format::Text }
+    fn encode_format(&self, _ty: &Type) -> Format { Format::Text }
 
     to_sql_checked!();
 }
