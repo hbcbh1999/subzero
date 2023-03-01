@@ -1,0 +1,47 @@
+[package]
+name = "subzero"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["pg13","postgresql"]
+pg11 = ["pgx/pg11", "pgx-tests/pg11" ]
+pg12 = ["pgx/pg12", "pgx-tests/pg12" ]
+pg13 = ["pgx/pg13", "pgx-tests/pg13" ]
+pg14 = ["pgx/pg14", "pgx-tests/pg14" ]
+pg15 = ["pgx/pg15", "pgx-tests/pg15" ]
+pg_test = []
+postgresql = ["subzero-core/postgresql"]
+
+[dependencies]
+pgx = { version = "=0.7.1", default-features = false }
+hyper = { version = "0.14", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+subzero-core = { version = "0.1.13", path = "../subzero-core" }
+lazy_static = "1.4"
+serde_json = "1.0"
+parking_lot = { version = "0.12", features = ["hardware-lock-elision"] }
+ouroboros = "0.15"
+url = "2.2"
+jsonwebtoken = "8.2.0"
+jsonpath_lib = "0.3.0"
+snafu = "0.7.4"
+
+
+
+
+[dev-dependencies]
+pgx-tests = "=0.7.1"
+
+[profile.dev]
+panic = "unwind"
+lto = "thin"
+
+[profile.release]
+panic = "unwind"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
