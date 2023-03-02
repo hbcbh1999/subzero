@@ -17,6 +17,12 @@
 
 cd subzero-pgx
 
+
+rustup toolchain install nightly
+rustup default nightly
+rustup toolchain list
+
+
 PGVER=$1
 IMAGE=$2
 PGX_VERSION=$3

@@ -16,7 +16,7 @@ pg15 = ["pgx/pg15", "pgx-tests/pg15" ]
 pg_test = []
 
 [dependencies]
-pgx = { version = "=0.7.1", default-features = false }
+pgx = { version = "=0.7.2", default-features = false }
 hyper = { version = "0.14", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 subzero-core = { path = "../subzero-core", features = ["postgresql"] }
@@ -33,7 +33,7 @@ snafu = "0.7.4"
 
 
 [dev-dependencies]
-pgx-tests = "=0.7.1"
+pgx-tests = "=0.7.2"
 
 [profile.dev]
 panic = "unwind"
