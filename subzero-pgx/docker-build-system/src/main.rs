@@ -381,12 +381,6 @@ fn git_clone(branch: &str, repodir: &PathBuf) -> Result<(), std::io::Error> {
     package_sh_target.push("subzero-pgx");
     package_sh_target.push("docker-build-system");
     package_sh_target.push("package.sh");
-    println!(
-        "{} `{}` to `{}`",
-        "     Copying".bold().green(),
-        "./package.sh".bold().yellow(),
-        package_sh_target.display()
-    );
     std::fs::copy("./package.sh", package_sh_target)?;
     Ok(())
 }

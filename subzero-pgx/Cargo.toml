@@ -38,15 +38,3 @@ pgx-tests = "=0.7.1"
 [profile.dev]
 panic = "unwind"
 lto = "thin"
-
-[profile.release]
-panic = "unwind"
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-
-[profile.artifacts]
-inherits = "release"
-opt-level = 3
-lto = "fat"
-codegen-units = 1

@@ -24,3 +24,10 @@ panic = "abort"
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"
 
+# This is for subzero-pgx build
+[profile.artifacts]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
