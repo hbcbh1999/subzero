@@ -17,7 +17,7 @@ env:
   RUSTC_WRAPPER: sccache
   # SCCACHE_DIR: ${{ github.workspace }}/.sccache
   SCCACHE_BUCKET: subzero-sccache
-  RUST_TOOLCHAIN: nightly
+  RUST_TOOLCHAIN: stable
   NODE_VERSION: 18
 
   POSTGRES_USER: postgrest_test_authenticator
