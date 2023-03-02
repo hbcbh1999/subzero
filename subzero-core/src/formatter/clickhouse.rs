@@ -466,14 +466,18 @@ mod tests {
     use crate::api::{ContentType::*};
     use super::*;
     use std::borrow::Cow;
-    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
+    fn cow(s: &str) -> Cow<str> {
+        Cow::Borrowed(s)
+    }
     macro_rules! param_placeholder_format {
         () => {
             "{{p{pos}:{data_type}}}"
         };
     }
     generate_fn!(true);
-    fn s(s: &str) -> &str { s }
+    fn s(s: &str) -> &str {
+        s
+    }
     //fn ss(s: &str) -> String { s.to_string() }
     #[test]
     fn test_fmt_select_query() {

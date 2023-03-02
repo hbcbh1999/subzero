@@ -238,4 +238,6 @@ impl Error {
 }
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub fn to_core_error(e: SubzeroCoreError) -> Error { Error::Core { source: e } }
+pub fn to_core_error(e: SubzeroCoreError) -> Error {
+    Error::Core { source: e }
+}

@@ -12,9 +12,13 @@ pub enum SchemaStructure {
 }
 impl Default for SchemaStructure {
     #[cfg(any(feature = "sqlite", feature = "postgresql"))]
-    fn default() -> Self { SchemaStructure::SqlFile("introspection_query.sql".to_string()) }
+    fn default() -> Self {
+        SchemaStructure::SqlFile("introspection_query.sql".to_string())
+    }
     #[cfg(not(any(feature = "sqlite", feature = "postgresql")))]
-    fn default() -> Self { SchemaStructure::JsonString(r#"{"schemas":[]}"#.to_string()) }
+    fn default() -> Self {
+        SchemaStructure::JsonString(r#"{"schemas":[]}"#.to_string())
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -85,11 +89,21 @@ pub struct VhostConfig {
     pub disable_internal_permissions: Option<bool>,
 }
 
-fn db_allowed_select_functions() -> Vec<String> { DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect() }
-fn db_type() -> String { "postgresql".to_string() }
-fn db_schemas() -> Vec<String> { vec!["public".to_string()] }
-fn role_claim_key() -> String { ".role".to_string() }
-fn db_pool() -> usize { 10 }
+fn db_allowed_select_functions() -> Vec<String> {
+    DEFAULT_SAFE_SELECT_FUNCTIONS.iter().map(|s| s.to_string()).collect()
+}
+fn db_type() -> String {
+    "postgresql".to_string()
+}
+fn db_schemas() -> Vec<String> {
+    vec!["public".to_string()]
+}
+fn role_claim_key() -> String {
+    ".role".to_string()
+}
+fn db_pool() -> usize {
+    10
+}
 fn to_tuple<'de, D>(deserializer: D) -> Result<Option<(String, String)>, D::Error>
 where
     D: Deserializer<'de>,

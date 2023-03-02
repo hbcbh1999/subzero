@@ -53,9 +53,13 @@ mod tests {
     use regex::Regex;
     use super::*;
     use std::borrow::Cow;
-    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
+    fn cow(s: &str) -> Cow<str> {
+        Cow::Borrowed(s)
+    }
     generate_fn!();
-    fn s(s: &str) -> &str { s }
+    fn s(s: &str) -> &str {
+        s
+    }
 
     #[test]
     fn test_fmt_function_query() {

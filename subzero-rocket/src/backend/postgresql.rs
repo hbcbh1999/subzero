@@ -76,15 +76,23 @@ impl ToSql for WrapParam<'_> {
         }
     }
 
-    fn accepts(_ty: &Type) -> bool { true }
+    fn accepts(_ty: &Type) -> bool {
+        true
+    }
 
-    fn encode_format(&self, _ty: &Type) -> Format { Format::Text }
+    fn encode_format(&self, _ty: &Type) -> Format {
+        Format::Text
+    }
 
     to_sql_checked!();
 }
 
-fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> { WrapParam(p.to_param()) }
-fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) { p as &(dyn ToSql + Sync) }
+fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> {
+    WrapParam(p.to_param())
+}
+fn cast_param<'a>(p: &'a WrapParam<'a>) -> &'a (dyn ToSql + Sync) {
+    p as &(dyn ToSql + Sync)
+}
 
 pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
     "select "
@@ -308,8 +316,12 @@ impl Backend for PostgreSQLBackend {
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
         execute(self.db_schema(), &self.pool, authenticated, request, env, &self.config).await
     }
-    fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
-    fn config(&self) -> &VhostConfig { &self.config }
+    fn db_schema(&self) -> &DbSchema {
+        self.db_schema.borrow_schema().as_ref().unwrap()
+    }
+    fn config(&self) -> &VhostConfig {
+        &self.config
+    }
 }
 
 async fn wait_for_pg_connection(vhost: &String, db_pool: &Pool) -> Result<Object, PoolError> {

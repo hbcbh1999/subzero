@@ -673,7 +673,7 @@ fn fmt_select_item_function<'a, 'b>(
     qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>], partitions: &'a Vec<Field<'a>>, orders: &'a Vec<OrderTerm>,
     alias: &'a Option<&str>,
 ) -> Result<Snippet<'a>> {
-    Ok(format!("'{}',", fmt_select_name(fn_name, &None, alias).unwrap_or(String::new()).as_str())
+    Ok(format!("'{}',", fmt_select_name(fn_name, &None, alias).unwrap_or_default().as_str())
         + fmt_function_call(qi, fn_name, parameters)?
         + if partitions.is_empty() && orders.is_empty() {
             sql("")
@@ -746,7 +746,9 @@ fmt_operator!();
 fmt_logic_operator!();
 //fmt_identity!();
 #[allow(clippy::ptr_arg)]
-fn fmt_identity(i: &str) -> String { String::from("`") + i.chars().take_while(|x| x != &'\0').collect::<String>().replace('`', "``").as_str() + "`" }
+fn fmt_identity(i: &str) -> String {
+    String::from("`") + i.chars().take_while(|x| x != &'\0').collect::<String>().replace('`', "``").as_str() + "`"
+}
 fmt_qi!();
 fmt_field!();
 fmt_order!();

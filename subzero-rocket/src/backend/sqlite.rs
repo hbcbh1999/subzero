@@ -58,7 +58,9 @@ impl ToSql for WrapParam<'_> {
     }
 }
 
-fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> { WrapParam(p.to_param()) }
+fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> {
+    WrapParam(p.to_param())
+}
 
 //generate_fn!();
 
@@ -482,6 +484,10 @@ impl Backend for SQLiteBackend {
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
         execute(self.db_schema(), &self.pool, authenticated, request, env, &self.config)
     }
-    fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
-    fn config(&self) -> &VhostConfig { &self.config }
+    fn db_schema(&self) -> &DbSchema {
+        self.db_schema.borrow_schema().as_ref().unwrap()
+    }
+    fn config(&self) -> &VhostConfig {
+        &self.config
+    }
 }

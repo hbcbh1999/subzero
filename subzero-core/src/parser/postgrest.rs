@@ -1070,7 +1070,9 @@ where
 //         .map(|words: Vec<String>| words.join("-")),
 //     )))
 // }
-fn dash(i: &str) -> Parsed<&str> { terminated(tag("-"), peek(is_not(">")))(i) }
+fn dash(i: &str) -> Parsed<&str> {
+    terminated(tag("-"), peek(is_not(">")))(i)
+}
 
 fn field_name(i: &str) -> Parsed<&str> {
     alt((quoted_value, map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| s.trim())))(i)
@@ -1147,7 +1149,9 @@ fn quoted_value_escaped(i: &str) -> Parsed<Cow<str>> {
     )(i)
 }
 
-fn quoted_value(i: &str) -> Parsed<&str> { delimited(char('"'), is_not("\""), char('"'))(i) }
+fn quoted_value(i: &str) -> Parsed<&str> {
+    delimited(char('"'), is_not("\""), char('"'))(i)
+}
 
 //done
 // fn field<Input>() -> impl Parser<Input, Output = Field>
@@ -1156,7 +1160,9 @@ fn quoted_value(i: &str) -> Parsed<&str> { delimited(char('"'), is_not("\""), ch
 // {
 //     field_name().and(optional(json_path())).map(|(name, json_path)| Field { name, json_path })
 // }
-fn field(i: &str) -> Parsed<Field> { map(tuple((field_name, opt(json_path))), |(name, json_path)| Field { name, json_path })(i) }
+fn field(i: &str) -> Parsed<Field> {
+    map(tuple((field_name, opt(json_path))), |(name, json_path)| Field { name, json_path })(i)
+}
 
 //done
 // fn json_path<Input>() -> impl Parser<Input, Output = Vec<JsonOperation>>
@@ -1179,7 +1185,9 @@ fn field(i: &str) -> Parsed<Field> { map(tuple((field_name, opt(json_path))), |(
 //     //many1(arrow.and(operand.and(end)).map(|((arrow,(operand,_)))| arrow(operand)))
 //     many1(arrow.and(operand).map(|(arrow, operand)| arrow(operand)))
 // }
-fn arrow(i: &str) -> Parsed<&str> { alt((tag("->>"), tag("->")))(i) }
+fn arrow(i: &str) -> Parsed<&str> {
+    alt((tag("->>"), tag("->")))(i)
+}
 fn json_path(i: &str) -> Parsed<Vec<JsonOperation>> {
     many1(map(tuple((arrow, json_operand)), |(a, o)| match a {
         "->>" => JsonOperation::J2Arrow(o),
@@ -1190,7 +1198,9 @@ fn json_path(i: &str) -> Parsed<Vec<JsonOperation>> {
 fn signed_number(i: &str) -> Parsed<&str> {
     recognize(preceded(opt(char('-')), terminated(digit1, peek(alt((tag("->"), tag("::"), tag("."), tag(","), eof))))))(i)
 }
-fn json_operand(i: &str) -> Parsed<JsonOperand> { alt((map(signed_number, JsonOperand::JIdx), map(field_name, JsonOperand::JKey)))(i) }
+fn json_operand(i: &str) -> Parsed<JsonOperand> {
+    alt((map(signed_number, JsonOperand::JIdx), map(field_name, JsonOperand::JKey)))(i)
+}
 //done
 // fn alias_separator<Input>() -> impl Parser<Input, Output = char>
 // where
@@ -1212,7 +1222,9 @@ fn alias_separator(i: &str) -> Parsed<&str> {
 //         .and(alias_separator())
 //         .map(|(a, _)| a)
 // }
-fn alias(i: &str) -> Parsed<&str> { terminated(recognize(many1(alt((alpha1, digit1, recognize(one_of("@._")))))), alias_separator)(i) }
+fn alias(i: &str) -> Parsed<&str> {
+    terminated(recognize(many1(alt((alpha1, digit1, recognize(one_of("@._")))))), alias_separator)(i)
+}
 
 //done
 // fn cast<Input>() -> impl Parser<Input, Output = String>
@@ -1221,7 +1233,9 @@ fn alias(i: &str) -> Parsed<&str> { terminated(recognize(many1(alt((alpha1, digi
 // {
 //     string("::").and(many1(choice((letter(), digit())))).map(|(_, c)| c)
 // }
-fn cast(i: &str) -> Parsed<&str> { preceded(tag("::"), recognize(many1(alt((alpha1, digit1)))))(i) }
+fn cast(i: &str) -> Parsed<&str> {
+    preceded(tag("::"), recognize(many1(alt((alpha1, digit1)))))(i)
+}
 
 //done
 // fn dot<Input>() -> impl Parser<Input, Output = char>
@@ -1230,7 +1244,9 @@ fn cast(i: &str) -> Parsed<&str> { preceded(tag("::"), recognize(many1(alt((alph
 // {
 //     char('.')
 // }
-fn dot(i: &str) -> Parsed<&str> { tag(".")(i) }
+fn dot(i: &str) -> Parsed<&str> {
+    tag(".")(i)
+}
 
 //done
 // fn tree_path<Input>() -> impl Parser<Input, Output = (Vec<String>, Field)>
@@ -1316,7 +1332,9 @@ fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> {
 // {
 //     sep_by1(select_item(), lex(char(','))).skip(eof())
 // }
-fn select(i: &str) -> Parsed<Vec<SelectKind>> { terminated(separated_list1(ws(char(',')), select_item), eof)(i) }
+fn select(i: &str) -> Parsed<Vec<SelectKind>> {
+    terminated(separated_list1(ws(char(',')), select_item), eof)(i)
+}
 
 //done
 // fn columns<Input>() -> impl Parser<Input, Output = Vec<String>>
@@ -1325,7 +1343,9 @@ fn select(i: &str) -> Parsed<Vec<SelectKind>> { terminated(separated_list1(ws(ch
 // {
 //     sep_by1(field_name(), lex(char(','))).skip(eof())
 // }
-fn columns(i: &str) -> Parsed<Vec<&str>> { terminated(separated_list1(tag(","), ws(field_name)), eof)(i) }
+fn columns(i: &str) -> Parsed<Vec<&str>> {
+    terminated(separated_list1(tag(","), ws(field_name)), eof)(i)
+}
 
 //done
 // fn on_conflict<Input>() -> impl Parser<Input, Output = Vec<String>>
@@ -1334,7 +1354,9 @@ fn columns(i: &str) -> Parsed<Vec<&str>> { terminated(separated_list1(tag(","), 
 // {
 //     sep_by1(field_name(), lex(char(','))).skip(eof())
 // }
-fn on_conflict(i: &str) -> Parsed<Vec<&str>> { terminated(separated_list1(tag(","), ws(field_name)), eof)(i) }
+fn on_conflict(i: &str) -> Parsed<Vec<&str>> {
+    terminated(separated_list1(tag(","), ws(field_name)), eof)(i)
+}
 
 // done
 // fn function_param<Input>() -> impl Parser<Input, Output = FunctionParam>
@@ -1562,7 +1584,9 @@ fn integer(i: &str) -> Parsed<SingleVal> {
 // {
 //     integer()
 // }
-fn limit(i: &str) -> Parsed<SingleVal> { integer(i) }
+fn limit(i: &str) -> Parsed<SingleVal> {
+    integer(i)
+}
 
 //done
 // fn offset<Input>() -> impl Parser<Input, Output = SingleVal>
@@ -1571,7 +1595,9 @@ fn limit(i: &str) -> Parsed<SingleVal> { integer(i) }
 // {
 //     integer()
 //}
-fn offset(i: &str) -> Parsed<SingleVal> { integer(i) }
+fn offset(i: &str) -> Parsed<SingleVal> {
+    integer(i)
+}
 
 //done
 // fn logic_single_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (String, Option<String>)>
@@ -1742,7 +1768,9 @@ fn filter_common<'a, 'b>(
     ))(i)
 }
 
-fn filter<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> { filter_common(single_value, data_type, i) }
+fn filter<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> {
+    filter_common(single_value, data_type, i)
+}
 
 //done
 // fn logic_filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
@@ -1781,7 +1809,9 @@ fn filter<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>>
 //     ))
 //     .and_then(|v| v)
 // }
-fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> { filter_common(logic_single_value, data_type, i) }
+fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> {
+    filter_common(logic_single_value, data_type, i)
+}
 
 //done
 // fn order<Input>() -> impl Parser<Input, Output = Vec<OrderTerm>>
@@ -1853,7 +1883,9 @@ fn order_term(i: &str) -> Parsed<OrderTerm> {
 // {
 //     sep_by1(groupby_term(), lex(char(','))).skip(eof())
 // }
-fn groupby(i: &str) -> Parsed<Vec<GroupByTerm>> { terminated(separated_list1(tag(","), map(ws(field), GroupByTerm)), eof)(i) }
+fn groupby(i: &str) -> Parsed<Vec<GroupByTerm>> {
+    terminated(separated_list1(tag(","), map(ws(field), GroupByTerm)), eof)(i)
+}
 
 //done
 // fn groupby_term<Input>() -> impl Parser<Input, Output = GroupByTerm>
@@ -2291,15 +2323,25 @@ fn insert_join_conditions<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str) -> 
     Ok(())
 }
 
-fn is_logical(s: &str) -> bool { s == "and" || s == "or" || s.ends_with(".or") || s.ends_with(".and") }
+fn is_logical(s: &str) -> bool {
+    s == "and" || s == "or" || s.ends_with(".or") || s.ends_with(".and")
+}
 
-fn is_limit(s: &str) -> bool { s == "limit" || s.ends_with(".limit") }
+fn is_limit(s: &str) -> bool {
+    s == "limit" || s.ends_with(".limit")
+}
 
-fn is_offset(s: &str) -> bool { s == "offset" || s.ends_with(".offset") }
+fn is_offset(s: &str) -> bool {
+    s == "offset" || s.ends_with(".offset")
+}
 
-fn is_order(s: &str) -> bool { s == "order" || s.ends_with(".order") }
+fn is_order(s: &str) -> bool {
+    s == "order" || s.ends_with(".order")
+}
 
-fn has_operator(s: &str) -> bool { OPERATORS_START.iter().map(|op| s.starts_with(op)).any(|b| b) }
+fn has_operator(s: &str) -> bool {
+    OPERATORS_START.iter().map(|op| s.starts_with(op)).any(|b| b)
+}
 
 // fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
 //     move |mut e| {
@@ -2547,9 +2589,15 @@ pub mod tests {
                     }
                 "#;
 
-    fn s(s: &str) -> String { s.to_string() }
-    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
-    fn sv(s: &str) -> SingleVal { SingleVal(cow(s), None) }
+    fn s(s: &str) -> String {
+        s.to_string()
+    }
+    fn cow(s: &str) -> Cow<str> {
+        Cow::Borrowed(s)
+    }
+    fn sv(s: &str) -> SingleVal {
+        SingleVal(cow(s), None)
+    }
     // fn vs(v: Vec<(&str, &str)>) -> Vec<(String, String)> {
     //     v.into_iter().map(|(s, s2)| (s.to_string(), s2.to_string())).collect()
     // }

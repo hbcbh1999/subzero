@@ -81,8 +81,12 @@ impl ToValue for WrapParam<'_> {
     }
 }
 
-fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> { WrapParam(p.to_param()) }
-fn to_value<'a>(p: &'a WrapParam<'a>) -> Value { p.to_value() }
+fn wrap_param(p: &'_ (dyn ToParam + Sync)) -> WrapParam<'_> {
+    WrapParam(p.to_param())
+}
+fn to_value<'a>(p: &'a WrapParam<'a>) -> Value {
+    p.to_value()
+}
 
 pub fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
     "select "
@@ -280,9 +284,9 @@ async fn execute<'a>(
                 .context(MysqlDbSnafu { authenticated })?
                 .unwrap();
             debug!("ids from env_var: {:?}", &ids);
-            let ids2 = ids.unwrap_or(String::from("[]"));
+            let ids2 = ids.unwrap_or_else(|| String::from("[]"));
             debug!("ids unwrapped: {:?}", serde_json::from_str::<Vec<String>>(&ids2));
-            let ids: Vec<u64> = serde_json::from_str(ids2.as_str()).unwrap_or(vec![]);
+            let ids: Vec<u64> = serde_json::from_str(ids2.as_str()).unwrap_or_default();
 
             (
                 true,
@@ -439,8 +443,12 @@ impl Backend for MySQLBackend {
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
         execute(self.db_schema(), &self.pool, authenticated, request, env, &self.config).await
     }
-    fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
-    fn config(&self) -> &VhostConfig { &self.config }
+    fn db_schema(&self) -> &DbSchema {
+        self.db_schema.borrow_schema().as_ref().unwrap()
+    }
+    fn config(&self) -> &VhostConfig {
+        &self.config
+    }
 }
 
 async fn wait_for_mysql_connection(vhost: &String, db_pool: &Pool) -> Result<Conn, MysqlError> {

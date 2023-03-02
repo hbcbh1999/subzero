@@ -76,7 +76,9 @@ pub struct DbSchemaWrap {
     schema: Result<DbSchema<'this>, String>,
 }
 impl DbSchemaWrap {
-    pub fn schema(&self) -> &DbSchema { self.borrow_schema().as_ref().unwrap() }
+    pub fn schema(&self) -> &DbSchema {
+        self.borrow_schema().as_ref().unwrap()
+    }
 }
 fn get_current_timestamp() -> u64 {
     //TODO!!! optimize this to run once per second
@@ -159,7 +161,9 @@ fn get_env<'a>(role: Option<&'a str>, request: &'a ApiRequest, jwt_claims: &'a O
     env
 }
 
-fn to_app_error(e: pgx::spi::Error) -> Error { Error::InternalError { message: e.to_string() } }
+fn to_app_error(e: pgx::spi::Error) -> Error {
+    Error::InternalError { message: e.to_string() }
+}
 fn content_range_header(lower: i64, upper: i64, total: Option<i64>) -> String {
     let range_string = if total != Some(0) && lower <= upper {
         format!("{lower}-{upper}")
@@ -600,7 +604,7 @@ fn load_configuration() -> Result<(), String> {
         db_pre_request,
         jwt_secret: GUC_JWT_SECRET.get(),
         jwt_aud: GUC_JWT_AUD.get(),
-        role_claim_key: GUC_ROLE_CLAIM_KEY.get().unwrap_or(".role".to_string()),
+        role_claim_key: GUC_ROLE_CLAIM_KEY.get().unwrap_or_else(|| ".role".to_string()),
         disable_internal_permissions: Some(GUC_DISABLE_INTERNAL_PERMISSIONS.get()),
         db_schema_structure,
     };

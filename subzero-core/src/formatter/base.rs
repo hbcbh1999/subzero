@@ -1066,7 +1066,9 @@ pub(super) use fmt_sub_select_item;
 macro_rules! fmt_operator {
     () => {
         //fn fmt_operator(o: &Operator) -> Result<String> { Ok(format!("{} ", o)) }
-        fn fmt_operator<'a>(o: &'a Operator<'a>) -> Result<String> { Ok(String::from(*o) + " ") }
+        fn fmt_operator<'a>(o: &'a Operator<'a>) -> Result<String> {
+            Ok(String::from(*o) + " ")
+        }
     };
 }
 #[allow(unused_imports)]

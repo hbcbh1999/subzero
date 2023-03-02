@@ -52,7 +52,9 @@ impl managed::Manager for Manager {
         Ok((self.uri.parse::<Url>().unwrap(), self.uri.parse::<Uri>().unwrap(), client))
     }
 
-    async fn recycle(&self, _: &mut HttpClient) -> managed::RecycleResult<HttpError> { Ok(()) }
+    async fn recycle(&self, _: &mut HttpClient) -> managed::RecycleResult<HttpError> {
+        Ok(())
+    }
 }
 
 async fn execute<'a>(
@@ -268,6 +270,10 @@ impl Backend for ClickhouseBackend {
     async fn execute(&self, authenticated: bool, request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<ApiResponse> {
         execute(self.db_schema(), &self.pool, authenticated, request, env, &self.config).await
     }
-    fn db_schema(&self) -> &DbSchema { self.db_schema.borrow_schema().as_ref().unwrap() }
-    fn config(&self) -> &VhostConfig { &self.config }
+    fn db_schema(&self) -> &DbSchema {
+        self.db_schema.borrow_schema().as_ref().unwrap()
+    }
+    fn config(&self) -> &VhostConfig {
+        &self.config
+    }
 }

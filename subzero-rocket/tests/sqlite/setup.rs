@@ -93,7 +93,9 @@ where
     });
 }
 
-pub fn normalize_url(url: &str) -> String { url.replace(' ', "%20").replace('\"', "%22").replace('>', "%3E") }
+pub fn normalize_url(url: &str) -> String {
+    url.replace(' ', "%20").replace('\"', "%22").replace('>', "%3E")
+}
 pub fn add_header<'a>(mut request: LocalRequest<'a>, name: &'static str, value: &'static str) -> LocalRequest<'a> {
     request.add_header(Header::new(name, value));
     if name == "Cookie" {

@@ -9,7 +9,9 @@ use serde_wasm_bindgen::to_value as to_js_value;
 use serde_json::json;
 
 // wasm_bindgen_test_configure!(run_in_browser);
-fn vs(v: Vec<(&str, &str)>) -> Vec<(String, String)> { v.into_iter().map(|(s, s2)| (s.to_string(), s2.to_string())).collect() }
+fn vs(v: Vec<(&str, &str)>) -> Vec<(String, String)> {
+    v.into_iter().map(|(s, s2)| (s.to_string(), s2.to_string())).collect()
+}
 
 #[wasm_bindgen_test]
 fn pass() {

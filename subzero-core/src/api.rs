@@ -168,7 +168,7 @@ impl<'a, 'b> Query<'a> {
                 i += 1;
             }
         }
-        
+
         if !node_properties.is_empty() {
             f(self, node_properties)?
         };
@@ -195,7 +195,6 @@ impl<'a, 'b> Query<'a> {
                                 let (mut path, c) = properties.remove(i);
                                 path.remove(0);
                                 node_properties.push((path, c));
-                                
                             } else {
                                 i += 1
                             }
@@ -306,19 +305,25 @@ impl<'a> Iterator for Iter<Query<'a>> {
 impl<'a> IntoIterator for &Query<'a> {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
-    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self])) }
+    fn into_iter(self) -> Self::IntoIter {
+        Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self]))
+    }
 }
 
 impl<'a> IntoIterator for &mut Query<'a> {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
-    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self])) }
+    fn into_iter(self) -> Self::IntoIter {
+        Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self]))
+    }
 }
 
 impl<'a> IntoIterator for Query<'a> {
     type Item = <Self::IntoIter as Iterator>::Item;
     type IntoIter = Iter<Self>;
-    fn into_iter(self) -> Self::IntoIter { Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self])) }
+    fn into_iter(self) -> Self::IntoIter {
+        Iter(VecDeque::from([vec![self.node.name().to_string()]]), VecDeque::from([self]))
+    }
 }
 
 // impl<'a, R, F> Iterator for Visitor<'a, F>
@@ -908,14 +913,18 @@ pub enum LogicOperator {
     Or,
 }
 
-fn is_default<T: Default + PartialEq>(t: &T) -> bool { t == &T::default() }
+fn is_default<T: Default + PartialEq>(t: &T) -> bool {
+    t == &T::default()
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
     //fn ss(s: &str) -> String { s.to_string() }
-    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
+    fn cow(s: &str) -> Cow<str> {
+        Cow::Borrowed(s)
+    }
     #[test]
     fn serialize() {
         assert_eq!(r#"["schema","table"]"#, serde_json::to_string(&Qi("schema", "table")).unwrap());

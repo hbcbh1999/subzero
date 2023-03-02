@@ -33,7 +33,9 @@ pub enum ColumnPermissions<'a> {
     Specific(Vec<&'a str>),
 }
 impl<'a> Default for ColumnPermissions<'a> {
-    fn default() -> Self { ColumnPermissions::All }
+    fn default() -> Self {
+        ColumnPermissions::All
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
@@ -870,7 +872,9 @@ where
 //     t == &T::default()
 // }
 
-fn pg_catalog<'a>() -> &'a str { "pg_catalog" }
+fn pg_catalog<'a>() -> &'a str {
+    "pg_catalog"
+}
 
 pub fn replace_json_str(v: &mut JsonValue) -> Result<()> {
     match v {
@@ -965,8 +969,12 @@ mod tests {
     use serde_json::Value as JsonValue;
     use pretty_assertions::assert_eq;
     use std::borrow::Cow;
-    fn cow(s: &str) -> Cow<str> { Cow::Borrowed(s) }
-    fn s(s: &str) -> String { s.to_string() }
+    fn cow(s: &str) -> Cow<str> {
+        Cow::Borrowed(s)
+    }
+    fn s(s: &str) -> String {
+        s.to_string()
+    }
 
     #[test]
     fn test_split_keep() {

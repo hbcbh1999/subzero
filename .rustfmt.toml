@@ -1,6 +1,6 @@
-version = "Two"
+# version = "Two"
 reorder_imports = false
 fn_args_layout = "Compressed"
-fn_single_line = true
+# fn_single_line = true
 max_width = 150
 fn_call_width = 130

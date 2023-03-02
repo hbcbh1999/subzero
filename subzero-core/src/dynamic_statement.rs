@@ -18,7 +18,9 @@ impl<'a, T: ?Sized> SqlSnippet<'a, T> {
     }
 
     #[must_use]
-    pub fn is_empty(&self) -> bool { self.len() == 0 }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 pub trait JoinIterator<'a, T: ?Sized> {
@@ -55,14 +57,20 @@ where
 {
     s.into()
 }
-pub fn param<T: ?Sized>(p: &T) -> SqlSnippet<T> { SqlSnippet(vec![SqlSnippetChunk::Param(p)]) }
+pub fn param<T: ?Sized>(p: &T) -> SqlSnippet<T> {
+    SqlSnippet(vec![SqlSnippetChunk::Param(p)])
+}
 
 impl<'a, T: ?Sized> IntoSnippet<'a, T> for &'a str {
-    fn into(self) -> SqlSnippet<'a, T> { SqlSnippet(vec![SqlSnippetChunk::Borrowed(self)]) }
+    fn into(self) -> SqlSnippet<'a, T> {
+        SqlSnippet(vec![SqlSnippetChunk::Borrowed(self)])
+    }
 }
 
 impl<'a, T: ?Sized> IntoSnippet<'a, T> for String {
-    fn into(self) -> SqlSnippet<'a, T> { SqlSnippet(vec![SqlSnippetChunk::Owned(self)]) }
+    fn into(self) -> SqlSnippet<'a, T> {
+        SqlSnippet(vec![SqlSnippetChunk::Owned(self)])
+    }
 }
 
 impl<'a, T: ?Sized> Add for SqlSnippet<'a, T> {
