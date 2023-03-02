@@ -107,7 +107,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes sqlite3
 
-      - run: cargo build --workspace --exclude subzero-wasm, subzero-pgx
+      - run: cargo build --workspace --exclude subzero-wasm --exclude subzero-pgx
 
       - name: Build subzero-wasm 
         working-directory: subzero-wasm
