@@ -17,15 +17,10 @@
 
 cd subzero-pgx
 
-## TODO! remove this once we're using the stable channel (also remove the --force in the cargo install below for pgx)
-rustup toolchain install nightly
-rustup default nightly
-rustup toolchain list
-
-
 PGVER=$1
 IMAGE=$2
 PGX_VERSION=$3
+ARCH=$(uname -m)
 
 if [ "x${PGVER}" == "x" ] || [ "x${IMAGE}" == "x" ] ; then
 	echo 'usage:  ./package.sh <PGVER> <image>'
@@ -63,8 +58,7 @@ rustup update || exit 1
 #
 # ensure cargo-pgx is the correct version and compiled with this Rust version
 #
-# TODO!!! remove force once we use the stable channel
-cargo install cargo-pgx --version $PGX_VERSION --force
+cargo install cargo-pgx --version $PGX_VERSION
 
 #
 # build the extension
@@ -95,8 +89,8 @@ if [ "${PKG_FORMAT}" == "deb" ]; then
 		-n subzero-${PGVER} \
 		-v ${VERSION} \
 		--deb-no-default-config-files \
-		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}_amd64.deb \
-		-a amd64 \
+		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}_${ARCH}.deb \
+		-a ${ARCH} \
 		. || exit 1
 
 elif [ "${PKG_FORMAT}" == "rpm" ]; then
@@ -106,8 +100,8 @@ elif [ "${PKG_FORMAT}" == "rpm" ]; then
 		-n subzero-${PGVER} \
 		-v ${VERSION} \
 		--rpm-os linux \
-		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}_1.x86_64.rpm \
-		-a x86_64 \
+		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}_1.${ARCH}.rpm \
+		-a ${ARCH} \
 		. || exit 1
 
 elif [ "${PKG_FORMAT}" == "apk" ]; then
@@ -116,8 +110,8 @@ elif [ "${PKG_FORMAT}" == "apk" ]; then
 		-t apk \
 		-n subzero-${PGVER} \
 		-v ${VERSION} \
-		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}.$(uname -m).apk \
-		-a $(uname -m) \
+		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}.${ARCH}.apk \
+		-a ${ARCH} \
 		. \
 		|| exit 1
 

@@ -141,6 +141,8 @@ jobs:
       - name: Bring up db services
         run: docker-compose --file .github/docker-compose.yml --env-file .github/.env up -d
 
+      - run: cargo test
+        working-directory: subzero-core
       - run: cargo test sqlite
       - run: cargo test postgresql -- --test-threads=1
       - run: cargo test mysql -- --test-threads=1

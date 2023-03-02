@@ -4,7 +4,7 @@ inputs:
   version:
     description: "The default toolchain version"
     required: false
-    default: "nightly"
+    default: "stable"
 runs:
   using: "composite"
   steps:

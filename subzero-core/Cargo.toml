@@ -14,7 +14,7 @@ serde = { version = "1.0", features = ["derive"], default-features = false }
 serde_json = { version = "1.0", features = ["raw_value"] }
 csv = "1.1.6"
 snafu = "0.7.4"
-regex = { version="1.6.0", features=["default", "pattern"]}
+regex = "1.7.1"
 
 [features]
 default = []
@@ -25,7 +25,7 @@ mysql = []
 
 [dev-dependencies]
 pretty_assertions = "1.0.0"
-regex = "1.4.6"
+regex = "1.7.1"
 criterion = "0.3"
 
 [lib]

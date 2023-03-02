@@ -157,26 +157,52 @@ impl<'a, 'b> Query<'a> {
         })
     }
     pub fn insert_properties<T>(&'b mut self, mut properties: Vec<(Vec<&str>, T)>, f: fn(&mut Query<'a>, Vec<T>) -> Result<()>) -> Result<()> {
-        let node_properties = properties.drain_filter(|(path, _)| path.is_empty()).map(|(_, c)| c).collect::<Vec<_>>();
+        //let node_properties = properties.drain_filter(|(path, _)| path.is_empty()).map(|(_, c)| c).collect::<Vec<_>>();
+        let mut node_properties = vec![];
+        let mut i = 0;
+        while i < properties.len() {
+            if properties[i].0.is_empty() {
+                let (_, c) = properties.remove(i);
+                node_properties.push(c);
+            } else {
+                i += 1;
+            }
+        }
+        
         if !node_properties.is_empty() {
             f(self, node_properties)?
         };
 
         for SubSelect { query: q, alias, .. } in self.sub_selects.iter_mut() {
             if let QueryNode::Select { from: (table, _), .. } = &mut q.node {
-                let node_properties = properties
-                    .drain_filter(|(path, _)| match path.first() {
+                // let node_properties = properties.drain_filter(|(path, _)| match path.first() {
+                //         Some(&p) => {
+                //             if p == *table || Some(p) == *alias {
+                //                 path.remove(0);
+                //                 true
+                //             } else {
+                //                 false
+                //             }
+                //         }
+                //         None => false,
+                //     });
+                let mut node_properties = vec![];
+                let mut i = 0;
+                while i < properties.len() {
+                    match properties[i].0.first() {
                         Some(&p) => {
                             if p == *table || Some(p) == *alias {
+                                let (mut path, c) = properties.remove(i);
                                 path.remove(0);
-                                true
+                                node_properties.push((path, c));
+                                
                             } else {
-                                false
+                                i += 1
                             }
                         }
-                        None => false,
-                    })
-                    .collect::<Vec<_>>();
+                        None => i += 1,
+                    }
+                }
                 q.insert_properties(node_properties, f)?;
             }
         }

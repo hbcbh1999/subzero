@@ -913,12 +913,19 @@ enum SplitStr<'a> {
 fn split_keep<'a>(r: &Regex, text: &'a str) -> Vec<SplitStr<'a>> {
     let mut result = Vec::new();
     let mut last = 0;
-    for (index, matched) in text.match_indices(r) {
-        if last != index {
-            result.push(SplitStr::Str(&text[last..index]));
+    // for (index, matched) in text.match_indices(r) {
+    //     if last != index {
+    //         result.push(SplitStr::Str(&text[last..index]));
+    //     }
+    //     result.push(SplitStr::Sep(matched));
+    //     last = index + matched.len();
+    // }
+    for m in r.find_iter(text) {
+        if last != m.start() {
+            result.push(SplitStr::Str(&text[last..m.start()]));
         }
-        result.push(SplitStr::Sep(matched));
-        last = index + matched.len();
+        result.push(SplitStr::Sep(&text[m.start()..m.end()]));
+        last = m.end();
     }
     if last < text.len() {
         result.push(SplitStr::Str(&text[last..]));
