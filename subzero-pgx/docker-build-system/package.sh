@@ -17,7 +17,7 @@
 
 cd subzero-pgx
 
-
+## TODO! remove this once we're using the stable channel (also remove the --force in the cargo install below for pgx)
 rustup toolchain install nightly
 rustup default nightly
 rustup toolchain list
@@ -44,6 +44,9 @@ set -x
 
 OSNAME=$(echo ${IMAGE} | cut -f3-4 -d-)
 VERSION=$(cat subzero.control | grep default_version | cut -f2 -d\')
+if [ "${VERSION}" == "@CARGO_VERSION@" ]; then
+	VERSION=$(cat Cargo.toml | grep ^version | cut -f2 -d\")
+fi
 
 
 PG_CONFIG_DIR=$(dirname $(grep ${PGVER} ~/.pgx/config.toml | cut -f2 -d= | cut -f2 -d\"))
@@ -60,7 +63,8 @@ rustup update || exit 1
 #
 # ensure cargo-pgx is the correct version and compiled with this Rust version
 #
-cargo install cargo-pgx --version $PGX_VERSION
+# TODO!!! remove force once we use the stable channel
+cargo install cargo-pgx --version $PGX_VERSION --force
 
 #
 # build the extension
