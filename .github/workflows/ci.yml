@@ -94,7 +94,7 @@ jobs:
           echo ""
 
       - name: Install cargo-pgx
-        run: cargo install --locked cargo-pgx
+        run: cargo install --locked --force cargo-pgx
 
       - name: Run 'cargo pgx init' against system-level postgres-$PG_VER
         run: cargo pgx init --pg$PG_VER /usr/lib/postgresql/$PG_VER/bin/pg_config
