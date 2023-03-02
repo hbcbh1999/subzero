@@ -3510,7 +3510,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
-name = "subzero"
+name = "subzero-core"
+version = "0.1.13"
+dependencies = [
+ "criterion",
+ "csv",
+ "lazy_static",
+ "log 0.4.17",
+ "nom",
+ "pretty_assertions",
+ "regex",
+ "serde",
+ "serde_json",
+ "snafu",
+]
+
+[[package]]
+name = "subzero-pgx"
 version = "0.0.0"
 dependencies = [
  "hyper 0.14.24",
@@ -3526,22 +3542,6 @@ dependencies = [
  "subzero-core",
  "tokio",
  "url 2.3.1",
-]
-
-[[package]]
-name = "subzero-core"
-version = "0.1.13"
-dependencies = [
- "criterion",
- "csv",
- "lazy_static",
- "log 0.4.17",
- "nom",
- "pretty_assertions",
- "regex",
- "serde",
- "serde_json",
- "snafu",
 ]
 
 [[package]]

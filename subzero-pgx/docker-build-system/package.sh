@@ -38,7 +38,7 @@ fi
 set -x
 
 OSNAME=$(echo ${IMAGE} | cut -f3-4 -d-)
-VERSION=$(cat subzero.control | grep default_version | cut -f2 -d\')
+VERSION=$(cat subzero_pgx.control | grep default_version | cut -f2 -d\')
 if [ "${VERSION}" == "@CARGO_VERSION@" ]; then
 	VERSION=$(cat Cargo.toml | grep ^version | cut -f2 -d\")
 fi
