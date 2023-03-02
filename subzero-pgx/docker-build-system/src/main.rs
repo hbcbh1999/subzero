@@ -83,36 +83,40 @@ fn main() -> Result<(), std::io::Error> {
     let targetdir = PathBuf::from_str("./target/pgx-build/").unwrap();
     let artifactdir = PathBuf::from_str("./target/pgx-build/artifacts/").unwrap();
     let builddir = PathBuf::from_str("./target/pgx-build/build/").unwrap();
-    //let repodir = PathBuf::from_str("./target/pgx-build/subzero-pgx/").unwrap();
+    let repodir = PathBuf::from_str("./target/pgx-build/subzero-core/").unwrap();
     //let pgx_src_dir = PathBuf::from_str("../").unwrap();
-    let repodir = PathBuf::from_str("../").unwrap();
+    //let repodir = PathBuf::from_str("../").unwrap();
 
     remove_dir(&targetdir);
     remove_dir(&artifactdir);
     std::fs::create_dir_all(&artifactdir).expect("failed to create artifactdir");
     std::fs::create_dir_all(&builddir).expect("failed to create builddir");
-    //std::fs::create_dir_all(&repodir).expect("failed to create repodir");
+    std::fs::create_dir_all(&repodir).expect("failed to create repodir");
 
     let mut args = std::env::args();
     if args.len() < 2 {
         exit_with_error!("usage:  cargo run <docker-image-name> <pg major version>")
     }
     args.next(); // consume executable name
-    // let branch = args.next().unwrap_or_else(|| {
-    //     exit_with_error!("usage:  cargo run <branch> [<docker-image-name> <pg major version>]")
-    // });
-    // let user_image = args.next();
-    
+    let branch = args.next().unwrap_or_else(|| {
+        exit_with_error!("usage:  cargo run <branch> [<docker-image-name> <pg major version>]")
+    });
     let user_image = args.next();
+    
     let user_pgver: Option<u16> = match args.next() {
         Some(pgver) => Some(pgver.parse().expect("pgver is not a valid number")),
         None => None,
     };
     let dockerfiles = find_dockerfiles()?;
 
-    // handle_result!(git_clone(&branch, &repodir), "failed to clone subzero repo");
+    println!(
+        "{} {} dockerfiles",
+        "     Found".bold().green(),
+        dockerfiles.len()
+    );
+    handle_result!(git_clone(&branch, &repodir), "failed to clone subzero repo");
     // handle_result!(cp_src_dir(&pgx_src_dir, &repodir), "failed to copy subzero-pgx src dir");
-    handle_result!(cp_package_sh(&repodir), "failed to copy package.sh");
+    //handle_result!(cp_package_sh(&repodir), "failed to copy package.sh");
     
 
     std::thread::spawn(move || loop {
@@ -339,7 +343,7 @@ fn docker_run(
         .arg(image)
         .arg("bash")
         .arg("-c")
-        .arg("./docker-build-system/package.sh ${pgver} ${image} ${pgx_version}");
+        .arg("./subzero-pgx/docker-build-system/package.sh ${pgver} ${image} ${pgx_version}");
 
     println!(
         "{} {} for pg{}",
@@ -353,7 +357,7 @@ fn docker_run(
     handle_command_output(image.into(), command_str, &output)
 }
 
-fn _git_clone(branch: &str, repodir: &PathBuf) -> Result<(), std::io::Error> {
+fn git_clone(branch: &str, repodir: &PathBuf) -> Result<(), std::io::Error> {
     let mut command = Command::new("git");
 
     command
@@ -374,8 +378,15 @@ fn _git_clone(branch: &str, repodir: &PathBuf) -> Result<(), std::io::Error> {
     // copy our "package.sh" script into the repodir so it'll use
     // what's related to us and not from whatever branch we cloned
     let mut package_sh_target = repodir.canonicalize().unwrap();
+    package_sh_target.push("subzero-pgx");
     package_sh_target.push("docker-build-system");
     package_sh_target.push("package.sh");
+    println!(
+        "{} `{}` to `{}`",
+        "     Copying".bold().green(),
+        "./package.sh".bold().yellow(),
+        package_sh_target.display()
+    );
     std::fs::copy("./package.sh", package_sh_target)?;
     Ok(())
 }
@@ -403,7 +414,7 @@ fn _cp_src_dir(srcdir: &PathBuf, repodir: &PathBuf) -> Result<(), std::io::Error
     Ok(())
 }
 
-fn cp_package_sh(repodir: &PathBuf) -> Result<(), std::io::Error> {
+fn _cp_package_sh(repodir: &PathBuf) -> Result<(), std::io::Error> {
     
     // copy our "package.sh" script into the repodir so it'll use
     // what's related to us and not from whatever branch we cloned
