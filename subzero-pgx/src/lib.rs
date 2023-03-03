@@ -1,5 +1,5 @@
 use pgx::bgworkers::*;
-use pgx::datum::{FromDatum, IntoDatum};
+use pgx::datum::{IntoDatum};
 use pgx::log;
 use pgx::{GucRegistry, GucSetting, GucContext};
 use pgx::prelude::*;
@@ -766,21 +766,20 @@ pub extern "C" fn _PG_init() {
 
     log!("subzero gucs registered");
 
-    BackgroundWorkerBuilder::new("subzero")
+    BackgroundWorkerBuilder::new("subzero_pgx")
         .set_function("background_worker_main")
-        .set_library("subzero")
+        .set_library("subzero_pgx")
         .set_restart_time(Some(Duration::from_secs(5)))
-        .set_argument(42i32.into_datum())
         .enable_spi_access()
         .load();
 }
 
 #[pg_guard]
 #[no_mangle]
-pub extern "C" fn background_worker_main(arg: pg_sys::Datum) {
-    let arg = unsafe { i32::from_datum(arg, false) };
+pub extern "C" fn background_worker_main() {
+
     BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
-    log!("Background Worker '{}' is starting.  Argument={}", BackgroundWorker::get_name(), arg.unwrap());
+    log!("Background Worker '{}' is starting.", BackgroundWorker::get_name());
 
     let db = GUC_DB.get();
     if db.is_none() {

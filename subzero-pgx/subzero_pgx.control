@@ -1,5 +1,5 @@
 comment = 'subzero:  Created by pgx'
 default_version = '@CARGO_VERSION@'
-module_pathname = '$libdir/subzero'
+module_pathname = '$libdir/subzero_pgx'
 relocatable = false
 superuser = false
