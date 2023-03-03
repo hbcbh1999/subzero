@@ -164,6 +164,8 @@ fn get_env<'a>(role: Option<&'a str>, request: &'a ApiRequest, jwt_claims: &'a O
 }
 
 fn to_app_error(e: pgx::spi::Error) -> Error {
+    log!("to_app_error");
+    log!("error {:?}", e);
     Error::InternalError { message: e.to_string() }
 }
 fn content_range_header(lower: i64, upper: i64, total: Option<i64>) -> String {
