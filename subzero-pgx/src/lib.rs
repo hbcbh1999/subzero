@@ -193,11 +193,11 @@ fn convert_params(params: Vec<&(dyn ToParam + Sync)>) -> Vec<(PgOid, Option<pg_s
     params
         .iter()
         .map(|p| match p.to_param() {
-            SV(SingleVal(v, _)) => (PgBuiltInOids::TEXTOID.oid(), v.into_datum()),
+            SV(SingleVal(v, _)) => (PgBuiltInOids::UNKNOWNOID.oid(), v.into_datum()),
             LV(ListVal(v, _)) => (PgBuiltInOids::TEXTARRAYOID.oid(), v.iter().map(|i| i.as_ref()).collect::<Vec<_>>().into_datum()),
-            PL(Payload(v, _)) => (PgBuiltInOids::TEXTOID.oid(), v.into_datum()),
-            Str(v) => (PgBuiltInOids::TEXTOID.oid(), v.into_datum()),
-            StrOwned(v) => (PgBuiltInOids::TEXTOID.oid(), v.into_datum()),
+            PL(Payload(v, _)) => (PgBuiltInOids::UNKNOWNOID.oid(), v.into_datum()),
+            Str(v) => (PgBuiltInOids::UNKNOWNOID.oid(), v.into_datum()),
+            StrOwned(v) => (PgBuiltInOids::UNKNOWNOID.oid(), v.into_datum()),
         })
         .collect()
 }
