@@ -62,6 +62,8 @@ lazy_static::lazy_static! {
     static ref GUC_JWT_AUD: GucSetting<Option<&'static str>> = GucSetting::new(None);
     static ref GUC_ROLE_CLAIM_KEY: GucSetting<Option<&'static str>> = GucSetting::new(Some(".role"));
     static ref GUC_DISABLE_INTERNAL_PERMISSIONS: GucSetting<bool> = GucSetting::new(false);
+    static ref GUC_LISTEN_ADDRESS: GucSetting<Option<&'static str>> = GucSetting::new(Some("localhost"));
+    static ref GUC_LISTEN_PORT: GucSetting<i32> = GucSetting::new(3000);
 }
 static CONFIG: RwLock<Option<VhostConfig>> = RwLock::new(None);
 static DB_SCHEMA: RwLock<Option<DbSchemaWrap>> = RwLock::new(None);
@@ -619,7 +621,22 @@ fn load_configuration() -> Result<(), String> {
 
 async fn start_webserver() {
     // We'll bind to 127.0.0.1:3000
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let address = GUC_LISTEN_ADDRESS.get();
+    if address.is_none() {
+        log!("subzero.listen_address is required");
+        return;
+    }
+    let port = GUC_LISTEN_PORT.get();
+    if port == 0 {
+        log!("subzero.listen_port is required");
+        return;
+    }
+    let addr = SocketAddr::from_str(&format!("{}:{}", address.unwrap(), port));
+    if let Err(e) = addr {
+        log!("subzero.listen_address or subzero.listen_port is invalid: {}", e);
+        return;
+    }
+    let addr = addr.unwrap();
 
     while !SHUTDOWN.load(Ordering::SeqCst) {
         RESTART.store(false, Ordering::SeqCst);
@@ -726,6 +743,24 @@ pub extern "C" fn _PG_init() {
         "Disable internal permissions",
         "Disable internal permissions",
         &GUC_DB_SCHEMA_STRUCTURE,
+        GucContext::Suset,
+    );
+
+    GucRegistry::define_string_guc(
+        "subzero.listen_addresses",
+        "Listen addresses",
+        "Listen addresses",
+        &GUC_LISTEN_ADDRESS,
+        GucContext::Suset,
+    );
+
+    GucRegistry::define_int_guc(
+        "subzero.port",
+        "Port",
+        "Port",
+        &GUC_LISTEN_PORT,
+        0,
+        i32::MAX,
         GucContext::Suset,
     );
 

@@ -69,7 +69,7 @@ cargo pgx package --profile artifacts || exit $?
 # cd into the package directory
 #
 ARTIFACTDIR=/artifacts
-BUILDDIR=/build/target/artifacts/subzero-pg${PGVER}
+BUILDDIR=/build/target/artifacts/subzero_pgx-pg${PGVER}
 cd ${BUILDDIR} || exit $?
 
 # strip the binaries to make them smaller
