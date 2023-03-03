@@ -347,13 +347,15 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
     log!("main_parameters: {:?}", main_parameters);
     let env_parameters = convert_params(env_parameters);
     let main_parameters = convert_params(main_parameters);
-    log!("parameters converted");
+    log!("parameters converted : {:?}", main_parameters);
     let response = BackgroundWorker::transaction(|| {
         Spi::connect(|mut c| -> Result<ApiResponse, Error> {
             c.select(&env_query, None, Some(env_parameters)).map_err(to_app_error)?;
             log!("env_query executed");
-            let row = c.update(&main_statement, None, Some(main_parameters)).map_err(to_app_error)?.first();
-            log!("main_statement executed");
+            let row = c.update(&main_statement, None, Some(main_parameters)).map_err(to_app_error)?;
+            log!("main_statement executed {:?}", row);
+            let row = row.first();
+            log!("main_statement executed first {:?}", row);
             let constraints_satisfied = row
                 .get_by_name::<bool, _>("constraints_satisfied")
                 .map_err(to_app_error)?
