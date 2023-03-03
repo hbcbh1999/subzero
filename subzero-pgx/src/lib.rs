@@ -201,6 +201,7 @@ fn convert_params(params: Vec<&(dyn ToParam + Sync)>) -> Vec<(PgOid, Option<pg_s
 }
 fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) -> Result<Response<Body>, Error> {
     // read the configuration from the global variable
+    log!("handle_request_inner");
     let mut response_headers = vec![];
     let c = CONFIG.read();
     let config = c.as_ref().unwrap();
@@ -217,6 +218,7 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
         .unwrap_or_else(Vec::new);
     let get: Vec<(&str, &str)> = _get.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect();
 
+    log!("handle_request_inner: get: {:?}", get);
     let headers: HashMap<&str, &str> = parts.headers.iter().map(|(k, v)| (k.as_str(), v.to_str().unwrap())).collect();
 
     let disable_internal_permissions = matches!(config.disable_internal_permissions, Some(true));
@@ -315,8 +317,10 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
     let table = path.replace(prefix.as_str(), "");
 
     let cookies = HashMap::from([]);
+    log!("handle_request_inner: table: {}", table);
     // parse request and generate the query
     let mut request = parse(schema_name, &table, db_schema, method.as_str(), path, get, body, headers, cookies, max_rows)?;
+    log!("request parsed");
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
     if !disable_internal_permissions {
@@ -335,16 +339,21 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
 
     let _env = get_env(env_role, &request, &jwt_claims);
     let env = _env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect::<HashMap<_, _>>();
-
+    log!("env: {:?}", env);
     // now that we have request and env we can generate the query and execute it
     let (env_query, env_parameters, _) = generate(fmt_env_query(&env));
     let (main_statement, main_parameters, _) = generate(fmt_main_query(db_schema, schema_name, &request, &env)?);
+    log!("main_statement: {}", main_statement);
+    log!("main_parameters: {:?}", main_parameters);
     let env_parameters = convert_params(env_parameters);
     let main_parameters = convert_params(main_parameters);
+    log!("parameters converted");
     let response = BackgroundWorker::transaction(|| {
         Spi::connect(|mut c| -> Result<ApiResponse, Error> {
             c.select(&env_query, None, Some(env_parameters)).map_err(to_app_error)?;
+            log!("env_query executed");
             let row = c.update(&main_statement, None, Some(main_parameters)).map_err(to_app_error)?.first();
+            log!("main_statement executed");
             let constraints_satisfied = row
                 .get_by_name::<bool, _>("constraints_satisfied")
                 .map_err(to_app_error)?
@@ -366,6 +375,7 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
             let body = row.get_by_name::<String, _>("body").map_err(to_app_error)?.context(InternalSnafu {
                 message: "could not read body colum".to_string(),
             })?;
+            log!("db response read");
             Ok(ApiResponse {
                 page_total: page_total as u64,
                 total_result_set,
@@ -460,6 +470,7 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
         status = response_status_str.parse::<u16>().map_err(|_| Error::GucStatusError)?;
     }
 
+    log!("start http response build");
     //log!("hello world called {:?}", config);
     //let body = format!("{main_statement} {main_parameters:?}");
     //let body = "hello world";
