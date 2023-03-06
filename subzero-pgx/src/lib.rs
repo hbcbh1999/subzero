@@ -1,6 +1,6 @@
 use pgx::bgworkers::*;
 use pgx::datum::{IntoDatum};
-use pgx::log;
+use pgx::{log as pgx_log, error as pgx_error, info as pgx_info};
 use pgx::{GucRegistry, GucSetting, GucContext};
 use pgx::prelude::*;
 use std::env;
@@ -69,6 +69,32 @@ static CONFIG: RwLock<Option<VhostConfig>> = RwLock::new(None);
 static DB_SCHEMA: RwLock<Option<DbSchemaWrap>> = RwLock::new(None);
 
 pgx::pg_module_magic!();
+
+// custom log macro that calls log! with the module name
+macro_rules! log {
+    ($fmt:tt) => (
+        pgx_log!("subzero: {}", $fmt)
+    );
+    ($fmt:tt, $($arg:tt)*) => (
+        pgx_log!("subzero: {}", format!($fmt, $($arg)*))
+    );
+}
+macro_rules! error {
+    ($fmt:tt) => (
+        pgx_error!("subzero: {}", $fmt)
+    );
+    ($fmt:tt, $($arg:tt)*) => (
+        pgx_error!("subzero: {}", format!($fmt, $($arg)*))
+    );
+}
+macro_rules! info {
+    ($fmt:tt) => (
+        pgx_info!("subzero: {}", $fmt)
+    );
+    ($fmt:tt, $($arg:tt)*) => (
+        pgx_info!("subzero: {}", format!($fmt, $($arg)*))
+    );
+}
 
 #[self_referencing]
 pub struct DbSchemaWrap {
@@ -164,8 +190,7 @@ fn get_env<'a>(role: Option<&'a str>, request: &'a ApiRequest, jwt_claims: &'a O
 }
 
 fn to_app_error(e: pgx::spi::Error) -> Error {
-    log!("to_app_error");
-    log!("error {:?}", e);
+    log!("to_app_error {:?}", e);
     Error::InternalError { message: e.to_string() }
 }
 fn content_range_header(lower: i64, upper: i64, total: Option<i64>) -> String {
@@ -314,7 +339,6 @@ fn convert_params(params: Vec<&(dyn ToParam + Sync)>) -> Result<Vec<(PgOid, Opti
 
 fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) -> Result<Response<Body>, Error> {
     // read the configuration from the global variable
-    log!("handle_request_inner");
     let mut response_headers = vec![];
     let c = CONFIG.read();
     let config = c.as_ref().unwrap();
@@ -331,7 +355,6 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
         .unwrap_or_else(Vec::new);
     let get: Vec<(&str, &str)> = _get.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect();
 
-    log!("handle_request_inner: get: {:?}", get);
     let headers: HashMap<&str, &str> = parts.headers.iter().map(|(k, v)| (k.as_str(), v.to_str().unwrap())).collect();
 
     let disable_internal_permissions = matches!(config.disable_internal_permissions, Some(true));
@@ -430,10 +453,9 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
     let table = path.replace(prefix.as_str(), "");
 
     let cookies = HashMap::from([]);
-    log!("handle_request_inner: table: {}", table);
     // parse request and generate the query
     let mut request = parse(schema_name, &table, db_schema, method.as_str(), path, get, body, headers, cookies, max_rows)?;
-    log!("request parsed");
+    info!("request parsed");
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
     if !disable_internal_permissions {
@@ -452,24 +474,26 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
 
     let _env = get_env(env_role, &request, &jwt_claims);
     let env = _env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect::<HashMap<_, _>>();
-    log!("env: {:?}", env);
     // now that we have request and env we can generate the query and execute it
     let (env_query, env_parameters, _) = generate(fmt_env_query(&env));
+    log!("env_query: {}", env_query);
+    log!("env_parameters: {:?}", env_parameters);
+    let env_parameters = convert_params(env_parameters)?;
+    log!("env_parameters converted : {:?}", env_parameters);
+
     let (main_statement, main_parameters, _) = generate(fmt_main_query(db_schema, schema_name, &request, &env)?);
     log!("main_statement: {}", main_statement);
     log!("main_parameters: {:?}", main_parameters);
-    let env_parameters = convert_params(env_parameters)?;
     let main_parameters = convert_params(main_parameters)?;
-    log!("env_parameters converted : {:?}", env_parameters);
     log!("main parameters converted : {:?}", main_parameters);
+
     let response = BackgroundWorker::transaction(|| {
         Spi::connect(|mut c| -> Result<ApiResponse, Error> {
             c.select(&env_query, None, Some(env_parameters)).map_err(to_app_error)?;
             log!("env_query executed");
             let row = c.update(&main_statement, None, Some(main_parameters)).map_err(to_app_error)?;
-            log!("main_statement executed {:?}", row);
+            log!("main_statement executed");
             let row = row.first();
-            log!("main_statement executed first {:?}", row);
             let constraints_satisfied = row
                 .get_by_name::<bool, _>("constraints_satisfied")
                 .map_err(to_app_error)?
@@ -634,7 +658,7 @@ async fn shutdown_restart_signal() {
 }
 
 fn load_configuration() -> Result<(), String> {
-    log!("reading config");
+    info!("reading configuration from GUCs");
     let db_schemas = GUC_DB_SCHEMAS.get().map(|s| s.split(',').map(|s| s.to_string()).collect::<Vec<_>>());
     let db_schemas = match db_schemas {
         Some(s) => Ok(s),
@@ -691,6 +715,7 @@ fn load_configuration() -> Result<(), String> {
     let db_schema: DbSchemaWrap = match db_schema_structure.clone() {
         SqlFile(f) => match fs::read_to_string(f) {
             Ok(q) => {
+                info!("loading schema structure using introspection query from file");
                 let query = include_files(q);
                 let s = BackgroundWorker::transaction(|| {
                     Spi::connect(|client| {
@@ -712,10 +737,16 @@ fn load_configuration() -> Result<(), String> {
             Err(e) => Err(format!("{e}")),
         },
         JsonFile(f) => match fs::read_to_string(f) {
-            Ok(s) => Ok(DbSchemaWrap::new(s, |s| serde_json::from_str::<DbSchema>(s).map_err(|e| e.to_string()))),
+            Ok(s) => {
+                info!("loading schema structure from json file");
+                Ok(DbSchemaWrap::new(s, |s| serde_json::from_str::<DbSchema>(s).map_err(|e| e.to_string())))
+            },
             Err(e) => Err(format!("{e}")),
         },
-        JsonString(s) => Ok(DbSchemaWrap::new(s, |s| serde_json::from_str::<DbSchema>(s.as_str()).map_err(|e| e.to_string()))),
+        JsonString(s) => {
+            info!("loading schema structure from json string");
+            Ok(DbSchemaWrap::new(s, |s| serde_json::from_str::<DbSchema>(s.as_str()).map_err(|e| e.to_string())))
+        },
     }?;
 
     let config = VhostConfig {
@@ -739,8 +770,6 @@ fn load_configuration() -> Result<(), String> {
     };
     *CONFIG.write() = Some(config);
     *DB_SCHEMA.write() = Some(db_schema);
-    log!("db schema loaded");
-    log!("config loaded");
     Ok(())
 }
 
@@ -748,37 +777,33 @@ async fn start_webserver() {
     // We'll bind to 127.0.0.1:3000
     let address = GUC_LISTEN_ADDRESS.get();
     if address.is_none() {
-        log!("subzero.listen_address is required");
-        return;
+        error!("subzero.listen_address is required");
     }
     let port = GUC_LISTEN_PORT.get();
     if port == 0 {
-        log!("subzero.listen_port is required");
-        return;
+        error!("subzero.listen_port is required");
     }
     let addr = SocketAddr::from_str(&format!("{}:{}", address.unwrap(), port));
     if let Err(e) = addr {
-        log!("subzero.listen_address or subzero.listen_port is invalid: {}", e);
-        return;
+        error!("subzero.listen_address or subzero.listen_port is invalid: {}", e);
     }
     let addr = addr.unwrap();
 
     while !SHUTDOWN.load(Ordering::SeqCst) {
         RESTART.store(false, Ordering::SeqCst);
         if let Err(e) = load_configuration() {
-            log!("failed to load configuration: {}", e);
-            break;
+            error!("failed to load configuration: {}", e);
         }
-        log!("starting webserver");
+        info!("starting webserver");
 
         let make_svc = make_service_fn(|_conn| async move { Ok::<_, Infallible>(service_fn(handle_request)) });
         let server = Server::bind(&addr).serve(make_svc).with_graceful_shutdown(shutdown_restart_signal());
 
         // Run this server for... forever!
         if let Err(e) = server.await {
-            log!("server error: {}", e);
+            error!("server error: {}", e);
         }
-        log!("stopping webserver");
+        info!("stopping webserver");
     }
 }
 
@@ -904,12 +929,11 @@ pub extern "C" fn _PG_init() {
 pub extern "C" fn background_worker_main() {
 
     BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
-    log!("Background Worker '{}' is starting.", BackgroundWorker::get_name());
+    info!("background worker is starting");
 
     let db = GUC_DB.get();
     if db.is_none() {
-        log!("subzero.database not set, exiting");
-        return;
+        error!("subzero.database not set, exiting");
     }
     if let Some(role) = GUC_AUTHENTICATOR_ROLE.get() {
         BackgroundWorker::connect_worker_to_spi(Some(db.unwrap().as_str()), Some(role.as_str()));
@@ -921,5 +945,5 @@ pub extern "C" fn background_worker_main() {
 
     rt.block_on(start_webserver());
 
-    log!("Background Worker '{}' is exiting", BackgroundWorker::get_name());
+    info!("background worker is exiting");
 }
