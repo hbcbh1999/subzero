@@ -73,10 +73,10 @@ pgx::pg_module_magic!();
 // custom log macro that calls log! with the module name
 macro_rules! log {
     ($fmt:tt) => (
-        pgx_info!("subzero: {}", $fmt)
+        pgx_log!("subzero: {}", $fmt)
     );
     ($fmt:tt, $($arg:tt)*) => (
-        pgx_info!("subzero: {}", format!($fmt, $($arg)*))
+        pgx_log!("subzero: {}", format!($fmt, $($arg)*))
     );
 }
 macro_rules! error {
@@ -89,10 +89,10 @@ macro_rules! error {
 }
 macro_rules! info {
     ($fmt:tt) => (
-        pgx_log!("subzero: {}", $fmt)
+        pgx_info!("subzero: {}", $fmt)
     );
     ($fmt:tt, $($arg:tt)*) => (
-        pgx_log!("subzero: {}", format!($fmt, $($arg)*))
+        pgx_info!("subzero: {}", format!($fmt, $($arg)*))
     );
 }
 
@@ -193,6 +193,7 @@ fn to_app_error(e: pgx::spi::Error) -> Error {
     info!("to_app_error {:?}", e);
     Error::InternalError { message: e.to_string() }
 }
+
 fn content_range_header(lower: i64, upper: i64, total: Option<i64>) -> String {
     let range_string = if total != Some(0) && lower <= upper {
         format!("{lower}-{upper}")
