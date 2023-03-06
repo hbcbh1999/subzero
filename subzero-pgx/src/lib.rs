@@ -189,18 +189,129 @@ fn content_range_status(lower: i64, upper: i64, total: Option<i64>) -> u16 {
         _ => 200,
     }
 }
-fn convert_params(params: Vec<&(dyn ToParam + Sync)>) -> Vec<(PgOid, Option<pg_sys::Datum>)> {
+
+fn to_oid(dt: &str) -> pg_sys::Oid {
+    match dt {
+        "boolean" => bool::type_oid(),
+        "integer" => i32::type_oid(),
+        "bigint" => i64::type_oid(),
+        "text" => pg_sys::TEXTOID,
+        "json" => pg_sys::JSONOID,
+        "jsonb" => pg_sys::JSONBOID,
+        "uuid" => pg_sys::UUIDOID,
+        "date" => pg_sys::DATEOID,
+        "timestamp" => pg_sys::TIMESTAMPOID,
+        "timestamptz" => pg_sys::TIMESTAMPTZOID,
+        "time" => pg_sys::TIMEOID,
+        "timetz" => pg_sys::TIMETZOID,
+        "interval" => pg_sys::INTERVALOID,
+        "numeric" | "decimal" => f64::type_oid(),
+        "bytea" => pg_sys::BYTEAOID,
+        "point" => pg_sys::POINTOID,
+        "line" => pg_sys::LINEOID,
+        "lseg" => pg_sys::LSEGOID,
+        "box" => pg_sys::BOXOID,
+        "path" => pg_sys::PATHOID,
+        "polygon" => pg_sys::POLYGONOID,
+        "circle" => pg_sys::CIRCLEOID,
+        "cidr" => pg_sys::CIDROID,
+        "inet" => pg_sys::INETOID,
+        "macaddr" => pg_sys::MACADDROID,
+        "bit" => pg_sys::BITOID,
+        "varbit" => pg_sys::VARBITOID,
+        "tsvector" => pg_sys::TSVECTOROID,
+        "tsquery" => pg_sys::TSQUERYOID,
+        _ => pg_sys::TEXTOID,
+    }
+}
+
+fn to_datum_param<'a>(data_type: &Option<Cow<str>>, value: &'a str) -> Result<(PgOid, Option<pg_sys::Datum>), Error> {
+    let data_type = match data_type {
+        Some(t) => t,
+        None => "text",
+    };
+    let oid = to_oid(data_type);
+    let datum = match data_type {
+        "boolean" => {
+            let v = value.parse::<bool>()
+                .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse bool"), details: format!("{e}") })?;
+            v.into_datum()
+        },
+        "integer" => {
+            let v = value.parse::<i32>()
+                .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse i32"), details: format!("{e}") })?;
+            v.into_datum()
+        },
+        "bigint" => {
+            let v = value.parse::<i64>()
+                .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse i64"), details: format!("{e}") })?;
+            v.into_datum()
+        },
+        "numeric" | "decimal" => {
+            let v = value.parse::<f64>()
+                .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse numeric/decimal"), details: format!("{e}") })?;
+            v.into_datum()
+        },
+        _ => {
+            value.into_datum() // just send over a str
+        }
+        
+    };
+    Ok((oid.into(), datum))
+}
+
+fn convert_params(params: Vec<&(dyn ToParam + Sync)>) -> Result<Vec<(PgOid, Option<pg_sys::Datum>)>,Error> {
     params
         .iter()
         .map(|p| match p.to_param() {
-            SV(SingleVal(v, _)) => (PgBuiltInOids::UNKNOWNOID.oid(), v.into_datum()),
-            LV(ListVal(v, _)) => (PgBuiltInOids::TEXTARRAYOID.oid(), v.iter().map(|i| i.as_ref()).collect::<Vec<_>>().into_datum()),
-            PL(Payload(v, _)) => (PgBuiltInOids::UNKNOWNOID.oid(), v.into_datum()),
-            Str(v) => (PgBuiltInOids::UNKNOWNOID.oid(), v.into_datum()),
-            StrOwned(v) => (PgBuiltInOids::UNKNOWNOID.oid(), v.into_datum()),
+            SV(SingleVal(v, d)) => to_datum_param(d, v.as_ref()),
+            LV(ListVal(v, d)) => {
+                let inner_type = match d {
+                    Some(t) => t.as_ref().replace("[]", ""),
+                    None => String::from("text"),
+                };
+                let inner_type_oid = to_oid(inner_type.as_str());
+                let oid = unsafe { pg_sys::get_array_type(inner_type_oid) };
+                let vv = match inner_type.as_str() {
+                    "boolean" => {
+                        v.iter()
+                        .map(|i| i.as_ref().parse::<bool>()).collect::<Result<Vec<bool>,_>>()
+                        .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse bool"), details: format!("{e}") })?
+                        .into_datum()
+                    },
+                    "integer" => {
+                        v.iter()
+                        .map(|i| i.as_ref().parse::<i32>()).collect::<Result<Vec<i32>,_>>()
+                        .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse i32"), details: format!("{e}") })?
+                        .into_datum()
+                    },
+                    "bigint" => {
+                        v.iter()
+                        .map(|i| i.as_ref().parse::<i64>()).collect::<Result<Vec<i64>,_>>()
+                        .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse i64"), details: format!("{e}") })?
+                        .into_datum()
+                    },
+                    "numeric" | "decimal" => {
+                        v.iter()
+                        .map(|i| i.as_ref().parse::<f64>()).collect::<Result<Vec<f64>,_>>()
+                        .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse numeric/decimal"), details: format!("{e}") })?
+                        .into_datum()
+                    },
+                    _ => {
+                        v.iter()
+                        .map(|i| i.as_ref()).collect::<Vec<&str>>()
+                        .into_datum()
+                    }
+                };
+                Ok((oid.into(),vv))
+            },
+            PL(Payload(v, d)) => to_datum_param(d, v.as_ref()),
+            Str(v) => to_datum_param(&Some(Cow::Borrowed("text")), v),
+            StrOwned(v) => to_datum_param(&Some(Cow::Borrowed("text")), v.as_str()),
         })
-        .collect()
+        .collect::<Result<Vec<_>,_>>()
 }
+
 fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) -> Result<Response<Body>, Error> {
     // read the configuration from the global variable
     log!("handle_request_inner");
@@ -347,9 +458,10 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
     let (main_statement, main_parameters, _) = generate(fmt_main_query(db_schema, schema_name, &request, &env)?);
     log!("main_statement: {}", main_statement);
     log!("main_parameters: {:?}", main_parameters);
-    let env_parameters = convert_params(env_parameters);
-    let main_parameters = convert_params(main_parameters);
-    log!("parameters converted : {:?}", main_parameters);
+    let env_parameters = convert_params(env_parameters)?;
+    let main_parameters = convert_params(main_parameters)?;
+    log!("env_parameters converted : {:?}", env_parameters);
+    log!("main parameters converted : {:?}", main_parameters);
     let response = BackgroundWorker::transaction(|| {
         Spi::connect(|mut c| -> Result<ApiResponse, Error> {
             c.select(&env_query, None, Some(env_parameters)).map_err(to_app_error)?;
@@ -627,10 +739,8 @@ fn load_configuration() -> Result<(), String> {
     };
     *CONFIG.write() = Some(config);
     *DB_SCHEMA.write() = Some(db_schema);
-    let s = DB_SCHEMA.read();
-    let ss = s.as_ref().unwrap().borrow_schema().as_ref().unwrap();
-    log!("db schema loaded {:?}", ss);
-    log!("config loaded {:?}", CONFIG.read().as_ref().unwrap());
+    log!("db schema loaded");
+    log!("config loaded");
     Ok(())
 }
 
