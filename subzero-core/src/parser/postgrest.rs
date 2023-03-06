@@ -1,10 +1,7 @@
-//use core::slice::SlicePattern;
 use std::collections::{BTreeSet, HashMap, HashSet, BTreeMap};
 use std::iter::{zip, FromIterator};
 
 use std::borrow::Cow;
-//use std::borrow::Cow::Borrowed;
-//use std::str::EncodeUtf16;
 
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, LogicOperator::*, QueryNode::*, SelectItem::*, SelectKind::*, *};
 use crate::error::*;
@@ -33,14 +30,6 @@ pub trait Offset {
     /// Offset between the first byte of self and the first byte of the argument
     fn offset(&self, second: &Self) -> usize;
 }
-// impl<'a> Offset for &'a str {
-//     fn offset(&self, second: &Self) -> usize {
-//       let fst = self.as_ptr();
-//       let snd = second.as_ptr();
-
-//       snd as usize - fst as usize
-//     }
-// }
 impl Offset for str {
     fn offset(&self, second: &Self) -> usize {
         let fst = self.as_ptr();
@@ -52,7 +41,6 @@ impl Offset for str {
 
 pub fn convert_error<I: core::ops::Deref<Target = str>>(input: I, e: VerboseError<I>) -> (Vec<usize>, nom::lib::std::string::String) {
     use nom::lib::std::fmt::Write;
-    //use nom::traits::Offset;
 
     let mut result = nom::lib::std::string::String::new();
     let mut offsets = vec![];
@@ -152,7 +140,6 @@ pub fn convert_error<I: core::ops::Deref<Target = str>>(input: I, e: VerboseErro
     (offsets, result)
 }
 
-// use nom::IResult;
 type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), Err<E>>;
 type Parsed<'a, T> = IResult<&'a str, T>;
 
@@ -396,22 +383,7 @@ pub fn parse<'a>(
             }
 
             kk if is_logical(kk) => {
-                // let ((tp, n, lo), _) = logic_tree_path()
-                //     .message("failed to parser logic tree path")
-                //     .easy_parse(*k)
-                //     .map_err(to_app_error(k))?;
-                //let (tp, n, lo): (Vec<&str>, bool, LogicOperator) = todo!();
                 let (_, (tp, n, lo)) = context("failed to parser logic tree path", logic_tree_path)(k).map_err(|e| to_app_error(k, e))?;
-
-                // let ns = if n { "not." } else { "" };
-                // let los = if lo == And { "and" } else { "or" };
-                // let s = format!("{}{}{}", ns, los, v);
-
-                // let (c, _) = logic_condition()
-                //     .message("failed to parse logic tree")
-                //     .easy_parse(s.as_str())
-                //     .map_err(to_app_error(&s))?;
-                //let (_, c) = logic_condition(Some(n), Some(lo), v).map_err(|e| to_app_error("failed to parse logic tree", e))?;
                 let (_, c) =
                     context("failed to parse logic tree", |ii| logic_condition(Some(&n), Some(&lo), ii))(v).map_err(|e| to_app_error(v, e))?;
                 conditions.push((tp, c));
@@ -458,11 +430,6 @@ pub fn parse<'a>(
 
             //is filter or function parameter
             _ => {
-                // let ((tp, field), _) = tree_path()
-                //     .message("failed to parser filter tree path")
-                //     .easy_parse(*k)
-                //     .map_err(to_app_error(k))?;
-                //let (tp, field): (Vec<&str>, Field) = todo!();
                 let (_, (tp, field)) = context("failed to parser filter tree path", tree_path)(k).map_err(|e| to_app_error(k, e))?;
 
                 let data_type = root_obj.columns.get(field.name).map(|c| c.data_type);
@@ -470,27 +437,17 @@ pub fn parse<'a>(
                     Function { .. } => {
                         if !tp.is_empty() || has_operator(v) {
                             // this is a filter
-                            // let ((negate, filter), _) = negatable_filter(&data_type)
-                            //     .message("failed to parse filter")
-                            //     .easy_parse(*v)
-                            //     .map_err(to_app_error(v))?;
-                            //let (negate, filter) = todo!();
-                            //let (_, (negate, filter)) = negatable_filter(&data_type, v).map_err(|e| to_app_error("failed to parse filter", e))?;
                             let (_, (negate, filter)) =
                                 context("failed to parse filter", |ii| negatable_filter(&data_type, ii))(v).map_err(|e| to_app_error(v, e))?;
                             conditions.push((tp, Condition::Single { field, filter, negate }));
                         } else {
                             //this is a function parameter
+                            //TODO!! we need to hold on to data_type here, so we can use it later to cast the value
                             fn_arguments.push((*k, *v));
                         }
                     }
                     _ => {
-                        // let ((negate, filter), _) = negatable_filter(&data_type)
-                        //     .message("failed to parse filter")
-                        //     .easy_parse(*v)
-                        //     .map_err(to_app_error(v))?;
-                        //let (negate, filter) = todo!();
-                        //let (_, (negate, filter)) = negatable_filter(&data_type, v).map_err(|e| to_app_error("failed to parse filter", e))?;
+                        // this is a filter
                         let (_, (negate, filter)) =
                             context("failed to parse filter", |ii| negatable_filter(&data_type, ii))(v).map_err(|e| to_app_error(v, e))?;
                         conditions.push((tp, Condition::Single { field, filter, negate }));
@@ -1037,16 +994,7 @@ fn replace_start<'a>(query: &mut Query<'a>, schema_obj: &Schema<'a>) -> Result<(
     Ok(())
 }
 
-// // parser functions
-// fn lex<Input, P>(p: P) -> impl Parser<Input, Output = P::Output>
-// where
-//     P: Parser<Input>,
-//     Input: Stream<Token = char>,
-// {
-//     p.skip(spaces())
-// }
-
-/// A combinator that takes a parser `inner` and produces a parser that also consumes both leading and
+// A combinator that takes a parser `inner` and produces a parser that also consumes both leading and
 /// trailing whitespace, returning the output of `inner`.
 fn ws<'a, F: 'a, O, E: ParseError<&'a str>>(inner: F) -> impl FnMut(&'a str) -> IResult<&'a str, O, E>
 where
@@ -1055,21 +1003,6 @@ where
     delimited(multispace0, inner, multispace0)
 }
 
-//done
-// fn field_name<Input>() -> impl Parser<Input, Output = String>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     let dash = attempt(char('-').skip(not_followed_by(char('>'))));
-//     lex(choice((
-//         quoted_value(),
-//         sep_by1(
-//             many1::<String, _, _>(choice((letter(), digit(), one_of("_ ".chars())))).map(|s| s.trim().to_owned()),
-//             dash,
-//         )
-//         .map(|words: Vec<String>| words.join("-")),
-//     )))
-// }
 fn dash(i: &str) -> Parsed<&str> {
     terminated(tag("-"), peek(is_not(">")))(i)
 }
@@ -1078,43 +1011,9 @@ fn field_name(i: &str) -> Parsed<&str> {
     alt((quoted_value, map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| s.trim())))(i)
 }
 
-//done
-// fn function_name<Input>() -> impl Parser<Input, Output = String>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     let dash = attempt(char('-').skip(not_followed_by(char('>'))));
-//     lex(choice((
-//         quoted_value(),
-//         sep_by1(
-//             many1::<String, _, _>(choice((letter(), digit(), one_of("_ ".chars())))).map(|s| s.trim().to_owned()),
-//             dash,
-//         )
-//         .map(|words: Vec<String>| words.join("-")),
-//     )))
-// }
 fn function_name(i: &str) -> Parsed<&str> {
     alt((quoted_value, map(recognize(separated_list1(dash, many1(alt((alpha1, digit1, is_a("_ ")))))), |s| s.trim())))(i)
 }
-
-//done
-// fn quoted_value<Input>() -> impl Parser<Input, Output = String>
-// where
-//     Input: Stream<Token = char>,
-// {
-// between(
-//     char('"'),
-//     char('"'),
-//     many(
-//         choice(
-//             (
-//                 none_of("\\\"".chars()),
-//                 char('\\').and(any()).map(|(_, c)| c)
-//             )
-//         )
-//     )
-// )
-// }
 
 fn quoted_value_escaped(i: &str) -> Parsed<Cow<str>> {
     // map(
@@ -1153,41 +1052,14 @@ fn quoted_value(i: &str) -> Parsed<&str> {
     delimited(char('"'), is_not("\""), char('"'))(i)
 }
 
-//done
-// fn field<Input>() -> impl Parser<Input, Output = Field>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     field_name().and(optional(json_path())).map(|(name, json_path)| Field { name, json_path })
-// }
 fn field(i: &str) -> Parsed<Field> {
     map(tuple((field_name, opt(json_path))), |(name, json_path)| Field { name, json_path })(i)
 }
 
-//done
-// fn json_path<Input>() -> impl Parser<Input, Output = Vec<JsonOperation>>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     //let end = look_ahead( string("->").or(string("::")).map(|_| ()).or(eof()) );
-//     let arrow = attempt(string("->>")).or(string("->")).map(|v| match v {
-//         "->>" => JsonOperation::J2Arrow,
-//         "->" => JsonOperation::JArrow,
-//         &_ => panic!("error parsing json path"),
-//     });
-//     let signed_number = optional(string("-"))
-//         .and(many1(digit()).and(look_ahead(choice((string("->"), string("::"), string("."), string(","))).or(eof().map(|_| "")))))
-//         .map(|v: (Option<&str>, (String, &str))| {
-//             let (s, (n, _)) = v;
-//             format!("{}{}", s.unwrap_or(""), n)
-//         });
-//     let operand = choice((attempt(signed_number.map(JsonOperand::JIdx)), field_name().map(JsonOperand::JKey)));
-//     //many1(arrow.and(operand.and(end)).map(|((arrow,(operand,_)))| arrow(operand)))
-//     many1(arrow.and(operand).map(|(arrow, operand)| arrow(operand)))
-// }
 fn arrow(i: &str) -> Parsed<&str> {
     alt((tag("->>"), tag("->")))(i)
 }
+
 fn json_path(i: &str) -> Parsed<Vec<JsonOperation>> {
     many1(map(tuple((arrow, json_operand)), |(a, o)| match a {
         "->>" => JsonOperation::J2Arrow(o),
@@ -1195,80 +1067,32 @@ fn json_path(i: &str) -> Parsed<Vec<JsonOperation>> {
         &_ => unreachable!("error parsing json path"),
     }))(i)
 }
+
 fn signed_number(i: &str) -> Parsed<&str> {
     recognize(preceded(opt(char('-')), terminated(digit1, peek(alt((tag("->"), tag("::"), tag("."), tag(","), eof))))))(i)
 }
+
 fn json_operand(i: &str) -> Parsed<JsonOperand> {
     alt((map(signed_number, JsonOperand::JIdx), map(field_name, JsonOperand::JKey)))(i)
 }
-//done
-// fn alias_separator<Input>() -> impl Parser<Input, Output = char>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     attempt(char(':').skip(not_followed_by(char(':'))))
-// }
+
 fn alias_separator(i: &str) -> Parsed<&str> {
     terminated(tag(":"), peek(is_not(":")))(i)
     //tag(":")(i)
 }
 
-//done
-// fn alias<Input>() -> impl Parser<Input, Output = String>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     choice((many1(choice((letter(), digit(), one_of("@._".chars())))), quoted_value()))
-//         .and(alias_separator())
-//         .map(|(a, _)| a)
-// }
 fn alias(i: &str) -> Parsed<&str> {
     terminated(recognize(many1(alt((alpha1, digit1, recognize(one_of("@._")))))), alias_separator)(i)
 }
 
-//done
-// fn cast<Input>() -> impl Parser<Input, Output = String>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     string("::").and(many1(choice((letter(), digit())))).map(|(_, c)| c)
-// }
 fn cast(i: &str) -> Parsed<&str> {
     preceded(tag("::"), recognize(many1(alt((alpha1, digit1)))))(i)
 }
 
-//done
-// fn dot<Input>() -> impl Parser<Input, Output = char>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     char('.')
-// }
 fn dot(i: &str) -> Parsed<&str> {
     tag(".")(i)
 }
 
-//done
-// fn tree_path<Input>() -> impl Parser<Input, Output = (Vec<String>, Field)>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     sep_by1(field_name(), dot())
-//         .and(optional(json_path()))
-//         .map(|a: (Vec<String>, Option<Vec<JsonOperation>>)| {
-//             let (names, json_path) = a;
-//             match names.split_last() {
-//                 Some((name, path)) => (
-//                     path.to_vec(),
-//                     Field {
-//                         name: name.clone(),
-//                         json_path,
-//                     },
-//                 ),
-//                 None => panic!("failed to parse tree path"),
-//             }
-//         })
-// }
 fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> {
     map(tuple((separated_list1(dot, field_name), opt(json_path))), |(names, json_path)| match names.split_last() {
         Some((name, path)) => (path.to_vec(), Field { name, json_path }),
@@ -1276,32 +1100,6 @@ fn tree_path(i: &str) -> Parsed<(Vec<&str>, Field)> {
     })(i)
 }
 
-//done
-// fn logic_tree_path<Input>() -> impl Parser<Input, Output = (Vec<String>, bool, LogicOperator)>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     sep_by1(field_name(), dot()).map(|names: Vec<String>| match names.split_last() {
-//         Some((name, path)) => {
-//             let op = match name.as_str() {
-//                 "and" => And,
-//                 "or" => Or,
-//                 x => panic!("unknown logic operator {}", x),
-//             };
-//             match path.split_last() {
-//                 Some((negate, path1)) => {
-//                     if negate == "not" {
-//                         (path1.to_vec(), true, op)
-//                     } else {
-//                         (path.to_vec(), false, op)
-//                     }
-//                 }
-//                 None => (path.to_vec(), false, op),
-//             }
-//         }
-//         None => panic!("failed to parse logic tree path"),
-//     })
-// }
 fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> {
     map(separated_list1(dot, field_name), |names| match names.split_last() {
         Some((&name, path)) => {
@@ -1325,52 +1123,18 @@ fn logic_tree_path(i: &str) -> Parsed<(Vec<&str>, bool, LogicOperator)> {
     })(i)
 }
 
-//done
-// fn select<Input>() -> impl Parser<Input, Output = Vec<SelectKind>>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     sep_by1(select_item(), lex(char(','))).skip(eof())
-// }
 fn select(i: &str) -> Parsed<Vec<SelectKind>> {
     terminated(separated_list1(ws(char(',')), select_item), eof)(i)
 }
 
-//done
-// fn columns<Input>() -> impl Parser<Input, Output = Vec<String>>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     sep_by1(field_name(), lex(char(','))).skip(eof())
-// }
 fn columns(i: &str) -> Parsed<Vec<&str>> {
     terminated(separated_list1(tag(","), ws(field_name)), eof)(i)
 }
 
-//done
-// fn on_conflict<Input>() -> impl Parser<Input, Output = Vec<String>>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     sep_by1(field_name(), lex(char(','))).skip(eof())
-// }
 fn on_conflict(i: &str) -> Parsed<Vec<&str>> {
     terminated(separated_list1(tag(","), ws(field_name)), eof)(i)
 }
 
-// done
-// fn function_param<Input>() -> impl Parser<Input, Output = FunctionParam>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     choice!(
-//         function_call().map(|(fn_name, parameters)| FunctionParam::Func { fn_name, parameters }),
-//         field().map(FunctionParam::Fld),
-//         between(char('\''), char('\''), many::<String, _, _>(none_of("'".chars())),)
-//             .and(optional(cast()))
-//             .map(|(v, c)| FunctionParam::Val(SingleVal(v, c.clone()), c))
-//     )
-// }
 fn function_param(i: &str) -> Parsed<FunctionParam> {
     alt((
         map(function_call, |(fn_name, parameters)| FunctionParam::Func { fn_name, parameters }),
@@ -1381,27 +1145,6 @@ fn function_param(i: &str) -> Parsed<FunctionParam> {
     ))(i)
 }
 
-//done
-// We need to use `parser!` to break the recursive use of `function_call` to prevent the returned parser from containing itself
-// fn function_call<Input>() -> impl Parser<Input, Output = (String, Vec<FunctionParam>)>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     function_call_()
-// }
-// parser! {
-//     #[inline]
-//     fn function_call_[Input]()(Input) -> (String,Vec<FunctionParam>)
-//     where [Input: Stream<Token = char>]
-//     {
-//         (
-//             char('$'),
-//             function_name(),
-//             between(lex(char('(')), lex(char(')')),  sep_by(function_param(), lex(char(',')))),
-//         )
-//         .map(|(_, fn_name, parameters)| (fn_name,parameters))
-//     }
-// }
 fn function_call(i: &str) -> Parsed<(&str, Vec<FunctionParam>)> {
     map(
         tuple((char('$'), function_name, delimited(ws(char('(')), separated_list0(ws(char(',')), function_param), ws(char(')'))))),
@@ -1409,84 +1152,6 @@ fn function_call(i: &str) -> Parsed<(&str, Vec<FunctionParam>)> {
     )(i)
 }
 
-//done
-// We need to use `parser!` to break the recursive use of `select_item` to prevent the returned parser from containing itself
-// #[inline]
-// fn select_item<Input>() -> impl Parser<Input, Output = SelectKind>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     select_item_()
-// }
-
-//done
-// parser! {
-//     #[inline]
-//     fn select_item_[Input]()(Input) -> SelectKind
-//     where [ Input: Stream<Token = char> ]
-//     {
-//         let star = char('*').map(|_| Item(Star));
-//         let column =
-//             optional(attempt(alias()))
-//             .and(field())
-//             .and(optional(cast()))
-//             .map(|((alias, field), cast)| Item(Simple {field, alias, cast}));
-//         let function = (
-//             optional(attempt(alias())),
-//             function_call(),
-//             optional(
-//                 attempt(string("-p")
-//                 .and(between(lex(char('(')), lex(char(')')),  sep_by(field(), lex(char(','))))))
-//             ),
-//             optional(
-//                 attempt(string("-o")
-//                 .and(between(lex(char('(')), lex(char(')')),  sep_by(order_term(), lex(char(','))))))
-//             )
-//         )
-//         .map(|(alias, (fn_name, parameters), partitions, orders)|
-//             Item(Func{
-//                 alias, fn_name, parameters,
-//                 partitions: match partitions { None => vec![], Some((_,p))=>p},
-//                 orders: match orders {None => vec![], Some((_,o))=>o},
-//
-//             })
-//         );
-//
-//         let sub_select = (
-//             optional(attempt(alias())),
-//             lex(field_name()),
-//             optional(char('!').or(char('.')).and(field_name()).map(|(_,hint)| hint)),
-//             between(lex(char('(')), lex(char(')')),  sep_by(select_item(), lex(char(','))))
-//         )
-//         .map(|(alias, from, hint, select)| {
-//             let (sel, sub_sel) = split_select(select);
-//             Sub(Box::new(SubSelect {
-//                 query: Query{
-//                     node: Select {
-//                         select: sel,//select,
-//                         from: (from, None),
-//                         join_tables: vec![],
-//                         //from_alias: alias,
-//                         where_: ConditionTree { operator: And, conditions: vec![]},
-//                         limit: None, offset: None, order: vec![],
-//                         groupby: vec![],
-//                     },
-//                     sub_selects: sub_sel
-//                 },
-//                 alias,
-//                 hint,
-//                 join: None
-//             }))
-//         });
-//
-//         choice!(
-//             attempt(function),
-//             attempt(sub_select),
-//             attempt(column),
-//             star
-//         )
-//     }
-// }
 fn select_item(i: &str) -> Parsed<SelectKind> {
     let star = map(char('*'), |_| Item(Star));
     let column = map(tuple((opt(alias), field, opt(cast))), |(alias, field, cast)| Item(Simple { field, alias, cast }));
@@ -1544,15 +1209,6 @@ fn select_item(i: &str) -> Parsed<SelectKind> {
     alt((function, sub_select, column, star))(i)
 }
 
-//done
-// fn single_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (String, Option<String>)>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     let dt = data_type.clone();
-//     many(any()).map(move |v| (v, dt.clone()))
-// }
-
 fn single_value<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, SingleVal<'a>> {
     let v = match data_type {
         Some(dt) => SingleVal(Cow::Borrowed(i), Some(Cow::Borrowed(*dt))),
@@ -1565,53 +1221,19 @@ fn apply<'a, 'b, A: 'a, B: 'a>(a: &'b A, p: impl Fn(&'b A, &'a str) -> Parsed<'a
     move |i| p(a, i)
 }
 
-//done
-// fn integer<Input>() -> impl Parser<Input, Output = SingleVal>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     many1(digit()).map(|v| SingleVal(v, Some("integer".to_string())))
-// }
 fn integer(i: &str) -> Parsed<SingleVal> {
     let (input, integer) = recognize(many1(digit1))(i)?;
     Ok((input, SingleVal(Cow::Borrowed(integer), Some(Cow::Borrowed("integer")))))
 }
 
-//done
-// fn limit<Input>() -> impl Parser<Input, Output = SingleVal>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     integer()
-// }
 fn limit(i: &str) -> Parsed<SingleVal> {
     integer(i)
 }
 
-//done
-// fn offset<Input>() -> impl Parser<Input, Output = SingleVal>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     integer()
-//}
 fn offset(i: &str) -> Parsed<SingleVal> {
     integer(i)
 }
 
-//done
-// fn logic_single_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (String, Option<String>)>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     let dt = data_type.clone();
-//     choice((
-//         attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))),
-//         between(char('{'), char('}'), many(none_of("{}".chars()))).map(|v: String| format!("{{{}}}", v)),
-//         many(none_of(",)".chars())),
-//     ))
-//     .map(move |v| (v, dt.clone()))
-// }
 fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<'a, SingleVal<'a>> {
     let (input, v) = alt((
         quoted_value_escaped,
@@ -1625,27 +1247,12 @@ fn logic_single_value<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<
     Ok((input, v))
 }
 
-//done
-// fn list_value<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (Vec<String>, Option<String>)>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     let dt = data_type.as_ref().map(|v| format!("Array({})", v)); //TODO!!! this is hardcoded for clickhouse
-//     lex(between(lex(char('(')), lex(char(')')), sep_by(list_element(), lex(char(','))))).map(move |v| (v, dt.clone()))
-// }
 fn list_value<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, ListVal<'a>> {
     let dt = data_type.map(|v| Cow::Owned(format!("Array({v})"))); //TODO!!! this is hardcoded for clickhouse
     let (input, list) = delimited(ws(char('(')), separated_list0(ws(char(',')), list_element), ws(char(')')))(i)?;
     Ok((input, ListVal(list, dt)))
 }
 
-//done
-// fn list_element<Input>() -> impl Parser<Input, Output = String>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     attempt(quoted_value().skip(not_followed_by(none_of(",)".chars())))).or(many1(none_of(",)".chars())))
-// }
 fn list_element(i: &str) -> Parsed<Cow<str>> {
     alt((
         //terminated(quoted_value, peek(none_of(",)"))),
@@ -1654,16 +1261,6 @@ fn list_element(i: &str) -> Parsed<Cow<str>> {
     ))(i)
 }
 
-//done
-// fn operator<Input>() -> impl Parser<Input, Output = String>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     many1(letter()).and_then(|o: String| match OPERATORS.get(o.as_str()) {
-//         Some(oo) => Ok(oo.to_string()),
-//         None => Err(StreamErrorFor::<Input>::message_static_message("unknown operator")),
-//     })
-// }
 fn operator(i: &str) -> Parsed<&str> {
     map_res(alpha1, |o: &str| match OPERATORS.get(o) {
         Some(&op) => Ok(op),
@@ -1671,16 +1268,6 @@ fn operator(i: &str) -> Parsed<&str> {
     })(i)
 }
 
-//done
-// fn fts_operator<Input>() -> impl Parser<Input, Output = String>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     many1(letter()).and_then(|o: String| match FTS_OPERATORS.get(o.as_str()) {
-//         Some(oo) => Ok(oo.to_string()),
-//         None => Err(StreamErrorFor::<Input>::message_static_message("unknown fts operator")),
-//     })
-// }
 fn fts_operator(i: &str) -> Parsed<&str> {
     map_res(alpha1, |o: &str| match FTS_OPERATORS.get(o) {
         Some(&op) => Ok(op),
@@ -1688,58 +1275,10 @@ fn fts_operator(i: &str) -> Parsed<&str> {
     })(i)
 }
 
-// fn negatable_filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = (bool, Filter)>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     optional(attempt(string("not").skip(dot())))
-//         .and(filter(data_type))
-//         .map(|(n, f)| (n.is_some(), f))
-// }
 fn negatable_filter<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, (bool, Filter<'a>)> {
     map(tuple((opt(tag("not.")), apply(data_type, filter))), |(n, f)| (n.is_some(), f))(i)
 }
 
-//done
-//TODO! filter and logic_filter parsers should be combined, they differ only in single_value parser type
-// fn filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
-//
-//     choice((
-//         attempt(operator().skip(dot()).and(single_value(data_type)).map(move |(o, (v, dt))| match &*o {
-//             "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace('*', "%"), dt))),
-//             "is" => match &*v {
-//                 "null" => Ok(Filter::Is(TrileanVal::TriNull)),
-//                 "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
-//                 "true" => Ok(Filter::Is(TrileanVal::TriTrue)),
-//                 "false" => Ok(Filter::Is(TrileanVal::TriFalse)),
-//                 _ => Err(StreamErrorFor::<Input>::message_static_message(
-//                     "unknown value for is operator, use null, unknown, true, false",
-//                 )),
-//             },
-//             _ => Ok(Filter::Op(o, SingleVal(v, dt))),
-//         })),
-//         attempt(
-//             string("in")
-//                 .skip(dot())
-//                 .and(list_value(data_type))
-//                 .map(move |(_, (v, dt))| Ok(Filter::In(ListVal(v, dt)))),
-//         ),
-//         fts_operator()
-//             .and(optional(
-//                 between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(|v| SingleVal(v, None)),
-//             ))
-//             .skip(dot())
-//             .and(single_value(data_type))
-//             .map(move |((o, l), (v, dt))| Ok(Filter::Fts(o, l, SingleVal(v, dt)))),
-//     ))
-//     .and_then(|r| r)
-// }
-// fn filter_common<'a, 'b, P>(p: P, data_type: &'b Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>>
-// where P: fn(&'b Option<&'a str>, &'a str) -> Parsed<'a, SingleVal<'a>> +'b
 fn filter_common<'a, 'b>(
     p: fn(&'b Option<&'a str>, &'a str) -> Parsed<'a, SingleVal<'a>>, data_type: &'b Option<&'a str>, i: &'a str,
 ) -> Parsed<'a, Filter<'a>> {
@@ -1772,54 +1311,10 @@ fn filter<'a>(data_type: &Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>>
     filter_common(single_value, data_type, i)
 }
 
-//done
-// fn logic_filter<Input>(data_type: &Option<String>) -> impl Parser<Input, Output = Filter>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     //let value = if use_logical_value { opaque!(logic_single_value()) } else { opaque!(single_value()) };
-//
-//     choice((
-//         attempt(operator().skip(dot()).and(logic_single_value(data_type)).map(|(o, (v, dt))| match &*o {
-//             "like" | "ilike" => Ok(Filter::Op(o, SingleVal(v.replace('*', "%"), dt))),
-//             "is" => match &*v {
-//                 "null" => Ok(Filter::Is(TrileanVal::TriNull)),
-//                 "unknown" => Ok(Filter::Is(TrileanVal::TriUnknown)),
-//                 "true" => Ok(Filter::Is(TrileanVal::TriTrue)),
-//                 "false" => Ok(Filter::Is(TrileanVal::TriFalse)),
-//                 _ => Err(StreamErrorFor::<Input>::message_static_message(
-//                     "unknown value for is operator, use null, unknown, true, false",
-//                 )),
-//             },
-//             _ => Ok(Filter::Op(o, SingleVal(v, dt))),
-//         })),
-//         attempt(
-//             string("in")
-//                 .skip(dot())
-//                 .and(list_value(data_type))
-//                 .map(|(_, (v, dt))| Ok(Filter::In(ListVal(v, dt)))),
-//         ),
-//         fts_operator()
-//             .and(optional(
-//                 between(char('('), char(')'), many1(choice((letter(), digit(), char('_'))))).map(|v| SingleVal(v, None)),
-//             ))
-//             .skip(dot())
-//             .and(logic_single_value(data_type))
-//             .map(|((o, l), (v, dt))| Ok(Filter::Fts(o, l, SingleVal(v, dt)))),
-//     ))
-//     .and_then(|v| v)
-// }
 fn logic_filter<'a>(data_type: &'a Option<&'a str>, i: &'a str) -> Parsed<'a, Filter<'a>> {
     filter_common(logic_single_value, data_type, i)
 }
 
-//done
-// fn order<Input>() -> impl Parser<Input, Output = Vec<OrderTerm>>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     sep_by1(order_term(), lex(char(','))).skip(eof())
-// }
 fn order(i: &str) -> Parsed<Vec<OrderTerm>> {
     terminated(
         separated_list1(
@@ -1844,27 +1339,6 @@ fn order(i: &str) -> Parsed<Vec<OrderTerm>> {
     )(i)
 }
 
-//done
-// fn order_term<Input>() -> impl Parser<Input, Output = OrderTerm>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     let direction = attempt(
-//         dot()
-//             .and(
-//                 string("asc")
-//                     .map(|_| OrderDirection::Asc)
-//                     .or(string("desc").map(|_| OrderDirection::Desc)),
-//             )
-//             .map(|(_, v)| v),
-//     );
-//     let nulls = dot()
-//         .and(attempt(string("nullsfirst").map(|_| OrderNulls::NullsFirst)).or(string("nullslast").map(|_| OrderNulls::NullsLast)))
-//         .map(|(_, v)| v);
-//     field()
-//         .and(optional(direction).and(optional(nulls)))
-//         .map(|(term, (direction, null_order))| OrderTerm { term, direction, null_order })
-// }
 fn order_term(i: &str) -> Parsed<OrderTerm> {
     map(
         tuple((
@@ -1876,61 +1350,9 @@ fn order_term(i: &str) -> Parsed<OrderTerm> {
     )(i)
 }
 
-//done
-// fn groupby<Input>() -> impl Parser<Input, Output = Vec<GroupByTerm>>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     sep_by1(groupby_term(), lex(char(','))).skip(eof())
-// }
 fn groupby(i: &str) -> Parsed<Vec<GroupByTerm>> {
     terminated(separated_list1(tag(","), map(ws(field), GroupByTerm)), eof)(i)
 }
-
-//done
-// fn groupby_term<Input>() -> impl Parser<Input, Output = GroupByTerm>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     field().map(GroupByTerm)
-// }
-
-//done
-// fn content_type<Input>() -> impl Parser<Input, Output = ContentType>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     sep_by1(many1(none_of(",".chars())), char(',')).and_then(|v: Vec<String>| {
-//         let vv = v
-//             .iter()
-//             .map(|t| {
-//                 let tt = t.trim().split(';').collect::<Vec<_>>();
-//                 match tt.first() {
-//                     Some(&"*/*") => ApplicationJSON,
-//                     Some(&"application/json") => ApplicationJSON,
-//                     Some(&"application/vnd.pgrst.object") => SingularJSON,
-//                     Some(&"application/vnd.pgrst.object+json") => SingularJSON,
-//                     Some(&"text/csv") => TextCSV,
-//                     Some(o) => Other(o.to_string()),
-//                     None => Other(t.to_string()),
-//                 }
-//             })
-//             // remove unknown content types
-//             .filter(|t| !matches!(t, Other(_)))
-//             .collect::<Vec<_>>();
-//         match vv.first() {
-//             Some(ct) => Ok(ct.clone()),
-//             None => Err(StreamErrorFor::<Input>::message_static_message("unknown operator")),
-//         }
-//     })
-//     // choice((
-//     //     string("*/*").map(|_| ApplicationJSON),
-//     //     attempt(string("application/json")).map(|_| ApplicationJSON),
-//     //     attempt(string("application/vnd.pgrst.object")).map(|_| SingularJSON),
-//     //     attempt(string("application/vnd.pgrst.object+json")).map(|_| SingularJSON),
-//     //     string("text/csv").map(|_| TextCSV),
-//     // ))
-// }
 
 fn content_type(i: &str) -> Parsed<ContentType> {
     map_res(
@@ -1962,52 +1384,6 @@ fn content_type(i: &str) -> Parsed<ContentType> {
         },
     )(i)
 }
-
-//done
-// fn preferences<Input>() -> impl Parser<Input, Output = Preferences>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     sep_by1(
-//         choice((
-//             attempt(string("return=").and(choice((string("representation"), string("minimal"), string("headers-only"))))),
-//             attempt(string("count=").and(choice((string("exact"), string("planned"), string("estimated"))))),
-//             attempt(string("resolution=").and(choice((string("merge-duplicates("), string(")ignore-duplicates"))))),
-//         )),
-//         lex(char(',')),
-//     )
-//     .map(|v: Vec<(&str, &str)>| {
-//         let m = v.into_iter().collect::<HashMap<_, _>>();
-//         Preferences {
-//             resolution: match m.get("resolution=") {
-//                 Some(r) => match *r {
-//                     "merge-duplicates" => Some(Resolution::MergeDuplicates),
-//                     "ignore-duplicates" => Some(Resolution::IgnoreDuplicates),
-//                     _ => None,
-//                 },
-//                 None => None,
-//             },
-//             representation: match m.get("return=") {
-//                 Some(r) => match *r {
-//                     "representation" => Some(Representation::Full),
-//                     "minimal" => Some(Representation::None),
-//                     "headers-only" => Some(Representation::HeadersOnly),
-//                     _ => None,
-//                 },
-//                 None => None,
-//             },
-//             count: match m.get("count=") {
-//                 Some(r) => match *r {
-//                     "exact" => Some(Count::ExactCount),
-//                     "planned" => Some(Count::PlannedCount),
-//                     "estimated" => Some(Count::EstimatedCount),
-//                     _ => None,
-//                 },
-//                 None => None,
-//             },
-//         }
-//     })
-// }
 
 fn preferences(i: &str) -> Parsed<Preferences> {
     map_opt(
@@ -2056,44 +1432,6 @@ fn preferences(i: &str) -> Parsed<Preferences> {
         },
     )(i)
 }
-
-//done
-// fn logic_condition<Input>() -> impl Parser<Input, Output = Condition>
-// where
-//     Input: Stream<Token = char>,
-// {
-//     logic_condition_()
-// }
-// parser! {
-//     #[inline]
-//     fn logic_condition_[Input]()(Input) -> Condition
-//     where [ Input: Stream<Token = char> ]
-//     {
-//         let single = field().skip(dot())
-//             .and(optional(attempt(string("not").skip(dot()))))
-//             .and(logic_filter(&None))
-//             .map(|((field,negate),filter)|
-//                 Condition::Single {field,filter,negate: negate.is_some()}
-//             );
-//
-//         let group = optional(attempt(string("not").skip(dot())))
-//             .and(
-//                 lex(choice((string("and"),string("or")))).map(|l|
-//                     match l {
-//                         "and" => And,
-//                         "or" => Or,
-//                         x => panic!("unknown logic operator {}", x)
-//                     }
-//                 )
-//                 .and(between(lex(char('(')),lex(char(')')),sep_by1(logic_condition(), lex(char(',')))))
-//             )
-//             .map(|(negate, (operator, conditions))|{
-//                 Condition::Group{ negate: negate.is_some(), tree: ConditionTree { operator, conditions,}}
-//             });
-//
-//         attempt(single).or(group)
-//     }
-// }
 
 fn logic_condition<'a, 'b>(n: Option<&'b bool>, lo: Option<&'b LogicOperator>, i: &'a str) -> Parsed<'a, Condition<'a>> {
     match (n, lo) {
@@ -2343,37 +1681,7 @@ fn has_operator(s: &str) -> bool {
     OPERATORS_START.iter().map(|op| s.starts_with(op)).any(|b| b)
 }
 
-// fn to_app_error<'a>(s: &'a str) -> impl Fn(ParseError<&'a str>) -> Error {
-//     move |mut e| {
-//         let m = e.errors.drain_filter(|v| matches!(v, ParserError::Message(_))).collect::<Vec<_>>();
-//         let position = e.position.translate_position(s);
-//         let message = match m.as_slice() {
-//             [ParserError::Message(Info::Static(s))] => s,
-//             _ => "",
-//         };
-//         let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
-//         let details = format!("{}", e)
-//             .replace(format!("Parse error at {}", e.position).as_str(), "")
-//             .replace('\n', " ")
-//             .trim()
-//             .to_string();
-//         Error::ParseRequestError { message, details }
-//     }
-// }
-
 fn to_app_error(s: &str, e: nom::Err<nom::error::VerboseError<&str>>) -> Error {
-    // let m = e.errors.drain_filter(|v| matches!(v, ParserError::Message(_))).collect::<Vec<_>>();
-    // let position = e.position.translate_position(s);
-    // let message = match m.as_slice() {
-    //     [ParserError::Message(Info::Static(s))] => s,
-    //     _ => "",
-    // };
-    // let message = format!("\"{} ({})\" (line 1, column {})", message, s, position + 1);
-    // let details = format!("{}", e)
-    //     .replace(format!("Parse error at {}", e.position).as_str(), "")
-    //     .replace('\n', " ")
-    //     .trim()
-    //     .to_string();
     match e {
         nom::Err::Error(_e) | nom::Err::Failure(_e) => {
             //println!("Raw error:\n{:?}", &_e);
@@ -2402,7 +1710,6 @@ fn to_app_error(s: &str, e: nom::Err<nom::error::VerboseError<&str>>) -> Error {
     }
 }
 
-//fn get_returning(select: &Vec<SelectKind>) -> Result<Vec<String>> {
 fn get_returning<'a>(selects: &[SelectItem<'a>], sub_selects: &[SubSelect<'a>]) -> Result<Vec<&'a str>> {
     let returning = selects
         .iter()
