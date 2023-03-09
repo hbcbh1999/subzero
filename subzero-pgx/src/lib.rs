@@ -65,7 +65,7 @@ lazy_static::lazy_static! {
     static ref GUC_LISTEN_ADDRESS: GucSetting<Option<&'static str>> = GucSetting::new(Some("localhost"));
     static ref GUC_LISTEN_PORT: GucSetting<i32> = GucSetting::new(3000);
     static ref GUC_ACCESS_CONTROL_ALLOW_ORIGIN: GucSetting<Option<&'static str>> = GucSetting::new(None);
-	
+
 }
 static CONFIG: RwLock<Option<VhostConfig>> = RwLock::new(None);
 static DB_SCHEMA: RwLock<Option<DbSchemaWrap>> = RwLock::new(None);
@@ -261,34 +261,41 @@ fn to_datum_param<'a>(data_type: &Option<Cow<str>>, value: &'a str) -> Result<(P
     let oid = to_oid(data_type);
     let datum = match data_type {
         "boolean" => {
-            let v = value.parse::<bool>()
-                .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse bool"), details: format!("{e}") })?;
+            let v = value.parse::<bool>().map_err(|e| Error::ParseRequestError {
+                message: String::from("failed to parse bool"),
+                details: format!("{e}"),
+            })?;
             v.into_datum()
-        },
+        }
         "integer" => {
-            let v = value.parse::<i32>()
-                .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse i32"), details: format!("{e}") })?;
+            let v = value.parse::<i32>().map_err(|e| Error::ParseRequestError {
+                message: String::from("failed to parse i32"),
+                details: format!("{e}"),
+            })?;
             v.into_datum()
-        },
+        }
         "bigint" => {
-            let v = value.parse::<i64>()
-                .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse i64"), details: format!("{e}") })?;
+            let v = value.parse::<i64>().map_err(|e| Error::ParseRequestError {
+                message: String::from("failed to parse i64"),
+                details: format!("{e}"),
+            })?;
             v.into_datum()
-        },
+        }
         "numeric" | "decimal" => {
-            let v = value.parse::<f64>()
-                .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse numeric/decimal"), details: format!("{e}") })?;
+            let v = value.parse::<f64>().map_err(|e| Error::ParseRequestError {
+                message: String::from("failed to parse numeric/decimal"),
+                details: format!("{e}"),
+            })?;
             v.into_datum()
-        },
+        }
         _ => {
             value.into_datum() // just send over a str
         }
-        
     };
     Ok((oid.into(), datum))
 }
 
-fn convert_params(params: Vec<&(dyn ToParam + Sync)>) -> Result<Vec<(PgOid, Option<pg_sys::Datum>)>,Error> {
+fn convert_params(params: Vec<&(dyn ToParam + Sync)>) -> Result<Vec<(PgOid, Option<pg_sys::Datum>)>, Error> {
     params
         .iter()
         .map(|p| match p.to_param() {
@@ -301,43 +308,51 @@ fn convert_params(params: Vec<&(dyn ToParam + Sync)>) -> Result<Vec<(PgOid, Opti
                 let inner_type_oid = to_oid(inner_type.as_str());
                 let oid = unsafe { pg_sys::get_array_type(inner_type_oid) };
                 let vv = match inner_type.as_str() {
-                    "boolean" => {
-                        v.iter()
-                        .map(|i| i.as_ref().parse::<bool>()).collect::<Result<Vec<bool>,_>>()
-                        .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse bool"), details: format!("{e}") })?
-                        .into_datum()
-                    },
-                    "integer" => {
-                        v.iter()
-                        .map(|i| i.as_ref().parse::<i32>()).collect::<Result<Vec<i32>,_>>()
-                        .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse i32"), details: format!("{e}") })?
-                        .into_datum()
-                    },
-                    "bigint" => {
-                        v.iter()
-                        .map(|i| i.as_ref().parse::<i64>()).collect::<Result<Vec<i64>,_>>()
-                        .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse i64"), details: format!("{e}") })?
-                        .into_datum()
-                    },
-                    "numeric" | "decimal" => {
-                        v.iter()
-                        .map(|i| i.as_ref().parse::<f64>()).collect::<Result<Vec<f64>,_>>()
-                        .map_err(|e| Error::ParseRequestError { message: String::from("failed to parse numeric/decimal"), details: format!("{e}") })?
-                        .into_datum()
-                    },
-                    _ => {
-                        v.iter()
-                        .map(|i| i.as_ref()).collect::<Vec<&str>>()
-                        .into_datum()
-                    }
+                    "boolean" => v
+                        .iter()
+                        .map(|i| i.as_ref().parse::<bool>())
+                        .collect::<Result<Vec<bool>, _>>()
+                        .map_err(|e| Error::ParseRequestError {
+                            message: String::from("failed to parse bool"),
+                            details: format!("{e}"),
+                        })?
+                        .into_datum(),
+                    "integer" => v
+                        .iter()
+                        .map(|i| i.as_ref().parse::<i32>())
+                        .collect::<Result<Vec<i32>, _>>()
+                        .map_err(|e| Error::ParseRequestError {
+                            message: String::from("failed to parse i32"),
+                            details: format!("{e}"),
+                        })?
+                        .into_datum(),
+                    "bigint" => v
+                        .iter()
+                        .map(|i| i.as_ref().parse::<i64>())
+                        .collect::<Result<Vec<i64>, _>>()
+                        .map_err(|e| Error::ParseRequestError {
+                            message: String::from("failed to parse i64"),
+                            details: format!("{e}"),
+                        })?
+                        .into_datum(),
+                    "numeric" | "decimal" => v
+                        .iter()
+                        .map(|i| i.as_ref().parse::<f64>())
+                        .collect::<Result<Vec<f64>, _>>()
+                        .map_err(|e| Error::ParseRequestError {
+                            message: String::from("failed to parse numeric/decimal"),
+                            details: format!("{e}"),
+                        })?
+                        .into_datum(),
+                    _ => v.iter().map(|i| i.as_ref()).collect::<Vec<&str>>().into_datum(),
                 };
-                Ok((oid.into(),vv))
-            },
+                Ok((oid.into(), vv))
+            }
             PL(Payload(v, d)) => to_datum_param(d, v.as_ref()),
             Str(v) => to_datum_param(&Some(Cow::Borrowed("text")), v),
             StrOwned(v) => to_datum_param(&Some(Cow::Borrowed("text")), v.as_str()),
         })
-        .collect::<Result<Vec<_>,_>>()
+        .collect::<Result<Vec<_>, _>>()
 }
 
 fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) -> Result<Response<Body>, Error> {
@@ -747,13 +762,13 @@ fn load_configuration() -> Result<(), String> {
             Ok(s) => {
                 log!("loading schema structure from json file");
                 Ok(DbSchemaWrap::new(s, |s| serde_json::from_str::<DbSchema>(s).map_err(|e| e.to_string())))
-            },
+            }
             Err(e) => Err(format!("{e}")),
         },
         JsonString(s) => {
             log!("loading schema structure from json string");
             Ok(DbSchemaWrap::new(s, |s| serde_json::from_str::<DbSchema>(s.as_str()).map_err(|e| e.to_string())))
-        },
+        }
     }?;
 
     let config = VhostConfig {
@@ -903,23 +918,9 @@ pub extern "C" fn _PG_init() {
         GucContext::Suset,
     );
 
-    GucRegistry::define_string_guc(
-        "subzero.listen_addresses",
-        "Listen addresses",
-        "Listen addresses",
-        &GUC_LISTEN_ADDRESS,
-        GucContext::Suset,
-    );
+    GucRegistry::define_string_guc("subzero.listen_addresses", "Listen addresses", "Listen addresses", &GUC_LISTEN_ADDRESS, GucContext::Suset);
 
-    GucRegistry::define_int_guc(
-        "subzero.port",
-        "Port",
-        "Port",
-        &GUC_LISTEN_PORT,
-        0,
-        i32::MAX,
-        GucContext::Suset,
-    );
+    GucRegistry::define_int_guc("subzero.port", "Port", "Port", &GUC_LISTEN_PORT, 0, i32::MAX, GucContext::Suset);
 
     GucRegistry::define_string_guc(
         "subzero.access_control_allow_origin",
@@ -942,7 +943,6 @@ pub extern "C" fn _PG_init() {
 #[pg_guard]
 #[no_mangle]
 pub extern "C" fn background_worker_main() {
-
     BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
     log!("background worker is starting");
 
