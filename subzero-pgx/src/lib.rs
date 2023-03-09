@@ -64,6 +64,8 @@ lazy_static::lazy_static! {
     static ref GUC_DISABLE_INTERNAL_PERMISSIONS: GucSetting<bool> = GucSetting::new(false);
     static ref GUC_LISTEN_ADDRESS: GucSetting<Option<&'static str>> = GucSetting::new(Some("localhost"));
     static ref GUC_LISTEN_PORT: GucSetting<i32> = GucSetting::new(3000);
+    static ref GUC_ACCESS_CONTROL_ALLOW_ORIGIN: GucSetting<Option<&'static str>> = GucSetting::new(None);
+	
 }
 static CONFIG: RwLock<Option<VhostConfig>> = RwLock::new(None);
 static DB_SCHEMA: RwLock<Option<DbSchemaWrap>> = RwLock::new(None);
@@ -581,7 +583,7 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
         (&Method::DELETE, Delete { .. }) => content_range_header(1, upper, total),
         _ => content_range_header(lower, upper, total),
     };
-    response_headers.push(("Content-Range".to_string(), content_range));
+    response_headers.push(("content-range".to_string(), content_range));
 
     #[rustfmt::skip]
     let mut status = match (&method, &request.query.node, page_total, &request.preferences) {
@@ -628,6 +630,10 @@ fn handle_request_inner(parts: hyper::http::request::Parts, body: Option<&str>) 
     }?;
     headers.insert("content-type", http_content_type.parse().unwrap());
     headers.insert("server", "subzero".parse().unwrap());
+    let access_control_allow_origin = GUC_ACCESS_CONTROL_ALLOW_ORIGIN.get();
+    if let Some(origin) = access_control_allow_origin {
+        headers.insert("access-control-allow-origin", origin.parse().unwrap());
+    }
     for (k, v) in response_headers {
         let name = hyper::header::HeaderName::from_str(k.as_str()).map_err(|_| Error::InternalError {
             message: "could not create hyper header".to_string(),
@@ -912,6 +918,14 @@ pub extern "C" fn _PG_init() {
         &GUC_LISTEN_PORT,
         0,
         i32::MAX,
+        GucContext::Suset,
+    );
+
+    GucRegistry::define_string_guc(
+        "subzero.access_control_allow_origin",
+        "Access control allow origin",
+        "Access control allow origin",
+        &GUC_ACCESS_CONTROL_ALLOW_ORIGIN,
         GucContext::Suset,
     );
 

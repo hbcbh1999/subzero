@@ -3527,7 +3527,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-pgx"
-version = "0.0.0"
+version = "0.0.1"
 dependencies = [
  "hyper 0.14.24",
  "jsonpath_lib",
