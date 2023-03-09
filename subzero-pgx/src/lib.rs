@@ -139,12 +139,17 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, Infallible
         Err(e) => {
             let status = StatusCode::from_u16(e.status_code()).unwrap();
             let body = e.json_body().to_string();
-            Ok(Response::builder()
+
+            let mut http_response = Response::builder()
                 .status(status)
                 .header("content-type", "application/json")
-                .header("server", "subzero")
-                .body(Body::from(body))
-                .unwrap())
+                .header("server", "subzero");
+            let headers = http_response.headers_mut().unwrap();
+            let access_control_allow_origin = GUC_ACCESS_CONTROL_ALLOW_ORIGIN.get();
+            if let Some(origin) = access_control_allow_origin {
+                headers.insert("access-control-allow-origin", origin.parse().unwrap());
+            }
+            Ok(http_response.body(Body::from(body)).unwrap())
         }
     }
 }
