@@ -188,7 +188,10 @@ impl Backend {
             _ => Err(JsError::new("unsupported database type")),
         }?;
 
-        Ok(vec![JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))])
+        Ok(vec![
+            JsValue::from(main_statement),
+            JsValue::from(parameters_to_js_array(db_type, main_parameters)),
+        ])
     }
 
     fn fmt_sqlite_first_stage_mutate(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue, JsValue), JsError> {
@@ -275,7 +278,7 @@ impl Backend {
             _ => Err(JsError::new("unsupported database type for two step mutation")),
         }?;
 
-        Ok((JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))))
+        Ok((JsValue::from(main_statement), JsValue::from(parameters_to_js_array(db_type, main_parameters))))
     }
 
     fn fmt_sqlite_second_stage_select(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue, JsValue), JsError> {
@@ -359,7 +362,7 @@ impl Backend {
             _ => Err(JsError::new("unsupported database type")),
         }?;
 
-        Ok((JsValue::from(main_statement), JsValue::from(parameters_to_js_array(main_parameters))))
+        Ok((JsValue::from(main_statement), JsValue::from(parameters_to_js_array(db_type, main_parameters))))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -398,16 +401,19 @@ impl Backend {
 }
 
 // convert parameters vector to a js array
-fn parameters_to_js_array(rust_parameters: Vec<&(dyn ToParam + Sync)>) -> JsArray {
+fn parameters_to_js_array(db_type: &str, rust_parameters: Vec<&(dyn ToParam + Sync)>) -> JsArray {
     let parameters = JsArray::new_with_length(rust_parameters.len() as u32);
     for (i, p) in rust_parameters.into_iter().enumerate() {
         let v = match p.to_param() {
-            LV(ListVal(v, _)) => to_js_value(&serde_json::to_string(v).unwrap_or_default()).unwrap_or_default(),
+            LV(ListVal(v, _)) => match db_type {
+                "sqlite" => to_js_value(&serde_json::to_string(v).unwrap_or_default()).unwrap_or_default(),
+                _ => to_js_value(v).unwrap_or_default(),
+            },
             SV(SingleVal(v, Some(Cow::Borrowed("integer")))) => to_js_value(&(v.parse::<i32>().unwrap_or_default())).unwrap_or_default(),
-            SV(SingleVal(v, _)) => to_js_value(&v).unwrap_or_default(),
-            PL(Payload(v, _)) => to_js_value(&v).unwrap_or_default(),
-            Str(v) => to_js_value(&v).unwrap_or_default(),
-            StrOwned(v) => to_js_value(&v).unwrap_or_default(),
+            SV(SingleVal(v, _)) => to_js_value(v).unwrap_or_default(),
+            PL(Payload(v, _)) => to_js_value(v).unwrap_or_default(),
+            Str(v) => to_js_value(v).unwrap_or_default(),
+            StrOwned(v) => to_js_value(v).unwrap_or_default(),
         };
         parameters.set(i as u32, v);
     }

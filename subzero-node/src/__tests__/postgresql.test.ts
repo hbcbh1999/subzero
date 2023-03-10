@@ -1,79 +1,17 @@
-import { expect, test } from '@jest/globals';
-import Subzero, { Statement, /*init_wasm*/ } from '../nodejs';
+import { expect, test, beforeAll, describe, afterAll } from '@jest/globals';
+import Subzero, { Statement, getIntrospectionQuery, fmtPostgreSqlEnv, Env } from '../nodejs';
+import { Pool } from 'pg';
+import * as fs from 'fs';
+import * as path from 'path';
+import { runPemissionsTest, runSelectTest, runUpdateTest } from './shared/shared'
+import dotenv from 'dotenv';
+dotenv.config({ path: `${__dirname}/../../../.github/.env`});
 
-const schema = {
-  schemas: [
-    {
-      name: 'public',
-      objects: [
-        {
-          kind: 'function',
-          name: 'myfunction',
-          volatile: 'v',
-          composite: false,
-          setof: true,
-          return_type: 'int4',
-          return_type_schema: 'pg_catalog',
-          parameters: [
-            {
-              name: 'a',
-              type: 'integer',
-              required: true,
-              variadic: false,
-            },
-          ],
-        },
-        {
-          kind: 'view',
-          name: 'tasks',
-          columns: [
-            {
-              name: 'id',
-              data_type: 'int',
-              primary_key: true,
-            },
-            {
-              name: 'name',
-              data_type: 'text',
-            },
-          ],
-          foreign_keys: [
-            {
-              name: 'project_id_fk',
-              table: ['api', 'tasks'],
-              columns: ['project_id'],
-              referenced_table: ['api', 'projects'],
-              referenced_columns: ['id'],
-            },
-          ],
-        },
-        {
-          kind: 'table',
-          name: 'projects',
-          columns: [
-            {
-              name: 'id',
-              data_type: 'int',
-              primary_key: true,
-            },
-          ],
-          foreign_keys: [],
-          column_level_permissions: {
-            role: {
-              get: ['id', 'name'],
-            },
-          },
-          row_level_permissions: {
-            role: {
-              get: [{ single: { field: { name: 'id' }, filter: { op: ['eq', ['10', 'int']] } } }],
-            },
-          },
-        },
-      ],
-    },
-  ],
-};
+const { POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB} = process.env;
 
+const dbPool = new Pool({
+  connectionString: `postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}`,
+})
 function normalize_statement(s: Statement) {
   return {
     query: s.query.replace(/\s+/g, ' ').trim(),
@@ -81,48 +19,80 @@ function normalize_statement(s: Statement) {
   };
 }
 const base_url = 'http://localhost:3000/rest';
-const subzero = new Subzero('postgresql', schema);
-// beforeAll(async () => {
-//   await subzero.init();
-// });
+//const subzero = new Subzero('postgresql', schema);
+let subzero: Subzero;
+beforeAll(async () => {
+  const db = await dbPool.connect();
+  const permissions = JSON.parse(fs.readFileSync(path.join(__dirname, 'permissions.json')).toString());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const placeholder_values = new Map<string, any>([['permissions.json', permissions]]);
+  const { query, parameters } = getIntrospectionQuery('postgresql', 'public', placeholder_values);
+  const result = await db.query(query, parameters);
+  //const s = JSON.parse(result.rows[0].json_schema)
+  //console.log(s.schemas[0].objects.map((o: any) => o.name))
+  const schema = JSON.parse(result.rows[0].json_schema);
 
-test('main query', async () => {
-  // const request = await subzero.parse(
-  //   'public',
-  //   '/rest/',
-  //   'anonymous',
-  //   new Request(`${base_url}/tasks?id=eq.1`, {
-  //     method: 'GET',
-  //     headers: {
-  //       Accept: 'application/json',
-  //     },
-  //   }),
-  // );
-  expect(
-    normalize_statement(
-      await subzero.fmtStatement(
-        'public',
-        '/rest/',
-        'anonymous',
-        new Request(`${base_url}/tasks?id=eq.1`, {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-          },
-        }),
-        [
-          ['role', 'admin'],
-          ['request', '{"method":"GET"}'],
-        ], // env
+  console.log(schema.use_internal_permissions)
+  //initialize the subzero instance
+  subzero = new Subzero('postgresql', schema);
+  db.release();
+});
+
+// execute the queries for a given parsed request
+async function run(role: string, req: Request, queryEnv?: Env) {
+  const method = req.method || 'GET';
+  const schema = 'public';
+  const env = queryEnv || [];
+  const prefix = `/rest/`;
+  const { query: envQuery, parameters: envParameters } = fmtPostgreSqlEnv(env);
+  const { query, parameters } = await subzero.fmtStatement(schema, prefix, role, req, env);
+  //console.log(query, parameters)
+  let result;
+  const db = await dbPool.connect();
+  try {
+    const txMode = method === 'GET' ? 'READ ONLY' : 'READ WRITE';
+    await db.query(`BEGIN ISOLATION LEVEL READ COMMITTED ${txMode}`);
+    await db.query(envQuery, envParameters);
+    result = (await db.query(query, parameters)).rows[0];
+    await db.query('ROLLBACK');
+  } catch (e) {
+    await db.query('ROLLBACK');
+    throw e;
+  } finally {
+    db.release();
+  }
+  return result.body?JSON.parse(result.body):null;
+}
+
+
+describe('query shape tests', () => {
+  test('main query', async () => {
+    expect(
+      normalize_statement(
+        await subzero.fmtStatement(
+          'public',
+          '/rest/',
+          'anonymous',
+          new Request(`${base_url}/tasks?select=id,name&id=eq.1`, {
+            method: 'GET',
+            headers: {
+              Accept: 'application/json',
+            },
+          }),
+          [
+            ['role', 'anonymous'],
+            ['request', '{"method":"GET"}'],
+          ], // env
+        ),
       ),
-    ),
-  ).toStrictEqual(
-    normalize_statement({
-      query: `
+    ).toStrictEqual(
+      normalize_statement({
+        query: `
             with 
-            env as materialized (select $1 as "request",$2 as "role")
+            env as materialized (select $1 as "role",$2 as "request")
             , _subzero_query as (
                 select "public"."tasks"."id", "public"."tasks"."name" from "public"."tasks", env where "public"."tasks"."id" = $3
+                and ((true))
             )
             , _subzero_count_query AS (select 1)
             select
@@ -134,29 +104,17 @@ test('main query', async () => {
                 nullif(current_setting('response.status', true), '') as response_status
             from ( select * from _subzero_query ) _subzero_t
             `,
-      parameters: ['{"method":"GET"}', 'admin', '1'],
-    }),
-  );
+        parameters: ['anonymous', '{"method":"GET"}', 1],
+      }),
+    );
+  });
 });
 
-// test('core query', () => {
-//     expect(
-//         normalize_statement(
-//             subzero.get_core_query(
-//                 "GET", // method
-//                 "public", // schema
-//                 "tasks", // entity
-//                 "/tasks", // path
-//                 [["id", "eq.1"]], // get query parameters
-//                 undefined, // body
-//                 [["accept", "application/json"]] // headers
-//             )
-//         )
-//     )
-//         .toStrictEqual(
-//             normalize_statement({
-//             query: `select "public"."tasks"."id", "public"."tasks"."name" from "public"."tasks" where "public"."tasks"."id" = $1`,
-//             parameters: ["1"]
-//             })
-//     );
-// });
+runPemissionsTest(base_url, run);
+runSelectTest(base_url, run);
+runUpdateTest(base_url, run);
+
+afterAll(async () => {
+  await dbPool.end();
+  
+});
