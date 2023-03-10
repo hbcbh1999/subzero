@@ -24,6 +24,7 @@ export {
     SubzeroError,
     fmtContentRangeHeader,
     fmtPostgreSqlEnv,
+    fmtMySqlEnv,
     getIntrospectionQuery,
     getRawIntrospectionQuery,
     parseRangeHeader,

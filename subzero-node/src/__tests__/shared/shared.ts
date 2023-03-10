@@ -10,7 +10,7 @@ type RunFn = (role: string, request: Request, env?: Env) => Promise<unknown>;
 //     };
 // }
 
-export async function runPemissionsTest(base_url: string, run: RunFn) {
+export async function runPemissionsTest(db_type: string, base_url: string, run: RunFn) {
     describe('permissions', () => {
         test('alice can select public rows and her private rows', async () => {
             expect(
@@ -28,7 +28,7 @@ export async function runPemissionsTest(base_url: string, run: RunFn) {
     });
 }
 
-export async function runSelectTest(base_url: string, run: RunFn) {
+export async function runSelectTest(db_type: string, base_url: string, run: RunFn) {
     describe('select', () => {
         test('simple', async () => {
             expect(await run('anonymous', new Request(`${base_url}/tbl1?select=one,two`))).toStrictEqual([
@@ -37,8 +37,9 @@ export async function runSelectTest(base_url: string, run: RunFn) {
             ]);
         });
 
+        const castTo = db_type === 'mysql'?'char':'text';
         test('with cast', async () => {
-            expect(await run('anonymous', new Request(`${base_url}/tbl1?select=one,two::text`))).toStrictEqual([
+            expect(await run('anonymous', new Request(`${base_url}/tbl1?select=one,two::${castTo}`))).toStrictEqual([
                 { one: 'hello!', two: '10' },
                 { one: 'goodbye', two: '20' },
             ]);
@@ -81,73 +82,60 @@ export async function runSelectTest(base_url: string, run: RunFn) {
     });
 }
 
-// export async function runInsertTest(base_url: string, run: RunFn) {
-//     describe('insert', () => {
-//         test('insert query', async () => {
-//             const statement = await subzero.fmtSqliteTwoStepStatement(
-//                 'public',
-//                 '/rest/',
-//                 'anonymous',
-//                 new Request(`${base_url}/clients?select=id,name`, {
-//                     method: 'POST',
-//                     headers: {
-//                         'Content-Type': 'application/json',
-//                         Prefer: 'return=representation,count=exact',
-//                     },
-//                     body: JSON.stringify({ name: 'new client' }),
-//                 }),
-//                 [['env_var', 'env_value']],
-//             );
+    // it "basic with representation" $ do
+    //     request methodPost "/clients?select=id,name"
+    //       [("Prefer", "return=representation,count=exact")]
+    //       [json|r#"{"name":"new client"}"#|]
+    //       shouldRespondWith
+    //       [json|r#"[{"id":3,"name":"new client"}]"#|]
+    //       { matchStatus  = 201
+    //         , matchHeaders = [ "Content-Type" <:> "application/json"
+    //                          //, "Location" <:> "/projects?id=eq.6"
+    //                          , "Content-Range" <:> "*/1" ]
+    //       }
+    // it "basic no representation" $ do
+    //     request methodPost "/projects"
+    //       [json|r#"{"name":"new project"}"#|]
+    //       shouldRespondWith
+    //       [text|""|]
+    //       { matchStatus  = 201
+    //         , matchHeaders = [ "Content-Type" <:> "application/json"
+    //                           //, "Location" <:> "/projects?id=eq.6"
+    //                           , "Content-Range" <:> "*/*" ]
+    //       }
+export async function runInsertTest(db_type: string, base_url: string, run: RunFn) {
+    describe('insert', () => {
+        test('basic with representation', async () => {
+            expect(
+                await run(
+                    'anonymous',
+                    new Request(`${base_url}/clients?select=${db_type !== 'mysql'?'runInsertTest':''}name`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation,count=exact' },
+                        body: JSON.stringify({"name":"new client"}),
+                    }),
+                ),
+            ).toStrictEqual([
+                db_type !== 'mysql' ? { id: 3, name: 'new client' } : { name: 'new client' }
+            ]);
+        });
+        test('basic no representation', async () => {
+            expect(
+                await run(
+                    'anonymous',
+                    new Request(`${base_url}/projects`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({"name":"new project"}),
+                    }),
+                ),
+            ).toBeNull();
+        });
+    });
+}
 
-//             expect(normalize_statement(statement.fmtMutateStatement())).toStrictEqual(
-//                 normalize_statement({
-//                     query: `
-//                   with
-//                       env as materialized (select ? as "env_var") ,
-//                       subzero_payload as ( select ? as json_data ),
-//                       subzero_body as ( 
-//                           select json_extract(value, '$.name') as "name"
-//                           from (select value from json_each(( select case when json_type(json_data) = 'array' then json_data else json_array(json_data) end as val from subzero_payload )))
-//                       )
-//                   insert into "clients" ("name")
-//                   select "name" from subzero_body _ 
-//                   where true
-//                   returning "rowid", ((true)) as _subzero_check__constraint
-//                   `,
-//                     parameters: ['env_value', '{"name":"new client"}'],
-//                 }),
-//             );
-//             statement.setMutatedRows([{ rowid: 1, _subzero_check__constraint: 1 }]);
-//             expect(normalize_statement(statement.fmtSelectStatement())).toStrictEqual(
-//                 normalize_statement({
-//                     query: `
-//                   with 
-//                       env as materialized (select ? as "env_var"),
-//                       _subzero_query as (
-//                           select json_object('id', "subzero_source"."id", 'name', "subzero_source"."name") as row 
-//                           from "clients" as "subzero_source", env
-//                           where "subzero_source"."rowid" in ( select value from json_each(?) )
-//                       ) ,
-//                       _subzero_count_query as (
-//                           select 1 from "clients"
-//                           where "clients"."rowid" in ( select value from json_each(?) )
-//                       )
-//                   select
-//                       count(_subzero_t.row) AS page_total,
-//                       (SELECT count(*) FROM _subzero_count_query) as total_result_set,
-//                       json_group_array(json(_subzero_t.row)) as body,
-//                       null as response_headers,
-//                       null as response_status
-//                   from ( select * from _subzero_query ) _subzero_t
-//                   `,
-//                     parameters: ['env_value', '["1"]', '["1"]'],
-//                 }),
-//             );
-//         });
-//     });
-// }
 
-export async function runUpdateTest(base_url: string, run: RunFn) {
+export async function runUpdateTest(db_type: string, base_url: string, run: RunFn) {
     describe('update', () => {
         test('basic no representation', async () => {
             expect(

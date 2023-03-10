@@ -11,5 +11,5 @@ test('getRawIntrospectionQuery', () => {
 test('getIntrospectionQuery', () => {
   const statement = getIntrospectionQuery('sqlite', 'public');
   expect(statement.query).toStrictEqual(fs.readFileSync(`src/__tests__/expected_sqlite_introspection_query.sql`, 'utf8'));
-  expect(statement.parameters).toStrictEqual([['public']]);
+  expect(statement.parameters).toStrictEqual([['["public"]']]);
 });

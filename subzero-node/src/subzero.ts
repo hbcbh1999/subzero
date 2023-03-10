@@ -95,10 +95,13 @@ export class SqliteTwoStepStatement {
   }
 
   setMutatedRows(rows: any[]) {
-    const constraints_satisfied = rows.every((r) => r['_subzero_check__constraint'] == 1)
+    const constraints_satisfied = rows.every((r) =>
+      r['_subzero_check__constraint'] !== undefined ? r['_subzero_check__constraint'] == 1 : true
+    )
     if (constraints_satisfied) {
-      const idColumnName = rows[0] ? Object.keys(rows[0])[0] : ''
-      const ids = rows.map((r) => r[idColumnName].toString())
+      const rowColumns = rows[0] ? Object.keys(rows[0]) : []
+      const idColumnName = rowColumns.length > 0 ? rowColumns[0] : undefined
+      const ids = rows.map((r) => idColumnName ? r[idColumnName] : r)
       this.ids = ids
     }
     else {
@@ -304,6 +307,9 @@ export function getIntrospectionQuery(
     }
   }
   const parameters = typeof schemas === 'string' ? [[schemas]] : [schemas]
+  if (dbType === 'sqlite' || dbType === 'mysql') {
+    parameters[0] = [JSON.stringify(parameters[0])]
+  }
   return { query, parameters }
 }
 
@@ -323,7 +329,12 @@ export function fmtContentRangeHeader(lower: number, upper: number, total?: numb
 }
 
 export function fmtPostgreSqlEnv(env: Env): Statement {
+  if (env.length === 0) { 
+    env.push(['subzero._dummy_', 'true'])
+  }
+
   const parameters = env.flat()
+  
   const query = 'select ' + parameters.reduce((acc:string[], _, i) => {
       if (i % 2 !== 0) {
         acc.push(`set_config($${i}, $${i+1}, true)`)
@@ -332,6 +343,19 @@ export function fmtPostgreSqlEnv(env: Env): Statement {
     }
     , []
   ).join(', ')
+  return { query, parameters }
+}
+
+export function fmtMySqlEnv(env: Env): Statement {
+  env.push(['subzero_ids', '[]'])
+  env.push(['subzero_ignored_ids', '[]'])
+  const parameters:any[] = []
+  const queryParts:string[] = []
+  env.forEach(([key,value]) => {
+      queryParts.push(`@${key} = ?`)
+      parameters.push(value)
+  })
+  const query = `set ${queryParts.join(', ')}`
   return { query, parameters }
 }
 

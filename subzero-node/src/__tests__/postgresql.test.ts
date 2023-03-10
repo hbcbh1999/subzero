@@ -3,7 +3,7 @@ import Subzero, { Statement, getIntrospectionQuery, fmtPostgreSqlEnv, Env } from
 import { Pool } from 'pg';
 import * as fs from 'fs';
 import * as path from 'path';
-import { runPemissionsTest, runSelectTest, runUpdateTest } from './shared/shared'
+import { runPemissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
 import dotenv from 'dotenv';
 dotenv.config({ path: `${__dirname}/../../../.github/.env`});
 
@@ -32,7 +32,6 @@ beforeAll(async () => {
   //console.log(s.schemas[0].objects.map((o: any) => o.name))
   const schema = JSON.parse(result.rows[0].json_schema);
 
-  console.log(schema.use_internal_permissions)
   //initialize the subzero instance
   subzero = new Subzero('postgresql', schema);
   db.release();
@@ -110,9 +109,10 @@ describe('query shape tests', () => {
   });
 });
 
-runPemissionsTest(base_url, run);
-runSelectTest(base_url, run);
-runUpdateTest(base_url, run);
+runPemissionsTest('postgresql', base_url, run);
+runSelectTest('postgresql', base_url, run);
+runUpdateTest('postgresql', base_url, run);
+runInsertTest('mysql', base_url, run);
 
 afterAll(async () => {
   await dbPool.end();

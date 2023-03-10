@@ -194,17 +194,11 @@ impl Backend {
         ])
     }
 
-    fn fmt_sqlite_first_stage_mutate(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue, JsValue), JsError> {
+    fn fmt_first_stage_mutate(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue, JsValue), JsError> {
         let backend = self.borrow_inner();
         let B { db_schema, db_type, .. } = backend;
 
-        //sqlite does not support returining in CTEs so we must do a two step process
-        //TODO!!! in rocket we dynamically generate the primary key column name
-        let primary_key_column = "rowid"; //every table has this (TODO!!! check)
-        let primary_key_field = Field {
-            name: primary_key_column,
-            json_path: None,
-        };
+        
 
         // create a clone of the request
         let mut request = original_request.clone();
@@ -215,24 +209,38 @@ impl Backend {
             ApiRequest {
                 query: Query {
                     sub_selects,
-                    node: Insert { returning, select, .. },
+                    node: Insert { into: table, returning, select, .. },
                 },
                 ..
             }
             | ApiRequest {
                 query: Query {
                     sub_selects,
-                    node: Delete { returning, select, .. },
+                    node: Delete { from: table, returning, select, .. },
                 },
                 ..
             }
             | ApiRequest {
                 query: Query {
                     sub_selects,
-                    node: Update { returning, select, .. },
+                    node: Update { table, returning, select, .. },
                 },
                 ..
             } => {
+                //sqlite does not support returining in CTEs so we must do a two step process
+                //TODO!!! in rocket we dynamically generate the primary key column name
+                let schema_obj = db_schema.get_object(original_request.schema_name, table).map_err(cast_core_err)?;
+                let primary_key_column = schema_obj
+                    .columns
+                    .iter()
+                    .find(|&(_, c)| c.primary_key)
+                    .map(|(_, c)| c.name)
+                    .unwrap_or("rowid");
+                //let primary_key_column = "rowid"; //every table has this (TODO!!! check)
+                let primary_key_field = Field {
+                    name: primary_key_column,
+                    json_path: None,
+                };
                 //return only the primary key column
                 returning.clear();
                 returning.push(primary_key_column);
@@ -274,14 +282,20 @@ impl Backend {
                 let query = sqlite::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, env)
                     .map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
-            }
+            },
+            #[cfg(feature = "mysql")]
+            "mysql" => {
+                let query = mysql::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, env)
+                    .map_err(cast_core_err)?;
+                Ok(mysql::generate(query))
+            },
             _ => Err(JsError::new("unsupported database type for two step mutation")),
         }?;
 
         Ok((JsValue::from(main_statement), JsValue::from(parameters_to_js_array(db_type, main_parameters))))
     }
 
-    fn fmt_sqlite_second_stage_select(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue, JsValue), JsError> {
+    fn fmt_second_stage_select(&self, original_request: &ApiRequest, env: &HashMap<&str, &str>) -> Result<(JsValue, JsValue), JsError> {
         let backend = self.borrow_inner();
         let B { db_schema, db_type, .. } = backend;
         let ids: Vec<String> = vec!["_subzero_ids_placeholder_".to_string()];
@@ -308,7 +322,14 @@ impl Backend {
                 },
                 sub_selects,
             } => {
-                let primary_key_column = "rowid"; //every table has this (TODO!!! check)
+                let schema_obj = db_schema.get_object(original_request.schema_name, table).map_err(cast_core_err)?;
+                let primary_key_column = schema_obj
+                    .columns
+                    .iter()
+                    .find(|&(_, c)| c.primary_key)
+                    .map(|(_, c)| c.name)
+                    .unwrap_or("rowid");
+                //let primary_key_column = "rowid"; //every table has this (TODO!!! check)
                 let primary_key_field = Field {
                     name: primary_key_column,
                     json_path: None,
@@ -359,6 +380,20 @@ impl Backend {
                 .map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
             }
+            #[cfg(feature = "mysql")]
+            "mysql" => {
+                let query = mysql::fmt_main_query_internal(
+                    db_schema,
+                    request.schema_name,
+                    request.method,
+                    &request.accept_content_type,
+                    &request.query,
+                    &request.preferences,
+                    env,
+                )
+                .map_err(cast_core_err)?;
+                Ok(mysql::generate(query))
+            }
             _ => Err(JsError::new("unsupported database type")),
         }?;
 
@@ -370,15 +405,22 @@ impl Backend {
         &self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue,
         cookies: JsValue, env: JsValue, max_rows: Option<String>,
     ) -> Result<Vec<JsValue>, JsError> {
+        self.fmt_two_stage_query(schema_name, root, method, path, get, body, role, headers, cookies, env, max_rows)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn fmt_two_stage_query(
+        &self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue,
+        cookies: JsValue, env: JsValue, max_rows: Option<String>,
+    ) -> Result<Vec<JsValue>, JsError> {
         if !["GET", "POST", "PUT", "DELETE", "PATCH"].contains(&method.as_str()) {
             return Err(JsError::new("invalid method"));
         }
 
         let backend = self.borrow_inner();
         let &B { db_type, .. } = backend;
-        // check if backend is sqlite
-        if db_type != "sqlite" {
-            return Err(JsError::new("fmt_sqlite_two_stage_query is only supported for sqlite backend"));
+        // check if backend is sqlite or mysql
+        if !["sqlite", "mysql"].contains(&db_type) {
+            return Err(JsError::new("fmt_two_stage_query is only supported for sqlite/mysql backend"));
         }
 
         let get = from_js_value::<Vec<(String, String)>>(get).map_err(cast_serde_err)?;
@@ -393,8 +435,8 @@ impl Backend {
         let request = self
             .parse(&schema_name, &root, &method, &path, get, &body, &role, headers, cookies, max_rows.as_deref())
             .map_err(cast_core_err)?;
-        let (mutate_statement, mutate_parameters) = self.fmt_sqlite_first_stage_mutate(&request, &env)?;
-        let (select_statement, select_parameters) = self.fmt_sqlite_second_stage_select(&request, &env)?;
+        let (mutate_statement, mutate_parameters) = self.fmt_first_stage_mutate(&request, &env)?;
+        let (select_statement, select_parameters) = self.fmt_second_stage_select(&request, &env)?;
 
         Ok(vec![mutate_statement, mutate_parameters, select_statement, select_parameters])
     }
@@ -406,7 +448,7 @@ fn parameters_to_js_array(db_type: &str, rust_parameters: Vec<&(dyn ToParam + Sy
     for (i, p) in rust_parameters.into_iter().enumerate() {
         let v = match p.to_param() {
             LV(ListVal(v, _)) => match db_type {
-                "sqlite" => to_js_value(&serde_json::to_string(v).unwrap_or_default()).unwrap_or_default(),
+                "sqlite" | "mysql" => to_js_value(&serde_json::to_string(v).unwrap_or_default()).unwrap_or_default(),
                 _ => to_js_value(v).unwrap_or_default(),
             },
             SV(SingleVal(v, Some(Cow::Borrowed("integer")))) => to_js_value(&(v.parse::<i32>().unwrap_or_default())).unwrap_or_default(),

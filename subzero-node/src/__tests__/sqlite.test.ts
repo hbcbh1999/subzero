@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
 import Subzero, { getIntrospectionQuery, Env } from '../nodejs';
-import { runPemissionsTest, runSelectTest, runUpdateTest } from './shared/shared'
+import { runPemissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
 
 // Declare global variables
 sqlite3.verbose();
@@ -68,9 +68,10 @@ async function run(role: string, request: Request, env?: Env) {
   }
 }
 
-runPemissionsTest(base_url, run);
-runSelectTest(base_url, run);
-runUpdateTest(base_url, run);
+runPemissionsTest('sqlite', base_url, run);
+runSelectTest('sqlite', base_url, run);
+runUpdateTest('sqlite', base_url, run);
+runInsertTest('mysql', base_url, run);
 
 afterAll(async () => {
   await db.close();
