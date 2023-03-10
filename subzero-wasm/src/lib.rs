@@ -198,8 +198,6 @@ impl Backend {
         let backend = self.borrow_inner();
         let B { db_schema, db_type, .. } = backend;
 
-        
-
         // create a clone of the request
         let mut request = original_request.clone();
         let is_delete = matches!(original_request.query.node, Delete { .. });
@@ -207,24 +205,41 @@ impl Backend {
         // destructure the cloned request and eliminate the sub_selects and also select back
         match &mut request {
             ApiRequest {
-                query: Query {
-                    sub_selects,
-                    node: Insert { into: table, returning, select, .. },
-                },
+                query:
+                    Query {
+                        sub_selects,
+                        node:
+                            Insert {
+                                into: table,
+                                returning,
+                                select,
+                                ..
+                            },
+                    },
                 ..
             }
             | ApiRequest {
-                query: Query {
-                    sub_selects,
-                    node: Delete { from: table, returning, select, .. },
-                },
+                query:
+                    Query {
+                        sub_selects,
+                        node:
+                            Delete {
+                                from: table,
+                                returning,
+                                select,
+                                ..
+                            },
+                    },
                 ..
             }
             | ApiRequest {
-                query: Query {
-                    sub_selects,
-                    node: Update { table, returning, select, .. },
-                },
+                query:
+                    Query {
+                        sub_selects,
+                        node: Update {
+                            table, returning, select, ..
+                        },
+                    },
                 ..
             } => {
                 //sqlite does not support returining in CTEs so we must do a two step process
@@ -282,13 +297,13 @@ impl Backend {
                 let query = sqlite::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, env)
                     .map_err(cast_core_err)?;
                 Ok(sqlite::generate(query))
-            },
+            }
             #[cfg(feature = "mysql")]
             "mysql" => {
                 let query = mysql::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, env)
                     .map_err(cast_core_err)?;
                 Ok(mysql::generate(query))
-            },
+            }
             _ => Err(JsError::new("unsupported database type for two step mutation")),
         }?;
 
