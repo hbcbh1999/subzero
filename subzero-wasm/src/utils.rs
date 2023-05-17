@@ -53,7 +53,7 @@ pub fn cast_core_err(err: subzero_core::error::Error) -> JsError {
 }
 
 // a function that returns a function
-pub fn cast_serde_err(prefix: &str) -> impl Fn(serde_wasm_bindgen::Error) -> JsError + '_{
+pub fn cast_serde_err(prefix: &str) -> impl Fn(serde_wasm_bindgen::Error) -> JsError + '_ {
     move |err: serde_wasm_bindgen::Error| JsError::new(format!("{}: {}", prefix, err))
 }
 
