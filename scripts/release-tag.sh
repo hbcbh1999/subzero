@@ -24,7 +24,7 @@ cd "$PROJECT_DIR"
 cargo generate-lockfile
 
 git add .
-git commit -m "Release $VERSION"
+git commit -m "Release $VERSION [ci skip]"
 git tag -a $VERSION -m "Release $VERSION"
 git push
 git push --tags
