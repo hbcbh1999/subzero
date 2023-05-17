@@ -3,4 +3,5 @@ dist
 dist-nodejs
 dist-web
 dist-deno
+dist-rest
 declarations

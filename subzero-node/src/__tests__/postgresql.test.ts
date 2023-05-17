@@ -1,5 +1,5 @@
 import { expect, test, beforeAll, describe, afterAll } from '@jest/globals';
-import Subzero, { Statement, getIntrospectionQuery, fmtPostgreSqlEnv, Env } from '../nodejs';
+import Subzero, { Statement, getIntrospectionQuery, fmtPostgreSqlEnv, Env } from '../rest';
 import { Pool } from 'pg';
 import * as fs from 'fs';
 import * as path from 'path';

@@ -1,5 +1,5 @@
 import { beforeAll,  afterAll } from '@jest/globals';
-import Subzero, { Statement, getIntrospectionQuery, fmtMySqlEnv, Env } from '../nodejs';
+import Subzero, { Statement, getIntrospectionQuery, fmtMySqlEnv, Env } from '../rest';
 import mysql, {ResultSetHeader} from 'mysql2';
 import * as fs from 'fs';
 import * as path from 'path';

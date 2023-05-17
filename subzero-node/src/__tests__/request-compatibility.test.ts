@@ -1,6 +1,6 @@
 import { expect, test } from '@jest/globals';
 
-import Subzero from '../nodejs';
+import Subzero from '../rest';
 import type { NextApiRequest} from "next";
 import { createRequest } from "node-mocks-http";
 type ApiRequest = NextApiRequest & ReturnType<typeof createRequest>;

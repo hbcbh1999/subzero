@@ -122,9 +122,9 @@ jobs:
           fi
 
           
-          wasm-pack build --release --target web --out-dir=pkg-web
+          # wasm-pack build --release --target web --out-dir=pkg-web
           wasm-pack build --release --target nodejs --out-dir=pkg-node
-          wasm-pack build --release --target deno --out-dir=pkg-deno
+          # wasm-pack build --release --target deno --out-dir=pkg-deno
         # run: |
         #   cargo install -f wasm-bindgen-cli
         #   cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release

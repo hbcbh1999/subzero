@@ -7,12 +7,19 @@ const config = [
     //     output: [{ file: "./dist-web/index.d.ts", format: "es" }],
     //     plugins: [dts()],
     // },
+    // {
+    //     input: "./declarations/nodejs.d.ts",
+    //     external: ['http'],
+    //     output: [{ file: "./dist-nodejs/index.d.ts", format: "es" }],
+    //     plugins: [dts()],
+    // },
     {
         input: "./declarations/nodejs.d.ts",
         external: ['http'],
-        output: [{ file: "./dist-nodejs/index.d.ts", format: "es" }],
+        output: [{ file: "./dist-rest/index.d.ts", format: "es" }],
         plugins: [dts()],
     },
+
     // {
     //     input: "./declarations/bundler.d.ts",
     //     external: ['http'],
