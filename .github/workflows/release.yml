@@ -116,7 +116,7 @@ jobs:
           #   subzero-node/dist-nodejs/subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
           #   subzero-node/dist-deno/subzerocloud-deno-${{ env.PACKAGE_VERSION }}.tgz
           path: |
-            subzero-node/dist-nodejs/subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
+            subzero-node/dist-nodejs/subzerocloud-rest-${{ env.PACKAGE_VERSION }}.tgz
       
       - run: sccache --show-stats
 
@@ -323,7 +323,7 @@ jobs:
       - name: Publish nodejs npm packages
         working-directory: dist-nodejs
         run: |
-          npm publish --access=public subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
+          npm publish --access=public subzerocloud-rest-${{ env.PACKAGE_VERSION }}.tgz
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
