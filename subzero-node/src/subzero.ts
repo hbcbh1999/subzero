@@ -3,10 +3,7 @@ import {default as postgresql_introspection_query } from '../introspection/postg
 import { default as clickhouse_introspection_query } from '../introspection/clickhouse_introspection_query.sql'
 import { default as mysql_introspection_query } from '../introspection/mysql_introspection_query.sql'
 import type { IncomingMessage } from 'http'
-import type { NextApiRequest } from 'next'
-import type { Request as ExpressRequest } from 'express'
-import type { Request as KoaRequest } from 'koa'
-type HttpRequest = Request | IncomingMessage | NextApiRequest | ExpressRequest | KoaRequest
+type HttpRequest = Request | IncomingMessage
 type SubzeroHttpRequest = HttpRequest & {
   parsedUrl?: URL,
   textBody?: string,
@@ -173,7 +170,7 @@ export class SubzeroInternal {
     }
     else {
       request.parsedUrl = new URL(request.url || '', `http://${request.headers.host}`)
-      request.headersSequence = Object.entries(request.headers)
+      request.headersSequence = Object.entries(request.headers).map(([k, v]) => [k.toLowerCase(), v?.toString()])
       if (request.method === 'GET') {
         request.textBody = ''
       }
@@ -202,7 +199,6 @@ export class SubzeroInternal {
       await this.normalizeRequest(request);
       const parsedUrl = request.parsedUrl || new URL('');
       const maxRowsStr = maxRows !== undefined ? maxRows.toString() : undefined;
-      
       const [query, parameters] = this.backend.fmt_main_query(
             schemaName,
             parsedUrl.pathname.substring(urlPrefix.length) || '', // entity

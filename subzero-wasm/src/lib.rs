@@ -73,9 +73,9 @@ impl Backend {
         if db_type == "clickhouse" {
             //println!("json schema original:\n{:?}\n", s);
             // clickhouse query returns check_json_str and using_json_str as string
-            // so we first parse it into a JsonValue and then convert those two fileds into json
+            // so we first parse it into a JsonValue and then convert those two fields into json
             let mut v: JsonValue = serde_json::from_str(&s).expect("invalid schema json");
-            //recursivley iterate through the json and convert check_json_str and using_json_str into json
+            //recursively iterate through the json and convert check_json_str and using_json_str into json
             // println!("json value before replace:\n{:?}\n", v);
             // recursively iterate through the json and apply the f function
             replace_json_str(&mut v).expect("invalid schema json");
@@ -139,13 +139,13 @@ impl Backend {
         let B { db_schema, .. } = &backend;
         let db_type = backend.db_type;
 
-        let get = from_js_value::<Vec<(String, String)>>(get).map_err(cast_serde_err)?;
+        let get = from_js_value::<Vec<(String, String)>>(get).map_err(cast_serde_err("bad get param"))?;
         let get = get.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let headers = from_js_value::<Vec<(String, String)>>(headers).map_err(cast_serde_err)?;
+        let headers = from_js_value::<Vec<(String, String)>>(headers).map_err(cast_serde_err("bad headers param"))?;
         let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let cookies = from_js_value::<Vec<(String, String)>>(cookies).map_err(cast_serde_err)?;
+        let cookies = from_js_value::<Vec<(String, String)>>(cookies).map_err(cast_serde_err("bad cookies param"))?;
         let cookies = cookies.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
+        let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err("bad env param"))?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
 
         let request = self
@@ -242,7 +242,7 @@ impl Backend {
                     },
                 ..
             } => {
-                //sqlite does not support returining in CTEs so we must do a two step process
+                //sqlite does not support returning in CTEs so we must do a two step process
                 //TODO!!! in rocket we dynamically generate the primary key column name
                 let schema_obj = db_schema.get_object(original_request.schema_name, table).map_err(cast_core_err)?;
                 let primary_key_column = schema_obj
@@ -276,7 +276,7 @@ impl Backend {
                         cast: None,
                     });
                 }
-                // no need for aditional data from joined tables
+                // no need for additional data from joined tables
                 sub_selects.clear();
             }
             _ => {}
@@ -438,13 +438,13 @@ impl Backend {
             return Err(JsError::new("fmt_two_stage_query is only supported for sqlite/mysql backend"));
         }
 
-        let get = from_js_value::<Vec<(String, String)>>(get).map_err(cast_serde_err)?;
+        let get = from_js_value::<Vec<(String, String)>>(get).map_err(cast_serde_err("bad get param"))?;
         let get = get.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let headers = from_js_value::<Vec<(String, String)>>(headers).map_err(cast_serde_err)?;
+        let headers = from_js_value::<Vec<(String, String)>>(headers).map_err(cast_serde_err("bad headers param"))?;
         let headers = headers.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let cookies = from_js_value::<Vec<(String, String)>>(cookies).map_err(cast_serde_err)?;
+        let cookies = from_js_value::<Vec<(String, String)>>(cookies).map_err(cast_serde_err("bad cookies param"))?;
         let cookies = cookies.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err)?;
+        let env = from_js_value::<Vec<(String, String)>>(env).map_err(cast_serde_err("bad env param"))?;
         let env = env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
 
         let request = self

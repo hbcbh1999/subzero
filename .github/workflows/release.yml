@@ -95,26 +95,28 @@ jobs:
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
       
-      - name: Pack web package
-        working-directory: subzero-node/dist-web
-        run: npm pack
+      # - name: Pack web package
+      #   working-directory: subzero-node/dist-web
+      #   run: npm pack
 
       - name: Pack nodejs package
         working-directory: subzero-node/dist-nodejs
         run: npm pack
 
-      - name: Pack deno package
-        working-directory: subzero-node/dist-deno
-        run: npm pack
+      # - name: Pack deno package
+      #   working-directory: subzero-node/dist-deno
+      #   run: npm pack
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
           name: npm-package-${{ env.VERSION_TAG }}
+          # path: |
+          #   subzero-node/dist-web/subzerocloud-web-${{ env.PACKAGE_VERSION }}.tgz
+          #   subzero-node/dist-nodejs/subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
+          #   subzero-node/dist-deno/subzerocloud-deno-${{ env.PACKAGE_VERSION }}.tgz
           path: |
-            subzero-node/dist-web/subzerocloud-web-${{ env.PACKAGE_VERSION }}.tgz
             subzero-node/dist-nodejs/subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
-            subzero-node/dist-deno/subzerocloud-deno-${{ env.PACKAGE_VERSION }}.tgz
       
       - run: sccache --show-stats
 
@@ -311,23 +313,23 @@ jobs:
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
 
-      - name: Publish web npm packages
-        working-directory: dist-web
-        run: |
-          npm publish subzerocloud-web-${{ env.PACKAGE_VERSION }}.tgz
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # - name: Publish web npm packages
+      #   working-directory: dist-web
+      #   run: |
+      #     npm publish subzerocloud-web-${{ env.PACKAGE_VERSION }}.tgz
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       
       - name: Publish nodejs npm packages
         working-directory: dist-nodejs
         run: |
-          npm publish subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
+          npm publish --access=public subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish deno npm packages
-        working-directory: dist-deno
-        run: |
-          npm publish subzerocloud-deno-${{ env.PACKAGE_VERSION }}.tgz
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # - name: Publish deno npm packages
+      #   working-directory: dist-deno
+      #   run: |
+      #     npm publish subzerocloud-deno-${{ env.PACKAGE_VERSION }}.tgz
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

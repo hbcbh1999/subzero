@@ -52,6 +52,13 @@ pub fn cast_core_err(err: subzero_core::error::Error) -> JsError {
     )
 }
 
-pub fn cast_serde_err(err: serde_wasm_bindgen::Error) -> JsError {
-    JsError::new(err.to_string().as_str())
+// a function that returns a function
+pub fn cast_serde_err(prefix: &str) -> impl Fn(serde_wasm_bindgen::Error) -> JsError + '_{
+    move |err: serde_wasm_bindgen::Error| JsError::new(format!("{}: {}", prefix, err))
 }
+
+// pub fn cast_serde_err(prefix: &str) => impl Fn(serde_wasm_bindgen::Error) -> JsError + 'static {
+//     return fn (err: serde_wasm_bindgen::Error) -> JsError {
+//         JsError::new(err.to_string().as_str())
+//     }
+// }
