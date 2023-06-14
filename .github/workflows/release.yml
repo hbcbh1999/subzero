@@ -71,9 +71,9 @@ jobs:
           else
               echo "wasm-pack found"
           fi
-          wasm-pack build --release --target web --out-dir=pkg-web
+          # wasm-pack build --release --target web --out-dir=pkg-web
           wasm-pack build --release --target nodejs --out-dir=pkg-node
-          wasm-pack build --release --target deno --out-dir=pkg-deno
+          # wasm-pack build --release --target deno --out-dir=pkg-deno
         # run: |
         #   cargo install -f wasm-bindgen-cli
         #   cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release
@@ -102,6 +102,7 @@ jobs:
       # - name: Pack nodejs package
       #   working-directory: subzero-node/dist-nodejs
       #   run: npm pack
+
       - name: Pack rest package
         working-directory: subzero-node/dist-rest
         run: npm pack

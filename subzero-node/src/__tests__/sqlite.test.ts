@@ -48,7 +48,7 @@ async function run(role: string, request: Request, env?: Env) {
     // console.log('result', result.body);
     return JSON.parse(result.body);
   } else {
-    const statement = await subzero.fmtSqliteTwoStepStatement('public', '/rest/', role, request, env);
+    const statement = await subzero.fmtTwoStepStatement('public', '/rest/', role, request, env);
     const { query: mutate_query, parameters: mutate_parameters } = statement.fmtMutateStatement();
     //console.log(mutate_query,"\n",mutate_parameters);
     const result = await db.all(mutate_query, mutate_parameters);
@@ -71,7 +71,7 @@ async function run(role: string, request: Request, env?: Env) {
 runPemissionsTest('sqlite', base_url, run);
 runSelectTest('sqlite', base_url, run);
 runUpdateTest('sqlite', base_url, run);
-runInsertTest('mysql', base_url, run);
+runInsertTest('sqlite', base_url, run);
 
 afterAll(async () => {
   await db.close();

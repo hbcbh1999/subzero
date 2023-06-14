@@ -106,18 +106,17 @@ export async function runSelectTest(db_type: string, base_url: string, run: RunF
 export async function runInsertTest(db_type: string, base_url: string, run: RunFn) {
     describe('insert', () => {
         test('basic with representation', async () => {
+            const expected = [{ name: 'new client' }];
             expect(
                 await run(
                     'anonymous',
-                    new Request(`${base_url}/clients?select=${db_type !== 'mysql'?'runInsertTest':''}name`, {
+                    new Request(`${base_url}/clients?select=name`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Prefer': 'return=representation,count=exact' },
                         body: JSON.stringify({"name":"new client"}),
                     }),
                 ),
-            ).toStrictEqual([
-                db_type !== 'mysql' ? { id: 3, name: 'new client' } : { name: 'new client' }
-            ]);
+            ).toStrictEqual(expected);
         });
         test('basic no representation', async () => {
             expect(

@@ -756,9 +756,9 @@ feature "rpc"
                     [("Custom-Header", "test")]
               // (
               // if actualPgVersion >= pgVersion140 then
-              //   [json| r#"{ "prefix": "request.headers", "name": "custom-header" }"# |]
+                [json| r#"{ "prefix": "request.headers", "name": "custom-header" }"# |]
               // else
-                [json| r#"{ "name": "request.header.custom-header" }"# |]
+              //  [json| r#"{ "name": "request.header.custom-header" }"# |]
               // )
               shouldRespondWith
               [str|"test"|]
@@ -770,9 +770,9 @@ feature "rpc"
                     [("Origin", "http://example.com")]
               // (
               // if actualPgVersion >= pgVersion140 then
-              //  [json| r#"{ "prefix": "request.headers", "name": "origin" }"# |]
+              [json| r#"{ "prefix": "request.headers", "name": "origin" }"# |]
               // else
-              [json| r#"{ "name": "request.header.origin" }"# |]
+              // [json| r#"{ "name": "request.header.origin" }"# |]
               // )
               shouldRespondWith
               [str|"http://example.com"|]
@@ -783,9 +783,9 @@ feature "rpc"
           request methodPost "/rpc/get_guc_value" [dummy]
               // (
               // if actualPgVersion >= pgVersion140 then
-              //   [json| r#"{ "prefix": "request.jwt.claims", "name": "role" }"# |]
+              [json| r#"{ "prefix": "request.jwt.claims", "name": "role" }"# |]
               // else
-                [json|r#"{ "name": "request.jwt.claim.role" }"#|]
+              //  [json|r#"{ "name": "request.jwt.claim.role" }"#|]
               // )
               shouldRespondWith
               [str|"postgrest_test_anonymous"|]
@@ -796,9 +796,9 @@ feature "rpc"
           request methodPost "/rpc/get_guc_value" [("Cookie","acookie=cookievalue")]
             // (
             // if actualPgVersion >= pgVersion140 then
-            //   [json| r#"{"prefix": "request.cookies", "name":"acookie"}"# |]
+              [json| r#"{"prefix": "request.cookies", "name":"acookie"}"# |]
             // else
-              [json| r#"{"name":"request.cookie.acookie"}"# |]
+            //  [json| r#"{"name":"request.cookie.acookie"}"# |]
             // )
               shouldRespondWith
               [str|"cookievalue"|]
@@ -809,9 +809,9 @@ feature "rpc"
           request methodPost "/rpc/get_guc_value" [("Cookie","acookie=cookievalue;secondcookie=anothervalue")]
             // (
             // if actualPgVersion >= pgVersion140 then
-            //   [json| r#"{"prefix": "request.cookies", "name":"secondcookie"}"# |]
+              [json| r#"{"prefix": "request.cookies", "name":"secondcookie"}"# |]
             // else
-              [json| r#"{"name":"request.cookie.secondcookie"}"# |]
+            //  [json| r#"{"name":"request.cookie.secondcookie"}"# |]
             // )
               shouldRespondWith
               [str|"anothervalue"|]
@@ -831,9 +831,9 @@ feature "rpc"
           request methodPost "/rpc/get_guc_value" [auth]
             // (
             // if actualPgVersion >= pgVersion140 then
-            //   [json| r#"{"prefix": "request.headers", "name":"authorization"}"# |]
+              [json| r#"{"prefix": "request.headers", "name":"authorization"}"# |]
             // else
-              [json| r#"{"name":"request.header.authorization"}"# |]
+            //  [json| r#"{"name":"request.header.authorization"}"# |]
             // )
               shouldRespondWith
               [str|"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIn0.Xod-F15qsGL0WhdOCr2j3DdKuTw9QJERVgoFD3vGaWA"|]

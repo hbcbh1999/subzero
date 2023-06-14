@@ -1119,14 +1119,22 @@ create function test.single_article(id integer) returns test.articles as $$
   select a.* from test.articles a where a.id = $1;
 $$ language sql;
 
-create function test.get_guc_value(name text) returns text as $$
-  select nullif(current_setting(name, true), '')::text;
-$$ language sql;
+-- create function test.get_guc_value(name text) returns text as $$
+--   select nullif(current_setting(name, true), '')::text;
+-- $$ language sql;
 
 -- Get the GUC values for Postgres v14.0 and up
-create function test.get_guc_value(prefix text, name text) returns text as $$
-select nullif(current_setting(prefix, true)::json->>name, '')::text;
+-- create function test.get_guc_value(prefix text, name text) returns text as $$
+-- select nullif(current_setting(prefix, true)::json->>name, '')::text;
+-- $$ language sql;
+
+create or replace function test.get_guc_value(name text, prefix text default null) 
+returns text as $$
+  select  case when prefix is null then nullif(current_setting(name, true), '')::text
+              else nullif(current_setting(prefix, true)::json->>name, '')::text
+          end;
 $$ language sql;
+
 
 create table w_or_wo_comma_names ( name text );
 

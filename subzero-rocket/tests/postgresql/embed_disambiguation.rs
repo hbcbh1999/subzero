@@ -90,12 +90,7 @@ feature "embed_disambiguation"
               "details": [
                 {
                   "cardinality": "many-to-many",
-                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_2_fkey][whatev_jobs_project_id_2_fkey]",
-                  "embedding": "whatev_sites with whatev_projects"
-                },
-                {
-                  "cardinality": "many-to-many",
-                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_2_fkey][whatev_jobs_project_id_1_fkey]",
+                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_1_fkey][whatev_jobs_project_id_1_fkey]",
                   "embedding": "whatev_sites with whatev_projects"
                 },
                 {
@@ -105,7 +100,12 @@ feature "embed_disambiguation"
                 },
                 {
                   "cardinality": "many-to-many",
-                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_1_fkey][whatev_jobs_project_id_1_fkey]",
+                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_2_fkey][whatev_jobs_project_id_1_fkey]",
+                  "embedding": "whatev_sites with whatev_projects"
+                },
+                {
+                  "cardinality": "many-to-many",
+                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_2_fkey][whatev_jobs_project_id_2_fkey]",
                   "embedding": "whatev_sites with whatev_projects"
                 }
               ],

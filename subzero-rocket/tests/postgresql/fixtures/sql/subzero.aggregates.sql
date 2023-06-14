@@ -42,26 +42,66 @@ begin
 end
 $$ stable language plpgsql;
 
-create or replace function guc_is_set(guc_name text) returns boolean as $$
+CREATE OR REPLACE FUNCTION get_param(name text) RETURNS text AS $$
+DECLARE
+    json_arr json;
+    element json;
+    i integer;
+    param_name text;
+    param_value text;
+BEGIN
+    json_arr := current_setting('request.get')::json;
+    i := 0;
+    WHILE i < json_array_length(json_arr) LOOP
+        element := json_arr -> i;
+        param_name := element ->> 0;
+        param_value := element ->> 1;
+        IF param_name = name THEN
+            RETURN param_value;
+        END IF;
+        i := i + 1;
+    END LOOP;
+    RETURN NULL;  -- Returns NULL if the parameter is not found
+END;
+$$ LANGUAGE plpgsql;
+
+
+create or replace function get_param_common(name text) returns text as $$
+declare
+  val text;
 begin
-  return current_setting(guc_name, true) is not null and current_setting(guc_name, true) != '';
+  val :=  case when current_setting('server_version_num')::int >= 140000
+          then get_param(name)
+          else current_setting('request.get.'||name,true)::text
+          end;
+  return val;
+end
+$$ stable language plpgsql;
+
+
+create or replace function param_is_set(name text) returns boolean as $$
+declare
+  val text;
+begin
+  val := get_param_common(name);
+  return val is not null and val != '';
 end
 $$ stable language plpgsql;
 
 create view test.protected_books as 
   select id, title, publication_year, author_id,
-  current_setting('request.get.author_id', true) as v_author_id,
-  current_setting('request.get.id', true) as v_id,
-  current_setting('request.get.publication_year', true) as v_publication_year
+  get_param_common('author_id') as v_author_id,
+  get_param_common('id') as v_id,
+  get_param_common('publication_year') as v_publication_year
   from private.books 
   where 
     validate(
       --(current_setting('request.path', true) != '/rest/protected_books') or -- do not check for filters when the view is embeded
       ( -- check at least one filter is set
         -- this branch is activated only when request.path = /protected_books
-        guc_is_set('request.get.author_id') or
-        guc_is_set('request.get.id') or
-        guc_is_set('request.get.publication_year')
+        param_is_set('author_id') or
+        param_is_set('id') or
+        param_is_set('publication_year')
         
       ),
       'Filter parameters not provided',

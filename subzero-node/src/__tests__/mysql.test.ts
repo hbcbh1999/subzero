@@ -76,7 +76,7 @@ async function run(role: string, req: Request, queryEnv?: Env) {
     try {
       await db.query(`BEGIN`);
       await db.query(envQuery, envParameters);
-      const statement = await subzero.fmtSqliteTwoStepStatement('public', '/rest/', role, req, env);
+      const statement = await subzero.fmtTwoStepStatement('public', '/rest/', role, req, env);
       const { query: mutate_query, parameters: mutate_parameters } = statement.fmtMutateStatement();
       const [rows]: ResultSetHeader[] = await db.query(mutate_query, mutate_parameters);
       const { insertId, affectedRows } = rows;

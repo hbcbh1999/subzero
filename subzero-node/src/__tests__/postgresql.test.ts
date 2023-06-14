@@ -112,7 +112,7 @@ describe('query shape tests', () => {
 runPemissionsTest('postgresql', base_url, run);
 runSelectTest('postgresql', base_url, run);
 runUpdateTest('postgresql', base_url, run);
-runInsertTest('mysql', base_url, run);
+runInsertTest('postgresql', base_url, run);
 
 afterAll(async () => {
   await dbPool.end();

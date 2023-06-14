@@ -20,7 +20,7 @@ export type {
 
 
 export {
-    SqliteTwoStepStatement,
+    TwoStepStatement,
     SubzeroError,
     fmtContentRangeHeader,
     fmtPostgreSqlEnv,

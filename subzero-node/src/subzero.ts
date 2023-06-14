@@ -62,7 +62,7 @@ function toSubzeroError(err: any) {
   }
 }
 
-export class SqliteTwoStepStatement {
+export class TwoStepStatement {
   private mutate: Statement
   private select: Statement
   private ids?: string[]
@@ -218,7 +218,7 @@ export class SubzeroInternal {
     }
   }
 
-  async fmtSqliteTwoStepStatement(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest,  env: Env, maxRows?: number,): Promise<SqliteTwoStepStatement> {
+  async fmtTwoStepStatement(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest,  env: Env, maxRows?: number,): Promise<TwoStepStatement> {
     try {
       if (!this.backend) {
         throw new Error('Subzero is not initialized')
@@ -227,7 +227,7 @@ export class SubzeroInternal {
       const parsedUrl = request.parsedUrl || new URL('');
       const maxRowsStr = maxRows !== undefined ? maxRows.toString() : undefined;
       
-      const [mutate_query, mutate_parameters, select_query, select_parameters] = this.backend.fmt_sqlite_two_stage_query(
+      const [mutate_query, mutate_parameters, select_query, select_parameters] = this.backend.fmt_two_stage_query(
             schemaName,
             parsedUrl.pathname.substring(urlPrefix.length) || '', // entity
             request.method || 'GET', // method
@@ -240,7 +240,7 @@ export class SubzeroInternal {
             env,
             maxRowsStr
       )
-      return new SqliteTwoStepStatement({ query: mutate_query, parameters: mutate_parameters }, { query: select_query, parameters: select_parameters })
+      return new TwoStepStatement({ query: mutate_query, parameters: mutate_parameters }, { query: select_query, parameters: select_parameters })
     } catch (e: any) {
       throw toSubzeroError(e)
     }

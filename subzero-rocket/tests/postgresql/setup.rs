@@ -46,6 +46,7 @@ pub fn setup_db(init_db_once: &Once) {
                 let tmp_pg_cmd = project_dir.join("tests/bin/pg_tmp.sh");
 
                 let output = Command::new(tmp_pg_cmd)
+                    .arg("-k")
                     .arg("-t")
                     .arg("-u")
                     .arg("postgrest_test_authenticator")
@@ -93,7 +94,7 @@ where
         env::set_var("SUBZERO_DB_SCHEMAS", "[test]");
         env::set_var("SUBZERO_DB_PRE_REQUEST", "test.switch_role");
         env::set_var("SUBZERO_JWT_SECRET", "reallyreallyreallyreallyverysafe");
-        env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "true");
+        env::set_var("SUBZERO_DB_USE_LEGACY_GUCS", "false");
         env::set_var("SUBZERO_URL_PREFIX", "/rest");
         // env::set_var(
         //     "SUBZERO_DB_SCHEMA_STRUCTURE",

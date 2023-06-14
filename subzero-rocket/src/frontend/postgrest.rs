@@ -105,15 +105,13 @@ fn get_env<'a>(
     } else {
         env.insert(
             "request.headers".into(),
-            serde_json::to_string(&request.headers.iter().map(|(k, v)| (k.to_lowercase(), v)).collect::<Vec<_>>())
-                .unwrap()
-                .into(),
+            //serde_json::to_string(&request.headers.iter().map(|(k, v)| (k.to_lowercase(), v)).collect::<Vec<_>>())
+            serde_json::to_string(&request.headers).unwrap().into(),
         );
         env.insert(
             "request.cookies".into(),
-            serde_json::to_string(&request.cookies.iter().map(|(k, v)| (k, v)).collect::<Vec<_>>())
-                .unwrap()
-                .into(),
+            //serde_json::to_string(&request.cookies.iter().map(|(k, v)| (k, v)).collect::<Vec<_>>())
+            serde_json::to_string(&request.cookies).unwrap().into(),
         );
         env.insert(
             "request.get".into(),
@@ -127,7 +125,14 @@ fn get_env<'a>(
                     env.insert("request.jwt.claims".into(), serde_json::to_string(&claims).unwrap().into());
                 }
             }
-            None => {}
+            None => {
+                if let Some(r) = role {
+                    let claims: HashMap<&str, &str> = HashMap::from([("role", r)]);
+                    env.insert("request.jwt.claims".into(), serde_json::to_string(&claims).unwrap().into());
+                } else {
+                    env.insert("request.jwt.claims".into(), "{}".into());
+                }
+            }
         }
     }
 
