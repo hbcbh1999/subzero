@@ -154,7 +154,6 @@ with view_source_columns as (
       join pg_namespace sch on sch.oid = tbl.relnamespace
       join pks_fks using (resorigtbl, resorigcol)
       order by view_schema, view_name, view_column_name
-
 ),
 
 schemas as (
@@ -525,7 +524,7 @@ relations as (
     select * from view_view_relations
 ),
 
-permissions as (
+custom_permissions as (
     select
       name,
       restrictive,
@@ -547,9 +546,269 @@ permissions as (
       "grant" text[],
       columns text[],
       policy_for text[],
-      "check" json,
-      "using" json
+      "check" jsonb,
+      "using" jsonb
     )
+),
+
+db_permissions as (
+    with rol as (
+        select oid,
+                rolname::text as role_name
+            from pg_authid
+        union
+        select 0::oid as oid,
+                'public'::text
+    ),
+    schemas as ( -- schemas
+        select oid as schema_oid,
+                n.nspname::text as schema_name,
+                n.nspowner as owner_oid,
+                'schema'::text as object_type,
+                coalesce ( n.nspacl, acldefault ( 'n'::"char", n.nspowner ) ) as acl
+            from pg_catalog.pg_namespace n
+            where n.nspname !~ '^pg_'
+                and n.nspname <> 'information_schema'
+    ),
+    classes as ( -- tables, views, etc.
+        select schemas.schema_oid,
+                schemas.schema_name as object_schema,
+                c.oid,
+                c.relname::text as object_name,
+                c.relowner as owner_oid,
+                case
+                    when c.relkind = 'r' then 'table'
+                    when c.relkind = 'v' then 'view'
+                    when c.relkind = 'm' then 'materialized view'
+                    when c.relkind = 'c' then 'type'
+                    when c.relkind = 'i' then 'index'
+                    when c.relkind = 's' then 'sequence'
+                    when c.relkind = 's' then 'special'
+                    when c.relkind = 't' then 'toast table'
+                    when c.relkind = 'f' then 'foreign table'
+                    when c.relkind = 'p' then 'partitioned table'
+                    when c.relkind = 'i' then 'partitioned index'
+                    else c.relkind::text
+                    end as object_type,
+                case
+                    when c.relkind = 's' then coalesce ( c.relacl, acldefault ( 's'::"char", c.relowner ) )
+                    else coalesce ( c.relacl, acldefault ( 'r'::"char", c.relowner ) )
+                    end as acl
+            from pg_class c
+            join schemas
+                on ( schemas.schema_oid = c.relnamespace )
+            where c.relkind in ( 'r', 'v', 'm', 's', 'f', 'p' )
+    ),
+    cols as ( -- columns
+        select c.object_schema,
+                null::integer as oid,
+                c.object_name || '.' || a.attname::text as object_name,
+                'column' as object_type,
+                c.owner_oid,
+                coalesce ( a.attacl, acldefault ( 'c'::"char", c.owner_oid ) ) as acl
+            from pg_attribute a
+            join classes c
+                on ( a.attrelid = c.oid )
+            where a.attnum > 0
+                and not a.attisdropped
+    ),
+    procs as ( -- procedures and functions
+        select schemas.schema_oid,
+                schemas.schema_name as object_schema,
+                p.oid,
+                p.proname::text as object_name,
+                p.proowner as owner_oid,
+                case p.prokind
+                    when 'a' then 'aggregate'
+                    when 'w' then 'window'
+                    when 'p' then 'procedure'
+                    else 'function'
+                    end as object_type,
+                pg_catalog.pg_get_function_arguments ( p.oid ) as calling_arguments,
+                coalesce ( p.proacl, acldefault ( 'f'::"char", p.proowner ) ) as acl
+            from pg_proc p
+            join schemas
+                on ( schemas.schema_oid = p.pronamespace )
+    ),
+    udts as ( -- user defined types
+        select schemas.schema_oid,
+                schemas.schema_name as object_schema,
+                t.oid,
+                t.typname::text as object_name,
+                t.typowner as owner_oid,
+                case t.typtype
+                    when 'b' then 'base type'
+                    when 'c' then 'composite type'
+                    when 'd' then 'domain'
+                    when 'e' then 'enum type'
+                    when 't' then 'pseudo-type'
+                    when 'r' then 'range type'
+                    when 'm' then 'multirange'
+                    else t.typtype::text
+                    end as object_type,
+                coalesce ( t.typacl, acldefault ( 't'::"char", t.typowner ) ) as acl
+            from pg_type t
+            join schemas
+                on ( schemas.schema_oid = t.typnamespace )
+            where ( t.typrelid = 0
+                    or ( select c.relkind = 'c'
+                            from pg_catalog.pg_class c
+                            where c.oid = t.typrelid ) )
+                and not exists (
+                    select 1
+                        from pg_catalog.pg_type el
+                        where el.oid = t.typelem
+                            and el.typarray = t.oid )
+    ),
+    fdws as ( -- foreign data wrappers
+        select null::oid as schema_oid,
+                null::text as object_schema,
+                p.oid,
+                p.fdwname::text as object_name,
+                p.fdwowner as owner_oid,
+                'foreign data wrapper' as object_type,
+                coalesce ( p.fdwacl, acldefault ( 'f'::"char", p.fdwowner ) ) as acl
+            from pg_foreign_data_wrapper p
+    ),
+    fsrvs as ( -- foreign servers
+        select null::oid as schema_oid,
+                null::text as object_schema,
+                p.oid,
+                p.srvname::text as object_name,
+                p.srvowner as owner_oid,
+                'foreign server' as object_type,
+                coalesce ( p.srvacl, acldefault ( 's'::"char", p.srvowner ) ) as acl
+            from pg_foreign_server p
+    ),
+    all_objects as (
+        select schema_name as object_schema,
+                object_type,
+                schema_name as object_name,
+                null::text as calling_arguments,
+                owner_oid,
+                acl
+            from schemas
+        union
+        select object_schema,
+                object_type,
+                object_name,
+                null::text as calling_arguments,
+                owner_oid,
+                acl
+            from classes
+        union
+        select object_schema,
+                object_type,
+                object_name,
+                null::text as calling_arguments,
+                owner_oid,
+                acl
+            from cols
+        union
+        select object_schema,
+                object_type,
+                object_name,
+                calling_arguments,
+                owner_oid,
+                acl
+            from procs
+        union
+        select object_schema,
+                object_type,
+                object_name,
+                null::text as calling_arguments,
+                owner_oid,
+                acl
+            from udts
+        union
+        select object_schema,
+                object_type,
+                object_name,
+                null::text as calling_arguments,
+                owner_oid,
+                acl
+            from fdws
+        union
+        select object_schema,
+                object_type,
+                object_name,
+                null::text as calling_arguments,
+                owner_oid,
+                acl
+            from fsrvs
+    ),
+    acl_base as (
+        select object_schema,
+                object_type,
+                object_name,
+                calling_arguments,
+                owner_oid,
+                ( aclexplode ( acl ) ).grantor as grantor_oid,
+                ( aclexplode ( acl ) ).grantee as grantee_oid,
+                ( aclexplode ( acl ) ).privilege_type as privilege_type,
+                ( aclexplode ( acl ) ).is_grantable as is_grantable
+            from all_objects
+    ),
+    used_privileges as (
+        select acl_base.object_schema,
+            acl_base.object_type,
+            acl_base.object_name,
+            acl_base.calling_arguments,
+            owner.role_name as object_owner,
+            grantor.role_name as grantor,
+            grantee.role_name as grantee,
+            acl_base.privilege_type,
+            acl_base.is_grantable
+        from acl_base
+        join rol owner
+            on ( owner.oid = acl_base.owner_oid )
+        join rol grantor
+            on ( grantor.oid = acl_base.grantor_oid )
+        join rol grantee
+            on ( grantee.oid = acl_base.grantee_oid )
+        where acl_base.grantor_oid <> acl_base.grantee_oid
+    )
+
+    select
+        null::text as name,
+        false as restrictive,
+        object_schema as table_schema,
+        object_name as table_name,
+        grantee as role,
+        array_agg(lower(privilege_type)) as grant,
+        null as columns,
+        null::text[] as policy_for,
+        null::jsonb as "check",
+        null::jsonb as "using"
+    from used_privileges
+    where
+        object_type in ('table','view','materialized view','foreign table','partitioned table', 'procedure', 'function') and
+        privilege_type in ('INSERT', 'SELECT', 'UPDATE', 'DELETE', 'EXECUTE')
+    group by object_schema, object_name, grantee
+    union
+    select
+        null::text as name,
+        false as restrictive,
+        object_schema as table_schema,
+        split_part(object_name, '.', 1) as table_name,
+        grantee as role,
+        array[lower(privilege_type)] as grant,
+        array_agg(split_part(object_name, '.', 2)) as columns,
+        null::text[] as policy_for,
+        null::jsonb as "check",
+        null::jsonb as "using"
+    from used_privileges
+    where
+        object_type in ('column') and
+        privilege_type in ('INSERT', 'SELECT', 'UPDATE', 'DELETE')
+    group by object_schema, table_name, grantee, privilege_type
+),
+
+
+permissions as (
+    select * from custom_permissions
+    union
+    select * from db_permissions
 ),
 
 json_schema as (

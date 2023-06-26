@@ -37,6 +37,9 @@ docker build -t subzero .
 ```
 export url=$(subzero-rocket/tests/bin/pg_tmp.sh -t -u authenticator -w 3600) && psql -f demo/db/pg_init.sql $url
 ```
+```
+export url=$(subzero-rocket/tests/bin/pg_tmp.sh -k -t -u postgrest_test_authenticator -w 3600) && psql -f subzero-rocket/tests/postgresql/fixtures/load.sql $url
+```
 
 
 ## Run agains a local database
