@@ -553,12 +553,13 @@ custom_permissions as (
 
 db_permissions as (
     with rol as (
-        select oid,
-                rolname::text as role_name
-            from pg_authid
+        select oid, rolname::text as role_name
+        from pg_authid
+        where
+          rolcanlogin = false and
+          rolname not like 'pg_%'
         union
-        select 0::oid as oid,
-                'public'::text
+        select 0::oid as oid, 'public'::text
     ),
     schemas as ( -- schemas
         select oid as schema_oid,
