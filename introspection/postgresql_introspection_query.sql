@@ -553,13 +553,10 @@ custom_permissions as (
 
 db_permissions as (
     with rol as (
-        select oid, rolname::text as role_name
+        select oid, rolname::text as role_name, rolcanlogin as can_login
         from pg_authid
-        where
-          rolcanlogin = false and
-          rolname not like 'pg_%'
         union
-        select 0::oid as oid, 'public'::text
+        select 0::oid as oid, 'public'::text, false
     ),
     schemas as ( -- schemas
         select oid as schema_oid,
@@ -768,6 +765,8 @@ db_permissions as (
         join rol grantee
             on ( grantee.oid = acl_base.grantee_oid )
         where acl_base.grantor_oid <> acl_base.grantee_oid
+          and grantee.can_login = false
+          and grantee.role_name not like 'pg_%'
     )
 
     select

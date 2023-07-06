@@ -142,7 +142,7 @@ esbuild.build({
             }
         }),
         x.copy({ assets: { from: ['./README.md'], to: ['README.md'] } }),
-        x.copy({assets: {from: ['../LICENSE.txt'],to: ['LICENSE.txt']}}),
+        x.copy({assets: {from: ['./LICENSE.txt'],to: ['LICENSE.txt']}}),
     ]
 })
 .then(() => {
