@@ -238,6 +238,11 @@ feature "basic"
       { matchStatus = 200
       , matchHeaders = ["Content-Type" <:> "application/json"]
       }
+    it "single row" $
+      request methodGet "/projects?id=eq.1&select=id" [("Accept", "application/vnd.pgrst.object")] ""
+        shouldRespondWith
+        [json|r#"{"id":1}"#|]
+        { matchHeaders = ["Content-Type" <:> "application/vnd.pgrst.object+json"] }
     it "limit offset" $
       get "/projects?select=id&order=id&limit=3&offset=2" shouldRespondWith
         [json| r#"[{"id":3},{"id":4},{"id":5}]"#|]

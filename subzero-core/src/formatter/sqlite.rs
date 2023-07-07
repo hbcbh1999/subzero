@@ -65,7 +65,7 @@ macro_rules! body_snippet {
         "json_group_array(json(_subzero_t.row))"
     };
     (json_object) => {
-        "coalesce((json_agg(_subzero_t)->0)::text, 'null')"
+        "coalesce(json_group_array(json(_subzero_t.row))->0, 'null')"
     };
     (csv) => {
         "''"

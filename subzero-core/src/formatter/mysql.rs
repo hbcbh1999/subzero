@@ -41,7 +41,7 @@ macro_rules! body_snippet {
         "coalesce(json_arrayagg(_subzero_t.row_), '[]')"
     };
     (json_object) => {
-        "coalesce((json_arrayagg(_subzero_t.row_)->0), 'null')"
+        "coalesce(json_extract(json_arrayagg(_subzero_t.row_),'$[0]'), 'null')"
     };
     (csv) => {
         "''"
