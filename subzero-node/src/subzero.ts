@@ -168,7 +168,9 @@ export class SubzeroInternal {
       request.textBody = request.method === 'GET' ? '' : await request.text()
       request.headersSequence = request.headers
     }
+    // check if type is IncomingMessage
     else {
+      request = request as IncomingMessage;
       request.parsedUrl = new URL(request.url || '', `http://${request.headers.host}`)
       request.headersSequence = Object.entries(request.headers).map(([k, v]) => [k.toLowerCase(), v?.toString()])
       if (request.method === 'GET') {
