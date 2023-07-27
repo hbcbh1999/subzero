@@ -161,9 +161,9 @@ export class SubzeroInternal {
   }
 
   private async normalizeRequest(request: SubzeroHttpRequest): Promise<void> {
-    // try to accomodate for different request types
+    // try to accommodate for different request types
 
-    if (request instanceof Request) {
+    if (typeof Request !== 'undefined' && request instanceof Request) {
       request.parsedUrl = new URL(request.url)
       request.textBody = request.method === 'GET' ? '' : await request.text()
       request.headersSequence = request.headers
