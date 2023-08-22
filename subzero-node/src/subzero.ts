@@ -1,5 +1,5 @@
-import {default as sqlite_introspection_query } from '../introspection/sqlite_introspection_query.sql'
-import {default as postgresql_introspection_query } from '../introspection/postgresql_introspection_query.sql'
+import { default as sqlite_introspection_query } from '../introspection/sqlite_introspection_query.sql'
+import { default as postgresql_introspection_query } from '../introspection/postgresql_introspection_query.sql'
 import { default as clickhouse_introspection_query } from '../introspection/clickhouse_introspection_query.sql'
 import { default as mysql_introspection_query } from '../introspection/mysql_introspection_query.sql'
 import type { IncomingMessage } from 'http'
@@ -19,7 +19,15 @@ type SubzeroHttpRequest = HttpRequest & {
 //const wasmPromise = init('file:./subzero_wasm_bg.wasm')
 //const wasmPromise = init(wasmbin)
 
+import type { Pool as PgPool } from 'pg'
+import type { Database as SqliteDatabase } from 'better-sqlite3'
+import type { Request, NextFunction, Response } from 'express'
+interface RequestWithUser extends Request {
+  user?: any; // Replace 'any' with the actual type of your user object
+}
+
 export type DbType = 'postgresql' | 'sqlite' | 'clickhouse' | 'mysql'
+export type DbPool = PgPool | SqliteDatabase
 export type Query = string
 export type Parameters = (string | number | boolean | null | (string | number | boolean | null)[])[]
 export type Statement = { query: Query, parameters: Parameters }
@@ -30,6 +38,29 @@ export type Body = string | undefined
 export type Headers = [string, string][]
 export type Cookies = [string, string][]
 export type Env = [string, string][]
+
+export type SchemaColumn = {
+  name: string;
+  data_type: string;
+  primary_key: boolean;
+};
+export type SchemaForeignKey = {
+  name: string;
+  table: [string, string];
+  columns: string[];
+  referenced_table: [string, string];
+  referenced_columns: string[];
+};
+export type SchemaObject = {
+  name: string;
+  kind: string;
+  columns: SchemaColumn[];
+  foreign_keys: SchemaForeignKey[];
+  permissions: any[]
+};
+export type Schema = {
+  [key: string]: SchemaObject;
+};
 
 export class SubzeroError extends Error {
   message: string
@@ -49,6 +80,419 @@ export class SubzeroError extends Error {
   toJSONString():string {
     const { message, description } = this
     return JSON.stringify({ message, description })
+  }
+}
+
+export interface PgError extends Error {
+  severity: string;
+  code: string;
+  detail?: string;
+  hint?: string;
+  position?: string;
+  internalPosition?: string;
+  internalQuery?: string;
+  where?: string;
+  schema?: string;
+  table?: string;
+  column?: string;
+  dataType?: string;
+  constraint?: string;
+  file?: string;
+  line?: string;
+  routine?: string;
+}
+
+function isPgError(error: Error): error is PgError {
+  return (error as PgError).severity !== undefined;
+}
+
+export function isPgPool(pool: DbPool): pool is PgPool {
+  return (pool as PgPool).query !== undefined;
+}
+
+export function isSqliteDatabase(pool: DbPool): pool is SqliteDatabase {
+  return (pool as SqliteDatabase).prepare !== undefined;
+}
+
+export type InitOptions = {
+  useInternalPermissionsCheck?: boolean,
+  permissions?: any[],
+  customRelations?: any[],
+  allowedSelectFunctions?: string[],
+  dbMaxConnectionRetries?: number,
+  dbMaxConnectionRetryInterval?: number,
+  schemaInstanceName?: string,
+  subzeroInstanceName?: string,
+  dbPoolInstanceName?: string,
+};
+
+export type HandlerOptions = {
+  wrapInTransaction?: boolean,
+  setDbEnv?: boolean,
+  subzeroInstanceName?: string,
+  dbPoolInstanceName?: string,
+  contextEnvInstanceName?: string,
+  dbAnonRole?: string,
+  dbExtraSearchPath?: string[],
+  dbMaxRows?: number,
+}
+
+function cleanupRequest(req: Request) {
+  // delete header prefer if it's empty
+  if (req.headers['prefer'] === '') {
+      delete req.headers['prefer'];
+  }
+}
+
+export class ContextEnv {
+  private env: { [key: string]: string };
+
+  constructor() {
+      this.env = {};
+  }
+
+  setEnv(envMap: { [key: string]: string }): void {
+      this.env = envMap;
+  }
+
+  getEnvVar(key: string): string | undefined {
+      return this.env[key];
+  }
+}
+
+type DbResponseRow = {
+  status?: number,
+  body?: string,
+  page_total?: number,
+  total_result_set?: number,
+  constraints_satisfied?: boolean,
+  response_headers?: string,
+}
+
+async function restPg(dbPool: PgPool, subzero: SubzeroInternal,
+  req: RequestWithUser,
+  schema: string,
+  prefix: string,
+  user: any,
+  queryEnv: Env,
+  o: HandlerOptions):Promise<DbResponseRow> {
+
+  let transactionStarted = false;
+  const db = await dbPool.connect();
+  try {
+      // generate the SQL query from request object
+      const method = req.method || 'GET';
+      const { query, parameters } = await subzero.fmtStatement(
+          schema,
+          prefix,
+          user.role,
+          req,
+          queryEnv,
+          o.dbMaxRows,
+      );
+
+      const txMode = method === 'GET' ? 'READ ONLY' : 'READ WRITE';
+      if (o.wrapInTransaction) {
+          await db.query(`BEGIN ISOLATION LEVEL READ COMMITTED ${txMode}`);
+
+          transactionStarted = true;
+      }
+
+      if (o.setDbEnv && o.wrapInTransaction) {
+          // generate the SQL query that sets the env variables for the current request
+          const { query: envQuery, parameters: envParameters } = fmtPostgreSqlEnv(queryEnv);
+          await db.query(envQuery, envParameters);
+      }
+      const result = (await db.query(query, parameters)).rows[0];
+      if (o.wrapInTransaction) {
+        await db.query('COMMIT');
+      }
+      db.release();
+      return result;
+      
+  } catch (e) {
+      if (o.wrapInTransaction && transactionStarted) {
+          await db.query('ROLLBACK');
+      }
+      db.release();
+      throw e;
+  }
+}
+
+async function restSqlite(dbPool: SqliteDatabase, subzero: SubzeroInternal,
+  req: RequestWithUser,
+  schema: string,
+  prefix: string,
+  user: any,
+  queryEnv: Env,
+  o: HandlerOptions):Promise<DbResponseRow> {
+  const contextEnv: ContextEnv | undefined = req.app.get(o.contextEnvInstanceName as string);
+  if (!contextEnv) {
+    throw new SubzeroError('Context Env for sqlite not set', 500);
+  }
+  let transactionStarted = false;
+  const db = dbPool;
+  try {
+      // generate the SQL query from request object
+      const method = req.method || 'GET';
+      let statement: Statement | TwoStepStatement;
+      if (method == 'GET') {
+          statement = await subzero.fmtStatement(
+              schema,
+              prefix,
+              user.role,
+              req,
+              queryEnv,
+              o.dbMaxRows
+          );
+      }
+      else {
+          statement = await subzero.fmtTwoStepStatement(
+              schema,
+              prefix,
+              user.role,
+              req,
+              queryEnv,
+              o.dbMaxRows
+          );
+      }
+
+      if (o.wrapInTransaction) {
+          db.exec('BEGIN'); 
+          transactionStarted = true;
+      }
+      let result: DbResponseRow;
+      if (method == 'GET' && statement) {
+        const { query, parameters } = statement as Statement;
+        const stm = db.prepare(query)
+        contextEnv.setEnv(Object.fromEntries(queryEnv));
+        result = stm.get(parameters) as DbResponseRow;
+        contextEnv.setEnv({});
+
+      }
+      else {
+          const { query: mutate_query, parameters: mutate_parameters } = (statement as TwoStepStatement).fmtMutateStatement();
+          contextEnv.setEnv(Object.fromEntries(queryEnv));
+          const mutate_result = db.prepare(mutate_query).all(mutate_parameters);
+          (statement as TwoStepStatement ).setMutatedRows(mutate_result);
+          const { query: select_query, parameters: select_parameters } = (statement as TwoStepStatement).fmtSelectStatement();
+          result = db.prepare(select_query).get(select_parameters) as DbResponseRow;
+          contextEnv.setEnv({});
+      }
+      db.exec('COMMIT');
+      return result;
+      
+  } catch (e) {
+      if (o.wrapInTransaction && transactionStarted) {
+        db.exec('ROLLBACK');
+      }
+      throw e;
+  }
+}
+
+export function handler(
+  dbSchemas: string[],
+  options: HandlerOptions = {},
+) {
+  const o = {
+    wrapInTransaction: true,
+    setDbEnv: true,
+    subzeroInstanceName: '__subzero__',
+    dbPoolInstanceName: '__dbPool__',
+    contextEnvInstanceName: '__contextEnv__',
+    dbAnonRole: 'anonymous',
+    dbExtraSearchPath: ['public'],
+    ...options,
+  }
+  return async function (req: RequestWithUser, res: Response, next: NextFunction) {
+      const subzero:SubzeroInternal = req.app.get(o.subzeroInstanceName);
+      const dbPool:DbPool = req.app.get(o.dbPoolInstanceName);
+
+      if (!subzero || !dbPool) {
+          throw new SubzeroError('Temporary unavailable', 503);
+      }
+      const method = req.method || 'GET';
+      if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+          throw new SubzeroError(`Method ${method} not allowed`, 400);
+      }
+
+      cleanupRequest(req);
+
+      const url = new URL(`${req.protocol}://${req.get('host')}${req.originalUrl}`);
+      const user = req.user || { role: o.dbAnonRole };
+      const header_schema = req.headers['accept-profile'] || req.headers['content-profile'];
+      const { url_schema } = req.params;
+      const url_schema_val = url_schema === 'rpc' ? undefined : url_schema;
+      const schema = (url_schema_val || header_schema || dbSchemas[0]).toString();
+      if (!dbSchemas.includes(schema)) {
+          throw new SubzeroError(
+              `Schema '${schema}' not found`,
+              406,
+              `The schema must be one of the following: ${dbSchemas.join(', ')}`,
+          );
+      }
+      const prefix = '/';
+      // pass env values that should be available in the query context
+      // used on the query format stage
+      const queryEnv: Env = [
+          ['role', user.role],
+          ['search_path', o.dbExtraSearchPath.join(',')],
+          ['request.method', method],
+          ['request.headers', JSON.stringify(req.headers)],
+          ['request.get', JSON.stringify(Object.fromEntries(url.searchParams))],
+          ['request.jwt.claims', JSON.stringify(user || {})],
+      ];
+      try {
+        const result = isSqliteDatabase(dbPool) ? 
+          await restSqlite(dbPool, subzero, req, schema, prefix, user, queryEnv, o) :
+          await restPg(dbPool, subzero, req, schema, prefix, user, queryEnv, o)
+        if (result.constraints_satisfied !== undefined && !result.constraints_satisfied) {
+            throw new SubzeroError(
+                'Permission denied',
+                403,
+                'check constraint of an insert/update permission has failed',
+            );
+        }
+        
+        const status = Number(result.status) || 200;
+        const pageTotal = Number(result.page_total) || 0;
+        const totalResultSet = Number(result.total_result_set) || undefined;
+        const offset = Number(url.searchParams.get('offset') || '0') || 0;
+        const response_headers = result.response_headers
+            ? JSON.parse(result.response_headers)
+            : {};
+        response_headers['content-length'] = Buffer.byteLength(result.body || '');
+        response_headers['content-type'] = 'application/json';
+        response_headers['range-unit'] = 'items';
+        response_headers['content-range'] = fmtContentRangeHeader(
+            offset,
+            offset + pageTotal - 1,
+            totalResultSet,
+        );
+        res.writeHead(status, response_headers).end(result.body);
+      } catch (e) {
+        next(e)
+      }
+  };
+}
+
+
+export function schema(dbAnonRole:string, schemaInstanceName = '__schema__') {
+  return async function schema(req: RequestWithUser, res: Response) {
+    const schema = req.app.get(schemaInstanceName);
+    if (!schema) {
+      throw new SubzeroError('Temporary unavailable', 503);
+    }
+    const dbSchema = schema.schemas[0];
+    const user: any = req.user || { role: dbAnonRole };
+    const role = user.role;
+    const allowedObjects = dbSchema.objects.filter((obj: SchemaObject) => {
+      const permissions = obj.permissions.filter((permission: any) => {
+        return permission.role === role || permission.role === 'public';
+      });
+      return permissions.length > 0;
+    });
+    const transformedObjects = allowedObjects
+      .map(({ name, kind, columns, foreign_keys }: SchemaObject) => {
+        //filter foreign keys to only include the ones that are allowed
+        const filteredForeignKeys = foreign_keys.filter((fk) => {
+          const [s, t] = fk.referenced_table;
+          if (s !== dbSchema.name) {
+            return false;
+          }
+          const o = dbSchema.objects.find((o: SchemaObject) => o.name === t);
+          if (!o) {
+            return false;
+          }
+          const permissions = o.permissions.filter((permission: any) => {
+            return permission.role === role || permission.role === 'public';
+          });
+          return permissions.length > 0;
+        });
+        const transformedColumns = columns.map((c) => {
+          return {
+            name: c.name,
+            data_type: c.data_type.toLowerCase(),
+            primary_key: c.primary_key,
+          };
+        });
+        return { name, kind, columns: transformedColumns, foreign_keys: filteredForeignKeys };
+      })
+      .reduce((acc: { [key: string]: any }, obj: SchemaObject) => {
+        acc[obj.name] = obj;
+        return acc;
+      }, {});
+    res.writeHead(200, { 'content-type': 'application/json' }).end(
+      JSON.stringify(transformedObjects, null, 2),
+    );
+  }
+}
+
+export function permissions(dbAnonRole: string, schemaInstanceName = '__schema__') {
+  return async function (req: RequestWithUser, res: Response) {
+    const schema = req.app.get(schemaInstanceName);
+    if (!schema) {
+      throw new SubzeroError('Temporary unavailable', 503);
+    }
+    const user: any = req.user || { role: dbAnonRole };
+    const role = user.role;
+    const dbSchema = schema.schemas[0];
+    const allowedObjects = dbSchema.objects.filter((obj: SchemaObject) => {
+      const permissions = obj.permissions.filter((permission: any) => {
+        return permission.role === role || permission.role === 'public';
+      });
+      return permissions.length > 0;
+    });
+    const userPermissions = allowedObjects
+      .map(({ name, kind, permissions }: SchemaObject) => {
+        const userPermissions = permissions.filter((permission: any) => {
+          return permission.role === role || permission.role === 'public';
+        });
+        return { name, kind, permissions: userPermissions };
+      })
+      .reduce((acc: any[], { name, permissions }: SchemaObject) => {
+        permissions.forEach((permission) => {
+          const { grant } = permission;
+          const action = grant.reduce((acc: string[], grant: string) => {
+            if (grant === 'select') {
+              acc.push('list', 'show', 'read', 'export');
+            }
+            if (grant === 'insert') {
+              acc.push('create');
+            }
+            if (grant === 'update') {
+              acc.push('edit', 'update');
+            }
+            if (grant === 'delete') {
+              acc.push('delete');
+            }
+            return acc;
+          }, []);
+          const resource = name;
+          acc.push({ action, resource });
+        });
+        return acc;
+      }, []);
+
+    const permissions = {
+      [role]: userPermissions,
+    };
+    res.writeHead(200, { 'content-type': 'application/json' }).end(
+      JSON.stringify(permissions, null, 2),
+    );
+  }
+}
+
+export function onSubzeroError(err: Error, req: Request, res: Response, next: NextFunction) {
+  if (err instanceof SubzeroError) {
+      res.writeHead(err.status, { 'content-type': 'application/json' }).end(err.toJSONString());
+  } else if (isPgError(err)) {
+      const status = statusFromPgErrorCode(err.code);
+      res.writeHead(status, {
+          'content-type': 'application/json',
+      }).end(JSON.stringify({ message: err.message, detail: err.detail, hint: err.hint }));
+  } else {
+      next(err);
   }
 }
 

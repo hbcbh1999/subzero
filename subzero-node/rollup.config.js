@@ -14,7 +14,7 @@ const config = [
     //     plugins: [dts()],
     // },
     {
-        input: "./declarations/nodejs.d.ts",
+        input: "./declarations/rest.d.ts",
         external: ['http'],
         output: [{ file: "./dist-rest/index.d.ts", format: "es" }],
         plugins: [dts()],
