@@ -36,7 +36,7 @@ export {
     getRawIntrospectionQuery,
     parseRangeHeader,
     statusFromPgErrorCode,
-    handler, schema, permissions,
+    getRequestHandler, schema, permissions,
 } from './subzero'
 
 export async function init(

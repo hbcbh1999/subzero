@@ -290,7 +290,7 @@ async function restSqlite(dbPool: SqliteDatabase, subzero: SubzeroInternal,
   }
 }
 
-export function handler(
+export function getRequestHandler(
   dbSchemas: string[],
   options: HandlerOptions = {},
 ) {
