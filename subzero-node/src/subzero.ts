@@ -124,6 +124,7 @@ export type InitOptions = {
   schemaInstanceName?: string,
   subzeroInstanceName?: string,
   dbPoolInstanceName?: string,
+  includeAllDbRoles?: boolean,
 };
 
 export type HandlerOptions = {
@@ -722,6 +723,7 @@ export function getIntrospectionQuery(
   schemas: string | string[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   placeholder_values?: Map<string, any>,
+  includeAllDbRoles = false,
 ): Statement {
   const re = new RegExp(`{@([^#}]+)(#([^}]+))?}`, 'g')
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -748,9 +750,12 @@ export function getIntrospectionQuery(
       }
     }
   }
-  const parameters = typeof schemas === 'string' ? [[schemas]] : [schemas]
+  const parameters:(string | string[] | boolean | number)[] = typeof schemas === 'string' ? [[schemas]] : [schemas]
   if (dbType === 'sqlite' || dbType === 'mysql') {
     parameters[0] = [JSON.stringify(parameters[0])]
+  }
+  if (dbType === 'postgresql') {
+    parameters.push(includeAllDbRoles)
   }
   return { query, parameters }
 }

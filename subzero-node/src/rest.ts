@@ -58,6 +58,7 @@ export async function init(
         subzeroInstanceName: '__subzero__',
         dbPoolInstanceName: '__dbPool__',
         contextEnvInstanceName: '__contextEnv__',
+        includeAllDbRoles: false,
         ...options,
     };
     const { query, parameters } = getIntrospectionQuery(
@@ -68,6 +69,7 @@ export async function init(
             ['relations.json', o.customRelations],
             ['permissions.json', o.permissions],
         ]),
+        o.includeAllDbRoles
     );
     let wait = 0.5;
     let retries = 0;

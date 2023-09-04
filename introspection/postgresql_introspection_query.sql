@@ -764,9 +764,9 @@ db_permissions as (
             on ( grantor.oid = acl_base.grantor_oid )
         join rol grantee
             on ( grantee.oid = acl_base.grantee_oid )
-        where acl_base.grantor_oid <> acl_base.grantee_oid
-          and grantee.can_login = false
-          and grantee.role_name not like 'pg_%'
+        where grantee.role_name not like 'pg_%'
+            and grantee.can_login = $2
+        --   and acl_base.grantor_oid <> acl_base.grantee_oid
     )
 
     select
