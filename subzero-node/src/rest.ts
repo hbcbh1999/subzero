@@ -12,6 +12,7 @@ export default class Subzero extends SubzeroInternal {
 }
 export type {
     DbType,
+    DbPool,
     Query,
     Parameters,
     Statement,
@@ -59,6 +60,8 @@ export async function init(
         dbPoolInstanceName: '__dbPool__',
         contextEnvInstanceName: '__contextEnv__',
         includeAllDbRoles: false,
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        debugFn: () => {},
         ...options,
     };
     const { query, parameters } = getIntrospectionQuery(
@@ -66,11 +69,12 @@ export async function init(
         dbSchemas, // the schema name that is exposed to the HTTP api (ex: public, api)
         // the introspection query has two 'placeholders' in order to be able adapt to different configurations
         new Map([
-            ['relations.json', o.customRelations],
-            ['permissions.json', o.permissions],
+            ['relations.json', o.customRelations || []],
+            ['permissions.json', o.permissions || []],
         ]),
         o.includeAllDbRoles
     );
+    o.debugFn('introspection query', query, parameters);
     let wait = 0.5;
     let retries = 0;
     while (!subzero) {
@@ -90,7 +94,8 @@ export async function init(
             schema.use_internal_permissions = o.useInternalPermissionsCheck;
             subzero = new Subzero(dbType, schema, o.allowedSelectFunctions);
             app.set(o.schemaInstanceName, schema);
-            console.log('Database schema loaded');
+            o.debugFn('schema', schema);
+            o.debugFn('Database schema loaded');
         } catch (e) {
             retries++;
             if (o.dbMaxConnectionRetries > 0 && retries > o.dbMaxConnectionRetries) {

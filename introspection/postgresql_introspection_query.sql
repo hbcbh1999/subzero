@@ -554,7 +554,7 @@ custom_permissions as (
 db_permissions as (
     with rol as (
         select oid, rolname::text as role_name, rolcanlogin as can_login
-        from pg_authid
+        from pg_roles
         union
         select 0::oid as oid, 'public'::text, false
     ),

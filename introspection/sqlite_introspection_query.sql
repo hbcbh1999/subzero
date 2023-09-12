@@ -16,6 +16,8 @@ schemas as (
     from
       tables t
       left outer join pragma_table_info((t.table_name)) p on t.table_name <> p.name
+    -- exclude BLOB columns
+    where p."type" not in ('BLOB')
 )
 , primary_keys as (
     select * from columns where pk = true

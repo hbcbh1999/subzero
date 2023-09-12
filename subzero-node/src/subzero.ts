@@ -125,6 +125,7 @@ export type InitOptions = {
   subzeroInstanceName?: string,
   dbPoolInstanceName?: string,
   includeAllDbRoles?: boolean,
+  debugFn?: (...args: any[]) => void,
 };
 
 export type HandlerOptions = {
@@ -136,6 +137,7 @@ export type HandlerOptions = {
   dbAnonRole?: string,
   dbExtraSearchPath?: string[],
   dbMaxRows?: number,
+  debugFn?: (...args: any[]) => void,
 }
 
 function cleanupRequest(req: Request) {
@@ -202,8 +204,10 @@ async function restPg(dbPool: PgPool, subzero: SubzeroInternal,
       if (o.setDbEnv && o.wrapInTransaction) {
           // generate the SQL query that sets the env variables for the current request
           const { query: envQuery, parameters: envParameters } = fmtPostgreSqlEnv(queryEnv);
+          o.debugFn && o.debugFn('env query', envQuery, envParameters);
           await db.query(envQuery, envParameters);
       }
+      o.debugFn && o.debugFn('main query', query, parameters);
       const result = (await db.query(query, parameters)).rows[0];
       if (o.wrapInTransaction) {
         await db.query('COMMIT');
@@ -265,18 +269,22 @@ async function restSqlite(dbPool: SqliteDatabase, subzero: SubzeroInternal,
       let result: DbResponseRow;
       if (method == 'GET' && statement) {
         const { query, parameters } = statement as Statement;
-        const stm = db.prepare(query)
+        o.debugFn && o.debugFn('env', Object.fromEntries(queryEnv));
+        o.debugFn && o.debugFn('main query', query, parameters);
         contextEnv.setEnv(Object.fromEntries(queryEnv));
+        const stm = db.prepare(query)
         result = stm.get(parameters) as DbResponseRow;
         contextEnv.setEnv({});
-
       }
       else {
           const { query: mutate_query, parameters: mutate_parameters } = (statement as TwoStepStatement).fmtMutateStatement();
+          o.debugFn && o.debugFn('env', Object.fromEntries(queryEnv));
+          o.debugFn && o.debugFn('mutate query', mutate_query, mutate_parameters);
           contextEnv.setEnv(Object.fromEntries(queryEnv));
           const mutate_result = db.prepare(mutate_query).all(mutate_parameters);
           (statement as TwoStepStatement ).setMutatedRows(mutate_result);
           const { query: select_query, parameters: select_parameters } = (statement as TwoStepStatement).fmtSelectStatement();
+          o.debugFn && o.debugFn('select query', select_query, select_parameters);
           result = db.prepare(select_query).get(select_parameters) as DbResponseRow;
           contextEnv.setEnv({});
       }
@@ -303,6 +311,8 @@ export function getRequestHandler(
     contextEnvInstanceName: '__contextEnv__',
     dbAnonRole: 'anonymous',
     dbExtraSearchPath: ['public'],
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    debugFn: () => {},
     ...options,
   }
   return async function (req: RequestWithUser, res: Response, next: NextFunction) {
