@@ -518,12 +518,10 @@ fn fmt_sub_select_item<'a>(db_schema: &'a DbSchema<'_>, schema: &'a str, _qi: &Q
 fn fmt_operator<'a>(o: &'a Operator<'a>) -> Result<String> {
     // match on the operator and return the sqlite equivalent
 
-    Ok(String::from(
-        match *o {
-            "ilike" => "like",
-            _ => o,
-        }
-    ) + " ")
+    Ok(String::from(match *o {
+        "ilike" => "like",
+        _ => o,
+    }) + " ")
 }
 fmt_logic_operator!();
 fmt_identity!();
