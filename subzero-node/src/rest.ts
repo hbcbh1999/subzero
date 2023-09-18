@@ -37,7 +37,7 @@ export {
     getRawIntrospectionQuery,
     parseRangeHeader,
     statusFromPgErrorCode,
-    getRequestHandler, schema, permissions,
+    getRequestHandler, getSchemaHandler, getPermissionsHandler,
 } from './subzero'
 
 export async function init(
@@ -113,7 +113,9 @@ export async function init(
     if (dbType === 'sqlite' && isSqliteDatabase(dbPool)) {
         const contextEnv = new ContextEnv();
         const boundGetEnvVar = contextEnv.getEnvVar.bind(contextEnv);
-        dbPool.function('get_env_var', boundGetEnvVar as (...params: unknown[]) => unknown);
+        dbPool.function('env', boundGetEnvVar as (...params: unknown[]) => unknown);
+        const boundJwt = contextEnv.jwt.bind(contextEnv);
+        dbPool.function('jwt', boundJwt as () => unknown);
         app.set(o.contextEnvInstanceName, contextEnv);
     }
     return subzero;

@@ -77,7 +77,6 @@ pub fn setup_db(init_db_once: &Once) {
                 db_uri
             }
         };
-
         env::set_var("SUBZERO_DB_URI", db_uri);
     });
 }

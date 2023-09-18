@@ -161,6 +161,10 @@ export class ContextEnv {
   getEnvVar(key: string): string | undefined {
       return this.env[key];
   }
+
+  jwt(): string | undefined {
+      return this.env['request.jwt.claims'];
+  }
 }
 
 type DbResponseRow = {
@@ -388,7 +392,7 @@ export function getRequestHandler(
 }
 
 
-export function schema(dbAnonRole:string, schemaInstanceName = '__schema__') {
+export function getSchemaHandler(dbAnonRole:string, schemaInstanceName = '__schema__') {
   return async function schema(req: RequestWithUser, res: Response) {
     const schema = req.app.get(schemaInstanceName);
     if (!schema) {
@@ -439,7 +443,7 @@ export function schema(dbAnonRole:string, schemaInstanceName = '__schema__') {
   }
 }
 
-export function permissions(dbAnonRole: string, schemaInstanceName = '__schema__') {
+export function getPermissionsHandler(dbAnonRole: string, schemaInstanceName = '__schema__') {
   return async function (req: RequestWithUser, res: Response) {
     const schema = req.app.get(schemaInstanceName);
     if (!schema) {
@@ -476,6 +480,9 @@ export function permissions(dbAnonRole: string, schemaInstanceName = '__schema__
             }
             if (grant === 'delete') {
               acc.push('delete');
+            }
+            if (grant === 'all') {
+              acc.push('list', 'show', 'read', 'export', 'create', 'edit', 'update', 'delete');
             }
             return acc;
           }, []);

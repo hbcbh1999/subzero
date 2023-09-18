@@ -17,7 +17,7 @@ use super::base::{
     fmt_logic_operator,
     fmt_offset,
     //fmt_sub_select_item,
-    fmt_operator,
+    //fmt_operator,
     fmt_order,
     fmt_order_term,
     fmt_groupby,
@@ -514,7 +514,17 @@ fn fmt_sub_select_item<'a>(db_schema: &'a DbSchema<'_>, schema: &'a str, _qi: &Q
     }
 }
 
-fmt_operator!();
+//fmt_operator!();
+fn fmt_operator<'a>(o: &'a Operator<'a>) -> Result<String> {
+    // match on the operator and return the sqlite equivalent
+
+    Ok(String::from(
+        match *o {
+            "ilike" => "like",
+            _ => o,
+        }
+    ) + " ")
+}
 fmt_logic_operator!();
 fmt_identity!();
 //fmt_qi!();

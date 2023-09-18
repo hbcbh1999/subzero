@@ -3,7 +3,7 @@ members = [
     "subzero-core",
     "subzero-rocket",
     "subzero-wasm",
-    "subzero-pgx"
+    # "subzero-pgx"
 ]
 exclude = [
     

@@ -25,7 +25,7 @@ use nom::{
     branch::{alt},
 };
 
-/// Useful functions to calculate the offset between slices and show a hexdump of a slice
+/// Useful functions to calculate the offset between slices and show a hex dump of a slice
 pub trait Offset {
     /// Offset between the first byte of self and the first byte of the argument
     fn offset(&self, second: &Self) -> usize;
@@ -64,7 +64,7 @@ pub fn convert_error<I: core::ops::Deref<Target = str>>(input: I, e: VerboseErro
             // Count the number of newlines in the first `offset` bytes of input
             let line_number = prefix.iter().filter(|&&b| b == b'\n').count() + 1;
 
-            // Find the line that includes the subslice:
+            // Find the line that includes the sub slice:
             // Find the *last* newline before the substring starts
             let line_begin = prefix.iter().rev().position(|&b| b == b'\n').map(|pos| offset - pos).unwrap_or(0);
 
@@ -144,7 +144,7 @@ type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), Err<E>>;
 type Parsed<'a, T> = IResult<&'a str, T>;
 
 const STAR: &str = "*";
-const ALIAS_SUFIXES: [&str; 10] = ["_0", "_1", "_2", "_3", "_4", "_5", "_6", "_7", "_8", "_9"];
+const ALIAS_SUFFIXES: [&str; 10] = ["_0", "_1", "_2", "_3", "_4", "_5", "_6", "_7", "_8", "_9"];
 lazy_static! {
     // static ref STAR: String = "*".to_string();
     static ref OPERATORS: HashMap<&'static str, &'static str> = [
@@ -1539,7 +1539,7 @@ fn add_join_info<'a, 'b>(query: &'b mut Query<'a>, schema: &'a str, db_schema: &
             }
             let new_join: Join<'a> = db_schema.get_join(schema, parent_table, child_table, hint)?;
             if is_self_join(&new_join) {
-                *table_alias = Some(ALIAS_SUFIXES[depth as usize]);
+                *table_alias = Some(ALIAS_SUFFIXES[depth as usize]);
             }
             match &new_join {
                 Parent(fk) if &fk.referenced_table.1 != child_table => {
@@ -1910,7 +1910,7 @@ pub mod tests {
     // }
     #[test]
     fn test_parse_get_function() {
-        let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
+        let empty_hashmap: HashMap<&str, &str> = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
         let mut api_request = ApiRequest {
             schema_name: "api",
@@ -1919,9 +1919,9 @@ pub mod tests {
             path: "dummy",
             method: "GET",
             read_only: true,
-            headers: emtpy_hashmap.clone(),
+            headers: empty_hashmap.clone(),
             accept_content_type: ApplicationJSON,
-            cookies: emtpy_hashmap.clone(),
+            cookies: empty_hashmap.clone(),
             query: Query {
                 node: FunctionCall {
                     fn_name: Qi("api", "myfunction"),
@@ -1949,7 +1949,7 @@ pub mod tests {
                 sub_selects: vec![],
             },
         };
-        let a = parse("api", "myfunction", &db_schema, "GET", "dummy", vec![("id", "10")], None, emtpy_hashmap.clone(), emtpy_hashmap.clone(), None);
+        let a = parse("api", "myfunction", &db_schema, "GET", "dummy", vec![("id", "10")], None, empty_hashmap.clone(), empty_hashmap.clone(), None);
 
         assert_eq!(a.unwrap(), api_request);
 
@@ -1958,7 +1958,7 @@ pub mod tests {
         api_request.read_only = false;
 
         let body = r#"{"id":"10"}"#;
-        let b = parse("api", "myfunction", &db_schema, "POST", "dummy", vec![], Some(body), emtpy_hashmap.clone(), emtpy_hashmap.clone(), None);
+        let b = parse("api", "myfunction", &db_schema, "POST", "dummy", vec![], Some(body), empty_hashmap.clone(), empty_hashmap.clone(), None);
         assert_eq!(b.unwrap(), api_request);
     }
 
@@ -2071,7 +2071,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_get() {
-        let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
+        let empty_hashmap: HashMap<&str, &str> = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
         let a = parse(
             "api",
@@ -2087,8 +2087,8 @@ pub mod tests {
                 ("tasks.or", "(id.eq.11,id.eq.12)"),
             ],
             None,
-            emtpy_hashmap.clone(),
-            emtpy_hashmap.clone(),
+            empty_hashmap.clone(),
+            empty_hashmap.clone(),
             None,
         );
 
@@ -2108,8 +2108,8 @@ pub mod tests {
                 method: "GET",
                 read_only: true,
                 accept_content_type: ApplicationJSON,
-                headers: emtpy_hashmap.clone(),
-                cookies: emtpy_hashmap.clone(),
+                headers: empty_hashmap.clone(),
+                cookies: empty_hashmap.clone(),
                 query: Query {
                     node: Select {
                         order: vec![],
@@ -2287,8 +2287,8 @@ pub mod tests {
                 "dummy",
                 vec![("select", "id,name,unknown(id)")],
                 None,
-                emtpy_hashmap.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2308,8 +2308,8 @@ pub mod tests {
                 "dummy",
                 vec![("select", "id-,na$me")],
                 None,
-                emtpy_hashmap.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2324,7 +2324,7 @@ pub mod tests {
 
     #[test]
     fn test_parse_post() {
-        let emtpy_hashmap: HashMap<&str, &str> = HashMap::new();
+        let empty_hashmap: HashMap<&str, &str> = HashMap::new();
         let db_schema = serde_json::from_str::<DbSchema>(JSON_SCHEMA).unwrap();
         let headers = [("prefer", "return=representation")].iter().cloned().collect::<HashMap<_, _>>();
         let payload = r#"{"id":10, "name":"john"}"#;
@@ -2338,7 +2338,7 @@ pub mod tests {
                 vec![("select", "id"), ("id", "gt.10"),],
                 Some(payload),
                 headers.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2355,7 +2355,7 @@ pub mod tests {
                 read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers: headers.clone(),
-                cookies: emtpy_hashmap.clone(),
+                cookies: empty_hashmap.clone(),
                 query: Query {
                     node: Insert {
                         on_conflict: None,
@@ -2395,7 +2395,7 @@ pub mod tests {
                 vec![("select", "id,name"), ("id", "gt.10"), ("columns", "id,name"),],
                 Some(payload),
                 headers.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2412,7 +2412,7 @@ pub mod tests {
                 read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers: headers.clone(),
-                cookies: emtpy_hashmap.clone(),
+                cookies: empty_hashmap.clone(),
                 query: Query {
                     node: Insert {
                         on_conflict: None,
@@ -2462,8 +2462,8 @@ pub mod tests {
                 "dummy",
                 vec![("select", "id"), ("id", "gt.10"), ("columns", "id,1$name"),],
                 Some(r#"{"id":10, "name":"john", "phone":"123"}"#),
-                emtpy_hashmap.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2484,8 +2484,8 @@ pub mod tests {
                 "dummy",
                 vec![("select", "id"), ("id", "gt.10"),],
                 Some(r#"{"id":10, "name""#),
-                emtpy_hashmap.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2501,8 +2501,8 @@ pub mod tests {
                 "dummy",
                 vec![("select", "id"), ("id", "gt.10"),],
                 Some(r#"[{"id":10, "name":"john"},{"id":10, "phone":"123"}]"#),
-                emtpy_hashmap.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2521,8 +2521,8 @@ pub mod tests {
                 "dummy",
                 vec![("select", "id,name,unknown(id)")],
                 None,
-                emtpy_hashmap.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2542,8 +2542,8 @@ pub mod tests {
                 "dummy",
                 vec![("select", "id-,na$me")],
                 None,
-                emtpy_hashmap.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2565,7 +2565,7 @@ pub mod tests {
                 vec![("select", "id"), ("id", "gt.10"),],
                 Some(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),
                 headers.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2582,7 +2582,7 @@ pub mod tests {
                 read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers: headers.clone(),
-                cookies: emtpy_hashmap.clone(),
+                cookies: empty_hashmap.clone(),
                 query: Query {
                     sub_selects: vec![],
                     node: Insert {
@@ -2623,7 +2623,7 @@ pub mod tests {
                 vec![("select", "id,name,tasks(id),clients(id)"), ("id", "gt.10"), ("tasks.id", "gt.20"),],
                 Some(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#),
                 headers.clone(),
-                emtpy_hashmap.clone(),
+                empty_hashmap.clone(),
                 None
             )
             .map_err(|e| format!("{e}")),
@@ -2640,7 +2640,7 @@ pub mod tests {
                 read_only: false,
                 accept_content_type: ApplicationJSON,
                 headers,
-                cookies: emtpy_hashmap.clone(),
+                cookies: empty_hashmap.clone(),
                 query: Query {
                     sub_selects: vec![
                         SubSelect {

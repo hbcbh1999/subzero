@@ -270,7 +270,7 @@ impl Backend for PostgreSQLBackend {
                             .await
                             .context(PgDbSnafu { authenticated })?;
                         let _ = transaction.query("set local schema ''", &[]).await;
-                        match transaction.query(&query, &[&config.db_schemas]).await {
+                        match transaction.query(&query, &[&config.db_schemas, &false]).await {
                             Ok(rows) => {
                                 transaction.commit().await.context(PgDbSnafu { authenticated })?;
                                 //println!("db schema loaded: {}", rows[0].get::<usize, &str>(0));
