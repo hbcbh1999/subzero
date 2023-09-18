@@ -10,7 +10,7 @@ type RunFn = (role: string, request: Request, env?: Env) => Promise<unknown>;
 //     };
 // }
 
-export async function runPemissionsTest(db_type: string, base_url: string, run: RunFn) {
+export async function runPermissionsTest(db_type: string, base_url: string, run: RunFn) {
     describe('permissions', () => {
         test('alice can select public rows and her private rows', async () => {
             expect(

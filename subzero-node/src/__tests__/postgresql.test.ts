@@ -3,7 +3,7 @@ import Subzero, { Statement, getIntrospectionQuery, fmtPostgreSqlEnv, Env } from
 import { Pool } from 'pg';
 import * as fs from 'fs';
 import * as path from 'path';
-import { runPemissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
+import { runPermissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
 import dotenv from 'dotenv';
 dotenv.config({ path: `${__dirname}/../../../.github/.env`});
 
@@ -45,7 +45,6 @@ async function run(role: string, req: Request, queryEnv?: Env) {
   const prefix = `/rest/`;
   const { query: envQuery, parameters: envParameters } = fmtPostgreSqlEnv(env);
   const { query, parameters } = await subzero.fmtStatement(schema, prefix, role, req, env);
-  //console.log(query, parameters)
   let result;
   const db = await dbPool.connect();
   try {
@@ -109,7 +108,7 @@ describe('query shape tests', () => {
   });
 });
 
-runPemissionsTest('postgresql', base_url, run);
+runPermissionsTest('postgresql', base_url, run);
 runSelectTest('postgresql', base_url, run);
 runUpdateTest('postgresql', base_url, run);
 runInsertTest('postgresql', base_url, run);

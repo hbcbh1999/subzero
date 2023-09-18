@@ -2,15 +2,18 @@ import { default as sqlite_introspection_query } from '../introspection/sqlite_i
 import { default as postgresql_introspection_query } from '../introspection/postgresql_introspection_query.sql'
 import { default as clickhouse_introspection_query } from '../introspection/clickhouse_introspection_query.sql'
 import { default as mysql_introspection_query } from '../introspection/mysql_introspection_query.sql'
+import type { Pool as PgPool } from 'pg'
+import type { Database as SqliteDatabase } from 'better-sqlite3'
+import type { Request as ExpressRequest, NextFunction, Response } from 'express'
 import type { IncomingMessage } from 'http'
-type HttpRequest = Request | IncomingMessage
-type SubzeroHttpRequest = HttpRequest & {
-  parsedUrl?: URL,
-  textBody?: string,
-  body?: unknown,
-  headersSequence?: unknown,
-  text?: unknown
-}
+//type HttpRequest = Request | ExpressRequest | IncomingMessage
+// interface SubzeroHttpRequest extends HttpRequest {
+//   parsedUrl?: URL,
+//   textBody?: string,
+//   body?: unknown,
+//   headersSequence?: unknown,
+//   text?: unknown
+// }
 //import { default as wasmbin } from '../../subzero-wasm/pkg/subzero_wasm_bg.wasm'
 //import /*init, */{ initSync, Backend } from '../../subzero-wasm/pkg/subzero_wasm.js'
 //import init, { Backend } from '../../subzero-wasm/pkg/subzero_wasm.js'
@@ -19,12 +22,9 @@ type SubzeroHttpRequest = HttpRequest & {
 //const wasmPromise = init('file:./subzero_wasm_bg.wasm')
 //const wasmPromise = init(wasmbin)
 
-import type { Pool as PgPool } from 'pg'
-import type { Database as SqliteDatabase } from 'better-sqlite3'
-import type { Request, NextFunction, Response } from 'express'
-interface RequestWithUser extends Request {
-  user?: any; // Replace 'any' with the actual type of your user object
-}
+// interface RequestWithUser extends Request {
+//   user?: any; // Replace 'any' with the actual type of your user object
+// }
 
 export type DbType = 'postgresql' | 'sqlite' | 'clickhouse' | 'mysql'
 export type DbPool = PgPool | SqliteDatabase
@@ -140,7 +140,7 @@ export type HandlerOptions = {
   debugFn?: (...args: any[]) => void,
 }
 
-function cleanupRequest(req: Request) {
+function cleanupRequest(req: ExpressRequest) {
   // delete header prefer if it's empty
   if (req.headers['prefer'] === '') {
       delete req.headers['prefer'];
@@ -177,7 +177,7 @@ type DbResponseRow = {
 }
 
 async function restPg(dbPool: PgPool, subzero: SubzeroInternal,
-  req: RequestWithUser,
+  req: ExpressRequest,
   schema: string,
   prefix: string,
   user: any,
@@ -229,7 +229,7 @@ async function restPg(dbPool: PgPool, subzero: SubzeroInternal,
 }
 
 async function restSqlite(dbPool: SqliteDatabase, subzero: SubzeroInternal,
-  req: RequestWithUser,
+  req: ExpressRequest,
   schema: string,
   prefix: string,
   user: any,
@@ -319,7 +319,7 @@ export function getRequestHandler(
     debugFn: () => {},
     ...options,
   }
-  return async function (req: RequestWithUser, res: Response, next: NextFunction) {
+  return async function (req: ExpressRequest, res: Response, next: NextFunction) {
       const subzero:SubzeroInternal = req.app.get(o.subzeroInstanceName);
       const dbPool:DbPool = req.app.get(o.dbPoolInstanceName);
 
@@ -334,7 +334,7 @@ export function getRequestHandler(
       cleanupRequest(req);
 
       const url = new URL(`${req.protocol}://${req.get('host')}${req.originalUrl}`);
-      const user = req.user || { role: o.dbAnonRole };
+      const user = (req as any).user || { role: o.dbAnonRole };
       const header_schema = req.headers['accept-profile'] || req.headers['content-profile'];
       const { url_schema } = req.params;
       const url_schema_val = url_schema === 'rpc' ? undefined : url_schema;
@@ -393,13 +393,13 @@ export function getRequestHandler(
 
 
 export function getSchemaHandler(dbAnonRole:string, schemaInstanceName = '__schema__') {
-  return async function schema(req: RequestWithUser, res: Response) {
+  return async function schema(req: ExpressRequest, res: Response) {
     const schema = req.app.get(schemaInstanceName);
     if (!schema) {
       throw new SubzeroError('Temporary unavailable', 503);
     }
     const dbSchema = schema.schemas[0];
-    const user: any = req.user || { role: dbAnonRole };
+    const user = (req as any).user || { role: dbAnonRole };
     const role = user.role;
     const allowedObjects = dbSchema.objects.filter((obj: SchemaObject) => {
       const permissions = obj.permissions.filter((permission: any) => {
@@ -444,12 +444,12 @@ export function getSchemaHandler(dbAnonRole:string, schemaInstanceName = '__sche
 }
 
 export function getPermissionsHandler(dbAnonRole: string, schemaInstanceName = '__schema__') {
-  return async function (req: RequestWithUser, res: Response) {
+  return async function (req: ExpressRequest, res: Response) {
     const schema = req.app.get(schemaInstanceName);
     if (!schema) {
       throw new SubzeroError('Temporary unavailable', 503);
     }
-    const user: any = req.user || { role: dbAnonRole };
+    const user = (req as any).user || { role: dbAnonRole };
     const role = user.role;
     const dbSchema = schema.schemas[0];
     const allowedObjects = dbSchema.objects.filter((obj: SchemaObject) => {
@@ -501,7 +501,7 @@ export function getPermissionsHandler(dbAnonRole: string, schemaInstanceName = '
   }
 }
 
-export function onSubzeroError(err: Error, req: Request, res: Response, next: NextFunction) {
+export function onSubzeroError(err: Error, req: ExpressRequest, res: Response, next: NextFunction) {
   if (err instanceof SubzeroError) {
       res.writeHead(err.status, { 'content-type': 'application/json' }).end(err.toJSONString());
   } else if (isPgError(err)) {
@@ -569,6 +569,66 @@ export class TwoStepStatement {
   }
 }
 
+type RequestParts = {
+  parsedUrl: URL,
+  textBody: string,
+  headersSequence: [string, string | undefined][],
+  //headersSequence: any
+}
+
+// function isExpressRequest(obj: any): obj is Request {
+//   return 'app' in obj && typeof obj.app === 'function';
+// }
+
+async function readRequestBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+      let body = '';
+
+      req.on('data', chunk => {
+          body += chunk;
+      });
+
+      req.on('end', () => {
+          resolve(body);
+      });
+
+      req.on('error', err => {
+          reject(err);
+      });
+  });
+}
+
+
+async function getRequestParts(req: Request | ExpressRequest | IncomingMessage): Promise<RequestParts> {
+  // try to accommodate for different request types
+  let body: string | undefined = undefined;
+  if (typeof Request !== 'undefined' && req instanceof Request) {
+    return {
+      parsedUrl: new URL(req.url),
+      textBody: req.method === 'GET' ? '' : await req.text(),
+      headersSequence: Array.from(req.headers.entries()).map(([k, v]) => [k.toLowerCase(), v?.toString()])
+    }
+  }
+  // this is either express or IncomingMessage (which are quite similar)
+  else {
+    const r = req as IncomingMessage;
+    body = (r as any).body || (r as any).textBody
+    // read the body if it's not read yet
+    if (!body) {
+      body = await readRequestBody(r)
+    }
+    else if (typeof body === 'object') {
+      body = JSON.stringify(body)
+    }
+    return {
+      parsedUrl: new URL(r.url || '', `http://${r.headers.host}`),
+      textBody: r.method === 'GET' ? '' : body || '',
+      headersSequence: Object.entries(r.headers).map(([k, v]) => [k.toLowerCase(), v?.toString()])
+    }
+  }
+}
+
+
 export class SubzeroInternal {
   private backend?: any
   private wasmBackend: any
@@ -622,56 +682,63 @@ export class SubzeroInternal {
     this.initBackend()
   }
 
-  private async normalizeRequest(request: SubzeroHttpRequest): Promise<void> {
-    // try to accommodate for different request types
+  
+  // private async normalizeRequest(request: HttpRequest): Promise<RequestParts> {
+  //   // try to accommodate for different request types
 
-    if (typeof Request !== 'undefined' && request instanceof Request) {
-      request.parsedUrl = new URL(request.url)
-      request.textBody = request.method === 'GET' ? '' : await request.text()
-      request.headersSequence = request.headers
-    }
-    // check if type is IncomingMessage
-    else {
-      request = request as IncomingMessage;
-      request.parsedUrl = new URL(request.url || '', `http://${request.headers.host}`)
-      request.headersSequence = Object.entries(request.headers).map(([k, v]) => [k.toLowerCase(), v?.toString()])
-      if (request.method === 'GET') {
-        request.textBody = ''
-      }
-      else {
-        if (!request.body) {
-          // the body was not read yet
-          if (typeof request.text === 'function') {
-            request.textBody = await request.text()
-          }
-          else {
-            request.textBody = ''
-          }
-        }
-        else if (typeof request.body === 'object') {
-          request.textBody = JSON.stringify(request.body)
-        }
-      }
-    }
-  }
+  //   if (typeof Request !== 'undefined' && request instanceof Request) {
+  //     const r = request as Request;
+  //     return {
+  //       parsedUrl: new URL(r.url || '', `http://${r.headers.host}`),
+  //       textBody: request.method === 'GET' ? '' : await r.text(),
+  //       headersSequence: r.headers,
+  //     }
+  //     request.parsedUrl = new URL(request.url)
+  //     request.textBody = request.method === 'GET' ? '' : await request.text()
+  //     request.headersSequence = request.headers
+  //   }
+  //   // check if type is IncomingMessage
+  //   else {
+  //     request = request as IncomingMessage;
+  //     request.parsedUrl = new URL(request.url || '', `http://${request.headers.host}`)
+  //     request.headersSequence = Object.entries(request.headers).map(([k, v]) => [k.toLowerCase(), v?.toString()])
+  //     if (request.method === 'GET') {
+  //       request.textBody = ''
+  //     }
+  //     else {
+  //       if (!request.body) {
+  //         // the body was not read yet
+  //         if (typeof request.text === 'function') {
+  //           request.textBody = await request.text()
+  //         }
+  //         else {
+  //           request.textBody = ''
+  //         }
+  //       }
+  //       else if (typeof request.body === 'object') {
+  //         request.textBody = JSON.stringify(request.body)
+  //       }
+  //     }
+  //   }
+  // }
 
-  async fmtStatement(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest,  env: Env, maxRows?: number,): Promise<Statement> {
+  async fmtStatement(schemaName: string, urlPrefix: string, role: string, request: Request | ExpressRequest | IncomingMessage,  env: Env, maxRows?: number,): Promise<Statement> {
     try {
       if (!this.backend) {
         throw new Error('Subzero is not initialized')
       }
-      await this.normalizeRequest(request);
-      const parsedUrl = request.parsedUrl || new URL('');
+      const p = await getRequestParts(request)
+      //const parsedUrl = request.parsedUrl || new URL('');
       const maxRowsStr = maxRows !== undefined ? maxRows.toString() : undefined;
       const [query, parameters] = this.backend.fmt_main_query(
             schemaName,
-            parsedUrl.pathname.substring(urlPrefix.length) || '', // entity
+            p.parsedUrl.pathname.substring(urlPrefix.length) || '', // entity
             request.method || 'GET', // method
-            parsedUrl.pathname, // path
-            parsedUrl.searchParams, // get
-            request.textBody !== undefined ? request.textBody : (request.body || ''), // body
+            p.parsedUrl.pathname, // path
+            p.parsedUrl.searchParams, // get
+            p.textBody, // body
             role,
-            request.headersSequence,
+            p.headersSequence,
             [], //cookies
             env,
             maxRowsStr
@@ -682,24 +749,25 @@ export class SubzeroInternal {
     }
   }
 
-  async fmtTwoStepStatement(schemaName: string, urlPrefix: string, role: string, request: SubzeroHttpRequest,  env: Env, maxRows?: number,): Promise<TwoStepStatement> {
+  async fmtTwoStepStatement(schemaName: string, urlPrefix: string, role: string, request: Request | ExpressRequest | IncomingMessage,  env: Env, maxRows?: number,): Promise<TwoStepStatement> {
     try {
       if (!this.backend) {
         throw new Error('Subzero is not initialized')
       }
-      await this.normalizeRequest(request);
-      const parsedUrl = request.parsedUrl || new URL('');
+      //await this.normalizeRequest(request);
+      //const parsedUrl = request.parsedUrl || new URL('');
+      const p = await getRequestParts(request)
       const maxRowsStr = maxRows !== undefined ? maxRows.toString() : undefined;
       
       const [mutate_query, mutate_parameters, select_query, select_parameters] = this.backend.fmt_two_stage_query(
             schemaName,
-            parsedUrl.pathname.substring(urlPrefix.length) || '', // entity
+            p.parsedUrl.pathname.substring(urlPrefix.length) || '', // entity
             request.method || 'GET', // method
-            parsedUrl.pathname, // path
-            parsedUrl.searchParams, // get
-            request.textBody !== undefined ? request.textBody : (request.body || ''), // body
+            p.parsedUrl.pathname, // path
+            p.parsedUrl.searchParams, // get
+            p.textBody, // body
             role,
-            request.headersSequence,
+            p.headersSequence,
             [], //cookies
             env,
             maxRowsStr

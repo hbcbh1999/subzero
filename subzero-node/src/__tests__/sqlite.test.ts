@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
 import Subzero, { getIntrospectionQuery, Env } from '../rest';
-import { runPemissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
+import { runPermissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
 
 // Declare global variables
 sqlite3.verbose();
@@ -68,7 +68,7 @@ async function run(role: string, request: Request, env?: Env) {
   }
 }
 
-runPemissionsTest('sqlite', base_url, run);
+runPermissionsTest('sqlite', base_url, run);
 runSelectTest('sqlite', base_url, run);
 runUpdateTest('sqlite', base_url, run);
 runInsertTest('sqlite', base_url, run);

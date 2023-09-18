@@ -3,7 +3,7 @@ import Subzero, { Statement, getIntrospectionQuery, fmtMySqlEnv, Env } from '../
 import mysql, {ResultSetHeader} from 'mysql2';
 import * as fs from 'fs';
 import * as path from 'path';
-import { runPemissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
+import { runPermissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
 import dotenv from 'dotenv';
 dotenv.config({ path: `${__dirname}/../../../.github/.env`});
 
@@ -44,7 +44,7 @@ beforeAll(async () => {
 });
 
 // execute the queries for a given parsed request
-async function run(role: string, req: Request, queryEnv?: Env) {
+async function run(role: string, req:Request, queryEnv?: Env) {
   const method = req.method || 'GET';
   const schema = 'public';
   const env = queryEnv || [];
@@ -127,7 +127,7 @@ async function run(role: string, req: Request, queryEnv?: Env) {
 }
 
 
-runPemissionsTest('mysql', base_url, run);
+runPermissionsTest('mysql', base_url, run);
 runSelectTest('mysql', base_url, run);
 runUpdateTest('mysql', base_url, run);
 runInsertTest('mysql', base_url, run);
