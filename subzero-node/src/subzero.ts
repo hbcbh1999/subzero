@@ -459,15 +459,19 @@ export function getPermissionsHandler(dbAnonRole: string, schemaInstanceName = '
       return permissions.length > 0;
     });
     const userPermissions = allowedObjects
-      .map(({ name, kind, permissions }: SchemaObject) => {
+      .map(({ name, kind, permissions, columns }: SchemaObject) => {
         const userPermissions = permissions.filter((permission: any) => {
           return permission.role === role || permission.role === 'public';
         });
-        return { name, kind, permissions: userPermissions };
+        return { name, kind, permissions: userPermissions, columns };
       })
-      .reduce((acc: any[], { name, permissions }: SchemaObject) => {
+      .reduce((acc: any[], { name, permissions}: SchemaObject) => {
         permissions.forEach((permission) => {
-          const { grant } = permission;
+          const { grant, columns } = permission;
+          if (!grant) {
+            // this is a RLS policy
+            return;
+          }
           const action = grant.reduce((acc: string[], grant: string) => {
             if (grant === 'select') {
               acc.push('list', 'show', 'read', 'export');
@@ -487,7 +491,7 @@ export function getPermissionsHandler(dbAnonRole: string, schemaInstanceName = '
             return acc;
           }, []);
           const resource = name;
-          acc.push({ action, resource });
+          acc.push({ action, resource, columns: columns && columns.length > 0 ? columns : undefined });
         });
         return acc;
       }, []);

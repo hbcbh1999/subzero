@@ -4,6 +4,7 @@
   "description": "Automated REST and GraphQL api for your database",
   "type": "module",
   "scripts": {
+    "clean": "rm -rf dist-rest",
     "build": "npm run esbuild && npm run declarations && npm run rollup",
     "declarations": "tsc --declaration --emitDeclarationOnly --outDir declarations",
     "cpdeclarations": "cp declarations/*.d.ts dist-rest/",
