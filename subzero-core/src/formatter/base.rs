@@ -900,7 +900,7 @@ pub(super) use fmt_filter;
 #[allow(unused_macros)]
 macro_rules! fmt_env_var {
     () => {
-        fn fmt_env_var<'a>(e: &'a EnvVar) -> String {
+        fn fmt_env_var(e: &EnvVar) -> String {
             match e {
                 EnvVar { var, part: None } => format!("(select {} from env)", fmt_identity(var)),
                 EnvVar { var, part: Some(part) } => format!("(select {}::json->>'{}' from env)", fmt_identity(var), part),
@@ -1005,8 +1005,8 @@ pub(super) use fmt_select_item;
 #[allow(unused_macros)]
 macro_rules! fmt_sub_select_item {
     () => {
-        fn fmt_sub_select_item<'a, 'b, 'c>(
-            db_schema: &'a DbSchema<'c>, schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect,
+        fn fmt_sub_select_item<'a, 'b>(
+            db_schema: &'a DbSchema<'_>, schema: &'a str, qi: &'b Qi<'b>, i: &'a SubSelect,
         ) -> Result<(Snippet<'a>, Vec<Snippet<'a>>)> {
             let SubSelect { query, alias, join, .. } = i;
             match join {

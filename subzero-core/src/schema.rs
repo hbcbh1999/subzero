@@ -1,7 +1,7 @@
 use crate::api::{ForeignKey, Join, Join::*, ProcParam, Qi, Condition};
 use crate::error::*;
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{Value as JsonValue};
+use serde_json::Value as JsonValue;
 use snafu::OptionExt;
 use snafu::ResultExt;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -9,7 +9,7 @@ use std::iter::FromIterator;
 use log::debug;
 use ColumnPermissions::*;
 use regex::Regex;
-use std::{fs};
+use std::fs;
 use std::path::Path;
 //use std::borrow::Cow;
 
@@ -31,11 +31,6 @@ pub enum ColumnPermissions<'a> {
     All,
     #[serde(borrow)]
     Specific(Vec<&'a str>),
-}
-impl<'a> Default for ColumnPermissions<'a> {
-    fn default() -> Self {
-        ColumnPermissions::All
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default, Serialize, Deserialize)]
@@ -592,7 +587,7 @@ where
                             }
                         }
                     }
-                    //this branch is custom handling for clickouse where json manipulation is limited
+                    //this branch is custom handling for clickhouse where json manipulation is limited
                     //and check and using are returned as json strings
                     // (actions, None, None, check_str @ Some(_), using_str) | (actions, None, None, check_str, using_str @ Some(_)) => {
                     //     let actions_ = match actions {
@@ -978,8 +973,8 @@ mod tests {
 
     #[test]
     fn test_split_keep() {
-        let seperator = Regex::new(r"[ ,.]+").expect("Invalid regex");
-        let splits = split_keep(&seperator, "this... is a, test");
+        let separator = Regex::new(r"[ ,.]+").expect("Invalid regex");
+        let splits = split_keep(&separator, "this... is a, test");
         //for split in splits {
         println!("{splits:?}");
         //}
@@ -1077,7 +1072,7 @@ mod tests {
                                 .collect(),
                                 foreign_keys: [].to_vec(),
                                 permissions: Permissions {
-                                    grants: vec![(("role", Select), Specific(vec!["id", "name"]))].iter().cloned().collect(),
+                                    grants: [(("role", Select), Specific(vec!["id", "name"]))].iter().cloned().collect(),
                                     policies: vec![(
                                         ("role", Select),
                                         vec![Policy {

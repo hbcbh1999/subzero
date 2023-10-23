@@ -178,7 +178,7 @@ pub fn fmt_query<'a>(
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
-            select.extend(sub_selects.into_iter());
+            select.extend(sub_selects);
 
             (
                 None,

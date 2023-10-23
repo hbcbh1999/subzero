@@ -34,7 +34,7 @@ where
     fn join(self, sep: &'a str) -> SqlSnippet<'a, T> {
         match self.into_iter().fold(SqlSnippet(vec![]), |SqlSnippet(mut acc), SqlSnippet(v)| {
             acc.push(SqlSnippetChunk::Borrowed(sep));
-            acc.extend(v.into_iter());
+            acc.extend(v);
             SqlSnippet(acc)
         }) {
             SqlSnippet(mut v) => {
@@ -78,7 +78,7 @@ impl<'a, T: ?Sized> Add for SqlSnippet<'a, T> {
 
     fn add(self, other: Self) -> Self::Output {
         let (SqlSnippet(mut l), SqlSnippet(r)) = (self, other);
-        l.extend(r.into_iter());
+        l.extend(r);
         SqlSnippet(l)
     }
 }

@@ -134,7 +134,7 @@ pub fn fmt_query<'a>(
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
-            select_snippets.extend(sub_selects.into_iter());
+            select_snippets.extend(sub_selects);
 
             // add columns needed for joins
             let join_cols_snippets = join_cols
@@ -148,7 +148,7 @@ pub fn fmt_query<'a>(
                     )))
                 })
                 .collect::<Result<Vec<_>>>()?;
-            select_snippets.extend(join_cols_snippets.into_iter());
+            select_snippets.extend(join_cols_snippets);
 
             let groupby_for_join = q
                 .sub_selects
@@ -185,7 +185,7 @@ pub fn fmt_query<'a>(
                             _ => None,
                         }))
                         .collect::<Vec<_>>();
-                    //filter only qunique
+                    //filter only unique
                     terms.retain(|&GroupByTerm(Field { name, .. })| uniques.insert(name));
                     terms
                 });
@@ -463,7 +463,7 @@ mod tests {
     use crate::dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk, param_placeholder_format};
     use pretty_assertions::assert_eq;
     use regex::Regex;
-    use crate::api::{ContentType::*};
+    use crate::api::ContentType::*;
     use super::*;
     use std::borrow::Cow;
     fn cow(s: &str) -> Cow<str> {
@@ -657,7 +657,7 @@ mod tests {
                 },
             ],
         };
-        let emtpy_hashmap = HashMap::new();
+        let empty_hashmap = HashMap::new();
 
         let (query_str, _parameters, _) = generate(fmt_query("default", true, None, &q, &None).unwrap());
         // assert_eq!(
@@ -704,8 +704,8 @@ mod tests {
             method: "GET",
             read_only: true,
             accept_content_type: ApplicationJSON,
-            headers: emtpy_hashmap.clone(),
-            cookies: emtpy_hashmap.clone(),
+            headers: empty_hashmap.clone(),
+            cookies: empty_hashmap.clone(),
             query: q,
         };
 

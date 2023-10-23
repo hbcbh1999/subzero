@@ -145,7 +145,7 @@ pub fn fmt_query<'a>(
                         + prms
                             .iter()
                             //.map(|p| format!("{} {}", fmt_identity(&p.name), p.type_))
-                            .map(|p| vec![fmt_identity(p.name), p.type_.to_string()].join(" "))
+                            .map(|p| [fmt_identity(p.name), p.type_.to_string()].join(" "))
                             .collect::<Vec<_>>()
                             .join(", ")
                         + ")"
@@ -157,13 +157,13 @@ pub fn fmt_query<'a>(
                             let ident = fmt_identity(p.name);
                             if *is_multiple_call {
                                 //format!("{} {} := subzero_args.{}", variadic, ident, ident)
-                                vec![variadic, ident.as_str(), ":= subzero_args.", ident.as_str()].join(" ")
+                                [variadic, ident.as_str(), ":= subzero_args.", ident.as_str()].join(" ")
                             } else {
                                 // format!(
                                 //     "{} {}  := (select {} from subzero_args limit 1)",
                                 //     variadic, ident, ident
                                 // )
-                                vec![variadic, ident.as_str(), ":= (select", ident.as_str(), "from subzero_args limit 1)"].join(" ")
+                                [variadic, ident.as_str(), ":= (select", ident.as_str(), "from subzero_args limit 1)"].join(" ")
                             }
                         })
                         .collect::<Vec<_>>()
@@ -179,10 +179,10 @@ pub fn fmt_query<'a>(
                     .map(|&r| {
                         if r == "*" {
                             //format!("{}.*", fmt_identity(&fn_name.1))
-                            vec![fmt_identity(fn_name.1).as_str(), ".*"].join("")
+                            [fmt_identity(fn_name.1).as_str(), ".*"].join("")
                         } else {
                             //format!("{}.{}", fmt_identity(&fn_name.1), fmt_identity(r))
-                            vec![fmt_identity(fn_name.1), fmt_identity(r)].join(".")
+                            [fmt_identity(fn_name.1), fmt_identity(r)].join(".")
                         }
                     })
                     .collect::<Vec<_>>()
@@ -213,7 +213,7 @@ pub fn fmt_query<'a>(
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
-            select.extend(sub_selects.into_iter());
+            select.extend(sub_selects);
             (
                 Some(params_cte + " subzero_source as ( " + args_body + " )"),
                 " select "
@@ -257,7 +257,7 @@ pub fn fmt_query<'a>(
                     //     fmt_qi(&Qi(schema.clone(), table.clone())),
                     //     fmt_identity(&a)
                     // ),
-                    vec![fmt_qi(&Qi(schema, table)), fmt_identity(a)].join(" as "),
+                    [fmt_qi(&Qi(schema, table)), fmt_identity(a)].join(" as "),
                 ),
             };
             let qi = &_qi;
@@ -269,9 +269,9 @@ pub fn fmt_query<'a>(
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .unzip();
-            select.extend(sub_selects.into_iter());
+            select.extend(sub_selects);
 
-            // this check field is relevant in secend stage select (after a mutation)
+            // this check field is relevant in second stage select (after a mutation)
             // for databases that do not support returning clause
             let check_condition = match check {
                 Some(c) if !c.conditions.is_empty() => ", " + fmt_condition_tree(qi, c)? + " as _subzero_check__constraint",
