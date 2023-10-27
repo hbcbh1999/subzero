@@ -33,6 +33,12 @@ const schema = {
               referenced_columns: ['id'],
             },
           ],
+          permissions: [
+            {
+              "role": "public",
+              "grant": ["all"]
+            }
+          ]
         },
         {
           kind: 'table',
@@ -45,6 +51,12 @@ const schema = {
             },
           ],
           foreign_keys: [],
+          permissions: [
+            {
+              "role": "public",
+              "grant": ["all"]
+            }
+          ]
         },
       ],
     },
