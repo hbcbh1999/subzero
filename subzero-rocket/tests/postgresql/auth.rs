@@ -6,22 +6,18 @@ feature "auth"
     it "denies access to tables that anonymous does not own" $
       get "/authors_only" shouldRespondWith
         [json| r#"{
-          "hint":null,
-          "details":null,
-          "code":"42501",
-          "message":"permission denied for table authors_only"} "#|]
-      { matchStatus = 401
-      , matchHeaders = ["WWW-Authenticate" <:> "Bearer"]
+          "details": "no Select privileges for 'test.authors_only' table",
+          "message":"Permission denied"} "#|]
+      { matchStatus = 403
+      , matchHeaders = []
       }
     it "denies access to tables that postgrest_test_author does not own" $
       let auth = authHeaderJWT "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoicG9zdGdyZXN0X3Rlc3RfYXV0aG9yIn0.Xod-F15qsGL0WhdOCr2j3DdKuTw9QJERVgoFD3vGaWA" in
       request methodGet "/private_table" [auth]
         shouldRespondWith
           [json|r#" {
-            "hint":null,
-            "details":null,
-            "code":"42501",
-            "message":"permission denied for table private_table"} "#|]
+            "details": "no Select privileges for 'test.private_table' table",
+            "message": "Permission denied"} "#|]
         { matchStatus = 403
         , matchHeaders = []
         }

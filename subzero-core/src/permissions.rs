@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
 use crate::api::ConditionTree;
-use crate::api::{ApiRequest, FunctionParam, Query, SubSelect, QueryNode::*, SelectItem::Func, SelectItem, Qi, Condition, LogicOperator::*};
+use crate::api::{
+    ApiRequest, FunctionParam, Query, SubSelect, QueryNode::*, SelectItem::Func, SelectItem, Qi, Condition, LogicOperator::*, ColumnName, Field,
+};
 use crate::error::*;
 use crate::schema::{Role, DbSchema, ColumnPermissions::*, ColumnPermissions, Action, Policy, Object};
 use snafu::OptionExt;
@@ -451,6 +453,78 @@ fn get_row_security_policies<'a>(
         })
     };
     (security_qual_condition, with_check_option_condition)
+}
+
+// replace all SelectItem::Star with SelectItem::Simple (with specific columns)
+// based on schema knowledge and permissions
+// this is done so that user can run select=* queries and not run into permission errors
+fn expand_star_in_place<'a>(items: &mut Vec<SelectItem<'a>>, columns: &[ColumnName<'a>]) {
+    let mut i = 0;
+    while i < items.len() {
+        if let SelectItem::Star = items[i] {
+            let mut replacement = Vec::new();
+            for column in columns {
+                replacement.push(SelectItem::Simple {
+                    field: Field {
+                        name: column,
+                        json_path: None,
+                    },
+                    alias: None,
+                    cast: None,
+                });
+            }
+            items.splice(i..=i, replacement);
+            i += columns.len(); // Skip the newly added items
+        } else {
+            i += 1;
+        }
+    }
+}
+fn expand_star_in_place_1<'a>(items: &mut Vec<&'a str>, columns: &[ColumnName<'a>]) {
+    let mut i = 0;
+    while i < items.len() {
+        if let "*" = items[i] {
+            let mut replacement = Vec::new();
+            for column in columns {
+                replacement.push(*column);
+            }
+            items.splice(i..=i, replacement);
+            i += columns.len(); // Skip the newly added items
+        } else {
+            i += 1;
+        }
+    }
+}
+pub fn replace_select_star<'d: 'a, 'a>(db_schema: &'d DbSchema, current_schema: &'a str, role: Role<'a>, query: &mut Query<'a>) -> Result<()> {
+    // iterate over all query nodes and replace SelectItem::Star with SelectItem::Simple in the select property
+    for (_path, n) in query {
+        let (name, select, returning) = match n {
+            // TODO: handle FunctionCall
+            // FunctionCall {
+            //     select, return_table_type: Some(Qi(_, n)), ..
+            // } => (n, select),
+            Select { select, from: (t, _), .. } => (t, select, None),
+            Insert { select, into, returning, .. } => (into, select, Some(returning)),
+            Update { select, table, returning, .. } => (table, select, Some(returning)),
+            Delete { select, from, returning, .. } => (from, select, Some(returning)),
+            _ => continue,
+        };
+        //log(&format!("replace_select_star: name: {:?}", name));
+        //log(&format!("replace_select_star: select: {:?}", select));
+
+        let has_star = select.iter().any(|s| matches!(s, SelectItem::Star));
+        //log(&format!("has_star: {:?}", has_star));
+        if has_star {
+            let columns = db_schema.get_columns_with_privileges(role, &Action::Select, current_schema, name)?;
+            //log(&format!("columns: {:?}", columns));
+            expand_star_in_place(select, &columns);
+            if let Some(r) = returning {
+                expand_star_in_place_1(r, &columns);
+            }
+        }
+        
+    }
+    Ok(())
 }
 
 pub fn insert_policy_conditions<'d: 'a, 'a>(db_schema: &'d DbSchema, current_schema: &'a str, role: Role<'a>, query: &mut Query<'a>) -> Result<()> {

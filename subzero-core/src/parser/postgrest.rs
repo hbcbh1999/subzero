@@ -914,7 +914,8 @@ pub fn parse<'a>(
     // enforce max rows limit for each node
     enforce_max_rows(&mut query, max_rows);
     // replace select * with all the columns
-    replace_start(&mut query, schema_obj)?;
+    // replace_star(&mut query, schema_obj)?;
+    // moved to external function that also looks at permissions
 
     Ok(ApiRequest {
         schema_name: schema,
@@ -955,44 +956,44 @@ fn enforce_max_rows<'a>(query: &mut Query<'a>, max_rows: Option<&'a str>) {
 }
 
 // replace star with all columns
-fn replace_start<'a>(query: &mut Query<'a>, schema_obj: &Schema<'a>) -> Result<()> {
-    for (_, node) in query {
-        let (select, o_table_name) = match node {
-            Select {
-                select, from: (table, _), ..
-            } => (select, Some(table)),
-            Insert { select, into, .. } => (select, Some(into)),
-            Delete { select, from, .. } => (select, Some(from)),
-            Update { select, table, .. } => (select, Some(table)),
-            // for function calls we don't know the table name always so we don't do anything
-            FunctionCall { select, .. } => (select, None),
-        };
-        if let Some(table_name) = o_table_name {
-            let mut star_removed = false;
-            select.retain(|s| {
-                if let SelectItem::Star = s {
-                    star_removed = true;
-                    false
-                } else {
-                    true
-                }
-            });
-            if star_removed {
-                let table_obj = schema_obj.objects.get(table_name).context(NotFoundSnafu {
-                    target: table_name.to_string(),
-                })?;
-                for col in table_obj.columns.keys() {
-                    select.push(SelectItem::Simple {
-                        field: Field { name: col, json_path: None },
-                        alias: None,
-                        cast: None,
-                    });
-                }
-            }
-        }
-    }
-    Ok(())
-}
+// fn replace_star<'a>(query: &mut Query<'a>, schema_obj: &Schema<'a>) -> Result<()> {
+//     for (_, node) in query {
+//         let (select, o_table_name) = match node {
+//             Select {
+//                 select, from: (table, _), ..
+//             } => (select, Some(table)),
+//             Insert { select, into, .. } => (select, Some(into)),
+//             Delete { select, from, .. } => (select, Some(from)),
+//             Update { select, table, .. } => (select, Some(table)),
+//             // for function calls we don't know the table name always so we don't do anything
+//             FunctionCall { select, .. } => (select, None),
+//         };
+//         if let Some(table_name) = o_table_name {
+//             let mut star_removed = false;
+//             select.retain(|s| {
+//                 if let SelectItem::Star = s {
+//                     star_removed = true;
+//                     false
+//                 } else {
+//                     true
+//                 }
+//             });
+//             if star_removed {
+//                 let table_obj = schema_obj.objects.get(table_name).context(NotFoundSnafu {
+//                     target: table_name.to_string(),
+//                 })?;
+//                 for col in table_obj.columns.keys() {
+//                     select.push(SelectItem::Simple {
+//                         field: Field { name: col, json_path: None },
+//                         alias: None,
+//                         cast: None,
+//                     });
+//                 }
+//             }
+//         }
+//     }
+//     Ok(())
+// }
 
 // A combinator that takes a parser `inner` and produces a parser that also consumes both leading and
 /// trailing whitespace, returning the output of `inner`.

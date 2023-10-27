@@ -79,11 +79,20 @@ feature "delete"
           shouldRespondWith 404
 
     describe "table with limited privileges" $ do
-      it "fails deleting the row when return=representation and selecting all the columns" $
+      // it "fails deleting the row when return=representation and selecting all the columns" $
+      //   request methodDelete "/app_users?id=eq.1" [("Prefer", "return=representation")]
+      //     //mempty
+      //     ""
+      //     shouldRespondWith 401
+
+      it "succeeds deleting the row when return=representation no select specified" $
         request methodDelete "/app_users?id=eq.1" [("Prefer", "return=representation")]
           //mempty
           ""
-          shouldRespondWith 401
+          shouldRespondWith [json|r#"[ { "id": 1, "email": "test@123.com" } ]"#|]
+          { matchStatus  = 200
+          , matchHeaders = ["Content-Range" <:> "*/*"]
+          }
 
       it "succeeds deleting the row when return=representation and selecting only the privileged columns" $
         request methodDelete "/app_users?id=eq.1&select=id,email" [("Prefer", "return=representation")]

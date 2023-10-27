@@ -8,7 +8,7 @@ use std::borrow::Cow;
 #[cfg(feature = "sqlite")]
 use tokio::task;
 
-use subzero_core::api::{ApiResponse};
+use subzero_core::api::ApiResponse;
 
 use crate::backend::Backend;
 
@@ -16,7 +16,7 @@ use subzero_core::{
     api::{ContentType, ContentType::*, Preferences, QueryNode::*, Representation, Resolution::*, ApiRequest},
     error::{*},
     parser::postgrest::parse,
-    permissions::{check_safe_functions, check_privileges, insert_policy_conditions},
+    permissions::{check_safe_functions, check_privileges, insert_policy_conditions, replace_select_star},
 };
 
 use crate::error::{Result, CoreSnafu, to_core_error};
@@ -251,6 +251,11 @@ pub async fn handle<'a>(
     let mut request = parse(schema_name, root, db_schema, method.as_str(), path, get, body, headers, cookies, max_rows).context(CoreSnafu)?;
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
+
+    // replace "*" with the list of columns the user has access to
+    // so that he does not encounter permission errors
+    replace_select_star(db_schema, schema_name, role, &mut request.query).map_err(to_core_error)?;
+
     if !disable_internal_permissions {
         check_privileges(db_schema, schema_name, role, &request).map_err(to_core_error)?;
     }

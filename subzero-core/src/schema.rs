@@ -343,6 +343,7 @@ impl<'a> DbSchema<'a> {
         })?;
         let origin_table = schema.objects.get(origin).context(UnknownRelationSnafu { relation: origin.to_owned() })?;
         let grants = &origin_table.permissions.grants;
+        //unify the permissions for the role and the public role
         let all_privileges = [grants.get(&(role, action.clone())), grants.get(&("public", action.clone()))];
         let column_permissions = match all_privileges {
             [Some(Specific(a)), Some(Specific(b))] => Ok(Specific(a.iter().chain(b.iter()).cloned().collect::<Vec<_>>())),
@@ -373,6 +374,32 @@ impl<'a> DbSchema<'a> {
                     Ok(())
                 }
             },
+        }
+    }
+
+    pub fn get_columns_with_privileges(&self, role: Role, action: &Action, current_schema: &str, origin: &str) -> Result<Vec<&str>> {
+        debug!("get_columns_with_privileges: {:?} {:?} {:?} {:?}", role, action, current_schema, origin);
+        let schema = self.schemas.get(current_schema).context(UnacceptableSchemaSnafu {
+            schemas: vec![current_schema.to_owned()],
+        })?;
+        let origin_table = schema.objects.get(origin).context(UnknownRelationSnafu { relation: origin.to_owned() })?;
+        let all_columns = origin_table.columns.values().map(|c| c.name).collect::<Vec<_>>();
+        let grants = &origin_table.permissions.grants;
+        //unify the permissions for the role and the public role
+        let all_privileges = [grants.get(&(role, action.clone())), grants.get(&("public", action.clone()))];
+        let column_permissions = match all_privileges {
+            [Some(Specific(a)), Some(Specific(b))] => Ok(Specific(a.iter().chain(b.iter()).cloned().collect::<Vec<_>>())),
+            [Some(All), _] | [_, Some(All)] => Ok(All),
+            [Some(Specific(a)), None] | [None, Some(Specific(a))] => Ok(Specific(a.clone())),
+            [None, None] => Err(Error::PermissionDenied {
+                details: format!("no {:?} privileges for '{}.{}' table", &action, current_schema, origin),
+            }),
+        }?;
+
+        // check if columns vector is contained in allowed_columns except for Delete/Execute action
+        match column_permissions {
+            All => Ok(all_columns),
+            Specific(allowed_columns) => Ok(allowed_columns),
         }
     }
 }

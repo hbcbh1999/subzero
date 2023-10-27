@@ -1,4 +1,4 @@
-use wasm_bindgen::{prelude::*};
+use wasm_bindgen::prelude::*;
 use serde_wasm_bindgen::Error as JsError;
 
 pub fn set_panic_hook() {

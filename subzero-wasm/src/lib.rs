@@ -1,4 +1,4 @@
-use js_sys::{Array as JsArray};
+use js_sys::Array as JsArray;
 use subzero_core::api::ApiRequest;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use ouroboros::self_referencing;
@@ -10,18 +10,13 @@ use std::collections::HashMap;
 use serde_json::Value as JsonValue;
 
 mod utils;
-use utils::{
-    set_panic_hook,
-    cast_core_err,
-    cast_serde_err,
-    //console_log, log,
-};
+use utils::{set_panic_hook, cast_core_err, cast_serde_err};
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema, replace_json_str},
     formatter::{Param::*, ToParam},
     api::{SingleVal, ListVal, Payload, Query, Field, QueryNode::*, SelectItem, Condition, Filter, DEFAULT_SAFE_SELECT_FUNCTIONS},
-    permissions::{check_privileges, check_safe_functions, insert_policy_conditions},
+    permissions::{check_privileges, check_safe_functions, insert_policy_conditions, replace_select_star},
     error::Error as CoreError,
 };
 #[cfg(feature = "postgresql")]
@@ -115,6 +110,11 @@ impl Backend {
         let body = if body.is_empty() { None } else { Some(body) };
 
         let mut request = parse(schema_name, root, db_schema, method, path, get, body, headers, cookies, max_rows)?;
+
+        // replace "*" with the list of columns the user has access to
+        // so that he does not encounter permission errors
+        //log("request.query before replace_select_star");
+        replace_select_star(db_schema, schema_name, role, &mut request.query)?;
 
         // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
         // of the "authenticator" role unless the DbSchema has internal privileges set

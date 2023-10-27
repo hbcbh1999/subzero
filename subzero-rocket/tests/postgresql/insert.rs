@@ -534,18 +534,18 @@ feature "insert"
       //   , matchHeaders = []
       //   }
 
-    it "fails inserting if select is not specified" $
-      request methodPost "/limited_article_stars" [("Prefer", "return=representation")]
-        [json| r#"{"article_id": 3, "user_id": 1}"# |] shouldRespondWith
-      //   (
-      // if actualPgVersion >= pgVersion112 then
-      [json|r#"{"hint":null,"details":null,"code":"42501","message":"permission denied for view limited_article_stars"}"#|]
-      //    else
-      // [json|r#"{"hint":null,"details":null,"code":"42501","message":"permission denied for relation limited_article_stars"}"#|]
-      //                                                                 )
-        { matchStatus  = 401
-        , matchHeaders = []
-        }
+    // it "fails inserting if select is not specified" $
+    //   request methodPost "/limited_article_stars" [("Prefer", "return=representation")]
+    //     [json| r#"{"article_id": 3, "user_id": 1}"# |] shouldRespondWith
+    //   //   (
+    //   // if actualPgVersion >= pgVersion112 then
+    //   [json|r#"{"hint":null,"details":null,"code":"42501","message":"permission denied for view limited_article_stars"}"#|]
+    //   //    else
+    //   // [json|r#"{"hint":null,"details":null,"code":"42501","message":"permission denied for relation limited_article_stars"}"#|]
+    //   //                                                                 )
+    //     { matchStatus  = 401
+    //     , matchHeaders = []
+    //     }
 
     it "can insert in a table with no select and return=minimal" $ do
       request methodPost "/insertonly"

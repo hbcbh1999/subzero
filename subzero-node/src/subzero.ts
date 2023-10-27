@@ -320,44 +320,45 @@ export function getRequestHandler(
     ...options,
   }
   return async function (req: ExpressRequest, res: Response, next: NextFunction) {
-      const subzero:SubzeroInternal = req.app.get(o.subzeroInstanceName);
-      const dbPool:DbPool = req.app.get(o.dbPoolInstanceName);
-
-      if (!subzero || !dbPool) {
-          throw new SubzeroError('Temporary unavailable', 503);
-      }
-      const method = req.method || 'GET';
-      if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-          throw new SubzeroError(`Method ${method} not allowed`, 400);
-      }
-
-      cleanupRequest(req);
-
-      const url = new URL(`${req.protocol}://${req.get('host')}${req.originalUrl}`);
-      const user = (req as any).user || { role: o.dbAnonRole };
-      const header_schema = req.headers['accept-profile'] || req.headers['content-profile'];
-      const { url_schema } = req.params;
-      const url_schema_val = url_schema === 'rpc' ? undefined : url_schema;
-      const schema = (url_schema_val || header_schema || dbSchemas[0]).toString();
-      if (!dbSchemas.includes(schema)) {
-          throw new SubzeroError(
-              `Schema '${schema}' not found`,
-              406,
-              `The schema must be one of the following: ${dbSchemas.join(', ')}`,
-          );
-      }
-      const prefix = '/';
-      // pass env values that should be available in the query context
-      // used on the query format stage
-      const queryEnv: Env = [
-          ['role', user.role],
-          ['search_path', o.dbExtraSearchPath.join(',')],
-          ['request.method', method],
-          ['request.headers', JSON.stringify(req.headers)],
-          ['request.get', JSON.stringify(Object.fromEntries(url.searchParams))],
-          ['request.jwt.claims', JSON.stringify(user || {})],
-      ];
       try {
+        const subzero:SubzeroInternal = req.app.get(o.subzeroInstanceName);
+        const dbPool:DbPool = req.app.get(o.dbPoolInstanceName);
+
+        if (!subzero || !dbPool) {
+            throw new SubzeroError('Temporary unavailable', 503);
+        }
+        const method = req.method || 'GET';
+        if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+            throw new SubzeroError(`Method ${method} not allowed`, 400);
+        }
+
+        cleanupRequest(req);
+
+        const url = new URL(`${req.protocol}://${req.get('host')}${req.originalUrl}`);
+        const user = (req as any).user || { role: o.dbAnonRole };
+        const header_schema = req.headers['accept-profile'] || req.headers['content-profile'];
+        const { url_schema } = req.params;
+        const url_schema_val = url_schema === 'rpc' ? undefined : url_schema;
+        const schema = (url_schema_val || header_schema || dbSchemas[0]).toString();
+        if (!dbSchemas.includes(schema)) {
+            throw new SubzeroError(
+                `Schema '${schema}' not found`,
+                406,
+                `The schema must be one of the following: ${dbSchemas.join(', ')}`,
+            );
+        }
+        const prefix = '/';
+        // pass env values that should be available in the query context
+        // used on the query format stage
+        const queryEnv: Env = [
+            ['role', user.role],
+            ['search_path', o.dbExtraSearchPath.join(',')],
+            ['request.method', method],
+            ['request.headers', JSON.stringify(req.headers)],
+            ['request.get', JSON.stringify(Object.fromEntries(url.searchParams))],
+            ['request.jwt.claims', JSON.stringify(user || {})],
+        ];
+      
         const result = isSqliteDatabase(dbPool) ? 
           await restSqlite(dbPool, subzero, req, schema, prefix, user, queryEnv, o) :
           await restPg(dbPool, subzero, req, schema, prefix, user, queryEnv, o)
@@ -371,7 +372,7 @@ export function getRequestHandler(
         
         const status = Number(result.status) || 200;
         const pageTotal = Number(result.page_total) || 0;
-        const totalResultSet = Number(result.total_result_set) || undefined;
+        const totalResultSet = Number(result.total_result_set);
         const offset = Number(url.searchParams.get('offset') || '0') || 0;
         const response_headers = result.response_headers
             ? JSON.parse(result.response_headers)
@@ -382,7 +383,7 @@ export function getRequestHandler(
         response_headers['content-range'] = fmtContentRangeHeader(
             offset,
             offset + pageTotal - 1,
-            totalResultSet,
+            isNaN(totalResultSet)? undefined : totalResultSet,
         );
         res.writeHead(status, response_headers).end(result.body);
       } catch (e) {
@@ -391,117 +392,124 @@ export function getRequestHandler(
   };
 }
 
-
 export function getSchemaHandler(dbAnonRole:string, schemaInstanceName = '__schema__') {
-  return async function schema(req: ExpressRequest, res: Response) {
-    const schema = req.app.get(schemaInstanceName);
-    if (!schema) {
-      throw new SubzeroError('Temporary unavailable', 503);
-    }
-    const dbSchema = schema.schemas[0];
-    const user = (req as any).user || { role: dbAnonRole };
-    const role = user.role;
-    const allowedObjects = dbSchema.objects.filter((obj: SchemaObject) => {
-      const permissions = obj.permissions.filter((permission: any) => {
-        return permission.role === role || permission.role === 'public';
+  return async function schema(req: ExpressRequest, res: Response, next: NextFunction) {
+    try {
+      const schema = req.app.get(schemaInstanceName);
+      if (!schema) {
+        throw new SubzeroError('Temporary unavailable', 503);
+      }
+      const dbSchema = schema.schemas[0];
+      const user = (req as any).user || { role: dbAnonRole };
+      const role = user.role;
+      const allowedObjects = dbSchema.objects.filter((obj: SchemaObject) => {
+        const permissions = obj.permissions.filter((permission: any) => {
+          return permission.role === role || permission.role === 'public';
+        });
+        return permissions.length > 0;
       });
-      return permissions.length > 0;
-    });
-    const transformedObjects = allowedObjects
-      .map(({ name, kind, columns, foreign_keys }: SchemaObject) => {
-        //filter foreign keys to only include the ones that are allowed
-        const filteredForeignKeys = foreign_keys.filter((fk) => {
-          const [s, t] = fk.referenced_table;
-          if (s !== dbSchema.name) {
-            return false;
-          }
-          const o = dbSchema.objects.find((o: SchemaObject) => o.name === t);
-          if (!o) {
-            return false;
-          }
-          const permissions = o.permissions.filter((permission: any) => {
-            return permission.role === role || permission.role === 'public';
+      const transformedObjects = allowedObjects
+        .map(({ name, kind, columns, foreign_keys }: SchemaObject) => {
+          //filter foreign keys to only include the ones that are allowed
+          const filteredForeignKeys = foreign_keys.filter((fk) => {
+            const [s, t] = fk.referenced_table;
+            if (s !== dbSchema.name) {
+              return false;
+            }
+            const o = dbSchema.objects.find((o: SchemaObject) => o.name === t);
+            if (!o) {
+              return false;
+            }
+            const permissions = o.permissions.filter((permission: any) => {
+              return permission.role === role || permission.role === 'public';
+            });
+            return permissions.length > 0;
           });
-          return permissions.length > 0;
-        });
-        const transformedColumns = columns.map((c) => {
-          return {
-            name: c.name,
-            data_type: c.data_type.toLowerCase(),
-            primary_key: c.primary_key,
-          };
-        });
-        return { name, kind, columns: transformedColumns, foreign_keys: filteredForeignKeys };
-      })
-      .reduce((acc: { [key: string]: any }, obj: SchemaObject) => {
-        acc[obj.name] = obj;
-        return acc;
-      }, {});
-    res.writeHead(200, { 'content-type': 'application/json' }).end(
-      JSON.stringify(transformedObjects, null, 2),
-    );
+          const transformedColumns = columns.map((c) => {
+            return {
+              name: c.name,
+              data_type: c.data_type.toLowerCase(),
+              primary_key: c.primary_key,
+            };
+          });
+          return { name, kind, columns: transformedColumns, foreign_keys: filteredForeignKeys };
+        })
+        .reduce((acc: { [key: string]: any }, obj: SchemaObject) => {
+          acc[obj.name] = obj;
+          return acc;
+        }, {});
+      res.writeHead(200, { 'content-type': 'application/json' }).end(
+        JSON.stringify(transformedObjects, null, 2),
+      );
+    } catch (e) {
+      next(e)
+    }
   }
 }
 
 export function getPermissionsHandler(dbAnonRole: string, schemaInstanceName = '__schema__') {
-  return async function (req: ExpressRequest, res: Response) {
-    const schema = req.app.get(schemaInstanceName);
-    if (!schema) {
-      throw new SubzeroError('Temporary unavailable', 503);
-    }
-    const user = (req as any).user || { role: dbAnonRole };
-    const role = user.role;
-    const dbSchema = schema.schemas[0];
-    const allowedObjects = dbSchema.objects.filter((obj: SchemaObject) => {
-      const permissions = obj.permissions.filter((permission: any) => {
-        return permission.role === role || permission.role === 'public';
-      });
-      return permissions.length > 0;
-    });
-    const userPermissions = allowedObjects
-      .map(({ name, kind, permissions, columns }: SchemaObject) => {
-        const userPermissions = permissions.filter((permission: any) => {
+  return async function (req: ExpressRequest, res: Response, next: NextFunction) {
+    try {
+      const schema = req.app.get(schemaInstanceName);
+      if (!schema) {
+        throw new SubzeroError('Temporary unavailable', 503);
+      }
+      const user = (req as any).user || { role: dbAnonRole };
+      const role = user.role;
+      const dbSchema = schema.schemas[0];
+      const allowedObjects = dbSchema.objects.filter((obj: SchemaObject) => {
+        const permissions = obj.permissions.filter((permission: any) => {
           return permission.role === role || permission.role === 'public';
         });
-        return { name, kind, permissions: userPermissions, columns };
-      })
-      .reduce((acc: any[], { name, permissions}: SchemaObject) => {
-        permissions.forEach((permission) => {
-          const { grant, columns } = permission;
-          if (!grant) {
-            // this is a RLS policy
-            return;
-          }
-          const action = grant.reduce((acc: string[], grant: string) => {
-            if (grant === 'select') {
-              acc.push('list', 'show', 'read', 'export');
+        return permissions.length > 0;
+      });
+      const userPermissions = allowedObjects
+        .map(({ name, kind, permissions, columns }: SchemaObject) => {
+          const userPermissions = permissions.filter((permission: any) => {
+            return permission.role === role || permission.role === 'public';
+          });
+          return { name, kind, permissions: userPermissions, columns };
+        })
+        .reduce((acc: any[], { name, permissions}: SchemaObject) => {
+          permissions.forEach((permission) => {
+            const { grant, columns } = permission;
+            if (!grant) {
+              // this is a RLS policy
+              return;
             }
-            if (grant === 'insert') {
-              acc.push('create');
-            }
-            if (grant === 'update') {
-              acc.push('edit', 'update');
-            }
-            if (grant === 'delete') {
-              acc.push('delete');
-            }
-            if (grant === 'all') {
-              acc.push('list', 'show', 'read', 'export', 'create', 'edit', 'update', 'delete');
-            }
-            return acc;
-          }, []);
-          const resource = name;
-          acc.push({ action, resource, columns: columns && columns.length > 0 ? columns : undefined });
-        });
-        return acc;
-      }, []);
+            const action = grant.reduce((acc: string[], grant: string) => {
+              if (grant === 'select') {
+                acc.push('list', 'show', 'read', 'export');
+              }
+              if (grant === 'insert') {
+                acc.push('create');
+              }
+              if (grant === 'update') {
+                acc.push('edit', 'update');
+              }
+              if (grant === 'delete') {
+                acc.push('delete');
+              }
+              if (grant === 'all') {
+                acc.push('list', 'show', 'read', 'export', 'create', 'edit', 'update', 'delete');
+              }
+              return acc;
+            }, []);
+            const resource = name;
+            acc.push({ action, resource, columns: columns && columns.length > 0 ? columns : undefined });
+          });
+          return acc;
+        }, []);
 
-    const permissions = {
-      [role]: userPermissions,
-    };
-    res.writeHead(200, { 'content-type': 'application/json' }).end(
-      JSON.stringify(permissions, null, 2),
-    );
+      const permissions = {
+        [role]: userPermissions,
+      };
+      res.writeHead(200, { 'content-type': 'application/json' }).end(
+        JSON.stringify(permissions, null, 2),
+      );
+    } catch (e) {
+      next(e)
+    }
   }
 }
 
@@ -860,8 +868,8 @@ export function parseRangeHeader(headerValue: string): { first: number; last: nu
 
 // helper function to format the value of the content-range header (ex: 0-9/100)
 export function fmtContentRangeHeader(lower: number, upper: number, total?: number): string {
-  const range_string = (total != 0 && lower <= upper) ? `${lower}-${upper}` : '*'
-  return total ? `${range_string}/${total}` : `${range_string}/*`
+  const range_string = (total !== undefined && total != 0 && lower <= upper) ? `${lower}-${upper}` : '*'
+  return total !== undefined ? `${range_string}/${total}` : `${range_string}/*`
 }
 
 export function fmtPostgreSqlEnv(env: Env): Statement {
