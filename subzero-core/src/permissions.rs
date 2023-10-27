@@ -505,7 +505,9 @@ pub fn replace_select_star<'d: 'a, 'a>(db_schema: &'d DbSchema, current_schema: 
             // } => (n, select),
             Select { select, from: (t, _), .. } => (t, select, None),
             Insert { select, into, returning, .. } => (into, select, Some(returning)),
-            Update { select, table, returning, .. } => (table, select, Some(returning)),
+            Update {
+                select, table, returning, ..
+            } => (table, select, Some(returning)),
             Delete { select, from, returning, .. } => (from, select, Some(returning)),
             _ => continue,
         };
@@ -522,7 +524,6 @@ pub fn replace_select_star<'d: 'a, 'a>(db_schema: &'d DbSchema, current_schema: 
                 expand_star_in_place_1(r, &columns);
             }
         }
-        
     }
     Ok(())
 }
