@@ -900,7 +900,23 @@ json_schema as (
                             r.table_oid= f.return_type_oid
                             and r.table_schema = any($1)
                             and r.foreign_table_schema = any($1)
-                        ) as foreign_keys), '[]')
+                        ) as foreign_keys), '[]'),
+                        'permissions', coalesce((select json_agg(permissions.*) from (
+                            select
+                                p.name,
+                                coalesce(p.restrictive,false) as restrictive,
+                                p.role,
+                                p.grant,
+                                p.columns,
+                                p.policy_for,
+                                p.check,
+                                p.using
+                            from permissions p
+                            where 
+                            p.table_schema= f.function_schema
+                            and p.table_name= f.function_name
+                            --and p.table_schema = any($1)
+                        ) as permissions), '[]')
                     ) as v
                     from functions f
                     where f.function_schema_oid = s.schema_oid

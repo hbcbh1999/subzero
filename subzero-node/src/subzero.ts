@@ -403,9 +403,9 @@ export function getSchemaHandler(dbAnonRole:string, schemaInstanceName = '__sche
       const user = (req as any).user || { role: dbAnonRole };
       const role = user.role;
       const allowedObjects = dbSchema.objects.filter((obj: SchemaObject) => {
-        const permissions = obj.permissions.filter((permission: any) => {
+        const permissions = obj.permissions?.filter((permission: any) => {
           return permission.role === role || permission.role === 'public';
-        });
+        }) ?? [];
         return permissions.length > 0;
       });
       const transformedObjects = allowedObjects
@@ -420,18 +420,18 @@ export function getSchemaHandler(dbAnonRole:string, schemaInstanceName = '__sche
             if (!o) {
               return false;
             }
-            const permissions = o.permissions.filter((permission: any) => {
+            const permissions = o.permissions?.filter((permission: any) => {
               return permission.role === role || permission.role === 'public';
-            });
+            }) ?? [];
             return permissions.length > 0;
           });
-          const transformedColumns = columns.map((c) => {
+          const transformedColumns = columns?.map((c) => {
             return {
               name: c.name,
               data_type: c.data_type.toLowerCase(),
               primary_key: c.primary_key,
             };
-          });
+          }) ?? [];
           return { name, kind, columns: transformedColumns, foreign_keys: filteredForeignKeys };
         })
         .reduce((acc: { [key: string]: any }, obj: SchemaObject) => {
@@ -458,20 +458,20 @@ export function getPermissionsHandler(dbAnonRole: string, schemaInstanceName = '
       const role = user.role;
       const dbSchema = schema.schemas[0];
       const allowedObjects = dbSchema.objects.filter((obj: SchemaObject) => {
-        const permissions = obj.permissions.filter((permission: any) => {
+        const permissions = obj.permissions?.filter((permission: any) => {
           return permission.role === role || permission.role === 'public';
-        });
+        }) ?? [];
         return permissions.length > 0;
       });
       const userPermissions = allowedObjects
         .map(({ name, kind, permissions, columns }: SchemaObject) => {
-          const userPermissions = permissions.filter((permission: any) => {
+          const userPermissions = permissions?.filter((permission: any) => {
             return permission.role === role || permission.role === 'public';
-          });
+          }) ?? [];
           return { name, kind, permissions: userPermissions, columns };
         })
-        .reduce((acc: any[], { name, permissions}: SchemaObject) => {
-          permissions.forEach((permission) => {
+        .reduce((acc: any[], { name, permissions }: SchemaObject) => {
+          permissions?.forEach((permission) => {
             const { grant, columns } = permission;
             if (!grant) {
               // this is a RLS policy
@@ -496,7 +496,7 @@ export function getPermissionsHandler(dbAnonRole: string, schemaInstanceName = '
               return acc;
             }, []);
             const resource = name;
-            acc.push({ action, resource, columns: columns && columns.length > 0 ? columns : undefined });
+            acc.push({ action, resource, columns: columns?.length > 0 ? columns : undefined });
           });
           return acc;
         }, []);
