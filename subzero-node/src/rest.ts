@@ -74,7 +74,7 @@ export async function init(
         ]),
         o.includeAllDbRoles
     );
-    o.debugFn('introspection query', query, parameters);
+    o.debugFn("introspection query:\n", query, parameters);
     let wait = 0.5;
     let retries = 0;
     while (!subzero) {
@@ -92,15 +92,25 @@ export async function init(
                 throw new Error(`Database type ${dbType} is not supported`)
             }
             schema.use_internal_permissions = o.useInternalPermissionsCheck;
+            const json = JSON.stringify(schema, null, 2);
+            const withLineNumbers = json.split('\n').map((line, index) => {
+                return `${(index + 1).toString().padStart(4, ' ')}: ${line}`;
+            }).join('\n');
+            o.debugFn("schema:\n", withLineNumbers);
             subzero = new Subzero(dbType, schema, o.allowedSelectFunctions);
+            o.debugFn('Subzero initialized');
             app.set(o.schemaInstanceName, schema);
-            o.debugFn('schema', schema);
             o.debugFn('Database schema loaded');
         } catch (e) {
             retries++;
             if (o.dbMaxConnectionRetries > 0 && retries > o.dbMaxConnectionRetries) {
                 throw e;
             }
+            // check if this is actually a json parse error by look for "invalid json schema" in the error message
+            if (e instanceof Error && e.message.indexOf('invalid json schema') !== -1) {
+                throw e;
+            }
+
             wait = Math.min(o.dbMaxConnectionRetryInterval, wait * 2);
             console.error(`Failed to connect to database, retrying in ${wait} seconds... (${e})`);
             await new Promise((resolve) => setTimeout(resolve, wait * 1000));

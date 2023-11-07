@@ -106,6 +106,14 @@ function isPgError(error: Error): error is PgError {
   return (error as PgError).severity !== undefined;
 }
 
+export interface SQLiteError extends Error {
+  code: string;
+}
+
+function isSQLiteError(error: Error): error is SQLiteError {
+  return typeof (error as SQLiteError).code === 'string' && (error as SQLiteError).code.startsWith('SQLITE_');
+}
+
 export function isPgPool(pool: DbPool): pool is PgPool {
   return (pool as PgPool).query !== undefined;
 }
@@ -515,12 +523,17 @@ export function getPermissionsHandler(dbAnonRole: string, schemaInstanceName = '
 
 export function onSubzeroError(err: Error, req: ExpressRequest, res: Response, next: NextFunction) {
   if (err instanceof SubzeroError) {
-      res.writeHead(err.status, { 'content-type': 'application/json' }).end(err.toJSONString());
+    res.writeHead(err.status, { 'content-type': 'application/json' }).end(err.toJSONString());
   } else if (isPgError(err)) {
-      const status = statusFromPgErrorCode(err.code);
-      res.writeHead(status, {
-          'content-type': 'application/json',
-      }).end(JSON.stringify({ message: err.message, detail: err.detail, hint: err.hint }));
+    const status = statusFromPgErrorCode(err.code);
+    res.writeHead(status, {
+      'content-type': 'application/json',
+    }).end(JSON.stringify({ message: err.message, detail: err.detail, hint: err.hint }));
+  } else if (isSQLiteError(err)) {
+    const status = statusFromSQLiteErrorCode(err.code);
+    res.writeHead(status, {
+      'content-type': 'application/json',
+    }).end(JSON.stringify({ message: err.message }));
   } else {
       next(err);
   }
@@ -676,7 +689,7 @@ export class SubzeroInternal {
       throw new Error('WASM not initialized')
     }
     try {
-      this.backend = this.wasmBackend.init(JSON.stringify(this.schema), this.dbType, this.allowed_select_functions)
+      this.backend = this.wasmBackend.init(JSON.stringify(this.schema, null, 2), this.dbType, this.allowed_select_functions)
     } catch (e: any) {
       throw toSubzeroError(e)
     }
@@ -939,3 +952,72 @@ export function statusFromPgErrorCode(code: string, authenticated = false) : num
 
     return responseCode
 }
+
+export function statusFromSQLiteErrorCode(code: string, authenticated = false): number {
+  let responseCode;
+  switch (true) {
+      case /SQLITE_ABORT/.test(code):
+          responseCode = 503; break;
+      case /SQLITE_AUTH/.test(code):
+          responseCode = authenticated ? 403 : 401; break;
+      case /SQLITE_BUSY/.test(code):
+          responseCode = 503; break;
+      case /SQLITE_CANTOPEN/.test(code):
+          responseCode = 500; break;
+      case /SQLITE_CONSTRAINT/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CORRUPT/.test(code):
+      case /SQLITE_NOTADB/.test(code):
+          responseCode = 500; break;
+      case /SQLITE_ERROR/.test(code):
+          responseCode = 400; break;
+      case /SQLITE_FULL/.test(code):
+          responseCode = 507; break;
+      case /SQLITE_IOERR/.test(code):
+          responseCode = 500; break;
+      case /SQLITE_LOCKED/.test(code):
+          responseCode = 423; break;
+      case /SQLITE_MISMATCH/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_MISUSE/.test(code):
+          responseCode = 500; break;
+      case /SQLITE_NOMEM/.test(code):
+          responseCode = 507; break;
+      case /SQLITE_PERM/.test(code):
+          responseCode = 403; break;
+      case /SQLITE_READONLY/.test(code):
+          responseCode = 403; break;
+      case /SQLITE_TOOBIG/.test(code):
+          responseCode = 413; break;
+      // Extended constraint-related result codes
+      case /SQLITE_CONSTRAINT_CHECK/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_COMMITHOOK/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_FOREIGNKEY/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_NOTNULL/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_PRIMARYKEY/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_TRIGGER/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_UNIQUE/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_ROWID/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_VTAB/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_PINNED/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_FUNCTION/.test(code):
+          responseCode = 409; break;
+      case /SQLITE_CONSTRAINT_DATATYPE/.test(code):
+          responseCode = 409; break;
+      default:
+          responseCode = 400; break;
+  }
+
+  return responseCode;
+}
+

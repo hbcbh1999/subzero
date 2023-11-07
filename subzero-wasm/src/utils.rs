@@ -62,3 +62,30 @@ pub fn cast_serde_err(prefix: &str) -> impl Fn(serde_wasm_bindgen::Error) -> JsE
 //         JsError::new(err.to_string().as_str())
 //     }
 // }
+
+pub fn print_error_with_json_snippet(prefix: &str, json: &str, err: serde_json::Error) -> JsError {
+    // Extract line and column information from the error (if available)
+    let line = err.line();
+    let column = err.column();
+
+    // Split the JSON string by lines and attempt to get the offending line
+    if let Some(error_line) = json.lines().nth(line - 1) {
+        // Print out the offending line with some context around it
+        // For a more sophisticated approach, you might highlight the exact position
+        //println!("Error at line {}: {}", line, error_line);
+
+        // Provide some additional context if possible
+        if column > 0 && error_line.len() >= column {
+            let start = column.saturating_sub(50); // Show 10 characters before the error if possible
+            let end = (column + 50).min(error_line.len()); // Show 10 characters after, or up to the end of the line
+                                                           //println!("Error near: {}", &error_line[start..end]);
+            JsError::new(format!("invalid json schema: {}, Error near: {}", err, &error_line[start..end]))
+        } else {
+            JsError::new(format!("{}: {}", prefix, err))
+        }
+    } else {
+        // If the line could not be found, print a generic message
+        //println!("Error at line {}, but that line could not be found in the JSON string.", line);
+        JsError::new(format!("{}: {}", prefix, err))
+    }
+}

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use serde_json::Value as JsonValue;
 
 mod utils;
-use utils::{set_panic_hook, cast_core_err, cast_serde_err};
+use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet};
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema, replace_json_str},
@@ -57,7 +57,7 @@ pub struct B<'a> {
 
 #[wasm_bindgen]
 impl Backend {
-    pub fn init(db_schema: String, db_type: String, allowed_select_functions: JsValue) -> Backend {
+    pub fn init(db_schema: String, db_type: String, allowed_select_functions: JsValue) -> Result<Backend, JsError> {
         set_panic_hook();
         let allowed_select_functions = from_js_value::<Option<Vec<String>>>(allowed_select_functions).unwrap_or_default();
         let allowed_select_functions = match allowed_select_functions {
@@ -77,18 +77,37 @@ impl Backend {
             s = serde_json::to_string_pretty(&v).expect("invalid schema json");
         }
 
-        Backend::new(
+        let backend = Backend::try_new(
             Box::new(BackendData {
                 db_schema: s,
                 db_type,
                 allowed_select_functions,
             }),
-            |data_ref| B {
-                db_schema: serde_json::from_str(data_ref.db_schema.as_str()).expect("invalid schema json"),
-                db_type: data_ref.db_type.as_str(),
-                allowed_select_functions: data_ref.allowed_select_functions.iter().map(|s| s.as_str()).collect(),
+            |data_ref| {
+                let s = data_ref.db_schema.as_str();
+                let b = B {
+                    db_schema: serde_json::from_str(s)
+                        .map_err(|err: serde_json::Error| print_error_with_json_snippet("invalid json schema", s, err))?,
+                    db_type: data_ref.db_type.as_str(),
+                    allowed_select_functions: data_ref.allowed_select_functions.iter().map(|s| s.as_str()).collect(),
+                };
+                Ok::<_, JsError>(b)
             },
-        )
+        )?;
+
+        Ok(backend)
+        // Ok(Backend::new(
+        //     Box::new(BackendData {
+        //         db_schema: s,
+        //         db_type,
+        //         allowed_select_functions,
+        //     }),
+        //     |data_ref| B {
+        //         db_schema: serde_json::from_str(data_ref.db_schema.as_str()).expect("invalid schema json"),
+        //         db_type: data_ref.db_type.as_str(),
+        //         allowed_select_functions: data_ref.allowed_select_functions.iter().map(|s| s.as_str()).collect(),
+        //     },
+        // ))
     }
     // pub fn set_schema(&mut self, s: &str){
     //     self.with_inner_mut(|inner| {
