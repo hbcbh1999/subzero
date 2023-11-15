@@ -195,6 +195,14 @@ feature "basic"
           }
 
   describe "json operators" $ do
+
+    it "filtering with cs works" $
+      get "/complex_items?select=id&settings=cs.1" shouldRespondWith
+        [json| r#"[{"id":3}]"# |]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
+      get "/complex_items?select=id&settings=cs.[\"a\"]" shouldRespondWith
+        [json| r#"[{"id":3}]"# |]
+        { matchHeaders = ["Content-Type" <:> "application/json"] }
     it "obtains a json subfield one level with casting" $
       get "/complex_items?id=eq.1&select=settings->foo" shouldRespondWith
         [json| r#"[{"foo":{"int":1,"bar":"baz"}}]"# |] //-- the value of foo here is of type "text"

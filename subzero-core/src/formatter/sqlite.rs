@@ -35,13 +35,22 @@ use super::base::{
     get_body_snippet,
 };
 use crate::schema::DbSchema;
-use std::collections::HashMap;
+//use core::fmt;
+use std::collections::{HashMap, HashSet};
 pub use super::base::return_representation;
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn};
 use crate::error::{Result, Error};
 use super::{ToParam, Snippet, SqlParam};
 use std::borrow::Cow;
+
+lazy_static! {
+    pub static ref SUPPORTED_OPERATORS: HashSet<&'static str> = ["eq", "gte", "gt", "lte", "lt", "neq", "like", "ilike", "in", "is"]
+        .iter()
+        .copied()
+        .collect();
+}
+
 macro_rules! param_placeholder_format {
     () => {
         "?{pos:.0}{data_type:.0}"
@@ -415,9 +424,56 @@ fn fmt_body<'a>(payload: &'a Payload, columns: &'a [&'a str]) -> Snippet<'a> {
 }
 fmt_condition_tree!();
 fmt_condition!();
+// fn fmt_condition<'a, 'b>(qi: &'b Qi<'b>, c: &'a Condition<'a>) -> Result<Snippet<'a>> {
+//     Ok(match c {
+//         Single { field, filter, negate } => {
+//             //let fld = sql(format!("{} ", fmt_field(qi, field)?));
+//             //let fld = sql(fmt_field(qi, field)? + " ");
+//             let exp = match filter {
+//                 Op(op, v) => {
+//                     match *op {
+//                         // use operator expression if it is supported by sqlite
+//                         "eq"|"gte"|"gt"|"lte"|"lt"|"neq"|"like"|"ilike"|"is" => {
+//                             fmt_field(qi, field)? + " " + fmt_filter(filter)?
+//                         }
+//                         // otherwise use function call
+//                         _ => {
+//                             sql(*op) + "(" + fmt_field(qi, field)? + "," + param(v as &SqlParam) + ")"
+//                         }
+//                     }
+//                 }
+//                 _ => {
+//                     fmt_field(qi, field)? + " " + fmt_filter(filter)?
+//                 }
+//             };
+
+//             if *negate {
+//                 "not(" + exp + ")"
+//             } else {
+//                 exp
+//             }
+//         }
+//         Foreign {
+//             left: (l_qi, l_fld),
+//             right: (r_qi, r_fld),
+//         } => {
+//             sql(fmt_field(l_qi, l_fld)? + " = " + fmt_field(r_qi, r_fld)?.as_str())
+//         }
+
+//         Group { negate, tree } => {
+//             if *negate {
+//                 "not(" + fmt_condition_tree(qi, tree)? + ")"
+//             } else {
+//                 "(" + fmt_condition_tree(qi, tree)? + ")"
+//             }
+//         }
+
+//         Raw { sql: s } => sql(*s),
+//     })
+// }
 macro_rules! fmt_in_filter {
     ($p:ident) => {
-        fmt_operator(&"in")? + ("( select value from json_each(" + param($p) + ") )")
+        ("in ( select value from json_each(" + param($p) + ") )")
     };
 }
 //fmt_env_var!();
@@ -516,12 +572,15 @@ fn fmt_sub_select_item<'a>(db_schema: &'a DbSchema<'_>, schema: &'a str, _qi: &Q
 
 //fmt_operator!();
 fn fmt_operator<'a>(o: &'a Operator<'a>) -> Result<String> {
-    // match on the operator and return the sqlite equivalent
-
-    Ok(String::from(match *o {
-        "ilike" => "like",
-        _ => o,
-    }) + " ")
+    match ALL_OPERATORS.get(o) {
+        Some(&op) => match op {
+            "ilike" => Ok(String::from("like") + " "),
+            _ => Ok(String::from(op) + " "),
+        },
+        None => Err(Error::InternalError {
+            message: format!("unable to find operator for x {}", o),
+        }),
+    }
 }
 fmt_logic_operator!();
 fmt_identity!();

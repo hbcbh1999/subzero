@@ -1,6 +1,7 @@
 // use std::collections::HashMap;
 
 use r2d2::Pool;
+use r2d2::CustomizeConnection;
 use std::borrow::Cow;
 use r2d2_sqlite::SqliteConnectionManager;
 use rocket::log::private::debug;
@@ -25,21 +26,24 @@ use subzero_core::{
 //use rocket::log::private::debug;
 use crate::error::{Result, *};
 use std::path::Path;
-use serde_json::{json};
+use serde_json::{json, Value};
 use http::Method;
 use snafu::ResultExt;
 use async_trait::async_trait;
 use rusqlite::vtab::array;
+
 use std::collections::HashMap;
-use std::{fs};
+use std::fs;
 use super::{Backend, include_files, DbSchemaWrap};
 use tokio::task;
 use rusqlite::{
+    Connection,
     params_from_iter,
     types::{ToSqlOutput, Value::*, ValueRef},
     //types::Value,
     Result as SqliteResult,
     ToSql,
+    functions::FunctionFlags,
 };
 //use std::rc::Rc;
 
@@ -424,13 +428,51 @@ pub struct SQLiteBackend {
     db_schema: DbSchemaWrap,
 }
 
+fn cs(x: String, y: String) -> SqliteResult<bool> {
+    let x_json: Result<Value, _> = serde_json::from_str(&x);
+    let y_json: Result<Value, _> = serde_json::from_str(&y);
+
+    match (x_json, y_json) {
+        (Ok(x_val), Ok(y_val)) => Ok(json_contains(&x_val, &y_val)),
+        _ => Ok(false), // Return false in case of any parsing error
+    }
+}
+
+fn json_contains(x: &Value, y: &Value) -> bool {
+    match (x, y) {
+        (Value::Object(x_map), Value::Object(y_map)) => y_map
+            .iter()
+            .all(|(key, y_val)| x_map.get(key).map_or(false, |x_val| json_contains(x_val, y_val))),
+        (Value::Array(x_arr), Value::Array(y_arr)) => y_arr.iter().all(|y_item| x_arr.iter().any(|x_item| json_contains(x_item, y_item))),
+        (Value::Array(x_arr), _) => x_arr.iter().any(|x_item| json_contains(x_item, y)),
+        _ => x == y,
+    }
+}
+
+#[derive(Debug)]
+struct MyConnectionCustomizer;
+// we implement this only for testing in rust, the user will register his own functions
+impl CustomizeConnection<Connection, rusqlite::Error> for MyConnectionCustomizer {
+    fn on_acquire(&self, conn: &mut Connection) -> Result<(), rusqlite::Error> {
+        conn.create_scalar_function("cs", 2, FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC, |ctx| {
+            let x = ctx.get::<String>(0)?;
+            let y = ctx.get::<String>(1)?;
+            cs(x, y)
+        })
+    }
+}
+
 #[async_trait]
 impl Backend for SQLiteBackend {
     async fn init(_vhost: String, config: VhostConfig) -> Result<Self> {
         //setup db connection
         let db_file = config.db_uri.clone();
         let manager = SqliteConnectionManager::file(db_file).with_init(|c| array::load_module(c));
-        let pool = Pool::builder().max_size(config.db_pool as u32).build(manager).unwrap();
+        let pool = Pool::builder()
+            .connection_customizer(Box::new(MyConnectionCustomizer))
+            .max_size(config.db_pool as u32)
+            .build(manager)
+            .unwrap();
 
         //read db schema
         let db_schema: DbSchemaWrap = match config.db_schema_structure.clone() {

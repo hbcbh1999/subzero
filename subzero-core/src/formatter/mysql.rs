@@ -6,12 +6,18 @@ use super::base::{
 pub use super::base::return_representation;
 use crate::schema::DbSchema;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
 use crate::error::{Result, Error};
 
 use super::{ToParam, Snippet, SqlParam};
+lazy_static! {
+    pub static ref SUPPORTED_OPERATORS: HashSet<&'static str> = ["eq", "gte", "gt", "lte", "lt", "neq", "like", "ilike", "in", "is"]
+        .iter()
+        .copied()
+        .collect();
+}
 
 macro_rules! simple_select_item_format {
     () => {
@@ -651,8 +657,7 @@ fn fmt_env_var(e: &EnvVar) -> String {
 }
 macro_rules! fmt_in_filter {
     ($p:ident) => {
-        fmt_operator(&"= any")? // + ("( select value from json_each(" + param($p) + ") )")
-        + ("(select * from json_table(" + param($p) + ", '$[*]' columns (val text path '$')) as t)")
+        "=any(select * from json_table(" + param($p) + ", '$[*]' columns (val text path '$')) as t)"
     };
 }
 fmt_filter!();

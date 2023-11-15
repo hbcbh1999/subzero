@@ -61,6 +61,50 @@ pub const DEFAULT_SAFE_SELECT_FUNCTIONS: &[&str] = &[
     "toUInt64",
 ];
 
+pub const STAR: &str = "*";
+lazy_static! {
+    // static ref STAR: String = "*".to_string();
+    pub static ref OPERATORS: HashMap<&'static str, &'static str> = [
+         ("eq", "=")
+        ,("gte", ">=")
+        ,("gt", ">")
+        ,("lte", "<=")
+        ,("lt", "<")
+        ,("neq", "<>")
+        ,("like", "like")
+        ,("ilike", "ilike")
+        //,("in", "in")
+        ,("is", "is")
+        ,("cs", "@>")
+        ,("cd", "<@")
+        ,("ov", "&&")
+        ,("sl", "<<")
+        ,("sr", ">>")
+        ,("nxr", "&<")
+        ,("nxl", "&>")
+        ,("adj", "-|-")
+    ].iter().copied().collect();
+    pub static ref FTS_OPERATORS: HashMap<&'static str, &'static str> = [
+         ("fts", "@@ to_tsquery")
+        ,("plfts", "@@ plainto_tsquery")
+        ,("phfts", "@@ phraseto_tsquery")
+        ,("wfts", "@@ websearch_to_tsquery")
+
+    ].iter().copied().collect();
+
+    pub static ref OPERATORS_START: Vec<String> = {
+        OPERATORS.keys().chain(["not","in"].iter()).chain(FTS_OPERATORS.keys()).map(|&op| format!("{op}.") )
+        .chain(FTS_OPERATORS.keys().map(|&op| format!("{op}(") ))
+        .collect()
+    };
+
+    pub static ref ALL_OPERATORS: HashMap<&'static str, &'static str> = {
+        let mut m = OPERATORS.clone();
+        m.extend(FTS_OPERATORS.clone());
+        m
+    };
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Resolution {
     MergeDuplicates,

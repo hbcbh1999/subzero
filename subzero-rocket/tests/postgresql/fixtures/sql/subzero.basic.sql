@@ -49,7 +49,7 @@ create table users_tasks (
 create table complex_items (
     id serial NOT NULL,
     name text,
-    settings json
+    settings jsonb
 );
 
 grant all on tbl1,users_tasks,users,tasks,projects,clients,complex_items to postgrest_test_anonymous;
@@ -101,7 +101,7 @@ insert into users_tasks values (3, 5);
 
 insert into complex_items values (1, 'One', '{"foo":{"int":1,"bar":"baz"}}');
 insert into complex_items values (2, 'Two', '{"foo":{"int":1,"bar":"baz"}}');
-insert into complex_items values (3, 'Three', '{"foo":{"int":1,"bar":"baz"}}');
+insert into complex_items values (3, 'Three', '[1,2,3,"a","b","c"]');
 
 
 

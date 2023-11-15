@@ -810,23 +810,28 @@ macro_rules! fmt_condition {
         fn fmt_condition<'a, 'b>(qi: &'b Qi<'b>, c: &'a Condition<'a>) -> Result<Snippet<'a>> {
             Ok(match c {
                 Single { field, filter, negate } => {
-                    //let fld = sql(format!("{} ", fmt_field(qi, field)?));
-                    let fld = sql(fmt_field(qi, field)? + " ");
+                    let exp = match filter {
+                        Op(op, v) => {
+                            match SUPPORTED_OPERATORS.get(op) {
+                                // use operator expression if it is supported
+                                Some(_) => fmt_field(qi, field)? + " " + fmt_filter(filter)?,
+                                // otherwise use function call
+                                None => sql(*op) + "(" + fmt_field(qi, field)? + "," + param(v as &SqlParam) + ")",
+                            }
+                        }
+                        _ => fmt_field(qi, field)? + " " + fmt_filter(filter)?,
+                    };
 
                     if *negate {
-                        "not(" + fld + fmt_filter(filter)? + ")"
+                        "not(" + exp + ")"
                     } else {
-                        fld + fmt_filter(filter)?
+                        exp
                     }
                 }
                 Foreign {
                     left: (l_qi, l_fld),
                     right: (r_qi, r_fld),
-                } =>
-                //sql(format!("{} = {}", fmt_field(l_qi, l_fld)?, fmt_field(r_qi, r_fld)?)),
-                {
-                    sql(fmt_field(l_qi, l_fld)? + " = " + fmt_field(r_qi, r_fld)?.as_str())
-                }
+                } => sql(fmt_field(l_qi, l_fld)? + " = " + fmt_field(r_qi, r_fld)?.as_str()),
 
                 Group { negate, tree } => {
                     if *negate {
@@ -839,6 +844,38 @@ macro_rules! fmt_condition {
                 Raw { sql: s } => sql(*s),
             })
         }
+        // fn fmt_condition<'a, 'b>(qi: &'b Qi<'b>, c: &'a Condition<'a>) -> Result<Snippet<'a>> {
+        //     Ok(match c {
+        //         Single { field, filter, negate } => {
+        //             //let fld = sql(format!("{} ", fmt_field(qi, field)?));
+        //             let fld = sql(fmt_field(qi, field)? + " ");
+
+        //             if *negate {
+        //                 "not(" + fld + fmt_filter(filter)? + ")"
+        //             } else {
+        //                 fld + fmt_filter(filter)?
+        //             }
+        //         }
+        //         Foreign {
+        //             left: (l_qi, l_fld),
+        //             right: (r_qi, r_fld),
+        //         } =>
+        //         //sql(format!("{} = {}", fmt_field(l_qi, l_fld)?, fmt_field(r_qi, r_fld)?)),
+        //         {
+        //             sql(fmt_field(l_qi, l_fld)? + " = " + fmt_field(r_qi, r_fld)?.as_str())
+        //         }
+
+        //         Group { negate, tree } => {
+        //             if *negate {
+        //                 "not(" + fmt_condition_tree(qi, tree)? + ")"
+        //             } else {
+        //                 "(" + fmt_condition_tree(qi, tree)? + ")"
+        //             }
+        //         }
+
+        //         Raw { sql: s } => sql(*s),
+        //     })
+        // }
     };
 }
 #[allow(unused_imports)]
@@ -847,7 +884,7 @@ pub(super) use fmt_condition;
 #[allow(unused_macros)]
 macro_rules! fmt_in_filter {
     ($p:ident) => {
-        fmt_operator(&"= any")? + ("(" + param($p) + ")")
+        "= any (" + param($p) + ")"
     };
 }
 #[allow(unused_imports)]
@@ -1067,7 +1104,12 @@ macro_rules! fmt_operator {
     () => {
         //fn fmt_operator(o: &Operator) -> Result<String> { Ok(format!("{} ", o)) }
         fn fmt_operator<'a>(o: &'a Operator<'a>) -> Result<String> {
-            Ok(String::from(*o) + " ")
+            match ALL_OPERATORS.get(o) {
+                Some(op) => Ok(String::from(*op) + " "),
+                None => Err(Error::InternalError {
+                    message: format!("unable to find operator for {}", o),
+                }),
+            }
         }
     };
 }

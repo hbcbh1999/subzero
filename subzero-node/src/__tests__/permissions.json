@@ -5,7 +5,7 @@
         "role": "public",
         "grant": ["select"], "columns": ["id", "value"],
         "policy_for": ["select"], 
-        "using": [{"column":"public","op":"=","val":"1"}]
+        "using": [{"column":"public","op":"eq","val":"1"}]
     },
     {
         "name": "validation for hidden value",
@@ -16,8 +16,8 @@
             "tree":{
                 "logic_op":"or",
                 "conditions":[
-                    {"column":"hidden","op":"=","val":"Hidden"},
-                    {"column":"hidden","op":"=","val":"Hidden changed"}
+                    {"column":"hidden","op":"eq","val":"Hidden"},
+                    {"column":"hidden","op":"eq","val":"Hidden changed"}
                 ]
             }
         }]
@@ -37,8 +37,8 @@
         "role": "alice",
         "grant": ["all"],
         "policy_for": ["select", "insert", "update", "delete"],
-        "using": [{"column":"role","op":"=","env":"request.jwt.claims","env_part":"role"}],
-        "check": [{"column":"role","op":"=","env":"request.jwt.claims","env_part":"role"}]
+        "using": [{"column":"role","op":"eq","env":"request.jwt.claims","env_part":"role"}],
+        "check": [{"column":"role","op":"eq","env":"request.jwt.claims","env_part":"role"}]
     },
     {
         "name": "bob allow owned",
@@ -46,8 +46,8 @@
         "role": "bob",
         "grant": ["all"],
         "policy_for": ["all"],
-        "using": [{"column":"role","op":"=","val":"bob"}],
-        "check": [{"column":"role","op":"=","val":"bob"}]
+        "using": [{"column":"role","op":"eq","val":"bob"}],
+        "check": [{"column":"role","op":"eq","val":"bob"}]
     },
 
     { "table_schema": "public", "table_name": "tbl1", "role": "public", "grant": ["all"], "using": [{"sql":"true"}] },

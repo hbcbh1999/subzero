@@ -7,12 +7,21 @@ use super::base::{
 };
 use crate::schema::DbSchema;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
 use crate::error::{Result, Error};
 
 use super::{ToParam, Snippet, SqlParam};
+
+lazy_static! {
+    pub static ref SUPPORTED_OPERATORS: HashSet<&'static str> =
+        ["eq", "gte", "gt", "lte", "lt", "neq", "like", "ilike", "in", "is", "cs", "cd", "ov", "sl", "sr", "nxr", "nxl", "adj"]
+            .iter()
+            .copied()
+            .collect();
+}
+
 generate_fn!();
 fmt_main_query_internal!();
 fmt_main_query!();
@@ -157,8 +166,8 @@ mod tests {
                 where_: ConditionTree {
                     operator: And,
                     conditions: vec![
-                        // Single {filter: Op(s(">="),s("5")), field: Field {name: s("id"), json_path: None}, negate: false},
-                        // Single {filter: Op(s("<"),s("10")), field: Field {name: s("id"), json_path: None}, negate: true}
+                        // Single {filter: Op(s("gte"),s("5")), field: Field {name: s("id"), json_path: None}, negate: false},
+                        // Single {filter: Op(s("lt"),s("10")), field: Field {name: s("id"), json_path: None}, negate: true}
                     ],
                 },
                 columns: vec![s("id"), s("a")],
@@ -250,7 +259,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: Op(s(">"), SingleVal(cow("50"), None)),
+                                        filter: Op(s("gt"), SingleVal(cow("50"), None)),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -379,7 +388,7 @@ mod tests {
                     operator: And,
                     conditions: vec![
                         Single {
-                            filter: Op(s(">="), SingleVal(cow("5"), None)),
+                            filter: Op(s("gte"), SingleVal(cow("5"), None)),
                             field: Field {
                                 name: s("id"),
                                 json_path: None,
@@ -387,7 +396,7 @@ mod tests {
                             negate: false,
                         },
                         Single {
-                            filter: Op(s("<"), SingleVal(cow("10"), None)),
+                            filter: Op(s("lt"), SingleVal(cow("10"), None)),
                             field: Field {
                                 name: s("id"),
                                 json_path: None,
@@ -482,7 +491,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: Op(s(">"), SingleVal(cow("50"), None)),
+                                        filter: Op(s("gt"), SingleVal(cow("50"), None)),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
@@ -575,7 +584,7 @@ mod tests {
                                         name: s("name"),
                                         json_path: Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])
                                     },
-                                    filter: Op(s(">"), SingleVal(cow("2"), None)),
+                                    filter: Op(s("gt"), SingleVal(cow("2"), None)),
                                     negate: false
                                 },
                                 Group {
@@ -588,7 +597,7 @@ mod tests {
                                                     name: s("name"),
                                                     json_path: None
                                                 },
-                                                filter: Op(s(">"), SingleVal(cow("2"), None)),
+                                                filter: Op(s("gt"), SingleVal(cow("2"), None)),
                                                 negate: false
                                             },
                                             Single {
@@ -596,7 +605,7 @@ mod tests {
                                                     name: s("name"),
                                                     json_path: None
                                                 },
-                                                filter: Op(s("<"), SingleVal(cow("5"), None)),
+                                                filter: Op(s("lt"), SingleVal(cow("5"), None)),
                                                 negate: false
                                             }
                                         ]
@@ -634,7 +643,7 @@ mod tests {
                                 name: s("name"),
                                 json_path: Some(vec![JArrow(JKey(s("key"))), J2Arrow(JIdx(s("21")))])
                             },
-                            filter: Op(s(">"), SingleVal(cow("2"), None)),
+                            filter: Op(s("gt"), SingleVal(cow("2"), None)),
                             negate: false
                         }
                     )
@@ -669,7 +678,7 @@ mod tests {
     #[test]
     fn test_fmt_filter() {
         assert_eq!(
-            format!("{:?}", generate(fmt_filter(&Op(s(">"), SingleVal(cow("2"), None))).unwrap())),
+            format!("{:?}", generate(fmt_filter(&Op(s("gt"), SingleVal(cow("2"), None))).unwrap())),
             format!("{:?}", (&s("> $1"), vec![SingleVal(cow("2"), None)], 2))
         );
         assert_eq!(
@@ -677,7 +686,7 @@ mod tests {
             format!("{:?}", (&s("= any ($1)"), vec![ListVal(vec![cow("5"), cow("6")], None)], 2))
         );
         assert_eq!(
-            format!("{:?}", generate(fmt_filter(&Fts(s("@@ to_tsquery"), Some(SingleVal(cow("eng"), None)), SingleVal(cow("2"), None))).unwrap())),
+            format!("{:?}", generate(fmt_filter(&Fts(s("fts"), Some(SingleVal(cow("eng"), None)), SingleVal(cow("2"), None))).unwrap())),
             r#"("@@ to_tsquery ($1,$2)", [SingleVal("eng", None), SingleVal("2", None)], 3)"#.to_string()
         );
         let p: Vec<&SqlParam> = vec![];
@@ -701,7 +710,7 @@ mod tests {
 
     #[test]
     fn test_fmt_operator() {
-        assert_eq!(fmt_operator(&s(">")).unwrap(), s("> "));
+        assert_eq!(fmt_operator(&s("gt")).unwrap(), s("> "));
     }
 
     #[test]

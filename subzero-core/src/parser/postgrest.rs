@@ -8,9 +8,7 @@ use crate::error::*;
 use crate::schema::{ObjectType::*, PgType::*, ProcReturnType::*, *};
 
 use csv::{Reader, ByteRecord};
-use serde_json::{
-    value::{RawValue as JsonRawValue, Value as JsonValue},
-};
+use serde_json::value::{RawValue as JsonRawValue, Value as JsonValue};
 use snafu::{OptionExt, ResultExt};
 
 use nom::{
@@ -22,7 +20,7 @@ use nom::{
     bytes::complete::{tag, is_not, is_a, take},
     character::complete::{multispace0, char, alpha1, digit1, one_of},
     multi::{many1, many0, separated_list1, separated_list0},
-    branch::{alt},
+    branch::alt,
 };
 
 /// Useful functions to calculate the offset between slices and show a hex dump of a slice
@@ -143,44 +141,7 @@ pub fn convert_error<I: core::ops::Deref<Target = str>>(input: I, e: VerboseErro
 type IResult<I, O, E = nom::error::VerboseError<I>> = Result<(I, O), Err<E>>;
 type Parsed<'a, T> = IResult<&'a str, T>;
 
-const STAR: &str = "*";
 const ALIAS_SUFFIXES: [&str; 10] = ["_0", "_1", "_2", "_3", "_4", "_5", "_6", "_7", "_8", "_9"];
-lazy_static! {
-    // static ref STAR: String = "*".to_string();
-    static ref OPERATORS: HashMap<&'static str, &'static str> = [
-         ("eq", "=")
-        ,("gte", ">=")
-        ,("gt", ">")
-        ,("lte", "<=")
-        ,("lt", "<")
-        ,("neq", "<>")
-        ,("like", "like")
-        ,("ilike", "ilike")
-        //,("in", "in")
-        ,("is", "is")
-        ,("cs", "@>")
-        ,("cd", "<@")
-        ,("ov", "&&")
-        ,("sl", "<<")
-        ,("sr", ">>")
-        ,("nxr", "&<")
-        ,("nxl", "&>")
-        ,("adj", "-|-")
-    ].iter().copied().collect();
-    static ref FTS_OPERATORS: HashMap<&'static str, &'static str> = [
-         ("fts", "@@ to_tsquery")
-        ,("plfts", "@@ plainto_tsquery")
-        ,("phfts", "@@ phraseto_tsquery")
-        ,("wfts", "@@ websearch_to_tsquery")
-
-    ].iter().copied().collect();
-
-    static ref OPERATORS_START: Vec<String> = {
-        OPERATORS.keys().chain(["not","in"].iter()).chain(FTS_OPERATORS.keys()).map(|&op| format!("{op}.") )
-        .chain(FTS_OPERATORS.keys().map(|&op| format!("{op}(") ))
-        .collect()
-    };
-}
 
 fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Option<Vec<&'a str>>) -> Result<(Vec<&'a str>, Cow<'a, str>)> {
     let (columns, body) = match (content_type, columns_param) {
@@ -813,7 +774,7 @@ pub fn parse<'a>(
             //let columns = _columns.iter().map(|c| c.as_str()).collect();
 
             // check all the required filters are there for the PUT request to be valid
-            let eq = &"=".to_string();
+            //let eq = &"=".to_string();
             let root_conditions = conditions
                 .iter()
                 .filter_map(|(p, c)| if p.is_empty() { Some(c) } else { None })
@@ -830,7 +791,7 @@ pub fn parse<'a>(
                         field,
                         filter: Op(o, _),
                         negate: false,
-                    } if o == eq => Some(field.name),
+                    } if *o == "eq" => Some(field.name),
                     _ => None,
                 })
                 .collect::<BTreeSet<_>>();
@@ -1264,14 +1225,14 @@ fn list_element(i: &str) -> Parsed<Cow<str>> {
 
 fn operator(i: &str) -> Parsed<&str> {
     map_res(alpha1, |o: &str| match OPERATORS.get(o) {
-        Some(&op) => Ok(op),
+        Some(_) => Ok(o),
         None => Err(Err::Error(("unknown operator", ErrorKind::Fail))),
     })(i)
 }
 
 fn fts_operator(i: &str) -> Parsed<&str> {
     map_res(alpha1, |o: &str| match FTS_OPERATORS.get(o) {
-        Some(&op) => Ok(op),
+        Some(_) => Ok(o),
         None => Err(Err::Error(("unknown fts operator", ErrorKind::Fail))),
     })(i)
 }
@@ -2140,7 +2101,7 @@ pub mod tests {
                             conditions: vec![
                                 Single {
                                     field: Field { name: "id", json_path: None },
-                                    filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
+                                    filter: Filter::Op("gt", SingleVal(cow("10"), Some(cow("int")))),
                                     negate: true,
                                 },
                                 Group {
@@ -2149,12 +2110,12 @@ pub mod tests {
                                         operator: Or,
                                         conditions: vec![
                                             Single {
-                                                filter: Filter::Op("=", SingleVal(cow("11"), None)),
+                                                filter: Filter::Op("eq", SingleVal(cow("11"), None)),
                                                 field: Field { name: "id", json_path: None },
                                                 negate: false
                                             },
                                             Single {
-                                                filter: Filter::Op("=", SingleVal(cow("12"), None)),
+                                                filter: Filter::Op("eq", SingleVal(cow("12"), None)),
                                                 field: Field { name: "id", json_path: None },
                                                 negate: false
                                             }
@@ -2239,7 +2200,7 @@ pub mod tests {
                                             },
                                             Single {
                                                 field: Field { name: "id", json_path: None },
-                                                filter: Filter::Op("<", SingleVal(cow("500"), Some(cow("int")))),
+                                                filter: Filter::Op("lt", SingleVal(cow("500"), Some(cow("int")))),
                                                 negate: false,
                                             },
                                             Group {
@@ -2248,12 +2209,12 @@ pub mod tests {
                                                     operator: Or,
                                                     conditions: vec![
                                                         Single {
-                                                            filter: Filter::Op("=", SingleVal(cow("11"), None)),
+                                                            filter: Filter::Op("eq", SingleVal(cow("11"), None)),
                                                             field: Field { name: "id", json_path: None },
                                                             negate: false
                                                         },
                                                         Single {
-                                                            filter: Filter::Op("=", SingleVal(cow("12"), None)),
+                                                            filter: Filter::Op("eq", SingleVal(cow("12"), None)),
                                                             field: Field { name: "id", json_path: None },
                                                             negate: false
                                                         }
@@ -2376,7 +2337,7 @@ pub mod tests {
                             operator: And,
                             conditions: vec![Single {
                                 field: Field { name: "id", json_path: None },
-                                filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
+                                filter: Filter::Op("gt", SingleVal(cow("10"), Some(cow("int")))),
                                 negate: false,
                             }]
                         },
@@ -2443,7 +2404,7 @@ pub mod tests {
                             operator: And,
                             conditions: vec![Single {
                                 field: Field { name: "id", json_path: None },
-                                filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
+                                filter: Filter::Op("gt", SingleVal(cow("10"), Some(cow("int")))),
                                 negate: false,
                             }]
                         },
@@ -2604,7 +2565,7 @@ pub mod tests {
                             operator: And,
                             conditions: vec![Single {
                                 field: Field { name: "id", json_path: None },
-                                filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
+                                filter: Filter::Op("gt", SingleVal(cow("10"), Some(cow("int")))),
                                 negate: false,
                             }]
                         },
@@ -2674,7 +2635,7 @@ pub mod tests {
                                             },
                                             Single {
                                                 field: Field { name: "id", json_path: None },
-                                                filter: Filter::Op(">", SingleVal(cow("20"), Some(cow("int")))),
+                                                filter: Filter::Op("gt", SingleVal(cow("20"), Some(cow("int")))),
                                                 negate: false,
                                             }
                                         ]
@@ -2763,7 +2724,7 @@ pub mod tests {
                             operator: And,
                             conditions: vec![Single {
                                 field: Field { name: "id", json_path: None },
-                                filter: Filter::Op(">", SingleVal(cow("10"), Some(cow("int")))),
+                                filter: Filter::Op("gt", SingleVal(cow("10"), Some(cow("int")))),
                                 negate: false,
                             }]
                         },
@@ -2926,9 +2887,9 @@ pub mod tests {
 
     #[test]
     fn parse_filter() {
-        assert_eq!(filter(&None, "gte.5"), Ok(("", Filter::Op(">=", SingleVal(cow("5"), None)))));
+        assert_eq!(filter(&None, "gte.5"), Ok(("", Filter::Op("gte", SingleVal(cow("5"), None)))));
         assert_eq!(filter(&None, "in.(1,2,3)"), Ok(("", Filter::In(ListVal(["1", "2", "3"].map(cow).to_vec(), None)))));
-        assert_eq!(filter(&None, "fts.word"), Ok(("", Filter::Fts("@@ to_tsquery", None, SingleVal(cow("word"), None)))));
+        assert_eq!(filter(&None, "fts.word"), Ok(("", Filter::Fts("fts", None, SingleVal(cow("word"), None)))));
     }
 
     #[test]
@@ -2939,7 +2900,7 @@ pub mod tests {
             Ok((
                 "",
                 Single {
-                    filter: Filter::Op(">=", SingleVal(cow("5"), None)),
+                    filter: Filter::Op("gte", SingleVal(cow("5"), None)),
                     field: field.clone(),
                     negate: false
                 },
@@ -2961,7 +2922,7 @@ pub mod tests {
             Ok((
                 "",
                 Single {
-                    filter: Filter::Fts("@@ to_tsquery", None, SingleVal(cow("word"), None)),
+                    filter: Filter::Fts("fts", None, SingleVal(cow("word"), None)),
                     field: field.clone(),
                     negate: false
                 },
@@ -2977,12 +2938,12 @@ pub mod tests {
                         operator: Or,
                         conditions: vec![
                             Single {
-                                filter: Filter::Op(">=", SingleVal(cow("5"), None)),
+                                filter: Filter::Op("gte", SingleVal(cow("5"), None)),
                                 field: field.clone(),
                                 negate: false
                             },
                             Single {
-                                filter: Filter::Op("<=", SingleVal(cow("10"), None)),
+                                filter: Filter::Op("lte", SingleVal(cow("10"), None)),
                                 field: field.clone(),
                                 negate: false
                             }
@@ -3001,12 +2962,12 @@ pub mod tests {
                         operator: Or,
                         conditions: vec![
                             Single {
-                                filter: Filter::Op(">=", SingleVal(cow("5"), None)),
+                                filter: Filter::Op("gte", SingleVal(cow("5"), None)),
                                 field: field.clone(),
                                 negate: false
                             },
                             Single {
-                                filter: Filter::Op("<=", SingleVal(cow("10"), None)),
+                                filter: Filter::Op("lte", SingleVal(cow("10"), None)),
                                 field: field.clone(),
                                 negate: false
                             },
@@ -3016,12 +2977,12 @@ pub mod tests {
                                     operator: And,
                                     conditions: vec![
                                         Single {
-                                            filter: Filter::Op(">=", SingleVal(cow("2"), None)),
+                                            filter: Filter::Op("gte", SingleVal(cow("2"), None)),
                                             field: field.clone(),
                                             negate: false
                                         },
                                         Single {
-                                            filter: Filter::Op("<=", SingleVal(cow("4"), None)),
+                                            filter: Filter::Op("lte", SingleVal(cow("4"), None)),
                                             field,
                                             negate: false
                                         }
@@ -3037,7 +2998,7 @@ pub mod tests {
 
     #[test]
     fn parse_operator() {
-        assert_eq!(operator("gte."), Ok((".", ">=")));
+        assert_eq!(operator("gte."), Ok((".", "gte")));
         // assert_eq!(
         //     operator("gtv."),
         //     Err(Errors {
@@ -3049,7 +3010,7 @@ pub mod tests {
 
     #[test]
     fn parse_fts_operator() {
-        assert_eq!(fts_operator("plfts."), Ok((".", "@@ plainto_tsquery")));
+        assert_eq!(fts_operator("plfts."), Ok((".", "plfts")));
         // assert_eq!(
         //     fts_operator("xfts."),
         //     Err(Errors {

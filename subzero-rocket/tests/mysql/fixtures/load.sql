@@ -23,6 +23,15 @@ begin
     close tables;
 end//
 
+delimiter //
+create function cs(json1 json, json2 json) 
+returns tinyint(1)
+deterministic
+begin
+    return json_contains(json1, json2, '$');
+end//
+
+
 drop table if exists tbl1;
 drop table if exists users_tasks;
 drop table if exists users;
@@ -134,7 +143,7 @@ insert into users_tasks values (3, 5);
 
 insert into complex_items values (1, 'One', '{"foo":{"int":1,"bar":"baz"}}');
 insert into complex_items values (2, 'Two', '{"foo":{"int":1,"bar":"baz"}}');
-insert into complex_items values (3, 'Three', '{"foo":{"int":1,"bar":"baz"}}');
+insert into complex_items values (3, 'Three', '[1,2,3,"a","b","c"]');
 
 insert into permissions_check values (1, 'One Alice Public', 'Hidden', 'alice', true);
 insert into permissions_check values (2, 'Two Bob Public', 'Hidden', 'bob', true);

@@ -15,6 +15,14 @@ use crate::schema::DbSchema;
 use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn};
 use crate::error::{Result, *};
 use super::{ToParam, Snippet, SqlParam};
+
+lazy_static! {
+    pub static ref SUPPORTED_OPERATORS: HashSet<&'static str> = ["eq", "gte", "gt", "lte", "lt", "neq", "like", "ilike", "in", "is"]
+        .iter()
+        .copied()
+        .collect();
+}
+
 macro_rules! fmt_field_format {
     () => {
         "JSON_VALUE({}{}{}, '${}')"
@@ -256,7 +264,7 @@ fn fmt_condition_tree<'a, 'b>(qi: &'b Qi<'b>, t: &'a ConditionTree) -> Result<Sn
 fmt_condition!();
 macro_rules! fmt_in_filter {
     ($p:ident) => {
-        fmt_operator(&"in ")? + param($p)
+        "in " + param($p)
     };
 }
 fn fmt_env_var(e: &'_ EnvVar) -> String {
@@ -511,7 +519,7 @@ mod tests {
                 where_: ConditionTree {
                     operator: And,
                     conditions: vec![Single {
-                        filter: Op(s(">="), SingleVal(cow("5"), Some(cow("Int32")))),
+                        filter: Op(s("gte"), SingleVal(cow("5"), Some(cow("Int32")))),
                         field: Field {
                             name: s("id"),
                             json_path: None,
@@ -625,7 +633,7 @@ mod tests {
                                         negate: false,
                                     },
                                     Single {
-                                        filter: Op(s(">"), SingleVal(cow("50"), Some(cow("Int32")))),
+                                        filter: Op(s("gt"), SingleVal(cow("50"), Some(cow("Int32")))),
                                         field: Field {
                                             name: s("id"),
                                             json_path: None,
