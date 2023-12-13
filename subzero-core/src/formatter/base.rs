@@ -952,14 +952,34 @@ pub(super) use fmt_env_var;
 macro_rules! fmt_function_call {
     () => {
         fn fmt_function_call<'a, 'b>(qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>]) -> Result<Snippet<'a>> {
-            Ok(sql(fmt_identity(fn_name))
-                + "("
-                + parameters
-                    .iter()
-                    .map(|p| fmt_function_param(qi, p))
-                    .collect::<Result<Vec<_>>>()?
-                    .join(",")
-                + ")")
+            Ok(match fn_name {
+                "add" if parameters.len() == 2 => {
+                    let (p1, p2) = (&parameters[0], &parameters[1]);
+                    sql("(") + fmt_function_param(qi, p1)? + " + " + fmt_function_param(qi, p2)? + ")"
+                }
+                "sub" if parameters.len() == 2 => {
+                    let (p1, p2) = (&parameters[0], &parameters[1]);
+                    sql("(") + fmt_function_param(qi, p1)? + " - " + fmt_function_param(qi, p2)? + ")"
+                }
+                "mul" if parameters.len() == 2 => {
+                    let (p1, p2) = (&parameters[0], &parameters[1]);
+                    sql("(") + fmt_function_param(qi, p1)? + " * " + fmt_function_param(qi, p2)? + ")"
+                }
+                "div" if parameters.len() == 2 => {
+                    let (p1, p2) = (&parameters[0], &parameters[1]);
+                    sql("(") + fmt_function_param(qi, p1)? + " / " + fmt_function_param(qi, p2)? + ")"
+                }
+                _ => {
+                    sql(fn_name)
+                        + "("
+                        + parameters
+                            .iter()
+                            .map(|p| fmt_function_param(qi, p))
+                            .collect::<Result<Vec<_>>>()?
+                            .join(",")
+                        + ")"
+                }
+            })
         }
     };
 }

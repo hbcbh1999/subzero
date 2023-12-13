@@ -1,5 +1,5 @@
 use crate::api::{ListVal, SingleVal, Payload};
-use crate::dynamic_statement::{SqlSnippet};
+use crate::dynamic_statement::SqlSnippet;
 use std::fmt;
 use std::borrow::Cow;
 

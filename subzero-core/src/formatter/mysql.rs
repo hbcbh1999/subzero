@@ -1,7 +1,7 @@
 use super::base::{
     fmt_as, fmt_condition, fmt_condition_tree, fmt_count_query, fmt_field, fmt_filter, fmt_in_filter, fmt_json_path, fmt_limit, fmt_logic_operator,
     fmt_main_query, fmt_offset, fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_select_item, fmt_select_name,
-    star_select_item_format, fmt_function_param, fmt_env_query, get_body_snippet,
+    star_select_item_format, fmt_function_param, fmt_env_query, get_body_snippet, fmt_function_call,
 };
 pub use super::base::return_representation;
 use crate::schema::DbSchema;
@@ -662,17 +662,7 @@ macro_rules! fmt_in_filter {
 }
 fmt_filter!();
 fmt_select_name!();
-//fmt_function_call!();
-fn fmt_function_call<'a, 'b>(qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>]) -> Result<Snippet<'a>> {
-    Ok(sql(fn_name)
-        + "("
-        + parameters
-            .iter()
-            .map(|p| fmt_function_param(qi, p))
-            .collect::<Result<Vec<_>>>()?
-            .join(",")
-        + ")")
-}
+fmt_function_call!();
 //fmt_select_item_function!();
 fn fmt_select_item_function<'a, 'b>(
     qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>], partitions: &'a Vec<Field<'a>>, orders: &'a Vec<OrderTerm>,
