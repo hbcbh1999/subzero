@@ -18,9 +18,7 @@ use subzero_core::{
         Count,
     },
     error::{JsonSerializeSnafu, JsonDeserializeSnafu},
-    error::{
-        Error::{SingularityError, PutMatchingPkError, PermissionDenied},
-    },
+    error::Error::{SingularityError, PutMatchingPkError, PermissionDenied},
     schema::DbSchema,
 };
 //use rocket::log::private::debug;
@@ -277,7 +275,15 @@ fn execute(
                     from: (table.to_owned(), Some("subzero_source")),
                     join_tables: vec![], //todo!! this should probably not be empty
                     where_: select_where,
-                    select: select.to_vec(),
+                    select: if select.is_empty() {
+                        vec![SelectItem::Simple {
+                            field: Field { name: "id", json_path: None },
+                            alias: None,
+                            cast: None,
+                        }]
+                    } else {
+                        select.to_vec()
+                    },
                     limit: None,
                     offset: None,
                     order: vec![],

@@ -1,6 +1,6 @@
 import { beforeAll,  afterAll } from '@jest/globals';
 import Subzero, { Statement, getIntrospectionQuery, fmtMySqlEnv, Env } from '../rest';
-import mysql, {ResultSetHeader} from 'mysql2';
+import mysql, {ResultSetHeader, RowDataPacket} from 'mysql2';
 import * as fs from 'fs';
 import * as path from 'path';
 import { runPermissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
@@ -36,7 +36,8 @@ beforeAll(async () => {
   //console.log('rows', rows[0])
   //const s = JSON.parse(result.rows[0].json_schema)
   //console.log(s.schemas[0].objects.map((o: any) => o.name))
-  const schema = rows[0].json_schema;
+  const schema = (rows as RowDataPacket[])[0].json_schema;
+
 
   //initialize the subzero instance
   subzero = new Subzero('mysql', schema);
@@ -61,7 +62,7 @@ async function run(role: string, req:Request, queryEnv?: Env) {
       //const txMode = method === 'GET' ? 'READ ONLY' : 'READ WRITE';
       await db.query(`BEGIN`);
       await db.query(envQuery, envParameters);
-      const [rows] = await db.query(query, parameters);
+      const [rows] = await db.query(query, parameters) as RowDataPacket[];
       result = rows[0];
       await db.query('ROLLBACK');
     } catch (e) {
@@ -78,7 +79,7 @@ async function run(role: string, req:Request, queryEnv?: Env) {
       await db.query(envQuery, envParameters);
       const statement = await subzero.fmtTwoStepStatement('public', '/rest/', role, req, env);
       const { query: mutate_query, parameters: mutate_parameters } = statement.fmtMutateStatement();
-      const [rows]: ResultSetHeader[] = await db.query(mutate_query, mutate_parameters);
+      const [rows] = await db.query(mutate_query, mutate_parameters) as RowDataPacket[]
       const { insertId, affectedRows } = rows;
       
       if (insertId > 0 && affectedRows > 0) {
@@ -101,15 +102,15 @@ async function run(role: string, req:Request, queryEnv?: Env) {
               '$[*]' columns (val integer path '$')
           ) as t2 on t.val = t2.val
           where t2.val is null;
-        `)
-        statement.setMutatedRows(rows);
+        `);
+        statement.setMutatedRows(rows as RowDataPacket[]);
       }
 
       const returnRepresentation = req.headers.get('Prefer')?.includes('return=representation');
       if (returnRepresentation) {
         const { query: select_query, parameters: select_parameters } = statement.fmtSelectStatement();
         //console.log(select_query,"\n",select_parameters);
-        const [result2] = await db.query(select_query, select_parameters);
+        const [result2] = await db.query(select_query, select_parameters) as RowDataPacket[];
         //return JSON.parse(result2[0].body);
         //console.log(result2[0]);
         body = result2[0].body;

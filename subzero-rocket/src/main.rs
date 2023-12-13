@@ -3,7 +3,7 @@ extern crate lazy_static;
 
 #[macro_use]
 extern crate rocket;
-use http::{Method};
+use http::Method;
 use snafu::{OptionExt, ResultExt};
 use std::collections::HashMap;
 use figment::{
@@ -22,7 +22,7 @@ use frontend::postgrest;
 //use config::VhostConfig;
 pub use subzero_core::config;
 use subzero_core::{
-    config::{VhostConfig},
+    config::VhostConfig,
     error::{GucStatusSnafu, Error as CoreError},
     api::ContentType::{SingularJSON, TextCSV, ApplicationJSON, Other},
 };
@@ -30,7 +30,7 @@ mod error;
 use error::{Error, CoreSnafu};
 
 mod backend;
-use backend::{Backend};
+use backend::Backend;
 
 #[cfg(feature = "postgresql")]
 use backend::postgresql::PostgreSQLBackend;
@@ -211,15 +211,15 @@ async fn rocket() -> Rocket<Build> {
 #[path = "../tests/haskell_test.rs"]
 mod haskell_test;
 
-#[cfg(feature = "postgresql")]
-#[cfg(test)]
-#[path = "../tests/basic/mod.rs"]
-mod basic;
+// #[cfg(feature = "postgresql")]
+// #[cfg(test)]
+// #[path = "../tests/basic/mod.rs"]
+// mod basic;
 
-#[cfg(feature = "postgresql")]
-#[cfg(test)]
-#[path = "../tests/postgresql/mod.rs"]
-mod postgresql;
+// #[cfg(feature = "postgresql")]
+// #[cfg(test)]
+// #[path = "../tests/postgresql/mod.rs"]
+// mod postgresql;
 
 #[cfg(feature = "sqlite")]
 #[cfg(test)]

@@ -44,7 +44,9 @@ async function run(role: string, request: Request, env?: Env) {
   
   if (request.method == 'GET') {
     const { query, parameters } = await subzero.fmtStatement('public', '/rest/', role, request, env);
+
     const result = await db.get(query, parameters);
+    
     // console.log('result', result.body);
     return JSON.parse(result.body);
   } else {

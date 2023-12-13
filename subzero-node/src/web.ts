@@ -1,49 +1,21 @@
-import init, {initSync, Backend } from '../../subzero-wasm/pkg-web/subzero_wasm.js'
-import wasmbin from '../../subzero-wasm/pkg-web/subzero_wasm_bg.wasm'
-import { SubzeroInternal, DbType } from './subzero'
-
-let wasmPromise: Promise<any>
-if (typeof wasmbin === 'object') {
-    try {
-        initSync(wasmbin)
-    }
-    catch (e) {
-        wasmPromise = init(wasmbin)
-    }
-}
-else {
-    wasmPromise = init(wasmbin)
-}
-
+import initWasm, { Backend } from '../../subzero-wasm/pkg-web/subzero_wasm.js'
+import { SubzeroInternal, initInternal } from './subzero'
+import type { DbType, DbPool, InitOptions } from './subzero'
+import type { Express} from 'express'
+export * from './subzero'
 
 export default class Subzero extends SubzeroInternal {
     constructor(dbType: DbType, schema: any, allowed_select_functions?: string[]) {
-        super(Backend, dbType, schema, allowed_select_functions, wasmPromise)
+        super(Backend, dbType, schema, allowed_select_functions)
     }
 }
 
-export type {
-    DbType,
-    Query,
-    Parameters,
-    Statement,
-    GetParameters,
-    Method,
-    Body,
-    Headers,
-    Cookies,
-    Env,
-} from './subzero'
-
-
-export {
-    TwoStepStatement,
-    SubzeroError,
-    fmtContentRangeHeader,
-    fmtPostgreSqlEnv,
-    fmtMySqlEnv,
-    getIntrospectionQuery,
-    getRawIntrospectionQuery,
-    parseRangeHeader,
-    statusFromPgErrorCode
-} from './subzero'
+export async function init(
+    app: Express,
+    dbType: DbType,
+    dbPool: DbPool,
+    dbSchemas: string[],
+    options: InitOptions = {},
+): Promise<SubzeroInternal | undefined> {
+    return await initInternal(Backend, app, dbType, dbPool, dbSchemas, options, initWasm())
+}

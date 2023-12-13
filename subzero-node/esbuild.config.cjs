@@ -158,6 +158,46 @@ esbuild.build({
     process.exit(1)
 });
 
+// build for web
+esbuild.build({
+    entryPoints: ['src/web.ts'],
+    bundle: true,
+    platform: 'neutral',
+    // format: 'esm',
+    mainFields: ['module', 'main'],
+    //external: ['fs','path','util'],
+    outfile: 'dist-rest-web/index.js',
+    //minify: true,
+    sourcemap: true,
+    //banner: {js: file_header + "\n" + fix_node_esbuild},
+    banner: {js: file_header + "\n"},
+    
+    loader: { '.sql': 'text', '.wasm': 'copy' },
+    plugins: [
+        //cjs_to_esm_plugin,
+        x.copy({
+            assets: {
+                from: ['../subzero-wasm/pkg-web/subzero_wasm_bg.wasm'],
+                to: ['subzero_wasm_bg.wasm']
+            }
+        }),
+        x.copy({ assets: { from: ['./README.md'], to: ['README.md'] } }),
+        x.copy({assets: {from: ['./LICENSE.txt'],to: ['LICENSE.txt']}}),
+    ]
+})
+.then(() => {
+    let pkg = Object.assign({}, pkgCommon);
+    //pkg.name = '@subzerocloud/nodejs';
+    pkg.name = '@subzerocloud/rest-web';
+    delete pkg.type;
+    delete pkg.module;
+    fs.writeFileSync('dist-rest-web/package.json', JSON.stringify(pkg, null, 2));
+})
+.catch(err => {
+    process.stderr.write(err.stderr);
+    process.exit(1)
+});
+
 // Build for bundler
 // esbuild.build({
 //     entryPoints: ['src/bundler.ts'],

@@ -1,5 +1,5 @@
 import { expect, test, describe } from '@jest/globals';
-import { Env } from '../../nodejs';
+import { Env } from '../../rest';
 
 type RunFn = (role: string, request: Request, env?: Env) => Promise<unknown>;
 

@@ -274,6 +274,8 @@ pub async fn handle<'a>(
     let _env = get_env(&config.db_type, env_role, &request, &jwt_claims, config.db_use_legacy_gucs);
     let env = _env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect::<HashMap<_, _>>();
 
+    debug!("request: {:?}", request);
+
     let response: ApiResponse = match config.db_type.as_str() {
         #[cfg(feature = "postgresql")]
         "postgresql" => backend.execute(authenticated, &request, &env).await?,
