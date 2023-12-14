@@ -3058,7 +3058,7 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "subzero-core"
-version = "2.0.4"
+version = "2.0.5"
 dependencies = [
  "criterion",
  "csv",
@@ -3074,7 +3074,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-rocket"
-version = "2.0.4"
+version = "2.0.5"
 dependencies = [
  "async-trait",
  "async_once",
@@ -3113,7 +3113,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-wasm"
-version = "2.0.4"
+version = "2.0.5"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
