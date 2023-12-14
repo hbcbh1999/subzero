@@ -323,14 +323,14 @@ jobs:
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
 
       - name: Publish rest (nodejs) npm packages
-        # working-directory: dist-rest
+        working-directory: dist-rest
         run: |
           npm publish --access=public subzerocloud-rest-${{ env.PACKAGE_VERSION }}.tgz
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       
       - name: Publish rest (web) npm packages
-        # working-directory: dist-rest
+        working-directory: dist-rest-web
         run: |
           npm publish --access=public subzerocloud-rest-web-${{ env.PACKAGE_VERSION }}.tgz
         env:
