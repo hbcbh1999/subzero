@@ -627,7 +627,7 @@ fn fmt_operator<'a>(o: &'a Operator<'a>) -> Result<String> {
             _ => Ok(String::from(op) + " "),
         },
         None => Err(Error::InternalError {
-            message: format!("unable to find operator for x {}", o),
+            message: format!("unable to find operator for {}", o),
         }),
     }
 }
