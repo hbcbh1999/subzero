@@ -233,16 +233,30 @@ export async function initInternal(
     }
     if(!clientType || clientType === 'unknown') throw new Error(`DbPool instance is not supported for ${dbType} database type`);
     app.set(`${o.dbPoolInstanceName}_client_type`, clientType);
-    // if (dbType === 'sqlite' ) {
-    //     const contextEnv = new ContextEnv();
-    //     const boundGetEnvVar = contextEnv.getEnvVar.bind(contextEnv);
-    //     const boundJwt = contextEnv.jwt.bind(contextEnv);
-    //     if (isBetterSqliteDatabase(dbPool)) {
-    //         dbPool.function('env', boundGetEnvVar as (...params: unknown[]) => unknown);
-    //         dbPool.function('jwt', boundJwt as () => unknown);
-    //     }
-    //     app.set(o.contextEnvInstanceName, contextEnv);
-    // }
+    if (dbType === 'sqlite' ) {
+        const contextEnv = new ContextEnv();
+        const boundGetEnvVar = contextEnv.getEnvVar.bind(contextEnv);
+        const boundJwt = contextEnv.jwt.bind(contextEnv);
+        // if (isBetterSqliteDatabase(dbPool)) {
+        //     dbPool.function('env', boundGetEnvVar as (...params: unknown[]) => unknown);
+        //     dbPool.function('jwt', boundJwt as () => unknown);
+        // }
+        switch (clientType) {
+            case 'better-sqlite3':
+                (dbPool as BetterSqliteDatabase).function('env', boundGetEnvVar as (...params: unknown[]) => unknown);
+                (dbPool as BetterSqliteDatabase).function('jwt', boundJwt as () => unknown);
+                break;
+            case 'wasm-sqlite3':
+                (dbPool as WasmSqlite3Database).createFunction('env', function (_n, v) {
+                    return boundGetEnvVar(v as string);
+                }, { arity: 1, deterministic: true });
+                (dbPool as WasmSqlite3Database).createFunction('jwt', function (_n) {
+                    return boundJwt();
+                }, { arity: 0, deterministic: true });
+                break;
+        }
+        app.set(o.contextEnvInstanceName, contextEnv);
+    }
     return subzero;
 }
 function isSqlite3Database(pool: DbPool): pool is Sqlite3Database {
@@ -383,10 +397,10 @@ async function restSqlite(dbPool: SqliteDatabase, subzero: SubzeroInternal,
     o: HandlerOptions): Promise<DbResponseRow> {
 
     const clientType: string = req.app.get(`${o.dbPoolInstanceName}_client_type`);
-    // const contextEnv: ContextEnv | undefined = req.app.get(o.contextEnvInstanceName as string);
-    // if (!contextEnv) {
-    //     throw new SubzeroError('Context Env for sqlite not set', 500);
-    // }
+    const contextEnv: ContextEnv | undefined = req.app.get(o.contextEnvInstanceName as string);
+    if (!contextEnv) {
+        throw new SubzeroError('Context Env for sqlite not set', 500);
+    }
     
     const db = dbPool;
     
@@ -394,7 +408,7 @@ async function restSqlite(dbPool: SqliteDatabase, subzero: SubzeroInternal,
     const method = req.method || 'GET';
 
     let result = {} as DbResponseRow;
-    // contextEnv.setEnv(Object.fromEntries(queryEnv));
+    contextEnv.setEnv(Object.fromEntries(queryEnv));
     if (method == 'GET') {
         const statement = await subzero.fmtStatement(
             schema,
@@ -449,13 +463,19 @@ async function restSqlite(dbPool: SqliteDatabase, subzero: SubzeroInternal,
         o.debugFn && o.debugFn('mutate query', mutate_query, mutate_parameters);
         switch (clientType) {
             case 'better-sqlite3':
-                (db as BetterSqliteDatabase).transaction(() => {
+                try {
+                    await (db as BetterSqliteDatabase).exec('BEGIN');
                     const mutate_result = (db as BetterSqliteDatabase).prepare(mutate_query).all(mutate_parameters);
                     (statement as TwoStepStatement).setMutatedRows(mutate_result);
                     const { query: select_query, parameters: select_parameters } = (statement as TwoStepStatement).fmtSelectStatement();
                     o.debugFn && o.debugFn('select query', select_query, select_parameters);
                     result = (db as BetterSqliteDatabase).prepare(select_query).get(select_parameters) as DbResponseRow;
-                });
+                    await (db as BetterSqliteDatabase).exec('COMMIT');
+                }
+                catch (e) {
+                    await (db as BetterSqliteDatabase).exec('ROLLBACK');
+                    throw e;
+                }
                 break;
             case 'sqlite3':
                 try {
@@ -523,7 +543,7 @@ async function restSqlite(dbPool: SqliteDatabase, subzero: SubzeroInternal,
                 throw new Error(`DbPool instance is not supported for ${clientType} database type`);
         }
     }
-    //contextEnv.setEnv({});
+    contextEnv.setEnv({});
     return result;
 }
 
