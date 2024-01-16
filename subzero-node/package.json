@@ -1,6 +1,6 @@
 {
   "name": "subzerocloud",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "description": "Automated REST and GraphQL api for your database",
   "type": "module",
   "scripts": {
