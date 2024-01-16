@@ -505,6 +505,7 @@ async function restSqlite(dbPool: SqliteDatabase, subzero: SubzeroInternal,
                         sql: select_query,
                         args: select_parameters as any,
                     })).rows[0] as DbResponseRow;
+                    await transaction.commit();
                 } catch (e) {
                     await transaction.rollback();
                     throw e;
