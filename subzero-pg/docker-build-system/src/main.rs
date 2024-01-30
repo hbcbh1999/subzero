@@ -73,17 +73,17 @@ fn main() -> Result<(), std::io::Error> {
         "     Setting".bold().green(),
         max_cpus
     );
-    let pgx_version = determine_pgx_version()?;
+    let pgrx_version = determine_pgrx_version()?;
     println!(
-        "{} pgx version to {}",
+        "{} pgrx version to {}",
         "     Setting".bold().green(),
-        pgx_version
+        pgrx_version
     );
 
-    let targetdir = PathBuf::from_str("./target/pgx-build/").unwrap();
-    let artifactdir = PathBuf::from_str("./target/pgx-build/artifacts/").unwrap();
-    let builddir = PathBuf::from_str("./target/pgx-build/build/").unwrap();
-    let repodir = PathBuf::from_str("./target/pgx-build/subzero-core/").unwrap();
+    let targetdir = PathBuf::from_str("./target/pgrx-build/").unwrap();
+    let artifactdir = PathBuf::from_str("./target/pgrx-build/artifacts/").unwrap();
+    let builddir = PathBuf::from_str("./target/pgrx-build/build/").unwrap();
+    let repodir = PathBuf::from_str("./target/pgrx-build/subzero-core/").unwrap();
     //let pgx_src_dir = PathBuf::from_str("../").unwrap();
     //let repodir = PathBuf::from_str("../").unwrap();
 
@@ -168,7 +168,7 @@ fn main() -> Result<(), std::io::Error> {
                                 &repodir,
                                 &builddir,
                                 &artifactdir,
-                                &pgx_version
+                                &pgrx_version
                             ),
                             "Failed to compile {} for {}",
                             image,
@@ -211,7 +211,7 @@ fn main() -> Result<(), std::io::Error> {
                                 &repodir,
                                 &builddir,
                                 &artifactdir,
-                                &pgx_version
+                                &pgrx_version
                             ),
                             "Failed to compile {} for {}",
                             image,
@@ -288,7 +288,7 @@ fn docker_run(
     repodir: &PathBuf,
     builddir: &PathBuf,
     artifactdir: &PathBuf,
-    pgx_version: &str,
+    pgrx_version: &str,
 ) -> Result<String, std::io::Error> {
     let mut builddir = builddir.clone();
     builddir.push(&format!("{}-{}", image, pgver));
@@ -320,7 +320,7 @@ fn docker_run(
         .arg("-e")
         .arg(&format!("image={}", image))
         .arg("-e")
-        .arg(&format!("pgx_version={}", pgx_version))
+        .arg(&format!("pgrx_version={}", pgrx_version))
         .arg("-w")
         .arg(&format!("/build"))
         .arg("--mount")
@@ -343,7 +343,7 @@ fn docker_run(
         .arg(image)
         .arg("bash")
         .arg("-c")
-        .arg("./subzero-pgx/docker-build-system/package.sh ${pgver} ${image} ${pgx_version}");
+        .arg("./subzero-pg/docker-build-system/package.sh ${pgver} ${image} ${pgrx_version}");
 
     println!(
         "{} {} for pg{}",
@@ -378,7 +378,7 @@ fn git_clone(branch: &str, repodir: &PathBuf) -> Result<(), std::io::Error> {
     // copy our "package.sh" script into the repodir so it'll use
     // what's related to us and not from whatever branch we cloned
     let mut package_sh_target = repodir.canonicalize().unwrap();
-    package_sh_target.push("subzero-pgx");
+    package_sh_target.push("subzero-pg");
     package_sh_target.push("docker-build-system");
     package_sh_target.push("package.sh");
     std::fs::copy("./package.sh", package_sh_target)?;
@@ -493,10 +493,10 @@ fn parse_dockerfile(filename: &PathBuf) -> Result<Vec<(String, Option<String>)>,
     Ok(map)
 }
 
-fn determine_pgx_version() -> Result<String, std::io::Error> {
+fn determine_pgrx_version() -> Result<String, std::io::Error> {
     let mut command = Command::new("cargo");
 
-    command.current_dir("../").arg("tree").arg("-i").arg("pgx");
+    command.current_dir("../").arg("tree").arg("-i").arg("pgrx");
 
     let output = command.output()?;
     let output = String::from_utf8(output.stdout).expect("invalid UTF8 output from cargo tree");

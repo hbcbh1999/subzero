@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-cd subzero-pgx
+cd subzero-pg
 
 PGVER=$1
 IMAGE=$2
