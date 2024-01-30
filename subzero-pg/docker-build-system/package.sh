@@ -1,6 +1,6 @@
 #! /bin/bash
 #
-# Copyright 2018-2022 ZomboDB, LLC
+# Copyright 2018-2023 ZomboDB, LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,8 @@ cd subzero-pg
 
 PGVER=$1
 IMAGE=$2
-PGX_VERSION=$3
+PGRX_VERSION=$3
+DEBUG=$4
 ARCH=$(uname -m)
 
 if [ "x${PGVER}" == "x" ] || [ "x${IMAGE}" == "x" ] ; then
@@ -38,13 +39,10 @@ fi
 set -x
 
 OSNAME=$(echo ${IMAGE} | cut -f3-4 -d-)
-VERSION=$(cat subzero_pgx.control | grep default_version | cut -f2 -d\')
-if [ "${VERSION}" == "@CARGO_VERSION@" ]; then
-	VERSION=$(cat Cargo.toml | grep ^version | cut -f2 -d\")
-fi
+VERSION=$(cat subzero_pg.control | grep default_version | cut -f2 -d\')
 
 
-PG_CONFIG_DIR=$(dirname $(grep ${PGVER} ~/.pgx/config.toml | cut -f2 -d= | cut -f2 -d\"))
+PG_CONFIG_DIR=$(dirname $(grep ${PGVER} ~/.pgrx/config.toml | cut -f2 -d= | cut -f2 -d\"))
 export PATH=${PG_CONFIG_DIR}:${PATH}
 
 #
@@ -56,24 +54,43 @@ ls -la
 rustup update || exit 1
 
 #
-# ensure cargo-pgx is the correct version and compiled with this Rust version
+# ensure cargo-pgrx is the correct version and compiled with this Rust version
 #
-cargo install cargo-pgx --version $PGX_VERSION
+cargo install cargo-pgrx --version $PGRX_VERSION --locked
 
 #
 # build the extension
 #
-cargo pgx package --profile artifacts || exit $?
+if [ "$DEBUG" == "true" ] ; then
+  cargo pgrx package --debug || exit $?
+else
+  cargo pgrx package --profile artifacts || exit $?
+fi
 
 #
 # cd into the package directory
 #
 ARTIFACTDIR=/artifacts
-BUILDDIR=/build/target/artifacts/subzero_pgx-pg${PGVER}
+
+if [ "$DEBUG" == "true" ] ; then
+  BUILDDIR=/build/target/debug/subzero_pg-pg${PGVER}
+else
+  BUILDDIR=/build/target/artifacts/subzero_pg-pg${PGVER}
+fi
+
+#
+# copy over the sql/releases/zombodb--pg${PGVER} the caller should have already made with `prepare-release.sh`
+#
+cp -v sql/releases/subzero--${VERSION}.sql  ${BUILDDIR}$(pg_config --sharedir)/extension/ || exit $?
+
+# move into the build directory
+
 cd ${BUILDDIR} || exit $?
 
-# strip the binaries to make them smaller
-find ./ -name "*.so" -exec strip {} \;
+if [ "$DEBUG" == "false" ] ; then
+  # strip the binaries to make them smaller
+  find ./ -name "*.so" -exec strip {} \;
+fi
 
 #
 # then use 'fpm' to build either a .deb, .rpm or .apk
@@ -82,6 +99,14 @@ find ./ -name "*.so" -exec strip {} \;
 ## hack for when we installed ruby via rvm.  if it doesn't work we don't care
 source ~/.rvm/scripts/rvm
 
+# architecture name
+UNAME=$(uname -m)
+DEBUNAME=${UNAME}
+if [ "${DEBUNAME}" == "x86_64" ]; then
+    # name used for .deb packages is different for historical reasons
+    DEBUNAME="amd64"
+fi
+
 if [ "${PKG_FORMAT}" == "deb" ]; then
 	fpm \
 		-s dir \
@@ -89,29 +114,29 @@ if [ "${PKG_FORMAT}" == "deb" ]; then
 		-n subzero-${PGVER} \
 		-v ${VERSION} \
 		--deb-no-default-config-files \
-		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}_${ARCH}.deb \
-		-a ${ARCH} \
+		-p ${ARTIFACTDIR}/subzero${OSNAME}_pg${PGVER}-${VERSION}_${DEBUNAME}.deb \
+		-a ${DEBUNAME} \
 		. || exit 1
 
 elif [ "${PKG_FORMAT}" == "rpm" ]; then
 	fpm \
 		-s dir \
 		-t rpm \
-		-n subzero-${PGVER} \
+		-n zombodb-${PGVER} \
 		-v ${VERSION} \
 		--rpm-os linux \
-		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}_1.${ARCH}.rpm \
-		-a ${ARCH} \
+		-p ${ARTIFACTDIR}/zombodb_${OSNAME}_pg${PGVER}-${VERSION}_1.${UNAME}.rpm \
+		-a ${UNAME} \
 		. || exit 1
 
 elif [ "${PKG_FORMAT}" == "apk" ]; then
 	fpm \
 		-s dir \
 		-t apk \
-		-n subzero-${PGVER} \
+		-n zombodb-${PGVER} \
 		-v ${VERSION} \
-		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}.${ARCH}.apk \
-		-a ${ARCH} \
+		-p ${ARTIFACTDIR}/zombodb_${OSNAME}_pg${PGVER}-${VERSION}.${UNAME}.apk \
+		-a ${UNAME} \
 		. \
 		|| exit 1
 
