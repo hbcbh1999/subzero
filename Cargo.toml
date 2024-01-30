@@ -6,7 +6,8 @@ members = [
     # "subzero-pgx"
 ]
 exclude = [
-    
+    "subzero-pgx",
+    "subzero-pg"
 ]
 
 # [patch.crates-io]
