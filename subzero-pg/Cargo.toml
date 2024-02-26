@@ -1,10 +1,10 @@
 [package]
 name = "subzero"
-version = "0.0.1"
+version = "0.0.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib","lib"]
 
 [features]
 default = ["pg16"]
@@ -18,20 +18,14 @@ pg_test = []
 
 [dependencies]
 pgrx = "=0.11.3"
-#hyper = { version = "0.14", features = ["full"] }
-#tokio = { version = "1", features = ["full"] }
+heapless = "0.7"
+serde = { version = "1.0", features = [ "derive" ] }
+serde_json = "1.0"
 subzero-core = { path = "../subzero-core", features = ["postgresql"] }
-#lazy_static = "1.4"
-serde_json = "1.0.111"
 parking_lot = { version = "0.12", features = ["hardware-lock-elision"] }
-#ouroboros = "0.15"
 ouroboros = "0.18.3"
-#url = "2.2"
-#jsonwebtoken = "8.2.0"
-#jsonpath_lib = "0.3.0"
-#snafu = "0.7.4"
-serde = "1.0.111"
-
+url = "2.5.0"
+lazy_static = "1.4"
 
 [dev-dependencies]
 pgrx-tests = "=0.11.3"
@@ -41,6 +35,12 @@ panic = "unwind"
 
 [profile.release]
 panic = "unwind"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+[profile.artifacts]
+inherits = "release"
 opt-level = 3
 lto = "fat"
 codegen-units = 1

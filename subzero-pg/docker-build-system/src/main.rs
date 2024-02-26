@@ -33,7 +33,7 @@ macro_rules! handle_result {
 
 }
 
-static PGVERS: &[u16; 5] = &[11, 12, 13, 14, 15];
+static PGVERS: &[u16; 6] = &[11, 12, 13, 14, 15, 16];
 
 fn do_exit() {
     // best effort to kill the docker process
@@ -80,18 +80,18 @@ fn main() -> Result<(), std::io::Error> {
         pgrx_version
     );
 
-    let targetdir = PathBuf::from_str("./target/pgrx-build/").unwrap();
-    let artifactdir = PathBuf::from_str("./target/pgrx-build/artifacts/").unwrap();
-    let builddir = PathBuf::from_str("./target/pgrx-build/build/").unwrap();
-    let repodir = PathBuf::from_str("./target/pgrx-build/subzero-core/").unwrap();
+    let targetdir = PathBuf::from_str("../target/").unwrap();
+    let artifactdir = PathBuf::from_str("../target/artifacts/").unwrap();
+    let builddir = PathBuf::from_str("../target/pgrx-build/").unwrap();
+    //let repodir = PathBuf::from_str("../target/pgrx-build/subzero-pg/").unwrap();
     //let pgx_src_dir = PathBuf::from_str("../").unwrap();
-    //let repodir = PathBuf::from_str("../").unwrap();
+    let repodir = PathBuf::from_str("../../").unwrap();
 
     remove_dir(&targetdir);
     remove_dir(&artifactdir);
     std::fs::create_dir_all(&artifactdir).expect("failed to create artifactdir");
     std::fs::create_dir_all(&builddir).expect("failed to create builddir");
-    std::fs::create_dir_all(&repodir).expect("failed to create repodir");
+    //std::fs::create_dir_all(&repodir).expect("failed to create repodir");
 
     let mut args = std::env::args();
     if args.len() < 2 {
@@ -114,7 +114,7 @@ fn main() -> Result<(), std::io::Error> {
         "     Found".bold().green(),
         dockerfiles.len()
     );
-    handle_result!(git_clone(&branch, &repodir), "failed to clone subzero repo");
+    // handle_result!(git_clone(&branch, &repodir), "failed to clone subzero repo");
     // handle_result!(cp_src_dir(&pgx_src_dir, &repodir), "failed to copy subzero-pgx src dir");
     //handle_result!(cp_package_sh(&repodir), "failed to copy package.sh");
     
@@ -147,19 +147,21 @@ fn main() -> Result<(), std::io::Error> {
                     })
                     .for_each(|pgver| {
                         let start = std::time::Instant::now();
+                        println!("before docker build");
                         let image = handle_result!(
                             docker_build(image, Some(*pgver)),
                             "{}-pg{}:  failed to run `docker build`",
                             image.bold().red(),
                             pgver.to_string().bold().red()
                         );
+                        println!("before docker run");
                         println!(
                             "{} {} in {}",
                             "       Built".bold().cyan(),
                             image,
                             durationfmt::to_string(start.elapsed())
                         );
-
+                        
                         let start = std::time::Instant::now();
                         handle_result!(
                             docker_run(
@@ -244,6 +246,11 @@ fn remove_dir(dir: &PathBuf) {
 }
 
 fn docker_build(base_image: &str, pgver: Option<u16>) -> Result<String, std::io::Error> {
+    println!(
+        "{} {}",
+        "     Building".bold().green(),
+        base_image.bold().yellow()
+    );
     let image_name = format!(
         "{}{}",
         base_image,
@@ -278,6 +285,7 @@ fn docker_build(base_image: &str, pgver: Option<u16>) -> Result<String, std::io:
 
     println!("{} {}", " Dockerizing".bold().green(), image_name);
     let command_str = format!("{:?}", command);
+    println!("docker_build command: {}", command_str);
     let output = command.output()?;
     handle_command_output(image_name, command_str, &output)
 }
@@ -290,6 +298,14 @@ fn docker_run(
     artifactdir: &PathBuf,
     pgrx_version: &str,
 ) -> Result<String, std::io::Error> {
+    println!(
+        "{} {} for pg{} in {} {}",
+        "     Running".bold().green(),
+        image.bold().yellow(),
+        pgver,
+        builddir.display().to_string().bold().yellow(),
+        repodir.display().to_string().bold().yellow()
+    );
     let mut builddir = builddir.clone();
     builddir.push(&format!("{}-{}", image, pgver));
     handle_result!(
@@ -304,13 +320,13 @@ fn docker_run(
         image,
         pgver
     );
-    let contents: Vec<_> = repodir
-        .read_dir()
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .collect();
-    fs_extra::copy_items(&contents, &builddir, &fs_extra::dir::CopyOptions::default())
-        .expect("failed to copy repository directory");
+    // let contents: Vec<_> = repodir
+    //     .read_dir()
+    //     .unwrap()
+    //     .map(|e| e.unwrap().path())
+    //     .collect();
+    // fs_extra::copy_items(&contents, &builddir, &fs_extra::dir::CopyOptions::default())
+    //     .expect("failed to copy repository directory");
 
     let mut command = Command::new("docker");
     command
@@ -322,7 +338,12 @@ fn docker_run(
         .arg("-e")
         .arg(&format!("pgrx_version={}", pgrx_version))
         .arg("-w")
-        .arg(&format!("/build"))
+        .arg(&format!("/src"))
+        .arg("--mount")
+        .arg(&format!(
+            "type=bind,source={},target=/src",
+            repodir.canonicalize()?.display()
+        ))
         .arg("--mount")
         .arg(&format!(
             "type=bind,source={},target=/build",
@@ -353,6 +374,7 @@ fn docker_run(
     );
 
     let command_str = format!("{:?}", command);
+    println!("docker_run command: {}", command_str);
     let output = command.output()?;
     handle_command_output(image.into(), command_str, &output)
 }

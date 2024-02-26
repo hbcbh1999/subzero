@@ -39,7 +39,7 @@ fi
 set -x
 
 OSNAME=$(echo ${IMAGE} | cut -f3-4 -d-)
-VERSION=$(cat subzero_pg.control | grep default_version | cut -f2 -d\')
+VERSION=$(cat subzero.control | grep default_version | cut -f2 -d\')
 
 
 PG_CONFIG_DIR=$(dirname $(grep ${PGVER} ~/.pgrx/config.toml | cut -f2 -d= | cut -f2 -d\"))
@@ -81,7 +81,7 @@ fi
 #
 # copy over the sql/releases/zombodb--pg${PGVER} the caller should have already made with `prepare-release.sh`
 #
-cp -v sql/releases/subzero--${VERSION}.sql  ${BUILDDIR}$(pg_config --sharedir)/extension/ || exit $?
+# cp -v sql/releases/subzero--${VERSION}.sql  ${BUILDDIR}$(pg_config --sharedir)/extension/ || exit $?
 
 # move into the build directory
 
@@ -122,10 +122,10 @@ elif [ "${PKG_FORMAT}" == "rpm" ]; then
 	fpm \
 		-s dir \
 		-t rpm \
-		-n zombodb-${PGVER} \
+		-n subzero-${PGVER} \
 		-v ${VERSION} \
 		--rpm-os linux \
-		-p ${ARTIFACTDIR}/zombodb_${OSNAME}_pg${PGVER}-${VERSION}_1.${UNAME}.rpm \
+		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}_1.${UNAME}.rpm \
 		-a ${UNAME} \
 		. || exit 1
 
@@ -133,9 +133,9 @@ elif [ "${PKG_FORMAT}" == "apk" ]; then
 	fpm \
 		-s dir \
 		-t apk \
-		-n zombodb-${PGVER} \
+		-n subzero-${PGVER} \
 		-v ${VERSION} \
-		-p ${ARTIFACTDIR}/zombodb_${OSNAME}_pg${PGVER}-${VERSION}.${UNAME}.apk \
+		-p ${ARTIFACTDIR}/subzero_${OSNAME}_pg${PGVER}-${VERSION}.${UNAME}.apk \
 		-a ${UNAME} \
 		. \
 		|| exit 1

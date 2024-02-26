@@ -1,5 +1,5 @@
 use pgx::bgworkers::*;
-use pgx::datum::{IntoDatum};
+use pgx::datum::IntoDatum;
 use pgx::{log as pgx_log, error as pgx_error, info as pgx_info};
 use pgx::{GucRegistry, GucSetting, GucContext};
 use pgx::prelude::*;
@@ -9,7 +9,7 @@ use std::time::Duration;
 use std::convert::Infallible;
 use std::fs;
 use std::collections::HashMap;
-use std::path::{Path};
+use std::path::Path;
 use std::net::SocketAddr;
 use hyper::{Body, Request, Response, Server};
 use hyper::http::StatusCode;
