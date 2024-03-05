@@ -990,7 +990,7 @@ pub(super) use fmt_function_call;
 macro_rules! fmt_select_item_function {
     () => {
         fn fmt_select_item_function<'a, 'b>(
-            qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>], partitions: &'a Vec<Field<'a>>, orders: &'a Vec<OrderTerm>,
+            qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>], partitions: &'a [Field<'a>], orders: &'a [OrderTerm],
             alias: &'a Option<&str>,
         ) -> Result<Snippet<'a>> {
             Ok(fmt_function_call(qi, fn_name, parameters)?
@@ -1233,7 +1233,7 @@ pub(super) use fmt_function_param;
 #[allow(unused_macros)]
 macro_rules! fmt_order {
     () => {
-        fn fmt_order<'a>(qi: &'a Qi, o: &'a Vec<OrderTerm<'a>>) -> Result<String> {
+        fn fmt_order<'a>(qi: &'a Qi, o: &'a [OrderTerm<'a>]) -> Result<String> {
             Ok(if o.len() > 0 {
                 //format!("order by {}", o.iter().map(|t| fmt_order_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", "))
                 String::from("order by ")
@@ -1280,7 +1280,7 @@ pub(super) use fmt_order_term;
 #[allow(unused_macros)]
 macro_rules! fmt_groupby {
     () => {
-        fn fmt_groupby<'a>(qi: &'a Qi, o: &'a Vec<GroupByTerm<'a>>) -> Result<String> {
+        fn fmt_groupby<'a>(qi: &'a Qi, o: &'a [GroupByTerm<'a>]) -> Result<String> {
             Ok(if o.len() > 0 {
                 format!("group by {}", o.iter().map(|t| fmt_groupby_term(qi, t)).collect::<Result<Vec<_>>>()?.join(", "))
             } else {

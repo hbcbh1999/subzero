@@ -204,6 +204,8 @@ pub fn get_query_select_column_names(query: &Query) -> Option<Vec<(String, bool)
         _ => None,
     }
 }
+
+#[allow(clippy::type_complexity)]
 pub fn fmt_query<'a>(
     db_schema: &'a DbSchema<'_>, schema: &'a str, _return_representation: bool, wrapin_cte: Option<&'static str>, q: &'a Query, _join: &Option<Join>,
 ) -> Result<(Snippet<'a>, Option<Vec<(String, bool)>>)> {
@@ -498,7 +500,7 @@ fmt_select_name!();
 fmt_function_call!();
 //fmt_select_item_function!();
 fn fmt_select_function_call<'a>(
-    qi: &Qi, fn_name: &str, parameters: &'a [FunctionParam], partitions: &'a Vec<Field>, orders: &'a Vec<OrderTerm>, _alias: &'a Option<&str>,
+    qi: &Qi, fn_name: &str, parameters: &'a [FunctionParam], partitions: &'a [Field], orders: &'a [OrderTerm], _alias: &'a Option<&str>,
 ) -> Result<Snippet<'a>> {
     Ok(sql(fmt_identity(fn_name))
         + "("
@@ -523,7 +525,7 @@ fn fmt_select_function_call<'a>(
         })
 }
 fn fmt_select_item_function<'a>(
-    qi: &Qi, fn_name: &str, parameters: &'a [FunctionParam], partitions: &'a Vec<Field>, orders: &'a Vec<OrderTerm>, alias: &'a Option<&str>,
+    qi: &Qi, fn_name: &str, parameters: &'a [FunctionParam], partitions: &'a [Field], orders: &'a [OrderTerm], alias: &'a Option<&str>,
 ) -> Result<Snippet<'a>> {
     Ok(fmt_select_function_call(qi, fn_name, parameters, partitions, orders, alias)?
         + " as "

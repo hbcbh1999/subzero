@@ -156,7 +156,7 @@ fn get_payload<'a>(content_type: ContentType, _body: &'a str, columns_param: Opt
                 }
                 Some('[') => {
                     let json = serde_json::from_str::<Vec<BTreeMap<&str, &JsonRawValue>>>(_body).context(JsonDeserializeSnafu)?;
-                    let columns = match json.get(0) {
+                    let columns = match json.first() {
                         Some(row) => row.keys().copied().collect::<Vec<_>>(),
                         None => vec![],
                     };
@@ -508,7 +508,7 @@ pub fn parse<'a>(
                         }
                     }
                     //let payload = serde_json::to_string(&args).context(JsonSerializeSnafu)?;
-                    let params = match (parameters.len(), parameters.get(0)) {
+                    let params = match (parameters.len(), parameters.first()) {
                         (1, Some(p)) if p.name.is_empty() => CallParams::OnePosParam(p.clone()),
                         _ => {
                             //let specified_parameters = args.keys().collect::<Vec<_>>();
@@ -550,7 +550,7 @@ pub fn parse<'a>(
                     Ok((ParamValues::Parsed(args), params))
                 }
                 ("POST", Some(payload)) => {
-                    let params = match (parameters.len(), parameters.get(0)) {
+                    let params = match (parameters.len(), parameters.first()) {
                         (1, Some(p)) if p.name.is_empty() && (p.type_ == "json" || p.type_ == "jsonb") => CallParams::OnePosParam(p.clone()),
                         _ => {
                             let json_payload: BTreeMap<&str, &JsonRawValue> = match (payload.len(), content_type) {

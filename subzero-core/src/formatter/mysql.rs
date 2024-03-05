@@ -665,7 +665,7 @@ fmt_select_name!();
 fmt_function_call!();
 //fmt_select_item_function!();
 fn fmt_select_item_function<'a, 'b>(
-    qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>], partitions: &'a Vec<Field<'a>>, orders: &'a Vec<OrderTerm>,
+    qi: &'b Qi<'b>, fn_name: &'a str, parameters: &'a [FunctionParam<'a>], partitions: &'a [Field<'a>], orders: &'a [OrderTerm],
     alias: &'a Option<&str>,
 ) -> Result<Snippet<'a>> {
     Ok(format!("'{}',", fmt_select_name(fn_name, &None, alias).unwrap_or_default().as_str())
