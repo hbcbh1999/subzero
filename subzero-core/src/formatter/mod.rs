@@ -1,5 +1,5 @@
 use crate::api::{ListVal, SingleVal, Payload};
-use crate::dynamic_statement::SqlSnippet;
+pub use crate::dynamic_statement::SqlSnippet;
 use std::fmt;
 use std::borrow::Cow;
 
@@ -55,7 +55,7 @@ impl<'a> ToParam for &'a str {
         Param::Str(self)
     }
     fn to_data_type(&self) -> &Option<Cow<str>> {
-        &None
+        &Some(Cow::Borrowed("text"))
     }
 }
 
@@ -64,7 +64,7 @@ impl ToParam for String {
         Param::StrOwned(self)
     }
     fn to_data_type(&self) -> &Option<Cow<str>> {
-        &None
+        &Some(Cow::Borrowed("text"))
     }
 }
 

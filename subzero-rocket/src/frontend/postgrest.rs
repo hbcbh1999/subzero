@@ -152,7 +152,7 @@ pub async fn handle<'a>(
     let db_schema = backend.db_schema();
     let disable_internal_permissions = matches!(config.disable_internal_permissions, Some(true));
     let schema_name = &(match (config.db_schemas.len() > 1, method, headers.get("accept-profile"), headers.get("content-profile")) {
-        (false, ..) => Ok(config.db_schemas.get(0).unwrap().clone()),
+        (false, ..) => Ok(config.db_schemas.first().unwrap().clone()),
         (_, &Method::DELETE, _, Some(content_profile))
         | (_, &Method::POST, _, Some(content_profile))
         | (_, &Method::PATCH, _, Some(content_profile))
@@ -174,7 +174,7 @@ pub async fn handle<'a>(
                 })
             }
         }
-        _ => Ok(config.db_schemas.get(0).unwrap().clone()),
+        _ => Ok(config.db_schemas.first().unwrap().clone()),
     }
     .context(CoreSnafu)?);
 

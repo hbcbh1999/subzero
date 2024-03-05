@@ -211,15 +211,10 @@ async fn rocket() -> Rocket<Build> {
 #[path = "../tests/haskell_test.rs"]
 mod haskell_test;
 
-// #[cfg(feature = "postgresql")]
-// #[cfg(test)]
-// #[path = "../tests/basic/mod.rs"]
-// mod basic;
-
-// #[cfg(feature = "postgresql")]
-// #[cfg(test)]
-// #[path = "../tests/postgresql/mod.rs"]
-// mod postgresql;
+#[cfg(feature = "postgresql")]
+#[cfg(test)]
+#[path = "../tests/postgresql/mod.rs"]
+mod postgresql;
 
 #[cfg(feature = "sqlite")]
 #[cfg(test)]
