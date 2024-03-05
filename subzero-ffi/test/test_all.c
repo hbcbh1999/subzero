@@ -61,7 +61,7 @@ typedef struct Request {
 
 */
 
-START_TEST(test_fmt_main_statement){
+START_TEST(test_statement_new){
     const char* db_type = "sqlite";
     DbSchema* db_schema = db_schema_new(db_type, db_schema_json);
     Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
@@ -134,13 +134,85 @@ START_TEST(test_fmt_main_statement){
 }
 END_TEST
 
+START_TEST(test_two_stage_statement_new){
+    const char* db_type = "sqlite";
+    DbSchema* db_schema = db_schema_new(db_type, db_schema_json);
+    Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
+    Tuple env[] = {};
+    Request req = {
+        "POST",
+        "http://localhost/rest/projects?select=id,name",
+        headers, 2,
+        "[{\"name\":\"project1\"}]", 
+        env, 0
+    };
+    TwoStageStatement* main_stmt = two_stage_statement_new(
+        "public",
+        "/rest/",
+        db_schema,
+        &req,
+        NULL
+    );
+
+    const int err_len = last_error_length();
+    if (err_len > 0) {
+        char* err = (char*)malloc(err_len);
+        last_error_message(err, err_len);
+        printf("Error: %s\n", err);
+        free(err);
+    }
+    ck_assert_ptr_ne(main_stmt, NULL);
+    const Statement* mutate_stmt = two_stage_statement_mutate(main_stmt);
+    ck_assert_ptr_ne(mutate_stmt, NULL);
+
+    const char* sql = statement_sql(mutate_stmt);
+    const char *const * params = statement_params(mutate_stmt);
+    const char *const * params_types = statement_params_types(mutate_stmt);
+    int params_count = statement_params_count(mutate_stmt);
+    ck_assert_int_eq(params_count, 1);
+    ck_assert_str_eq(params[0], "[{\"name\":\"project1\"}]");
+    // printf("mutate SQL: %s\n", sql);
+    const char* expected_sql =
+        "with"
+        " env as materialized (select null) , "
+        " subzero_payload as ( select ? as json_data ), subzero_body as ( select json_extract(value, '$.name') as \"name\" from (select value from json_each(( select case when json_type(json_data) = 'array' then json_data else json_array(json_data) end as val from subzero_payload ))) ) "
+        "insert into \"projects\" (\"name\") "
+        "select \"name\" "
+        "from subzero_body _  "
+        "where true  "
+        "returning \"id\", 1  as _subzero_check__constraint ";
+    ck_assert_str_eq(sql, expected_sql);
+    ck_assert_str_eq(params_types[0], "text");
+    
+    // printf("mutate params: %s\n", params[0]);
+    // printf("mutate params_types: %s\n", params_types[0]);
+    // printf("mutate params_count: %d\n", params_count);
+
+    const Statement* select_stmt = two_stage_statement_select(main_stmt);
+    ck_assert_ptr_ne(select_stmt, NULL);
+    const char* sql_select = statement_sql(select_stmt);
+    const char *const * params_select = statement_params(select_stmt);
+    const char *const * params_types_select = statement_params_types(select_stmt);
+    int params_count_select = statement_params_count(select_stmt);
+
+    printf("select SQL: %s\n", sql_select);
+    printf("select params: %s\n", params_select[0]);
+    printf("select params_types: %s\n", params_types_select[0]);
+    printf("select params_count: %d\n", params_count_select);
+
+    two_stage_statement_free(main_stmt);
+
+}
+END_TEST
+
 Suite* subzero_suite(void)
 {
     Suite *s = suite_create("subZero FFI Test Suite");
     TCase *tc_core = tcase_create("Core");
     tcase_add_test(tc_core, test_hello_world);
     tcase_add_test(tc_core, test_db_schema_new);
-    tcase_add_test(tc_core, test_fmt_main_statement);
+    tcase_add_test(tc_core, test_statement_new);
+    tcase_add_test(tc_core, test_two_stage_statement_new);
     suite_add_tcase(s, tc_core);
     return s;
 }

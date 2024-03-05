@@ -1,7 +1,6 @@
 use std::ffi::{CStr, CString};
 use std::ptr;
 use libc::{c_char, c_int};
-// use std::borrow::Cow;
 // use std::collections::HashMap;
 use serde_json::Value as JsonValue;
 use std::cell::RefCell;
@@ -13,13 +12,15 @@ use url::Url;
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema as CoreDbSchema, replace_json_str},
-    // formatter::{Param::*, ToParam},
+    
     api::ApiRequest,
     // permissions::{check_privileges, check_safe_functions, insert_policy_conditions, replace_select_star},
     error::Error as CoreError,
 };
 use crate::{check_null_ptr, try_cstr_to_str};
-use crate::utils::{extract_cookies, tuples_to_vec, parameters_to_tuples};
+use crate::utils::{extract_cookies, tuples_to_vec, parameters_to_tuples,
+    fmt_first_stage_mutate, fmt_second_stage_select
+};
 #[cfg(feature = "postgresql")]
 use subzero_core::formatter::postgresql;
 #[cfg(feature = "clickhouse")]
@@ -42,7 +43,7 @@ pub struct DbSchema {
     inner: CoreDbSchema<'this>,
 }
 
-///
+#[derive(Debug)]
 pub struct Statement {
     sql: CString,
     _params: Vec<(CString, CString)>,
@@ -66,6 +67,22 @@ impl Statement {
             params_values,
             params_types,
         }
+    }
+}
+
+
+#[derive(Debug)]
+pub struct TwoStageStatement {
+    mutate: Statement,
+    select: Statement,
+    ids: Vec<CString>,
+}
+impl TwoStageStatement {
+    pub fn new(mutate: Statement, select: Statement) -> Self {
+        TwoStageStatement { mutate, select, ids: vec![] }
+    }
+    pub fn set_ids(&mut self, ids: Vec<&str>) {
+        self.ids = ids.iter().map(|id| CString::new(*id).unwrap()).collect();
     }
 }
 
@@ -94,12 +111,166 @@ pub extern "C" fn hello_world() -> *const c_char {
 ///
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn statement_new(
-    schema_name: *const c_char, path_prefix: *const c_char, db_schema: *const DbSchema, request: *const Request, max_rows: *const c_char,
-) -> *mut Statement {
-    check_null_ptr!(db_schema, "Null pointer passed into fmt_main_statement() as the schema");
+pub unsafe extern "C" fn two_stage_statement_new(
+    schema_name: *const c_char,
+    path_prefix: *const c_char,
+    db_schema: *const DbSchema,
+    request: *const Request,
+    max_rows: *const c_char,
+) -> *mut TwoStageStatement {
+    check_null_ptr!(db_schema, "Null pointer passed as the schema");
     let db_schema = unsafe { &*db_schema };
-    check_null_ptr!(request, "Null pointer passed into fmt_main_statement() as the request");
+    check_null_ptr!(request, "Null pointer passed as the request");
+    let request = unsafe { &*request };
+    let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 in schema_name");
+    let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 in path_prefix");
+    let method_str = try_cstr_to_str!(request.method, "Invalid UTF-8 in method");
+    let body_str = if request.body.is_null() {
+        None
+    } else {
+        Some(try_cstr_to_str!(request.body, "Invalid UTF-8 in body"))
+    };
+    let uri_str = try_cstr_to_str!(request.uri, "Invalid UTF-8 in uri");
+    let parsed_uri = match Url::parse(uri_str) {
+        Ok(u) => u,
+        Err(e) => {
+            update_last_error(CoreError::InternalError {
+                message: format!("Unable to parse uri: {}", e),
+            });
+            return ptr::null_mut();
+        }
+    };
+    let query_pairs: Vec<(String, String)> = parsed_uri
+        .query_pairs()
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect();
+    let get: Vec<(&str, &str)> = query_pairs.iter().map(|(key, value)| (key.as_ref(), value.as_ref())).collect();
+
+    let headers = match tuples_to_vec(request.headers, request.headers_count as usize) {
+        Ok(v) => HashMap::from_iter(v),
+        Err(e) => {
+            update_last_error(CoreError::InternalError { message: e.to_string() });
+            return ptr::null_mut();
+        }
+    };
+    let env = match tuples_to_vec(request.env, request.env_count as usize) {
+        Ok(v) => HashMap::from_iter(v),
+        Err(e) => {
+            update_last_error(CoreError::InternalError { message: e.to_string() });
+            return ptr::null_mut();
+        }
+    };
+    let cookies = extract_cookies(headers.get("Cookie").copied());
+    let max_rows_opt = if max_rows.is_null() {
+        None
+    } else {
+        Some(try_cstr_to_str!(max_rows, "Invalid UTF-8 in max_rows"))
+    };
+
+    let object_str = match parsed_uri.path().strip_prefix(path_prefix_str) {
+        Some(s) => s,
+        None => {
+            update_last_error(CoreError::InternalError {
+                message: format!("Unable to strip prefix: {}", path_prefix_str),
+            });
+            return ptr::null_mut();
+        }
+    };
+    let api_request_result = parse(
+        schema_name_str,
+        object_str,
+        db_schema.borrow_inner(),
+        method_str,
+        parsed_uri.path(),
+        get,
+        body_str,
+        headers,
+        cookies,
+        max_rows_opt,
+    );
+
+    let api_request = match api_request_result {
+        Ok(r) => r,
+        Err(e) => {
+            update_last_error(e);
+            return ptr::null_mut();
+        }
+    };
+
+    let db_type = db_schema.borrow_db_type();
+    let mutate = match fmt_first_stage_mutate(db_type, db_schema.borrow_inner(), &api_request, &env) {
+        Ok((sql, params)) => {
+            Statement::new(
+                &sql, 
+                params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
+            )
+        }
+        Err(e) => {
+            update_last_error(e);
+            return ptr::null_mut()
+        }
+    };
+    let select = match fmt_second_stage_select(db_type, db_schema.borrow_inner(), &api_request, &env) {
+        Ok((sql, params)) => {
+            Statement::new(
+                &sql, 
+                params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
+            )
+        }
+        Err(e) => {
+            update_last_error(e);
+            return ptr::null_mut()
+        }
+    };
+
+    let two_stage_statement = TwoStageStatement::new(mutate, select);
+    //println!("Rust two_stage_statement: {:?}", two_stage_statement);
+    Box::into_raw(Box::new(two_stage_statement))
+}
+
+/// Get the mutate statement from a `TwoStageStatement`.
+/// # Safety
+#[no_mangle]
+pub unsafe extern "C" fn two_stage_statement_mutate(two_stage_statement: *const TwoStageStatement) -> *const Statement {
+    check_null_ptr!(two_stage_statement, "Null pointer passed into two_stage_statement_mutate()");
+    let two_stage_statement = unsafe { &*two_stage_statement };
+    &two_stage_statement.mutate
+}
+
+/// Get the select statement from a `TwoStageStatement`.
+/// # Safety
+#[no_mangle]
+pub unsafe extern "C" fn two_stage_statement_select(two_stage_statement: *const TwoStageStatement) -> *const Statement {
+    check_null_ptr!(two_stage_statement, "Null pointer passed into two_stage_statement_select()");
+    let two_stage_statement = unsafe { &*two_stage_statement };
+    &two_stage_statement.select
+}
+
+/// Free the memory associated with a `TwoStageStatement`.
+/// # Safety
+#[no_mangle]
+pub unsafe extern "C" fn two_stage_statement_free(two_stage_statement: *mut TwoStageStatement) {
+    if !two_stage_statement.is_null() {
+        unsafe {
+            drop(Box::from_raw(two_stage_statement));
+        }
+    }
+}
+
+
+///
+/// # Safety
+#[no_mangle]
+pub unsafe extern "C" fn statement_new(
+    schema_name: *const c_char,
+    path_prefix: *const c_char,
+    db_schema: *const DbSchema,
+    request: *const Request,
+    max_rows: *const c_char,
+) -> *mut Statement {
+    check_null_ptr!(db_schema, "Null pointer passed as the schema");
+    let db_schema = unsafe { &*db_schema };
+    check_null_ptr!(request, "Null pointer passed as the request");
     let request = unsafe { &*request };
     let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 in schema_name");
     let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 in path_prefix");
@@ -210,7 +381,13 @@ pub unsafe extern "C" fn statement_new(
 
     match statement {
         Ok((sql, params, _)) => {
-            let statement = Statement::new(&sql, parameters_to_tuples(db_type, params));
+            let statement = Statement::new(
+                &sql,
+                parameters_to_tuples(db_type, params)
+                    .iter()
+                    .map(|(k, v)| (k.as_ref(), v.as_ref()))
+                    .collect(),
+            );
             Box::into_raw(Box::new(statement))
         }
         Err(e) => {

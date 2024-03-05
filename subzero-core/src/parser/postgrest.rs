@@ -602,8 +602,8 @@ pub fn parse<'a>(
             }?;
 
             let payload = match parameter_values {
-                ParamValues::Parsed(args) => Payload(Cow::Owned(serde_json::to_string(&args).context(JsonSerializeSnafu)?), None),
-                ParamValues::Raw(r) => Payload(Cow::Borrowed(r), None),
+                ParamValues::Parsed(args) => Payload(Cow::Owned(serde_json::to_string(&args).context(JsonSerializeSnafu)?), Some(Cow::Borrowed("text"))),
+                ParamValues::Raw(r) => Payload(Cow::Borrowed(r), Some(Cow::Borrowed("text"))),
             };
             let mut q = Query {
                 node: FunctionCall {
@@ -700,7 +700,7 @@ pub fn parse<'a>(
                 node: Insert {
                     into: root,
                     columns,
-                    payload: Payload(payload, None),
+                    payload: Payload(payload, Some(Cow::Borrowed("text"))),
                     check: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -747,7 +747,7 @@ pub fn parse<'a>(
                 node: Update {
                     table: root,
                     columns,
-                    payload: Payload(payload, None),
+                    payload: Payload(payload, Some(Cow::Borrowed("text"))),
                     check: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -804,7 +804,7 @@ pub fn parse<'a>(
                 node: Insert {
                     into: root,
                     columns,
-                    payload: Payload(payload, None),
+                    payload: Payload(payload, Some(Cow::Borrowed("text"))),
                     check: ConditionTree {
                         operator: And,
                         conditions: vec![],
@@ -1893,7 +1893,7 @@ pub mod tests {
                         required: true,
                         variadic: false,
                     }]),
-                    payload: Payload(cow(r#"{"id":"10"}"#), None),
+                    payload: Payload(cow(r#"{"id":"10"}"#), Some(cow("text"))),
                     is_scalar: true,
                     returns_single: true,
                     is_multiple_call: false,
@@ -2326,7 +2326,7 @@ pub mod tests {
                             alias: None,
                             cast: None
                         },],
-                        payload: Payload(cow(payload), None),
+                        payload: Payload(cow(payload), Some(cow("text"))),
                         into: "projects",
                         columns: vec!["id", "name"],
                         check: ConditionTree {
@@ -2393,7 +2393,7 @@ pub mod tests {
                                 cast: None
                             },
                         ],
-                        payload: Payload(cow(payload), None),
+                        payload: Payload(cow(payload), Some(cow("text"))),
                         into: "projects",
                         columns: vec!["id", "name"],
                         check: ConditionTree {
@@ -2554,7 +2554,7 @@ pub mod tests {
                             alias: None,
                             cast: None
                         },],
-                        payload: Payload(cow(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#), None),
+                        payload: Payload(cow(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#), Some(cow("text"))),
                         into: "projects",
                         columns: vec!["id", "name"],
                         check: ConditionTree {
@@ -2713,7 +2713,7 @@ pub mod tests {
                                 cast: None
                             },
                         ],
-                        payload: Payload(cow(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#), None),
+                        payload: Payload(cow(r#"[{"id":10, "name":"john"},{"id":10, "name":"123"}]"#), Some(cow("text"))),
                         into: "projects",
                         columns: vec!["id", "name"],
                         check: ConditionTree {

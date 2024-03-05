@@ -24,7 +24,7 @@ test_all_release: test_all.c
 test: test_debug
 
 clean:
-	rm -f test_all_debug test_all_release
+	rm -f test_all
 
 build_debug:
 	cargo build

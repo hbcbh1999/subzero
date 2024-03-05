@@ -92,32 +92,293 @@ pub fn tuples_to_vec<'a>(tuples_ptr: *const Tuple, length: usize) -> Result<Vec<
 use subzero_core::formatter::{ToParam, Param};
 use subzero_core::api::{/*ListVal, */ SingleVal, Payload};
 use std::borrow::Cow;
-pub fn parameters_to_tuples<'a>(_db_type: &'a str, parameters: Vec<&'a (dyn ToParam + Sync)>) -> Vec<(&'a str, &'a str)> {
+pub fn parameters_to_tuples<'a>(db_type: &'a str, parameters: Vec<&'a (dyn ToParam + Sync)>)
+    -> Vec<(Cow<'a, str>, Cow<'a, str>)> {
     parameters
         .iter()
         .map(|p| {
             let param = match p.to_param() {
-                Param::SV(SingleVal(v, Some(Cow::Borrowed("integer")))) => v,
-                Param::SV(SingleVal(v, _)) => v,
-                Param::PL(Payload(v, _)) => v,
-                Param::Str(v) => v,
-                Param::StrOwned(v) => v,
-                // Param::LV(ListVal(v, _)) => match db_type {
-                //     "sqlite" | "mysql" => serde_json::to_string(v).unwrap_or_default(),
-                //     //_ => v,
-                //     // turn it into array literal for postgres
-                //     _ => format!("'{{{}}}'", v.join(", ")),
-                // },
-                _ => todo!("unimplemented parameter type Param::LV"),
+                Param::SV(SingleVal(v, Some(Cow::Borrowed("integer")))) => Cow::Borrowed(v.as_ref()),
+                Param::SV(SingleVal(v, _)) => Cow::Borrowed(v.as_ref()),
+                Param::PL(Payload(v, _)) => Cow::Borrowed(v.as_ref()),
+                Param::Str(v) => Cow::Borrowed(v),
+                Param::StrOwned(v) => Cow::Borrowed(v.as_str()),
+                Param::LV(ListVal(v, _)) => match db_type {
+                    "sqlite" | "mysql" => Cow::Owned(serde_json::to_string(v).unwrap_or_default()),
+                    //_ => v,
+                    // turn it into array literal for postgres
+                    _ => Cow::Owned(format!("'{{{}}}'", v.join(", "))),
+                }
             };
-            let data_type = p.to_data_type();
+            let data_type:Cow<str> = match p.to_data_type(){
+                Some(dt) => Cow::Borrowed(dt.as_ref()),
+                None => Cow::Borrowed("unknown")
+            };
             // (
             //     CString::new(param).unwrap().into_raw() as *const c_char,
             //     CString::new(data_type.as_ref().unwrap_or(&Cow::Borrowed("unknown")).as_ref()).unwrap().into_raw() as *const c_char
             // )
-            (param, data_type.as_ref().unwrap_or(&Cow::Borrowed("unknown")).as_ref())
+            (param, data_type)
         })
         .collect::<Vec<_>>()
+}
+
+
+use subzero_core::{
+    schema::DbSchema as CoreDbSchema,
+    
+    api::{
+        SelectItem,
+        ListVal, Query, ApiRequest, QueryNode::*, Field, Condition, Filter},
+    error::Error as CoreError,
+};
+// #[cfg(feature = "postgresql")]
+// use subzero_core::formatter::postgresql;
+// #[cfg(feature = "clickhouse")]
+// use subzero_core::formatter::clickhouse;
+#[cfg(feature = "sqlite")]
+use subzero_core::formatter::sqlite;
+#[cfg(feature = "mysql")]
+use subzero_core::formatter::mysql;
+
+pub fn fmt_first_stage_mutate<'a>(
+    db_type: &'a str,
+    db_schema: &'a CoreDbSchema,
+    original_request: &'a ApiRequest,
+    env: &'a HashMap<&str, &str>
+) -> Result<(String, Vec<(String, String)>), CoreError> {
+
+    // create a clone of the request
+    let mut request = original_request.clone();
+    let is_delete = matches!(original_request.query.node, Delete { .. });
+
+    // destructure the cloned request and eliminate the sub_selects and also select back
+    match &mut request {
+        ApiRequest {
+            query:
+                Query {
+                    sub_selects,
+                    node:
+                        Insert {
+                            into: table,
+                            returning,
+                            select,
+                            ..
+                        },
+                },
+            ..
+        }
+        | ApiRequest {
+            query:
+                Query {
+                    sub_selects,
+                    node:
+                        Delete {
+                            from: table,
+                            returning,
+                            select,
+                            ..
+                        },
+                },
+            ..
+        }
+        | ApiRequest {
+            query:
+                Query {
+                    sub_selects,
+                    node: Update {
+                        table, returning, select, ..
+                    },
+                },
+            ..
+        } => {
+            //sqlite does not support returning in CTEs so we must do a two step process
+            //TODO!!! in rocket we dynamically generate the primary key column name
+            let schema_obj = db_schema.get_object(original_request.schema_name, table)?;
+            let primary_key_column = schema_obj
+                .columns
+                .iter()
+                .find(|&(_, c)| c.primary_key)
+                .map(|(_, c)| c.name)
+                .unwrap_or("rowid");
+            //let primary_key_column = "rowid"; //every table has this (TODO!!! check)
+            let primary_key_field = Field {
+                name: primary_key_column,
+                json_path: None,
+            };
+            //return only the primary key column
+            returning.clear();
+            returning.push(primary_key_column);
+            select.clear();
+            select.push(SelectItem::Simple {
+                field: primary_key_field,
+                alias: Some(primary_key_column),
+                cast: None,
+            });
+
+            if !is_delete {
+                select.push(SelectItem::Simple {
+                    field: Field {
+                        name: "_subzero_check__constraint",
+                        json_path: None,
+                    },
+                    alias: None,
+                    cast: None,
+                });
+            }
+            // no need for additional data from joined tables
+            sub_selects.clear();
+        }
+        _ => {}
+    }
+
+    let ApiRequest {
+        method,
+        schema_name,
+        query,
+        preferences,
+        accept_content_type,
+        ..
+    } = request;
+
+    let (main_statement, main_parameters, _) = match db_type {
+        #[cfg(feature = "sqlite")]
+        "sqlite" => {
+            let query = sqlite::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, env)?;
+            Ok(sqlite::generate(query))
+        }
+        #[cfg(feature = "mysql")]
+        "mysql" => {
+            let query = mysql::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, env)?;
+            Ok(mysql::generate(query))
+        }
+        _ => Err(
+            CoreError::InternalError {
+                message: "unsupported database type for two step mutation".to_string(),
+            }
+        )
+    }?;
+
+    let pp = parameters_to_tuples(db_type, main_parameters)
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    Ok((main_statement, pp))
+}
+
+pub fn fmt_second_stage_select<'a>(
+    db_type: &'a str,
+    db_schema: &'a CoreDbSchema,
+    original_request: &'a ApiRequest,
+    env: &'a HashMap<&str, &str>
+) -> Result<(String, Vec<(String, String)>), CoreError> {
+    
+    let ids: Vec<String> = vec!["_subzero_ids_placeholder_".to_string()];
+
+    // create a clone of the request
+    let mut request = original_request.clone();
+
+    // destructure the cloned request and add the ids condition to the where clause
+    // and make it a select query
+    match &request.query {
+        Query {
+            node: Insert {
+                into: table, where_, select, ..
+            },
+            sub_selects,
+        }
+        | Query {
+            node: Update { table, where_, select, .. },
+            sub_selects,
+        }
+        | Query {
+            node: Delete {
+                from: table, where_, select, ..
+            },
+            sub_selects,
+        } => {
+            let schema_obj = db_schema.get_object(original_request.schema_name, table)?;
+            let primary_key_column = schema_obj
+                .columns
+                .iter()
+                .find(|&(_, c)| c.primary_key)
+                .map(|(_, c)| c.name)
+                .unwrap_or("rowid");
+            //let primary_key_column = "rowid"; //every table has this (TODO!!! check)
+            let primary_key_field = Field {
+                name: primary_key_column,
+                json_path: None,
+            };
+
+            let mut select_where = where_.to_owned();
+            // add the primary key condition to the where clause
+            select_where.conditions.insert(
+                0,
+                Condition::Single {
+                    field: primary_key_field,
+                    filter: Filter::In(ListVal(ids.into_iter().map(Cow::Owned).collect(), None)),
+                    negate: false,
+                },
+            );
+            request.method = "GET";
+            // set the request query to be a select
+            request.query = Query {
+                node: Select {
+                    check: None,
+                    from: (table, Some("subzero_source")),
+                    join_tables: vec![], //todo!! this should probably not be empty
+                    where_: select_where,
+                    select: select.to_vec(),
+                    limit: None,
+                    offset: None,
+                    order: vec![],
+                    groupby: vec![],
+                },
+                sub_selects: sub_selects.to_vec(),
+            };
+        }
+        _ => return Err(
+            CoreError::InternalError {
+                message: "unsupported database type for two step mutation".to_string(),
+            }
+        ),
+    }
+
+    let (main_statement, main_parameters, _) = match db_type {
+        #[cfg(feature = "sqlite")]
+        "sqlite" => {
+            let query = sqlite::fmt_main_query_internal(
+                db_schema,
+                request.schema_name,
+                request.method,
+                &request.accept_content_type,
+                &request.query,
+                &request.preferences,
+                env,
+            )?;
+            Ok(sqlite::generate(query))
+        }
+        #[cfg(feature = "mysql")]
+        "mysql" => {
+            let query = mysql::fmt_main_query_internal(
+                db_schema,
+                request.schema_name,
+                request.method,
+                &request.accept_content_type,
+                &request.query,
+                &request.preferences,
+                env,
+            )?;
+            Ok(mysql::generate(query))
+        }
+        _ => Err(CoreError::InternalError {
+            message: "unsupported database type for two step mutation".to_string()}),
+    }?;
+    let pp = parameters_to_tuples(db_type, main_parameters)
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    Ok((main_statement, pp))
 }
 
 // convert parameters vector to a js array
