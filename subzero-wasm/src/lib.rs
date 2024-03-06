@@ -10,7 +10,9 @@ use std::collections::HashMap;
 use serde_json::Value as JsonValue;
 
 mod utils;
-use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet};
+use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet,
+    log, console_log,
+};
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema, replace_json_str},
@@ -57,8 +59,20 @@ pub struct B<'a> {
 
 #[wasm_bindgen]
 impl Backend {
-    pub fn init(db_schema: String, db_type: String, allowed_select_functions: JsValue) -> Result<Backend, JsError> {
+    pub fn init(db_schema: String, db_type: String, allowed_select_functions: JsValue, license_key: Option<String>) -> Result<Backend, JsError> {
         set_panic_hook();
+
+        match license_key {
+            Some(_license_key) => {
+                // no checks for now
+            }
+            None => {
+                if !["sqlite", "mysql", "postgresql"].contains(&db_type.as_str()) {
+                    console_log!("subZero: No license key provided. Running in demo mode.")
+                }
+            }
+        }
+
         let allowed_select_functions = from_js_value::<Option<Vec<String>>>(allowed_select_functions).unwrap_or_default();
         let allowed_select_functions = match allowed_select_functions {
             Some(v) => v,

@@ -131,7 +131,6 @@ export async function initInternal(
     dbPool: DbPool,
     dbSchemas: string[],
     options: InitOptions = {},
-
     wasmInit?: Promise<any>,
 ): Promise<SubzeroInternal | undefined> {
 
@@ -196,7 +195,7 @@ export async function initInternal(
                 return `${(index + 1).toString().padStart(4, ' ')}: ${line}`;
             }).join('\n');
             o.debugFn("schema:\n", withLineNumbers);
-            subzero = new SubzeroInternal(wasmBackend, dbType, schema, o.allowedSelectFunctions, wasmInit);
+            subzero = new SubzeroInternal(wasmBackend, dbType, schema, o.allowedSelectFunctions, wasmInit, o.licenseKey);
             await subzero.init(); // not strictly needed in node context
             o.debugFn('Subzero initialized');
             app.set(o.schemaInstanceName, schema);
@@ -286,6 +285,7 @@ export type InitOptions = {
     dbPoolInstanceName?: string,
     includeAllDbRoles?: boolean,
     debugFn?: (...args: any[]) => void,
+    licenseKey?: string,
 };
 
 export type HandlerOptions = {
@@ -923,15 +923,17 @@ export class SubzeroInternal {
     public dbType: DbType
     private schema: any
     private allowed_select_functions?: string[]
+    private licenseKey?: string
     //private wasmInitialized = false
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    constructor(wasmBackend: any, dbType: DbType, schema: any, allowed_select_functions?: string[], wasmPromise?: Promise<any>) {
+    constructor(wasmBackend: any, dbType: DbType, schema: any, allowed_select_functions?: string[], wasmPromise?: Promise<any>, licenseKey?: string) {
         this.dbType = dbType
         this.allowed_select_functions = allowed_select_functions
         this.schema = schema
         this.wasmBackend = wasmBackend
         this.wasmPromise = wasmPromise
+        this.licenseKey = licenseKey
         if (!this.wasmPromise) {
             this.wasmInitialized = true
             this.initBackend()
@@ -953,7 +955,7 @@ export class SubzeroInternal {
             throw new Error('WASM not initialized')
         }
         try {
-            this.backend = this.wasmBackend.init(JSON.stringify(this.schema, null, 2), this.dbType, this.allowed_select_functions)
+            this.backend = this.wasmBackend.init(JSON.stringify(this.schema, null, 2), this.dbType, this.allowed_select_functions, this.licenseKey)
         } catch (e: any) {
             throw toSubzeroError(e)
         }

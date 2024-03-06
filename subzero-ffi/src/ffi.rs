@@ -167,7 +167,7 @@ pub struct sbz_HTTPRequest {
 /// # Example
 /// ```c
 /// const char* db_type = "sqlite";
-/// sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json); // see db_schema_new example for db_schema_json
+/// sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL); // see db_schema_new example for db_schema_json
 /// sbz_Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
 /// sbz_Tuple env[] = {{"user_id", "1"}};
 /// sbz_HTTPRequest req = {
@@ -231,15 +231,15 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
     let db_schema = unsafe { &*db_schema };
     check_null_ptr!(request, "Null pointer passed as the request");
     let request = unsafe { &*request };
-    let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 in schema_name");
-    let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 in path_prefix");
-    let method_str = try_cstr_to_str!(request.method, "Invalid UTF-8 in method");
+    let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 or null pointer in schema_name");
+    let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 or null pointer in path_prefix");
+    let method_str = try_cstr_to_str!(request.method, "Invalid UTF-8 or null pointer in method");
     let body_str = if request.body.is_null() {
         None
     } else {
-        Some(try_cstr_to_str!(request.body, "Invalid UTF-8 in body"))
+        Some(try_cstr_to_str!(request.body, "Invalid UTF-8 or null pointer in body"))
     };
-    let uri_str = try_cstr_to_str!(request.uri, "Invalid UTF-8 in uri");
+    let uri_str = try_cstr_to_str!(request.uri, "Invalid UTF-8 or null pointer in uri");
     let parsed_uri = match Url::parse(uri_str) {
         Ok(u) => u,
         Err(e) => {
@@ -273,7 +273,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
     let max_rows_opt = if max_rows.is_null() {
         None
     } else {
-        Some(try_cstr_to_str!(max_rows, "Invalid UTF-8 in max_rows"))
+        Some(try_cstr_to_str!(max_rows, "Invalid UTF-8 or null pointer in max_rows"))
     };
 
     let object_str = match parsed_uri.path().strip_prefix(path_prefix_str) {
@@ -436,7 +436,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// # Example
 /// ```c
 /// const char* db_type = "sqlite";
-/// sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json); // see db_schema_new example for db_schema_json
+/// sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL); // see db_schema_new example for db_schema_json
 /// sbz_Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
 /// sbz_Tuple env[] = {{"user_id", "1"}};
 /// sbz_HTTPRequest req = {
@@ -485,15 +485,15 @@ pub unsafe extern "C" fn sbz_statement_new(
     let db_schema = unsafe { &*db_schema };
     check_null_ptr!(request, "Null pointer passed as the request");
     let request = unsafe { &*request };
-    let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 in schema_name");
-    let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 in path_prefix");
-    let method_str = try_cstr_to_str!(request.method, "Invalid UTF-8 in method");
+    let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 or null pointer in schema_name");
+    let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 or null pointer in path_prefix");
+    let method_str = try_cstr_to_str!(request.method, "Invalid UTF-8 or null pointer in method");
     let body_str = if request.body.is_null() {
         None
     } else {
-        Some(try_cstr_to_str!(request.body, "Invalid UTF-8 in body"))
+        Some(try_cstr_to_str!(request.body, "Invalid UTF-8 or null pointer in body"))
     };
-    let uri_str = try_cstr_to_str!(request.uri, "Invalid UTF-8 in uri");
+    let uri_str = try_cstr_to_str!(request.uri, "Invalid UTF-8 or null pointer in uri");
     let parsed_uri = match Url::parse(uri_str) {
         Ok(u) => u,
         Err(e) => {
@@ -527,7 +527,7 @@ pub unsafe extern "C" fn sbz_statement_new(
     let max_rows_opt = if max_rows.is_null() {
         None
     } else {
-        Some(try_cstr_to_str!(max_rows, "Invalid UTF-8 in max_rows"))
+        Some(try_cstr_to_str!(max_rows, "Invalid UTF-8 or null pointer in max_rows"))
     };
 
     let object_str = match parsed_uri.path().strip_prefix(path_prefix_str) {
@@ -719,6 +719,8 @@ pub unsafe extern "C" fn sbz_db_schema_free(schema: *mut sbz_DbSchema) {
 /// - `db_type` - The type of database this schema is for.
 ///   Currently supported types are "postgresql", "clickhouse", "sqlite", and "mysql".
 /// - `db_schema_json` - The JSON string representing the schema.
+/// - `license_key` - The license key for the subzero core.
+///   Pass NULL if you are running in demo mode.
 /// # Returns
 /// A pointer to the newly created `DbSchema` or a null pointer if an error occurred.
 /// 
@@ -757,7 +759,7 @@ pub unsafe extern "C" fn sbz_db_schema_free(schema: *mut sbz_DbSchema) {
 /// "    ]"
 /// "}"
 /// ;
-/// sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json);
+/// sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
 /// if (db_schema == NULL) {
 ///   const int err_len = sbz_last_error_length();
 ///   char* err = (char*)malloc(err_len);
@@ -768,18 +770,13 @@ pub unsafe extern "C" fn sbz_db_schema_free(schema: *mut sbz_DbSchema) {
 /// }
 /// ```
 #[no_mangle]
-pub unsafe extern "C" fn sbz_db_schema_new(db_type: *const c_char, db_schema_json: *const c_char) -> *mut sbz_DbSchema {
-    // Check for null pointers
-    if db_type.is_null() || db_schema_json.is_null() {
-        let err = CoreError::InternalError {
-            message: "Null pointer passed into db_schema_new()".to_string(),
-        };
-        update_last_error(err);
-        return ptr::null_mut();
-    }
-
+pub unsafe extern "C" fn sbz_db_schema_new(
+    db_type: *const c_char,
+    db_schema_json: *const c_char,
+    license_key: *const c_char,
+) -> *mut sbz_DbSchema {
     // Convert the C strings to Rust &strs
-    let db_type_str = try_cstr_to_str!(db_type, "Invalid UTF-8 in db_type");
+    let db_type_str = try_cstr_to_str!(db_type, "Invalid UTF-8 or null pointer in db_type");
     // check if db_type is supported
     if !["postgresql", "clickhouse", "sqlite", "mysql"].contains(&db_type_str) {
         update_last_error(CoreError::InternalError {
@@ -788,7 +785,21 @@ pub unsafe extern "C" fn sbz_db_schema_new(db_type: *const c_char, db_schema_jso
         return ptr::null_mut();
     }
 
-    let mut db_schema_json = try_cstr_to_str!(db_schema_json, "Invalid UTF-8 in db_schema_json").to_owned();
+    let license_key_str = if license_key.is_null() {
+        None
+    } else {
+        Some(try_cstr_to_str!(license_key, "Invalid UTF-8 in license_key"))
+    };
+
+    match license_key_str {
+        Some(_license_key_str) => {
+            // no checking for now
+        }
+        None => {
+            println!("subZero: No license key provided. Running in demo mode.");
+        }
+    }
+    let mut db_schema_json = try_cstr_to_str!(db_schema_json, "Invalid UTF-8 or null pointer in db_schema_json").to_owned();
     //println!("db_schema_json: {}", db_schema_json);
     if db_type_str == "clickhouse" {
         //println!("json schema original:\n{:?}\n", s);

@@ -28,7 +28,7 @@ const char* db_schema_json =
 START_TEST(test_db_schema_new)
 {
     const char* db_type = "sqlite";
-    sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json);
+    sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
         char* err = (char*)malloc(err_len);
@@ -46,7 +46,7 @@ END_TEST
 
 START_TEST(test_statement_new){
     const char* db_type = "sqlite";
-    sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json);
+    sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
     sbz_Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
     sbz_Tuple env[] = {{"role", "admin"}, {"path", "/home/user"}};
     sbz_HTTPRequest req = {
@@ -119,7 +119,7 @@ END_TEST
 
 START_TEST(test_two_stage_statement_new){
     const char* db_type = "sqlite";
-    sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json);
+    sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
     sbz_Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
     sbz_Tuple env[] = {};
     sbz_HTTPRequest req = {

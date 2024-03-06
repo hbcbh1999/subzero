@@ -62,7 +62,7 @@ static HEADER:&str = r#"
  * 
  * // main function
  * int main() {
- *   sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json);
+ *   sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
  *   if (db_schema == NULL) {
  *     const int err_len = sbz_last_error_length();
  *     char* err = (char*)malloc(err_len);
