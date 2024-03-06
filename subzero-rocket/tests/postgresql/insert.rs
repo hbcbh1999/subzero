@@ -25,30 +25,30 @@ feature "insert"
           , matchHeaders = ["Content-Type" <:> "application/json"]
           }
 
-      it "ignores &select when return not set or using return=minimal" $ do
-        request methodPost "/menagerie?select=integer,varchar"
-            [json| r#"[{
-              "integer": 15, "double": 3.14159, "varchar": "testing!",
-              "boolean": false, "date": "1900-01-01", "money": "$3.99",
-              "enum": "foo"
-            }]"# |]
-          shouldRespondWith
-            [text|""|]
-            { matchStatus  = 201
-            // , matchHeaders = [matchHeaderAbsent hContentType]
-            }
-        request methodPost "/menagerie?select=integer,varchar"
-            [("Prefer", "return=minimal")]
-            [json| r#"[{
-              "integer": 16, "double": 3.14159, "varchar": "testing!",
-              "boolean": false, "date": "1900-01-01", "money": "$3.99",
-              "enum": "foo"
-            }]"# |]
-          shouldRespondWith
-            [text|""|]
-            { matchStatus  = 201
-            // , matchHeaders = [matchHeaderAbsent hContentType]
-            }
+      // it "ignores &select when return not set or using return=minimal" $ do
+      //   request methodPost "/menagerie?select=integer,varchar"
+      //       [json| r#"[{
+      //         "integer": 15, "double": 3.14159, "varchar": "testing!",
+      //         "boolean": false, "date": "1900-01-01", "money": "$3.99",
+      //         "enum": "foo"
+      //       }]"# |]
+      //     shouldRespondWith
+      //       [text|""|]
+      //       { matchStatus  = 201
+      //       // , matchHeaders = [matchHeaderAbsent hContentType]
+      //       }
+      //   request methodPost "/menagerie?select=integer,varchar"
+      //       [("Prefer", "return=minimal")]
+      //       [json| r#"[{
+      //         "integer": 16, "double": 3.14159, "varchar": "testing!",
+      //         "boolean": false, "date": "1900-01-01", "money": "$3.99",
+      //         "enum": "foo"
+      //       }]"# |]
+      //     shouldRespondWith
+      //       [text|""|]
+      //       { matchStatus  = 201
+      //       // , matchHeaders = [matchHeaderAbsent hContentType]
+      //       }
 
     describe "non uniform json array" $ do
       it "rejects json array that isnt exclusivily composed of objects" $
@@ -129,15 +129,15 @@ feature "insert"
     //           }
 
     describe "requesting no representation2" $
-      it "should not throw and return no location header when selecting without PK" $
-        request methodPost "/projects?select=name,client_id"
-            [json|r#"{"id":12,"name":"New Project","client_id":2}"#|]
-          shouldRespondWith
-            [text|""|]
-            { matchStatus  = 201
-            // , matchHeaders = [ matchHeaderAbsent hContentType
-            //                  , matchHeaderAbsent hLocation ]
-            }
+      // it "should not throw and return no location header when selecting without PK" $
+      //   request methodPost "/projects?select=name,client_id"
+      //       [json|r#"{"id":12,"name":"New Project","client_id":2}"#|]
+      //     shouldRespondWith
+      //       [text|""|]
+      //       { matchStatus  = 201
+      //       // , matchHeaders = [ matchHeaderAbsent hContentType
+      //       //                  , matchHeaderAbsent hLocation ]
+      //       }
 
     // describe "from an html form" $
     //   it "accepts disparate json types" $ do

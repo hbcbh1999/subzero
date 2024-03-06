@@ -6,6 +6,12 @@ macro_rules! check_null_ptr {
             return ptr::null_mut();
         }
     };
+    ($ptr:expr, $ret:expr, $msg:expr) => {
+        if $ptr.is_null() {
+            update_last_error(CoreError::InternalError { message: $msg.to_string() });
+            return $ret;
+        }
+    };
 }
 
 #[macro_export]
@@ -63,9 +69,9 @@ pub fn extract_cookies(cookie_header: Option<&str>) -> HashMap<&str, &str> {
 }
 
 use std::slice;
-use crate::ffi::Tuple;
+use crate::ffi::sbz_Tuple;
 // Function to convert an array of Tuple structs to Vec<(&str, &str)>
-pub fn tuples_to_vec<'a>(tuples_ptr: *const Tuple, length: usize) -> Result<Vec<(&'a str, &'a str)>, &'a str> {
+pub fn tuples_to_vec<'a>(tuples_ptr: *const sbz_Tuple, length: usize) -> Result<Vec<(&'a str, &'a str)>, &'a str> {
     if tuples_ptr.is_null() {
         return Err("Null pointer passed as tuples");
     }
@@ -105,8 +111,6 @@ pub fn parameters_to_tuples<'a>(db_type: &'a str, parameters: Vec<&'a (dyn ToPar
                 Param::StrOwned(v) => Cow::Borrowed(v.as_str()),
                 Param::LV(ListVal(v, _)) => match db_type {
                     "sqlite" | "mysql" => Cow::Owned(serde_json::to_string(v).unwrap_or_default()),
-                    //_ => v,
-                    // turn it into array literal for postgres
                     _ => Cow::Owned(format!("'{{{}}}'", v.join(", "))),
                 }
             };

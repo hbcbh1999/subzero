@@ -22,27 +22,27 @@ feature "delete"
           , matchHeaders = ["Content-Range" <:> "*/1"]
           }
 
-      it "ignores ?select= when return not set or return=minimal" $ do
-        request methodDelete "/items?id=eq.3&select=id"
-            //[]
-            ""
-          shouldRespondWith
-            [text|""|]
-            { matchStatus  = 204
-            , matchHeaders = [
-                             // matchHeaderAbsent hContentType,
-                             "Content-Range" <:> "*/*" ]
-            }
-        request methodDelete "/items?id=eq.3&select=id"
-            [("Prefer", "return=minimal")]
-            ""
-          shouldRespondWith
-            [text|""|]
-            { matchStatus  = 204
-            , matchHeaders = [
-                             // matchHeaderAbsent hContentType,
-                             "Content-Range" <:> "*/*" ]
-            }
+      // it "ignores ?select= when return not set or return=minimal" $ do
+      //   request methodDelete "/items?id=eq.3&select=id"
+      //       //[]
+      //       ""
+      //     shouldRespondWith
+      //       [text|""|]
+      //       { matchStatus  = 204
+      //       , matchHeaders = [
+      //                        // matchHeaderAbsent hContentType,
+      //                        "Content-Range" <:> "*/*" ]
+      //       }
+      //   request methodDelete "/items?id=eq.3&select=id"
+      //       [("Prefer", "return=minimal")]
+      //       ""
+      //     shouldRespondWith
+      //       [text|""|]
+      //       { matchStatus  = 204
+      //       , matchHeaders = [
+      //                        // matchHeaderAbsent hContentType,
+      //                        "Content-Range" <:> "*/*" ]
+      //       }
 
       it "returns the deleted item and shapes the response" $
         request methodDelete "/complex_items?id=eq.2&select=id,name" [("Prefer", "return=representation")] ""

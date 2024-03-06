@@ -289,7 +289,7 @@ pub fn parse<'a>(
         }
         None => Ok(ApplicationJSON),
     }?;
-    let preferences = match headers.get("prefer") {
+    let mut preferences = match headers.get("prefer") {
         Some(&pref) => {
             // let (p, _) = preferences()
             //     .message("failed to parse Prefer header ")
@@ -302,6 +302,7 @@ pub fn parse<'a>(
     }?;
 
     let mut select_items = vec![Item(Star)];
+    let mut has_select_parameter = false;
     // iterate over parameters, parse and collect them in the relevant vectors
     for (k, v) in get.iter() {
         match *k {
@@ -312,7 +313,8 @@ pub fn parse<'a>(
                 //     .map_err(to_app_error(v))?;
                 // select_items = parsed_value;
                 let (_, parsed_value) = context("failed to parse select parameter", select)(v).map_err(|e| to_app_error(v, e))?;
-                select_items = parsed_value
+                select_items = parsed_value;
+                has_select_parameter = true;
             }
 
             "columns" => {
@@ -421,61 +423,41 @@ pub fn parse<'a>(
     // in some cases we don't want to select anything back, event when select parameter is specified,
     // so in order to not trigger any permissions errors, we select nothing back
     let is_function_call = matches!(&root_obj.kind, Function { .. });
+    let mut return_representation_header = !matches!(
+        &preferences,
+        None |
+        Some(Preferences { representation: Some(Representation::None), .. }) |
+        Some(Preferences { representation: Some(Representation::HeadersOnly), .. })
+    );
+
+    // we want to force return representation even the header was not provided
+    // but there is a select parameter
+    if has_select_parameter
+        && !return_representation_header
+        && matches!(method, "POST" | "PATCH" | "PUT" | "DELETE")
+    {
+        return_representation_header = true;
+        // set the preferences to Representation::Full while keeping the other preferences
+        preferences = Some(match preferences {
+            Some(p) => Preferences {
+                representation: Some(Representation::Full),
+                ..p
+            },
+            None => Preferences {
+                representation: Some(Representation::Full),
+                resolution: None,
+                count: None,
+            },
+        });
+
+    }
+    
     if !is_function_call {
-        match (method, &preferences) {
-            ("POST", None)
-            | (
-                "POST",
-                Some(Preferences {
-                    representation: Some(Representation::None),
-                    ..
-                }),
-            )
-            | (
-                "POST",
-                Some(Preferences {
-                    representation: Some(Representation::HeadersOnly),
-                    ..
-                }),
-            )
-            | ("PATCH", None)
-            | (
-                "PATCH",
-                Some(Preferences {
-                    representation: Some(Representation::None),
-                    ..
-                }),
-            )
-            | (
-                "PATCH",
-                Some(Preferences {
-                    representation: Some(Representation::HeadersOnly),
-                    ..
-                }),
-            )
-            | ("PUT", None)
-            | (
-                "PUT",
-                Some(Preferences {
-                    representation: Some(Representation::None),
-                    ..
-                }),
-            )
-            | (
-                "PUT",
-                Some(Preferences {
-                    representation: Some(Representation::HeadersOnly),
-                    ..
-                }),
-            )
-            | ("DELETE", None)
-            | (
-                "DELETE",
-                Some(Preferences {
-                    representation: Some(Representation::None),
-                    ..
-                }),
-            ) => select_items = vec![],
+        match (method, return_representation_header) {
+            ("POST", false) |
+            ("PATCH", false) |
+            ("PUT", false) |
+            ("DELETE", false) => select_items = vec![],
             _ => {}
         }
     };

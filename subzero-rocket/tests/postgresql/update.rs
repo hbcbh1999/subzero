@@ -175,26 +175,26 @@ describe "Patching record" $ do
             shouldRespondWith [json| r#"[{ "id": 1, "computed_overload": true }]"# |]
             { matchHeaders = ["Content-Type" <:> "application/json"] }
 
-      it "ignores ?select= when return not set or return=minimal" $ do
-        request methodPatch "/items?id=eq.1&select=id"
-            [] [json| r#"{ "id":1 }"# |]
-          shouldRespondWith
-            [text|""|]
-            { matchStatus  = 204
-            , matchHeaders = [
-                              // matchHeaderAbsent hContentType ,
-                             "Content-Range" <:> "0-0/*" ]
-            }
-        request methodPatch "/items?id=eq.1&select=id"
-            [("Prefer", "return=minimal")]
-            [json| r#"{ "id":1 }"# |]
-          shouldRespondWith
-            [text|""|]
-            { matchStatus  = 204
-            , matchHeaders = [
-                              // matchHeaderAbsent hContentType ,
-                             "Content-Range" <:> "0-0/*" ]
-            }
+      // it "ignores ?select= when return not set or return=minimal" $ do
+      //   request methodPatch "/items?id=eq.1&select=id"
+      //       [] [json| r#"{ "id":1 }"# |]
+      //     shouldRespondWith
+      //       [text|""|]
+      //       { matchStatus  = 204
+      //       , matchHeaders = [
+      //                         // matchHeaderAbsent hContentType ,
+      //                        "Content-Range" <:> "0-0/*" ]
+      //       }
+      //   request methodPatch "/items?id=eq.1&select=id"
+      //       [("Prefer", "return=minimal")]
+      //       [json| r#"{ "id":1 }"# |]
+      //     shouldRespondWith
+      //       [text|""|]
+      //       { matchStatus  = 204
+      //       , matchHeaders = [
+      //                         // matchHeaderAbsent hContentType ,
+      //                        "Content-Range" <:> "0-0/*" ]
+      //       }
 
       describe "when patching with an empty body" $ do
         it "makes no updates and returns 204 without return= and without ?select=" $ do
@@ -231,39 +231,39 @@ describe "Patching record" $ do
                                "Content-Range" <:> "*/*" ]
               }
 
-        it "makes no updates and returns 204 without return= and with ?select=" $ do
-          request methodPatch "/items?select=id"
-              []
-              [json| r#"{}"# |]
-            shouldRespondWith
-              [text|""|]
-              { matchStatus  = 204
-              , matchHeaders = [
-                                // matchHeaderAbsent hContentType ,
-                               "Content-Range" <:> "*/*" ]
-              }
+        // it "makes no updates and returns 204 without return= and with ?select=" $ do
+        //   request methodPatch "/items?select=id"
+        //       []
+        //       [json| r#"{}"# |]
+        //     shouldRespondWith
+        //       [text|""|]
+        //       { matchStatus  = 204
+        //       , matchHeaders = [
+        //                         // matchHeaderAbsent hContentType ,
+        //                        "Content-Range" <:> "*/*" ]
+        //       }
 
-          request methodPatch "/items?select=id"
-              []
-              [json| r#"[]"# |]
-            shouldRespondWith
-              [text|""|]
-              { matchStatus  = 204
-              , matchHeaders = [
-                                // matchHeaderAbsent hContentType ,
-                               "Content-Range" <:> "*/*" ]
-              }
+        //   request methodPatch "/items?select=id"
+        //       []
+        //       [json| r#"[]"# |]
+        //     shouldRespondWith
+        //       [text|""|]
+        //       { matchStatus  = 204
+        //       , matchHeaders = [
+        //                         // matchHeaderAbsent hContentType ,
+        //                        "Content-Range" <:> "*/*" ]
+        //       }
 
-          request methodPatch "/items?select=id"
-              []
-              [json| r#"[{}]"# |]
-            shouldRespondWith
-              [text|""|]
-              { matchStatus  = 204
-              , matchHeaders = [
-                                // matchHeaderAbsent hContentType ,
-                               "Content-Range" <:> "*/*" ]
-              }
+        //   request methodPatch "/items?select=id"
+        //       []
+        //       [json| r#"[{}]"# |]
+        //     shouldRespondWith
+        //       [text|""|]
+        //       { matchStatus  = 204
+        //       , matchHeaders = [
+        //                         // matchHeaderAbsent hContentType ,
+        //                        "Content-Range" <:> "*/*" ]
+        //       }
 
         it "makes no updates and returns 200 with return=rep and without ?select=" $
           request methodPatch "/items" [("Prefer", "return=representation")] [json| r#"{}"# |]
