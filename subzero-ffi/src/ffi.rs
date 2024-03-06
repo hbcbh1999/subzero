@@ -218,6 +218,7 @@ pub struct sbz_HTTPRequest {
 /// 
 /// // free the memory associated with the two_stage_statement
 /// sbz_two_stage_statement_free(main_stmt);
+/// ```
 #[no_mangle]
 pub unsafe extern "C" fn sbz_two_stage_statement_new(
     schema_name: *const c_char,
@@ -436,8 +437,8 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// ```c
 /// const char* db_type = "sqlite";
 /// sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json); // see db_schema_new example for db_schema_json
-/// Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
-/// Tuple env[] = {{"user_id", "1"}};
+/// sbz_Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
+/// sbz_Tuple env[] = {{"user_id", "1"}};
 /// sbz_HTTPRequest req = {
 ///   "GET",
 ///   "http://localhost/rest/projects?select=id,name",
@@ -470,6 +471,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// printf("params: %s\n", params[0]);
 /// printf("params_count: %d\n", params_count);
 /// printf("params_types: %s\n", params_types[0]);
+/// sbz_statement_free(stmt);
 /// ```
 #[no_mangle]
 pub unsafe extern "C" fn sbz_statement_new(

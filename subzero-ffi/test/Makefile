@@ -12,6 +12,9 @@ test_debug: build_debug test_all_debug run_test
 
 test_release: build_release test_all_release run_test
 
+docs: build_release
+	cd .. && doxygen
+
 run_test:
 	./test_all
 
