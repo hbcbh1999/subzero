@@ -72,15 +72,15 @@ static HEADER:&str = r#"
  *     return -1;
  *   }
  *   
- *   sbz_Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
- *   sbz_Tuple env[] = {{"user_id", "1"}};
- *   sbz_HTTPRequest req = {
- *     "GET",
- *     "http://localhost/rest/projects?select=id,name",
- *     headers, 2,
- *     NULL,
- *     env, 1
- *   };
+ *   const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
+ *   const char* env[] = {"user_id", "1"};
+ *   sbz_HTTPRequest* req = sbz_http_request_new(
+ *      "POST",
+ *      "http://localhost/rest/projects?select=id,name",
+ *      NULL,
+ *      headers, 4,
+ *      env, 2
+ *   );
  *   sbz_Statement* stmt = sbz_statement_new(
  *     "public",
  *     "/rest/",
@@ -108,6 +108,7 @@ static HEADER:&str = r#"
  *   printf("params_types: %s\n", params_types[0]);
  *   
  *   sbz_statement_free(stmt);
+ *   sbz_http_request_free(req);
  *   sbz_db_schema_free(db_schema);
  *   return 0;
  * }
@@ -126,6 +127,7 @@ fn main() {
     config.language = cbindgen::Language::C;
     config.documentation_style = cbindgen::DocumentationStyle::Doxy;
     config.header = Some(HEADER.to_string());
+    //config.export.prefix = Some("sbz_".to_string());
     cbindgen::generate_with_config(crate_dir, config)
         .expect("Unable to generate bindings")
         .write_to_file(output_file);

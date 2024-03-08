@@ -1,3 +1,5 @@
+use libc::c_char;
+
 #[macro_export]
 macro_rules! check_null_ptr {
     ($ptr:expr, $msg:expr) => {
@@ -45,6 +47,24 @@ macro_rules! try_cstr_to_str {
         }
     };
 }
+#[macro_export]
+macro_rules! try_cstr_to_cstring {
+    ($c_str:expr, $msg:literal) => {
+        if $c_str.is_null() {
+            update_last_error(CoreError::InternalError { message: $msg.to_string() });
+            return ptr::null_mut();
+        } else {
+            let raw = CStr::from_ptr($c_str);
+            match raw.to_str() {
+                Ok(s) => CString::new(s).unwrap(),
+                Err(_) => {
+                    update_last_error(CoreError::InternalError { message: $msg.to_string() });
+                    return ptr::null_mut();
+                }
+            }
+        }
+    };
+}
 
 use std::ffi::CStr;
 use std::collections::HashMap;
@@ -69,9 +89,8 @@ pub fn extract_cookies(cookie_header: Option<&str>) -> HashMap<&str, &str> {
 }
 
 use std::slice;
-use crate::ffi::sbz_Tuple;
 // Function to convert an array of Tuple structs to Vec<(&str, &str)>
-pub fn tuples_to_vec<'a>(tuples_ptr: *const sbz_Tuple, length: usize) -> Result<Vec<(&'a str, &'a str)>, &'a str> {
+pub fn arr_to_tuple_vec<'a>(tuples_ptr: *const *const c_char, length: usize) -> Result<Vec<(&'a str, &'a str)>, &'a str> {
     if tuples_ptr.is_null() {
         return Err("Null pointer passed as tuples");
     }
@@ -80,19 +99,22 @@ pub fn tuples_to_vec<'a>(tuples_ptr: *const sbz_Tuple, length: usize) -> Result<
     // of size `length`, and if each `key` and `value` in the array are valid pointers
     // to null-terminated C strings.
     let tuples_slice = unsafe { slice::from_raw_parts(tuples_ptr, length) };
-
-    tuples_slice
+    let tuples = tuples_slice
         .iter()
-        .map(|tuple| {
-            let key_cstr = unsafe { CStr::from_ptr(tuple.key) };
-            let value_cstr = unsafe { CStr::from_ptr(tuple.value) };
-
-            let key_str = key_cstr.to_str().map_err(|_| "Invalid UTF-8 in key")?;
-            let value_str = value_cstr.to_str().map_err(|_| "Invalid UTF-8 in value")?;
-
-            Ok((key_str, value_str))
+        .map(|&tuple| {
+            // SAFETY: This block is safe if `tuple` is a valid pointer to a null-terminated C string.
+            let c_str = unsafe { CStr::from_ptr(tuple) };
+            // SAFETY: This block is safe if `c_str` is a valid C string.
+            let str = c_str.to_str().unwrap();
+            str
         })
-        .collect()
+        .collect::<Vec<&str>>();
+    // check there are an even number of elements
+    if tuples.len() % 2 != 0 {
+        return Err("Odd number of elements in tuples");
+    }
+
+    Ok(tuples.chunks(2).map(|chunk| (chunk[0], chunk[1])).collect())
 }
 
 use subzero_core::formatter::{ToParam, Param};

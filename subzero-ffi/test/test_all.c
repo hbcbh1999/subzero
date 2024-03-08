@@ -47,20 +47,22 @@ END_TEST
 START_TEST(test_statement_new){
     const char* db_type = "sqlite";
     sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
-    sbz_Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
-    sbz_Tuple env[] = {{"role", "admin"}, {"path", "/home/user"}};
-    sbz_HTTPRequest req = {
+
+    const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
+    const char* env[] = {"role", "admin", "path", "/home/user"};
+    sbz_HTTPRequest* req = sbz_http_request_new(
         "GET",
         "http://localhost/rest/projects?select=id,name&id=eq.1",
-        headers, 2,
-        NULL, 
-        env, 2
-    };
+        NULL,
+        headers, 4,
+        env, 4
+    );
+
     sbz_Statement* main_stmt = sbz_statement_new(
         "public",
         "/rest/",
         db_schema,
-        &req,
+        req,
         NULL
     );
 
@@ -120,20 +122,27 @@ END_TEST
 START_TEST(test_two_stage_statement_new){
     const char* db_type = "sqlite";
     sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
-    sbz_Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
-    sbz_Tuple env[] = {};
-    sbz_HTTPRequest req = {
+    const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
+    const char* env[] = {};
+    // sbz_HTTPRequest req = {
+    //     "POST",
+    //     "http://localhost/rest/projects?select=id,name",
+    //     headers, 4,
+    //     "[{\"name\":\"project1\"}]", 
+    //     env, 0
+    // };
+    sbz_HTTPRequest* req = sbz_http_request_new(
         "POST",
         "http://localhost/rest/projects?select=id,name",
-        headers, 2,
         "[{\"name\":\"project1\"}]", 
+        headers, 4,
         env, 0
-    };
+    );
     sbz_TwoStageStatement* main_stmt = sbz_two_stage_statement_new(
         "public",
         "/rest/",
         db_schema,
-        &req,
+        req,
         NULL
     );
 

@@ -19,8 +19,8 @@ use subzero_core::{
     // permissions::{check_privileges, check_safe_functions, insert_policy_conditions, replace_select_star},
     error::Error as CoreError,
 };
-use crate::{check_null_ptr, try_cstr_to_str};
-use crate::utils::{extract_cookies, tuples_to_vec, parameters_to_tuples,
+use crate::{check_null_ptr, try_cstr_to_str, try_cstr_to_cstring};
+use crate::utils::{extract_cookies, arr_to_tuple_vec, parameters_to_tuples,
     fmt_first_stage_mutate, fmt_second_stage_select
 };
 #[cfg(feature = "postgresql")]
@@ -122,34 +122,101 @@ impl sbz_TwoStageStatement {
     }
 }
 
-/// A structure representing a key-value pair.
-#[repr(C)]
-pub struct sbz_Tuple {
-    pub key: *const c_char,
-    pub value: *const c_char,
-}
 
 /// A structure representing a HTTP request.
 /// This is used to pass the information about the request to the subzero core.
+pub struct sbz_HTTPRequest {
+    method: CString,
+    uri: CString,
+    body: Option<CString>,
+    headers: Vec<(CString,CString)>,
+    env: Vec<(CString,CString)>,
+}
+
+/// Create a new `sbz_HTTPRequest`
+/// # Safety
 /// 
-/// # Fields
+/// # Parameters
 /// - `method` - The HTTP method (GET, POST, PUT, DELETE, etc).
 /// - `uri` - The full URI of the request (including the query string, ex: http://example.com/path?query=string).
-/// - `headers` - An array of key-value pairs representing the headers of the request.
-/// - `headers_count` - The number of headers in the `headers` array.
 /// - `body` - The body of the request (pass NULL if there is no body).
-/// - `env` - An array of key-value pairs representing the environment data that needs to be available to the query.
-/// - `env_count` - The number of key-value pairs in the `env` array.
-#[repr(C)]
-pub struct sbz_HTTPRequest {
-    pub method: *const c_char,
-    pub uri: *const c_char,
-    pub headers: *const sbz_Tuple,
-    pub headers_count: c_int,
-    pub body: *const c_char,
-    pub env: *const sbz_Tuple,
-    pub env_count: c_int,
+/// - `headers` - An array of key-value pairs representing the headers of the request, it needs to contain an even number of elements.
+/// - `headers_count` - The number of elements in the `headers` array.
+/// - `env` - An array of key-value pairs representing the environment data that needs to be available to the query. It needs to contain an even number of elements.
+/// - `env_count` - The number of elements in the `env` array.
+/// 
+/// # Returns
+/// A pointer to the newly created `sbz_HTTPRequest` or a null pointer if an error occurred.
+/// 
+/// # Example
+/// ```c
+/// const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
+/// const char* env[] = {"user_id", "1"};
+/// sbz_HTTPRequest* req = sbz_http_request_new(
+///    "POST",
+///    "http://localhost/rest/projects?select=id,name",
+///    "[{\"name\":\"project1\"}",
+///    headers, 4,
+///    env, 2
+/// );
+/// ```
+/// 
+#[no_mangle]
+pub unsafe extern "C" fn sbz_http_request_new(
+    method: *const c_char,
+    uri: *const c_char,
+    body: *const c_char,
+    headers: *const *const c_char,
+    headers_count: c_int,
+    env: *const *const c_char,
+    env_count: c_int,
+) -> *mut sbz_HTTPRequest {
+    let method_str = try_cstr_to_cstring!(method, "Invalid UTF-8 or null pointer in method");
+    let uri_str = try_cstr_to_cstring!(uri, "Invalid UTF-8 or null pointer in uri");
+    let body_str = if body.is_null() {
+        None
+    } else {
+        Some(try_cstr_to_str!(body, "Invalid UTF-8 or null pointer in body"))
+    };
+    let headers = match arr_to_tuple_vec(headers, headers_count as usize) {
+        Ok(v) => v,
+        Err(e) => {
+            update_last_error(CoreError::InternalError { message: e.to_string() });
+            return ptr::null_mut();
+        }
+    };
+    let env = match arr_to_tuple_vec(env, env_count as usize) {
+        Ok(v) => v,
+        Err(e) => {
+            update_last_error(CoreError::InternalError { message: e.to_string() });
+            return ptr::null_mut();
+        }
+    };
+    let request = sbz_HTTPRequest {
+        method: method_str,
+        uri: uri_str,
+        body: body_str.map(|s| CString::new(s).unwrap()),
+        headers: headers.iter().map(|(k, v)| (CString::new(*k).unwrap(), CString::new(*v).unwrap())).collect(),
+        env: env.iter().map(|(k, v)| (CString::new(*k).unwrap(), CString::new(*v).unwrap())).collect(),
+    };
+    Box::into_raw(Box::new(request))
 }
+
+/// Free the memory associated with a `sbz_HTTPRequest`.
+/// # Safety
+/// 
+/// # Parameters
+/// - `request` - A pointer to the `sbz_HTTPRequest` to free.
+/// 
+#[no_mangle]
+pub unsafe extern "C" fn sbz_http_request_free(request: *mut sbz_HTTPRequest) {
+    if !request.is_null() {
+        unsafe {
+            drop(Box::from_raw(request));
+        }
+    }
+}
+
 
 /// Create a new `sbz_TwoStageStatement`
 /// # Safety
@@ -168,20 +235,20 @@ pub struct sbz_HTTPRequest {
 /// ```c
 /// const char* db_type = "sqlite";
 /// sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL); // see db_schema_new example for db_schema_json
-/// sbz_Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
-/// sbz_Tuple env[] = {{"user_id", "1"}};
-/// sbz_HTTPRequest req = {
-///     "POST",
-///     "http://localhost/rest/projects?select=id,name",
-///     headers, 2,
-///     "[{\"name\":\"project1\"}]", 
-///     env, 1
-/// };
+/// const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
+/// const char* env[] = {"user_id", "1"};
+/// sbz_HTTPRequest* req = sbz_http_request_new(
+///    "POST",
+///    "http://localhost/rest/projects?select=id,name",
+///    "[{\"name\":\"project1\"}",
+///    headers, 4,
+///    env, 2
+/// );
 /// sbz_TwoStageStatement* stmt = sbz_two_stage_statement_new(
 ///     "public",
 ///     "/rest/",
 ///     db_schema,
-///     &req,
+///     req,
 ///     NULL
 /// );
 ///
@@ -218,6 +285,8 @@ pub struct sbz_HTTPRequest {
 /// 
 /// // free the memory associated with the two_stage_statement
 /// sbz_two_stage_statement_free(main_stmt);
+/// sbz_http_request_free(req);
+/// sbz_db_schema_free(db_schema);
 /// ```
 #[no_mangle]
 pub unsafe extern "C" fn sbz_two_stage_statement_new(
@@ -233,13 +302,9 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
     let request = unsafe { &*request };
     let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 or null pointer in schema_name");
     let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 or null pointer in path_prefix");
-    let method_str = try_cstr_to_str!(request.method, "Invalid UTF-8 or null pointer in method");
-    let body_str = if request.body.is_null() {
-        None
-    } else {
-        Some(try_cstr_to_str!(request.body, "Invalid UTF-8 or null pointer in body"))
-    };
-    let uri_str = try_cstr_to_str!(request.uri, "Invalid UTF-8 or null pointer in uri");
+    let method_str = request.method.to_str().unwrap_or_default();
+    let body_str = request.body.as_ref().map(|b| b.to_str().unwrap_or_default());
+    let uri_str = request.uri.to_str().unwrap_or_default();
     let parsed_uri = match Url::parse(uri_str) {
         Ok(u) => u,
         Err(e) => {
@@ -255,20 +320,8 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
         .collect();
     let get: Vec<(&str, &str)> = query_pairs.iter().map(|(key, value)| (key.as_ref(), value.as_ref())).collect();
 
-    let headers = match tuples_to_vec(request.headers, request.headers_count as usize) {
-        Ok(v) => HashMap::from_iter(v),
-        Err(e) => {
-            update_last_error(CoreError::InternalError { message: e.to_string() });
-            return ptr::null_mut();
-        }
-    };
-    let env = match tuples_to_vec(request.env, request.env_count as usize) {
-        Ok(v) => HashMap::from_iter(v),
-        Err(e) => {
-            update_last_error(CoreError::InternalError { message: e.to_string() });
-            return ptr::null_mut();
-        }
-    };
+    let headers:HashMap<_,_> = request.headers.iter().map(|(k, v)| (k.to_str().unwrap_or_default(), v.to_str().unwrap_or_default())).collect();
+    let env = request.env.iter().map(|(k, v)| (k.to_str().unwrap_or_default(), v.to_str().unwrap_or_default())).collect();
     let cookies = extract_cookies(headers.get("Cookie").copied());
     let max_rows_opt = if max_rows.is_null() {
         None
@@ -439,18 +492,18 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL); // see db_schema_new example for db_schema_json
 /// sbz_Tuple headers[] = {{"Content-Type", "application/json"}, {"Accept", "application/json"}};
 /// sbz_Tuple env[] = {{"user_id", "1"}};
-/// sbz_HTTPRequest req = {
-///   "GET",
-///   "http://localhost/rest/projects?select=id,name",
-///   headers, 2,
-///   NULL,
-///   env, 1
-/// };
+/// sbz_HTTPRequest* req = sbz_http_request_new(
+///    "GET",
+///    "http://localhost/rest/projects?select=id,name",
+///    NULL,
+///    headers, 4,
+///    env, 2
+/// );
 /// sbz_Statement* stmt = sbz_statement_new(
 ///   "public",
 ///   "/rest/",
 ///   db_schema,
-///   &req,
+///   req,
 ///   NULL
 /// );
 ///
@@ -472,6 +525,8 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// printf("params_count: %d\n", params_count);
 /// printf("params_types: %s\n", params_types[0]);
 /// sbz_statement_free(stmt);
+/// sbz_http_request_free(req);
+/// sbz_db_schema_free(db_schema);
 /// ```
 #[no_mangle]
 pub unsafe extern "C" fn sbz_statement_new(
@@ -487,13 +542,10 @@ pub unsafe extern "C" fn sbz_statement_new(
     let request = unsafe { &*request };
     let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 or null pointer in schema_name");
     let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 or null pointer in path_prefix");
-    let method_str = try_cstr_to_str!(request.method, "Invalid UTF-8 or null pointer in method");
-    let body_str = if request.body.is_null() {
-        None
-    } else {
-        Some(try_cstr_to_str!(request.body, "Invalid UTF-8 or null pointer in body"))
-    };
-    let uri_str = try_cstr_to_str!(request.uri, "Invalid UTF-8 or null pointer in uri");
+    let method_str = request.method.to_str().unwrap_or_default();
+    let body_str = request.body.as_ref().map(|b| b.to_str().unwrap_or_default());
+    let uri_str = request.uri.to_str().unwrap_or_default();
+
     let parsed_uri = match Url::parse(uri_str) {
         Ok(u) => u,
         Err(e) => {
@@ -509,20 +561,8 @@ pub unsafe extern "C" fn sbz_statement_new(
         .collect();
     let get: Vec<(&str, &str)> = query_pairs.iter().map(|(key, value)| (key.as_ref(), value.as_ref())).collect();
 
-    let headers = match tuples_to_vec(request.headers, request.headers_count as usize) {
-        Ok(v) => HashMap::from_iter(v),
-        Err(e) => {
-            update_last_error(CoreError::InternalError { message: e.to_string() });
-            return ptr::null_mut();
-        }
-    };
-    let env = match tuples_to_vec(request.env, request.env_count as usize) {
-        Ok(v) => HashMap::from_iter(v),
-        Err(e) => {
-            update_last_error(CoreError::InternalError { message: e.to_string() });
-            return ptr::null_mut();
-        }
-    };
+    let headers:HashMap<_,_> = request.headers.iter().map(|(k, v)| (k.to_str().unwrap_or_default(), v.to_str().unwrap_or_default())).collect();
+    let env = request.env.iter().map(|(k, v)| (k.to_str().unwrap_or_default(), v.to_str().unwrap_or_default())).collect();
     let cookies = extract_cookies(headers.get("Cookie").copied());
     let max_rows_opt = if max_rows.is_null() {
         None
@@ -559,7 +599,6 @@ pub unsafe extern "C" fn sbz_statement_new(
             return ptr::null_mut();
         }
     };
-
     let ApiRequest {
         method,
         schema_name,
@@ -796,7 +835,8 @@ pub unsafe extern "C" fn sbz_db_schema_new(
             // no checking for now
         }
         None => {
-            println!("subZero: No license key provided. Running in demo mode.");
+            // println!("subZero: No license key provided. Running in demo mode.");
+            // do not print, java complains
         }
     }
     let mut db_schema_json = try_cstr_to_str!(db_schema_json, "Invalid UTF-8 or null pointer in db_schema_json").to_owned();
@@ -850,6 +890,8 @@ pub unsafe extern "C" fn sbz_db_schema_new(
         }
     }
 }
+
+
 
 /// Write the most recent error message into a caller-provided buffer as a UTF-8
 /// string, returning the number of bytes written.
@@ -909,6 +951,8 @@ pub fn update_last_error<E: StdError + 'static>(err: E) {
         while let Some(parent_err) = source {
             source = parent_err.source();
         }
+        // print to the console
+        eprintln!("Rust Error: {}", err);
     }
 
     LAST_ERROR.with(|prev| {
