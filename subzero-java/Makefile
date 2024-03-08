@@ -1,6 +1,6 @@
 JAVA_HOME=/opt/homebrew/opt/openjdk
-INCLUDE_PATH=-I./ -I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/darwin
-LIBRARY_PATH=-L./ -lsubzero
+INCLUDE_PATH=-I$(JAVA_HOME)/include -I$(JAVA_HOME)/include/darwin -I../target/release/ 
+LIBRARY_PATH=-L../target/release/ -lsubzero
 
 build: swig
 	mvn compile
@@ -23,7 +23,7 @@ swig_clean:
 swig_generate: swig_clean
 	swig -java -package com.subzero.swig \
 		-outdir src/main/java/com/subzero/swig \
-		-I./ subzero.i
+		${INCLUDE_PATH} subzero.i
 swig_compile: swig_generate
 	gcc -c -fpic subzero_wrap.c -o subzero_wrap.o $(INCLUDE_PATH)
 swig_link:
