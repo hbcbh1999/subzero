@@ -52,4 +52,8 @@ public class sbz_DbSchema {
     this(SubzeroJNI.new_sbz_DbSchema(db_type, db_schema_json, license_key), true);
   }
 
+  public boolean isDemo() {
+    return SubzeroJNI.sbz_DbSchema_isDemo(swigCPtr, this);
+  }
+
 }

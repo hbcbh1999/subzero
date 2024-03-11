@@ -48,6 +48,8 @@ START_TEST(test_statement_new){
     const char* db_type = "sqlite";
     sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
 
+    ck_assert_int_eq(sbz_db_schema_is_demo(db_schema), 1);
+
     const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
     const char* env[] = {"role", "admin", "path", "/home/user"};
     sbz_HTTPRequest* req = sbz_http_request_new(

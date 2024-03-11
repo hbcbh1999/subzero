@@ -20,6 +20,10 @@ package:
 swig_clean:
 	rm -rf src/main/java/com/subzero/swig && mkdir -p src/main/java/com/subzero/swig
 
+docs:
+	# Generate javadocs and copy to docs directory
+	mvn javadoc:javadoc && cp -r target/site/apidocs/ docs/
+
 swig_generate: swig_clean
 	swig -java -package com.subzero.swig \
 		-outdir src/main/java/com/subzero/swig \
@@ -33,5 +37,5 @@ swig: swig_compile swig_link
 
 
 
-.PHONY: build test clean package
+.PHONY: build test clean package docs swig_clean swig_generate swig_compile swig_link swig
 

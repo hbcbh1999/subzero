@@ -12,6 +12,7 @@ public class SubzeroJNI {
   public final static native long new_sbz_HTTPRequest(String jarg1, String jarg2, String jarg3, String[] jarg4, int jarg5, String[] jarg6, int jarg7);
   public final static native void delete_sbz_HTTPRequest(long jarg1);
   public final static native long new_sbz_DbSchema(String jarg1, String jarg2, String jarg3);
+  public final static native boolean sbz_DbSchema_isDemo(long jarg1, sbz_DbSchema jarg1_);
   public final static native void delete_sbz_DbSchema(long jarg1);
   public final static native long new_sbz_Statement(String jarg1, String jarg2, long jarg3, sbz_DbSchema jarg3_, long jarg4, sbz_HTTPRequest jarg4_, String jarg5);
   public final static native void delete_sbz_Statement(long jarg1);
@@ -20,6 +21,7 @@ public class SubzeroJNI {
   public final static native String[] sbz_Statement_getParamsTypes(long jarg1, sbz_Statement jarg1_);
   public final static native long new_sbz_TwoStageStatement(String jarg1, String jarg2, long jarg3, sbz_DbSchema jarg3_, long jarg4, sbz_HTTPRequest jarg4_, String jarg5);
   public final static native void delete_sbz_TwoStageStatement(long jarg1);
+  public final static native long sbz_http_request_new_with_clone(String jarg1, String jarg2, String jarg3, String[] jarg4, int jarg5, String[] jarg6, int jarg7);
   public final static native long sbz_http_request_new(String jarg1, String jarg2, String jarg3, String[] jarg4, int jarg5, String[] jarg6, int jarg7);
   public final static native void sbz_http_request_free(long jarg1, sbz_HTTPRequest jarg1_);
   public final static native long sbz_two_stage_statement_new(String jarg1, String jarg2, long jarg3, sbz_DbSchema jarg3_, long jarg4, sbz_HTTPRequest jarg4_, String jarg5);
@@ -35,6 +37,8 @@ public class SubzeroJNI {
   public final static native void sbz_statement_free(long jarg1, sbz_Statement jarg1_);
   public final static native void sbz_db_schema_free(long jarg1, sbz_DbSchema jarg1_);
   public final static native long sbz_db_schema_new(String jarg1, String jarg2, String jarg3);
+  public final static native int sbz_db_schema_is_demo(long jarg1, sbz_DbSchema jarg1_);
   public final static native int sbz_last_error_message(String jarg1, int jarg2);
+  public final static native void sbz_clear_last_error();
   public final static native int sbz_last_error_length();
 }

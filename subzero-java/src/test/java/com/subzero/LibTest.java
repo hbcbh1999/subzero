@@ -52,35 +52,38 @@ public class LibTest extends TestCase {
     public void testStatement() {
         //public sbz_HTTPRequest(String method, String uri, String body, String[] headers, int headers_count, String[] env, int env_count) 
         String[] headers = new String[] {
-            "Accept","application/json"
+                "Accept", "application/json"
         };
         String[] env = new String[] {
-            "user_id","1"
+                "user_id", "1"
         };
         sbz_HTTPRequest req = new sbz_HTTPRequest(
-            "GET",
-            "http://example.com/api/projects?select=id,name",
-            null,
-            headers,
-            headers.length,
-            env,
-            env.length
-        );
+                "GET",
+                "http://example.com/api/projects?select=id,name",
+                null,
+                headers,
+                headers.length,
+                env,
+                env.length);
 
         sbz_DbSchema db_schema = Subzero.sbz_db_schema_new("sqlite", this.schema_json, "license_key");
         if (db_schema == null) {
             System.out.println("Failed to create db_schema");
-            assert(false);
+            assert (false);
         }
+
+        // validate it's in demo mode
+        assertTrue(db_schema.isDemo());
+
         sbz_Statement statement = Subzero.sbz_statement_new("public", "/api/", db_schema, req, null);
         if (statement == null) {
             System.out.println("Failed to create statement");
-            assert(false);
+            assert (false);
         }
 
         String sql = statement.getSql();
         System.out.println("SQL: " + sql.toString());
-        
+
         String[] params = statement.getParams();
         System.out.println("Params: ['" + String.join("','", params) + "']");
         // assert params content
@@ -93,4 +96,24 @@ public class LibTest extends TestCase {
         assertEquals(params_types.length, 1);
         assertEquals(params_types[0], "text");
     }
+    
+    public void testErrorResponses() {
+        try {
+            new sbz_HTTPRequest(
+                null,
+                null,
+                null,
+                    new String[] {},
+                0,
+                    new String[] {},
+                0);
+            
+        }
+        catch (Exception e) {
+            System.out.println("Exception: " + e.getMessage());
+            assertTrue(e.getMessage().contains("method"));
+        }
+    }
+
+
 }

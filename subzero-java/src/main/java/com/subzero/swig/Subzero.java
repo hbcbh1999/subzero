@@ -9,6 +9,11 @@
 package com.subzero.swig;
 
 public class Subzero {
+  public static sbz_HTTPRequest sbz_http_request_new_with_clone(String method, String uri, String body, String[] headers, int headers_count, String[] env, int env_count) {
+    long cPtr = SubzeroJNI.sbz_http_request_new_with_clone(method, uri, body, headers, headers_count, env, env_count);
+    return (cPtr == 0) ? null : new sbz_HTTPRequest(cPtr, false);
+  }
+
   public static sbz_HTTPRequest sbz_http_request_new(String method, String uri, String body, String[] headers, int headers_count, String[] env, int env_count) {
     long cPtr = SubzeroJNI.sbz_http_request_new(method, uri, body, headers, headers_count, env, env_count);
     return (cPtr == 0) ? null : new sbz_HTTPRequest(cPtr, false);
@@ -75,8 +80,16 @@ public class Subzero {
     return (cPtr == 0) ? null : new sbz_DbSchema(cPtr, false);
   }
 
+  public static int sbz_db_schema_is_demo(sbz_DbSchema db_schema) {
+    return SubzeroJNI.sbz_db_schema_is_demo(sbz_DbSchema.getCPtr(db_schema), db_schema);
+  }
+
   public static int sbz_last_error_message(String buffer, int length) {
     return SubzeroJNI.sbz_last_error_message(buffer, length);
+  }
+
+  public static void sbz_clear_last_error() {
+    SubzeroJNI.sbz_clear_last_error();
   }
 
   public static int sbz_last_error_length() {

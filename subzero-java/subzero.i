@@ -56,28 +56,10 @@
     return $jnicall;
 }
 
+//%include "documentation.i"
 
 %{
     #include "subzero.h"
-    #include "jni.h"
-
-    static JavaVM *cached_jvm = 0;
-
-    JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *jvm, void *reserved) {
-        cached_jvm = jvm;
-        return JNI_VERSION_1_2;
-    }
-
-    static JNIEnv * JNU_GetEnv() {
-        if (!cached_jvm) return NULL;
-
-        JNIEnv *env;
-        jint rc = (*cached_jvm)->GetEnv(cached_jvm, (void **)&env, JNI_VERSION_1_2);
-        if (rc == JNI_EDETACHED) return NULL;
-        if (rc == JNI_EVERSION) return NULL;
-        return env;
-    }
-    
 %}
 
 typedef struct sbz_HTTPRequest {} sbz_HTTPRequest;
@@ -85,19 +67,24 @@ typedef struct sbz_DbSchema {} sbz_DbSchema;
 typedef struct sbz_Statement {} sbz_Statement;
 typedef struct sbz_TwoStageStatement {} sbz_TwoStageStatement;
 
-// %immutable sbz_Tuple::key;
-// %immutable sbz_Tuple::value;
+%include "exception.i"
 
-// %immutable sbz_HTTPRequest::method;
-// %immutable sbz_HTTPRequest::uri;
-// %immutable sbz_HTTPRequest::headers;
-// %immutable sbz_HTTPRequest::headers_count;
-// %immutable sbz_HTTPRequest::body;
-// %immutable sbz_HTTPRequest::env;
-// %immutable sbz_HTTPRequest::env_count;
-
+%exception {
+    $action
+    //if (!result) {
+    const int err_len = sbz_last_error_length();
+    if (err_len > 0) { // Check if there's an error
+        char* err_msg = (char*)malloc(err_len);
+        sbz_last_error_message(err_msg, err_len);
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+        sbz_clear_last_error();
+        free(err_msg);
+    }
+    //}
+}
 
 %include "subzero.h"
+
 
 %extend sbz_HTTPRequest {
     sbz_HTTPRequest(
@@ -109,7 +96,7 @@ typedef struct sbz_TwoStageStatement {} sbz_TwoStageStatement;
         const char** env,
         int env_count
     ) {
-        return sbz_http_request_new(method, uri, body, headers, headers_count, env, env_count);
+        return sbz_http_request_new_with_clone(method, uri, body, headers, headers_count, env, env_count);
     }
     ~sbz_HTTPRequest() {
         sbz_http_request_free($self);
@@ -119,6 +106,9 @@ typedef struct sbz_TwoStageStatement {} sbz_TwoStageStatement;
 %extend sbz_DbSchema {
     sbz_DbSchema(const char *db_type, const char *db_schema_json, const char *license_key) {
         return sbz_db_schema_new(db_type, db_schema_json, license_key);
+    }
+    bool isDemo() {
+        return sbz_db_schema_is_demo($self) > 0;
     }
     ~sbz_DbSchema() {
         sbz_db_schema_free($self);

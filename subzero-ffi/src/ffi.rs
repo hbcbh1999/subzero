@@ -1,5 +1,8 @@
 #![allow(non_camel_case_types)]
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
 use std::ffi::{CStr, CString};
 use std::ptr;
 use libc::{c_char, c_int};
@@ -19,7 +22,7 @@ use subzero_core::{
     // permissions::{check_privileges, check_safe_functions, insert_policy_conditions, replace_select_star},
     error::Error as CoreError,
 };
-use crate::{check_null_ptr, try_cstr_to_str, try_cstr_to_cstring};
+use crate::{check_null_ptr, try_cstr_to_str, try_cstr_to_cstring, cstr_to_str_unchecked};
 use crate::utils::{extract_cookies, arr_to_tuple_vec, parameters_to_tuples,
     fmt_first_stage_mutate, fmt_second_stage_select
 };
@@ -34,12 +37,16 @@ use subzero_core::formatter::mysql;
 
 thread_local! {
     static LAST_ERROR: RefCell<Option<Box<dyn StdError>>> = RefCell::new(None);
+    static LAST_ERROR_LENGTH: RefCell<c_int> = RefCell::new(0);
 }
+
+static DISABLED: AtomicBool = AtomicBool::new(false);
 
 /// A structure for holding the information about database entities and permissions (tables, views, etc).
 #[self_referencing]
 pub struct sbz_DbSchema {
     db_type: String,
+    license_key: Option<String>,
     data: String,
     #[covariant]
     #[borrows(data)]
@@ -125,15 +132,27 @@ impl sbz_TwoStageStatement {
 
 /// A structure representing a HTTP request.
 /// This is used to pass the information about the request to the subzero core.
+
 pub struct sbz_HTTPRequest {
-    method: CString,
-    uri: CString,
-    body: Option<CString>,
-    headers: Vec<(CString,CString)>,
-    env: Vec<(CString,CString)>,
+    method: *const c_char,
+    #[allow(dead_code)]
+    method_owned: Option<CString>,
+    uri: *const c_char,
+    #[allow(dead_code)]
+    uri_owned: Option<CString>,
+    body: Option<*const c_char>,
+    #[allow(dead_code)]
+    body_owned: Option<CString>,
+    headers: Vec<(*const c_char,*const c_char)>,
+    #[allow(dead_code)]
+    headers_owned: Option<Vec<(CString,CString)>>,
+    env: Vec<(*const c_char,*const c_char)>,
+    #[allow(dead_code)]
+    env_owned: Option<Vec<(CString,CString)>>,
 }
 
-/// Create a new `sbz_HTTPRequest`
+/// Create a new `sbz_HTTPRequest` and take ownership of the strings.
+/// This is usefull when the caller can not guarantee that the strings will be valid for the lifetime of the `sbz_HTTPRequest`.
 /// # Safety
 /// 
 /// # Parameters
@@ -155,14 +174,14 @@ pub struct sbz_HTTPRequest {
 /// sbz_HTTPRequest* req = sbz_http_request_new(
 ///    "POST",
 ///    "http://localhost/rest/projects?select=id,name",
-///    "[{\"name\":\"project1\"}",
+///    "[{\"name\":\"project1\"}]",
 ///    headers, 4,
 ///    env, 2
 /// );
 /// ```
 /// 
 #[no_mangle]
-pub unsafe extern "C" fn sbz_http_request_new(
+pub unsafe extern "C" fn sbz_http_request_new_with_clone(
     method: *const c_char,
     uri: *const c_char,
     body: *const c_char,
@@ -192,12 +211,112 @@ pub unsafe extern "C" fn sbz_http_request_new(
             return ptr::null_mut();
         }
     };
+    let method_owned = Some(method_str);
+    let uri_owned = Some(uri_str);
+    let body_owned = body_str.map(|s| CString::new(s).unwrap());
+    let headers_owned:Option<Vec<(CString, CString)>> = Some(headers.iter().map(|(k, v)| 
+        unsafe { 
+            (CStr::from_ptr(*k).to_owned(), CStr::from_ptr(*v).to_owned())
+        }
+    ).collect());
+    let env_owned:Option<Vec<(CString, CString)>> = Some(env.iter().map(|(k, v)| 
+        unsafe { 
+            (CStr::from_ptr(*k).to_owned(), CStr::from_ptr(*v).to_owned())
+        }
+    ).collect());
     let request = sbz_HTTPRequest {
-        method: method_str,
-        uri: uri_str,
-        body: body_str.map(|s| CString::new(s).unwrap()),
-        headers: headers.iter().map(|(k, v)| (CString::new(*k).unwrap(), CString::new(*v).unwrap())).collect(),
-        env: env.iter().map(|(k, v)| (CString::new(*k).unwrap(), CString::new(*v).unwrap())).collect(),
+        method: method_owned.as_ref().map(|s| s.as_ptr()).unwrap(),
+        method_owned,
+        uri: uri_owned.as_ref().map(|s| s.as_ptr()).unwrap(),
+        uri_owned,
+        body: body_owned.as_ref().map(|s| s.as_ptr()),
+        body_owned,
+        headers: match &headers_owned {
+            Some(v) => v.iter().map(|(k, v)| (k.as_ptr(), v.as_ptr())).collect(),
+            None => vec![],
+        },
+        headers_owned,
+        env: match &env_owned {
+            Some(v) => v.iter().map(|(k, v)| (k.as_ptr(), v.as_ptr())).collect(),
+            None => vec![],
+        },
+        env_owned,
+    };
+    Box::into_raw(Box::new(request))
+}
+
+
+/// Create a new `sbz_HTTPRequest`
+/// # Safety
+/// 
+/// # Parameters
+/// - `method` - The HTTP method (GET, POST, PUT, DELETE, etc).
+/// - `uri` - The full URI of the request (including the query string, ex: http://example.com/path?query=string).
+/// - `body` - The body of the request (pass NULL if there is no body).
+/// - `headers` - An array of key-value pairs representing the headers of the request, it needs to contain an even number of elements.
+/// - `headers_count` - The number of elements in the `headers` array.
+/// - `env` - An array of key-value pairs representing the environment data that needs to be available to the query. It needs to contain an even number of elements.
+/// - `env_count` - The number of elements in the `env` array.
+/// 
+/// # Returns
+/// A pointer to the newly created `sbz_HTTPRequest` or a null pointer if an error occurred.
+/// 
+/// # Example
+/// ```c
+/// const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
+/// const char* env[] = {"user_id", "1"};
+/// sbz_HTTPRequest* req = sbz_http_request_new(
+///   "POST",
+///   "http://localhost/rest/projects?select=id,name",
+///   "[{\"name\":\"project1\"}]",
+///   headers, 4,
+///   env, 2
+/// );
+/// ```
+/// 
+#[no_mangle]
+pub unsafe extern "C" fn sbz_http_request_new(
+    method: *const c_char,
+    uri: *const c_char,
+    body: *const c_char,
+    headers: *const *const c_char,
+    headers_count: c_int,
+    env: *const *const c_char,
+    env_count: c_int,
+) -> *mut sbz_HTTPRequest {
+    try_cstr_to_str!(method, "Invalid UTF-8 or null pointer in method");
+    try_cstr_to_str!(uri, "Invalid UTF-8 or null pointer in uri");
+    let body_str = if body.is_null() {
+        None
+    } else {
+        Some(try_cstr_to_str!(body, "Invalid UTF-8 or null pointer in body"))
+    };
+    let headers = match arr_to_tuple_vec(headers, headers_count as usize) {
+        Ok(v) => v,
+        Err(e) => {
+            update_last_error(CoreError::InternalError { message: e.to_string() });
+            return ptr::null_mut();
+        }
+    };
+    let env = match arr_to_tuple_vec(env, env_count as usize) {
+        Ok(v) => v,
+        Err(e) => {
+            update_last_error(CoreError::InternalError { message: e.to_string() });
+            return ptr::null_mut();
+        }
+    };
+    
+    let request = sbz_HTTPRequest {
+        method,
+        method_owned: None,
+        uri,
+        uri_owned: None,
+        body: if body_str.is_some() { Some(body)} else { None },
+        body_owned: None,
+        headers,
+        headers_owned: None,
+        env,
+        env_owned: None,
     };
     Box::into_raw(Box::new(request))
 }
@@ -296,15 +415,22 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
     request: *const sbz_HTTPRequest,
     max_rows: *const c_char,
 ) -> *mut sbz_TwoStageStatement {
+    // check if not disabled
+    if DISABLED.load(Ordering::Relaxed) {
+        update_last_error(CoreError::InternalError {
+            message: "Subzero is disabled".to_string(),
+        });
+        return ptr::null_mut();
+    }
     check_null_ptr!(db_schema, "Null pointer passed as the schema");
     let db_schema = unsafe { &*db_schema };
     check_null_ptr!(request, "Null pointer passed as the request");
     let request = unsafe { &*request };
     let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 or null pointer in schema_name");
     let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 or null pointer in path_prefix");
-    let method_str = request.method.to_str().unwrap_or_default();
-    let body_str = request.body.as_ref().map(|b| b.to_str().unwrap_or_default());
-    let uri_str = request.uri.to_str().unwrap_or_default();
+    let method_str = cstr_to_str_unchecked!(request.method);
+    let body_str = request.body.map(|b| cstr_to_str_unchecked!(b));
+    let uri_str = cstr_to_str_unchecked!(request.uri);
     let parsed_uri = match Url::parse(uri_str) {
         Ok(u) => u,
         Err(e) => {
@@ -320,8 +446,8 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
         .collect();
     let get: Vec<(&str, &str)> = query_pairs.iter().map(|(key, value)| (key.as_ref(), value.as_ref())).collect();
 
-    let headers:HashMap<_,_> = request.headers.iter().map(|(k, v)| (k.to_str().unwrap_or_default(), v.to_str().unwrap_or_default())).collect();
-    let env = request.env.iter().map(|(k, v)| (k.to_str().unwrap_or_default(), v.to_str().unwrap_or_default())).collect();
+    let headers:HashMap<_,_> = request.headers.iter().map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v))).collect();
+    let env:HashMap<_,_> = request.env.iter().map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v))).collect();
     let cookies = extract_cookies(headers.get("Cookie").copied());
     let max_rows_opt = if max_rows.is_null() {
         None
@@ -536,15 +662,21 @@ pub unsafe extern "C" fn sbz_statement_new(
     request: *const sbz_HTTPRequest,
     max_rows: *const c_char,
 ) -> *mut sbz_Statement {
+    if DISABLED.load(Ordering::Relaxed) {
+        update_last_error(CoreError::InternalError {
+            message: "Subzero is disabled".to_string(),
+        });
+        return ptr::null_mut();
+    }
     check_null_ptr!(db_schema, "Null pointer passed as the schema");
     let db_schema = unsafe { &*db_schema };
     check_null_ptr!(request, "Null pointer passed as the request");
     let request = unsafe { &*request };
     let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 or null pointer in schema_name");
     let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 or null pointer in path_prefix");
-    let method_str = request.method.to_str().unwrap_or_default();
-    let body_str = request.body.as_ref().map(|b| b.to_str().unwrap_or_default());
-    let uri_str = request.uri.to_str().unwrap_or_default();
+    let method_str = cstr_to_str_unchecked!(request.method);
+    let body_str = request.body.map(|b| cstr_to_str_unchecked!(b));
+    let uri_str = cstr_to_str_unchecked!(request.uri);
 
     let parsed_uri = match Url::parse(uri_str) {
         Ok(u) => u,
@@ -561,8 +693,8 @@ pub unsafe extern "C" fn sbz_statement_new(
         .collect();
     let get: Vec<(&str, &str)> = query_pairs.iter().map(|(key, value)| (key.as_ref(), value.as_ref())).collect();
 
-    let headers:HashMap<_,_> = request.headers.iter().map(|(k, v)| (k.to_str().unwrap_or_default(), v.to_str().unwrap_or_default())).collect();
-    let env = request.env.iter().map(|(k, v)| (k.to_str().unwrap_or_default(), v.to_str().unwrap_or_default())).collect();
+    let headers:HashMap<_,_> = request.headers.iter().map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v))).collect();
+    let env:HashMap<_,_> = request.env.iter().map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v))).collect();
     let cookies = extract_cookies(headers.get("Cookie").copied());
     let max_rows_opt = if max_rows.is_null() {
         None
@@ -824,21 +956,18 @@ pub unsafe extern "C" fn sbz_db_schema_new(
         return ptr::null_mut();
     }
 
-    let license_key_str = if license_key.is_null() {
+    let license_key = if license_key.is_null() {
         None
     } else {
-        Some(try_cstr_to_str!(license_key, "Invalid UTF-8 in license_key"))
+        let k = try_cstr_to_str!(license_key, "Invalid UTF-8 in license_key").to_owned();
+        // no checks for now except for empty string
+        match k.is_empty() {
+            true => Some(k),
+            false => None,
+        }
     };
 
-    match license_key_str {
-        Some(_license_key_str) => {
-            // no checking for now
-        }
-        None => {
-            // println!("subZero: No license key provided. Running in demo mode.");
-            // do not print, java complains
-        }
-    }
+    
     let mut db_schema_json = try_cstr_to_str!(db_schema_json, "Invalid UTF-8 or null pointer in db_schema_json").to_owned();
     //println!("db_schema_json: {}", db_schema_json);
     if db_type_str == "clickhouse" {
@@ -877,7 +1006,14 @@ pub unsafe extern "C" fn sbz_db_schema_new(
         };
     }
 
-    let db_schema = sbz_DbSchema::try_new(db_type_str.to_string(), db_schema_json, |data_ref| {
+    if license_key.is_none() {
+        // start a thread and set the DISABLED flag to true after 15 minutes
+        let _ = thread::spawn(|| {
+            thread::sleep(Duration::from_secs(900));
+            DISABLED.store(true, Ordering::Relaxed);
+        });
+    }
+    let db_schema = sbz_DbSchema::try_new(db_type_str.to_string(), license_key, db_schema_json, |data_ref| {
         let s = data_ref.as_str();
         serde_json::from_str(s)
     });
@@ -891,6 +1027,26 @@ pub unsafe extern "C" fn sbz_db_schema_new(
     }
 }
 
+
+/// Check if subzero is running in demo mode.
+/// # Safety
+/// 
+/// # Parameters
+/// - `db_schema` - A pointer to the `sbz_DbSchema`.
+/// 
+/// # Returns
+/// 1 if subzero is running in demo mode, 0 if it is not, -1 if an error occurred.
+/// 
+#[no_mangle]
+pub unsafe extern "C" fn sbz_db_schema_is_demo(db_schema: *const sbz_DbSchema) -> c_int {
+    check_null_ptr!(db_schema, -1, "Null pointer passed into db_schema_is_demo()");
+    let db_schema = unsafe { &*db_schema };
+    if db_schema.borrow_license_key().is_none() {
+        1
+    } else {
+        0
+    }
+}
 
 
 /// Write the most recent error message into a caller-provided buffer as a UTF-8
@@ -955,8 +1111,24 @@ pub fn update_last_error<E: StdError + 'static>(err: E) {
         eprintln!("Rust Error: {}", err);
     }
 
+    LAST_ERROR_LENGTH.with(|prev| {
+        *prev.borrow_mut() = err.to_string().len() as c_int + 1;
+    });
     LAST_ERROR.with(|prev| {
         *prev.borrow_mut() = Some(Box::new(err));
+    });
+}
+
+/// Clear the most recent error.
+/// # Safety
+/// 
+#[no_mangle]
+pub unsafe extern "C" fn sbz_clear_last_error() {
+    LAST_ERROR.with(|prev| {
+        *prev.borrow_mut() = None;
+    });
+    LAST_ERROR_LENGTH.with(|prev| {
+        *prev.borrow_mut() = 0;
     });
 }
 
@@ -969,8 +1141,9 @@ pub fn take_last_error() -> Option<Box<dyn StdError>> {
 /// including any trailing `null` characters.
 #[no_mangle]
 pub extern "C" fn sbz_last_error_length() -> c_int {
-    LAST_ERROR.with(|prev| match *prev.borrow() {
-        Some(ref err) => err.to_string().len() as c_int + 1,
-        None => 0,
-    })
+    // LAST_ERROR.with(|prev| match *prev.borrow() {
+    //     Some(ref err) => err.to_string().len() as c_int + 1,
+    //     None => 0,
+    // })
+    LAST_ERROR_LENGTH.with(|prev| *prev.borrow())
 }
