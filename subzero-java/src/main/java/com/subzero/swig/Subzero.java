@@ -46,8 +46,13 @@ public class Subzero {
     SubzeroJNI.sbz_two_stage_statement_free(sbz_TwoStageStatement.getCPtr(two_stage_statement), two_stage_statement);
   }
 
-  public static sbz_Statement sbz_statement_new(String schema_name, String path_prefix, sbz_DbSchema db_schema, sbz_HTTPRequest request, String max_rows) {
-    long cPtr = SubzeroJNI.sbz_statement_new(schema_name, path_prefix, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows);
+  public static sbz_Statement sbz_statement_main_new(String schema_name, String path_prefix, sbz_DbSchema db_schema, sbz_HTTPRequest request, String max_rows) {
+    long cPtr = SubzeroJNI.sbz_statement_main_new(schema_name, path_prefix, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows);
+    return (cPtr == 0) ? null : new sbz_Statement(cPtr, false);
+  }
+
+  public static sbz_Statement sbz_statement_env_new(sbz_DbSchema db_schema, sbz_HTTPRequest request) {
+    long cPtr = SubzeroJNI.sbz_statement_env_new(sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request);
     return (cPtr == 0) ? null : new sbz_Statement(cPtr, false);
   }
 

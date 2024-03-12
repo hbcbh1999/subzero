@@ -121,7 +121,20 @@ typedef struct sbz_TwoStageStatement {} sbz_TwoStageStatement;
                   const struct sbz_DbSchema *db_schema,
                   const struct sbz_HTTPRequest *request,
                   const char *max_rows) {
-        return sbz_statement_new(schema_name, path_prefix, db_schema, request, max_rows);
+        return sbz_statement_main_new(schema_name, path_prefix, db_schema, request, max_rows);
+    }
+    static sbz_Statement* mainStatement(
+        const char *schema_name,
+        const char *path_prefix,
+        const struct sbz_DbSchema *db_schema,
+        const struct sbz_HTTPRequest *request,
+        const char *max_rows) {
+        return sbz_statement_main_new(schema_name, path_prefix, db_schema, request, max_rows);
+    }
+    static sbz_Statement* envStatement(
+        const struct sbz_DbSchema *db_schema,
+        const struct sbz_HTTPRequest *request) {
+        return sbz_statement_env_new(db_schema, request);
     }
     ~sbz_Statement() {
         sbz_statement_free($self);

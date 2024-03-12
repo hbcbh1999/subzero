@@ -23,7 +23,10 @@ use subzero_core::{
     error::Error as CoreError,
 };
 use crate::{check_null_ptr, try_cstr_to_str, try_cstr_to_cstring, cstr_to_str_unchecked};
-use crate::utils::{extract_cookies, arr_to_tuple_vec, parameters_to_tuples, fmt_first_stage_mutate, fmt_second_stage_select};
+use crate::utils::{
+    extract_cookies, arr_to_tuple_vec, parameters_to_tuples, fmt_first_stage_mutate, fmt_second_stage_select, fmt_mysql_env_query,
+    fmt_postgresql_env_query,
+};
 #[cfg(feature = "postgresql")]
 use subzero_core::formatter::postgresql;
 #[cfg(feature = "clickhouse")]
@@ -586,7 +589,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
     }
 }
 
-/// Create a new `sbz_Statement`
+/// Create a new `sbz_Statement` for the main query.
 /// # Safety
 ///
 /// # Parameters
@@ -642,7 +645,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// sbz_db_schema_free(db_schema);
 /// ```
 #[no_mangle]
-pub unsafe extern "C" fn sbz_statement_new(
+pub unsafe extern "C" fn sbz_statement_main_new(
     schema_name: *const c_char, path_prefix: *const c_char, db_schema: *const sbz_DbSchema, request: *const sbz_HTTPRequest, max_rows: *const c_char,
 ) -> *mut sbz_Statement {
     if DISABLED.load(Ordering::Relaxed) {
@@ -751,6 +754,61 @@ pub unsafe extern "C" fn sbz_statement_new(
             .map(mysql::generate),
         _ => Err(CoreError::InternalError {
             message: format!("Unsupported db_type: {}", db_type),
+        }),
+    };
+
+    match statement {
+        Ok((sql, params, _)) => {
+            let statement = sbz_Statement::new(
+                &sql,
+                parameters_to_tuples(db_type, params)
+                    .iter()
+                    .map(|(k, v)| (k.as_ref(), v.as_ref()))
+                    .collect(),
+            );
+            Box::into_raw(Box::new(statement))
+        }
+        Err(e) => {
+            update_last_error(e);
+            ptr::null_mut()
+        }
+    }
+}
+
+/// Create a new `sbz_Statement` for the env query
+/// # Safety
+/// # Parameters
+/// - `db_schema` - A pointer to the `sbz_DbSchema`
+/// - `request` - A pointer to the `sbz_HTTPRequest`
+///
+/// # Returns
+/// A pointer to the newly created `sbz_Statement` or a null pointer if an error occurred.
+#[no_mangle]
+pub unsafe extern "C" fn sbz_statement_env_new(db_schema: *const sbz_DbSchema, request: *const sbz_HTTPRequest) -> *mut sbz_Statement {
+    if DISABLED.load(Ordering::Relaxed) {
+        update_last_error(CoreError::InternalError {
+            message: "Subzero is disabled".to_string(),
+        });
+        return ptr::null_mut();
+    }
+    check_null_ptr!(db_schema, "Null pointer passed as the schema");
+    let db_schema = unsafe { &*db_schema };
+    check_null_ptr!(request, "Null pointer passed as the request");
+    let request = unsafe { &*request };
+
+    let env: HashMap<_, _> = request
+        .env
+        .iter()
+        .map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v)))
+        .collect();
+    let db_type = db_schema.borrow_db_type();
+    let statement = match db_type.as_str() {
+        #[cfg(feature = "postgresql")]
+        "postgresql" => Ok(postgresql::generate(fmt_postgresql_env_query(&env))),
+        #[cfg(feature = "mysql")]
+        "mysql" => Ok(mysql::generate(fmt_mysql_env_query(&env))),
+        _ => Err(CoreError::InternalError {
+            message: format!("Unsupported db_type for the env query: {}", db_type),
         }),
     };
 

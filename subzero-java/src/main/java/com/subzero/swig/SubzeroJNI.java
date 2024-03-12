@@ -15,6 +15,8 @@ public class SubzeroJNI {
   public final static native boolean sbz_DbSchema_isDemo(long jarg1, sbz_DbSchema jarg1_);
   public final static native void delete_sbz_DbSchema(long jarg1);
   public final static native long new_sbz_Statement(String jarg1, String jarg2, long jarg3, sbz_DbSchema jarg3_, long jarg4, sbz_HTTPRequest jarg4_, String jarg5);
+  public final static native long sbz_Statement_mainStatement(String jarg1, String jarg2, long jarg3, sbz_DbSchema jarg3_, long jarg4, sbz_HTTPRequest jarg4_, String jarg5);
+  public final static native long sbz_Statement_envStatement(long jarg1, sbz_DbSchema jarg1_, long jarg2, sbz_HTTPRequest jarg2_);
   public final static native void delete_sbz_Statement(long jarg1);
   public final static native String sbz_Statement_getSql(long jarg1, sbz_Statement jarg1_);
   public final static native String[] sbz_Statement_getParams(long jarg1, sbz_Statement jarg1_);
@@ -29,7 +31,8 @@ public class SubzeroJNI {
   public final static native long sbz_two_stage_statement_select(long jarg1, sbz_TwoStageStatement jarg1_);
   public final static native int sbz_two_stage_statement_set_ids(long jarg1, sbz_TwoStageStatement jarg1_, String[] jarg2, int jarg3);
   public final static native void sbz_two_stage_statement_free(long jarg1, sbz_TwoStageStatement jarg1_);
-  public final static native long sbz_statement_new(String jarg1, String jarg2, long jarg3, sbz_DbSchema jarg3_, long jarg4, sbz_HTTPRequest jarg4_, String jarg5);
+  public final static native long sbz_statement_main_new(String jarg1, String jarg2, long jarg3, sbz_DbSchema jarg3_, long jarg4, sbz_HTTPRequest jarg4_, String jarg5);
+  public final static native long sbz_statement_env_new(long jarg1, sbz_DbSchema jarg1_, long jarg2, sbz_HTTPRequest jarg2_);
   public final static native String sbz_statement_sql(long jarg1, sbz_Statement jarg1_);
   public final static native String[] sbz_statement_params(long jarg1, sbz_Statement jarg1_);
   public final static native String[] sbz_statement_params_types(long jarg1, sbz_Statement jarg1_);

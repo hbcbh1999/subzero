@@ -69,7 +69,7 @@ public class Subzero {
             //throw new RuntimeException("test");
             // return;
             sbz_HTTPRequest request = new sbz_HTTPRequest(method, uri, body, headers, headerCount, env, envCount);
-            sbz_Statement statement = new sbz_Statement(schema_name, prefix, this.dbSchema, request, max_rows);
+            sbz_Statement statement = sbz_Statement.mainStatement(schema_name, prefix, this.dbSchema, request, max_rows);
             String sql = statement.getSql().replaceAll("\\$\\d+", "?");
             String[] params = statement.getParams();
             String[] paramsTypes = statement.getParamsTypes();

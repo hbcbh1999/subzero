@@ -403,23 +403,23 @@ pub fn fmt_second_stage_select<'a>(
     Ok((main_statement, pp))
 }
 
-// convert parameters vector to a js array
-// fn parameters_to_js_array(db_type: &str, rust_parameters: Vec<&(dyn ToParam + Sync)>) -> JsArray {
-//     let parameters = JsArray::new_with_length(rust_parameters.len() as u32);
-//     for (i, p) in rust_parameters.into_iter().enumerate() {
-//         let v = match p.to_param() {
-//             LV(ListVal(v, _)) => match db_type {
-//                 "sqlite" | "mysql" => to_js_value(&serde_json::to_string(v).unwrap_or_default()).unwrap_or_default(),
-//                 _ => to_js_value(v).unwrap_or_default(),
-//             },
-//             SV(SingleVal(v, Some(Cow::Borrowed("integer")))) => to_js_value(&(v.parse::<i32>().unwrap_or_default())).unwrap_or_default(),
-//             SV(SingleVal(v, _)) => to_js_value(v).unwrap_or_default(),
-//             PL(Payload(v, _)) => to_js_value(v).unwrap_or_default(),
-//             Str(v) => to_js_value(v).unwrap_or_default(),
-//             StrOwned(v) => to_js_value(v).unwrap_or_default(),
-//         };
-//         parameters.set(i as u32, v);
-//     }
-//     //to_js_value(&parameters).unwrap_or_default()
-//     parameters
-// }
+use subzero_core::formatter::{Snippet, SqlParam};
+use subzero_core::dynamic_statement::{sql, param, JoinIterator};
+pub fn fmt_postgresql_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
+    "select "
+        + if env.is_empty() {
+            sql("null")
+        } else {
+            env.iter()
+                .map(|(k, v)| "set_config(" + param(k as &SqlParam) + ", " + param(v as &SqlParam) + ", true)")
+                .join(",")
+        }
+}
+pub fn fmt_mysql_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
+    "select "
+        + if env.is_empty() {
+            sql("null")
+        } else {
+            env.iter().map(|(k, v)| format!("@{k} := ") + param(v as &SqlParam)).join(",")
+        }
+}

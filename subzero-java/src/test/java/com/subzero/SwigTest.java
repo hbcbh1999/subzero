@@ -41,13 +41,13 @@ public class SwigTest {
         // validate it's in demo mode
         assertTrue(db_schema.isDemo());
 
-        sbz_Statement statement = Subzero.sbz_statement_new("public", "/api/", db_schema, req, null);
+        sbz_Statement statement = Subzero.sbz_statement_main_new("public", "/api/", db_schema, req, null);
         if (statement == null) {
             System.out.println("Failed to create statement");
             assert (false);
         }
 
-        String sql = statement.getSql();
+        //String sql = statement.getSql();
         //System.out.println("SQL: " + sql.toString());
 
         String[] params = statement.getParams();
