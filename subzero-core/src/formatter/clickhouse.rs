@@ -468,7 +468,7 @@ fn fmt_json_operand(o: &JsonOperand) -> String {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk, param_placeholder_format};
+    use crate::dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk,};
     use pretty_assertions::assert_eq;
     use regex::Regex;
     use crate::api::ContentType::*;

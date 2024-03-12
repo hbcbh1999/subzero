@@ -8,7 +8,7 @@ use crate::schema::DbSchema;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
-use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
+use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn,};
 use crate::error::{Result, Error};
 
 use super::{ToParam, Snippet, SqlParam};

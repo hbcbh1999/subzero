@@ -130,14 +130,14 @@ impl<'a, T: ?Sized> Add<String> for SqlSnippet<'a, T> {
         }
     }
 }
-#[allow(unused_macros)]
-macro_rules! param_placeholder_format {
-    () => {
-        "${pos}{data_type:.0}"
-    };
-}
-#[allow(unused_imports)]
-pub(super) use param_placeholder_format;
+// #[allow(unused_macros)]
+// macro_rules! param_placeholder_format {
+//     () => {
+//         "${pos}{data_type:.0}"
+//     };
+// }
+// #[allow(unused_imports)]
+// pub(super) use param_placeholder_format;
 #[allow(unused_macros)]
 macro_rules! generate_fn {
     (@get_data_type $pp:ident false) => { &None as &Option<Cow<str>>};

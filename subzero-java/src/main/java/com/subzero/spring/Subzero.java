@@ -25,7 +25,9 @@ public class Subzero {
     public void handleRequest(String schema_name, String prefix, HttpServletRequest req, HttpServletResponse res) {
         this.handleRequest(schema_name, prefix, req, res, new String[]{}, null);
     }
-    public void handleRequest(String schema_name, String prefix, HttpServletRequest req, HttpServletResponse res, String[] env, String max_rows) {
+
+    public void handleRequest(String schema_name, String prefix, HttpServletRequest req, HttpServletResponse res,
+            String[] env, String max_rows) {
         try {
             String method = req.getMethod();
             String uri; // = req.getRequestURI();
@@ -33,7 +35,7 @@ public class Subzero {
             String queryString = req.getQueryString();
 
             if (queryString == null) {
-                uri =  requestURL.toString();
+                uri = requestURL.toString();
             } else {
                 uri = requestURL.append('?').append(queryString).toString();
             }
@@ -41,17 +43,17 @@ public class Subzero {
             if (method == "POST" || method == "PUT" || method == "PATCH" || method == "DELETE") {
                 body = req.getReader().lines().reduce("", (accumulator, actual) -> accumulator + actual);
             }
-            
+
             Enumeration<String> headerNames = req.getHeaderNames();
             int headerCount = 0;
             while (headerNames.hasMoreElements()) {
                 headerNames.nextElement();
                 headerCount++;
             }
-            
+
             // Adjusting for name-value pairs, so we double the size.
             String[] headers = new String[headerCount * 2];
-            
+
             // Obtain a fresh enumeration to iterate through headers for population.
             headerNames = req.getHeaderNames();
             int i = 0;
@@ -61,15 +63,16 @@ public class Subzero {
                 headers[i++] = req.getHeader(headerName);
             }
             headerCount = headers.length;
-            
+
             int envCount = env.length;
-            
+
             //throw new RuntimeException("test");
             // return;
             sbz_HTTPRequest request = new sbz_HTTPRequest(method, uri, body, headers, headerCount, env, envCount);
             sbz_Statement statement = new sbz_Statement(schema_name, prefix, this.dbSchema, request, max_rows);
-            String sql = statement.getSql().replaceAll("\\$\\d+", "?::integer");
+            String sql = statement.getSql().replaceAll("\\$\\d+", "?");
             String[] params = statement.getParams();
+            String[] paramsTypes = statement.getParamsTypes();
             //String[] paramsTypes = statement.getParamsTypes();
             System.out.println("SQL: " + sql);
             System.out.println("Params: [" + String.join(", ", params) + "]");
@@ -77,25 +80,50 @@ public class Subzero {
             Connection conn = this.dataSource.getConnection();
             PreparedStatement ps = conn.prepareStatement(sql);
             for (int j = 0; j < params.length; j++) {
-                ps.setString(j + 1, params[j]);
+                Object param = stringParamToJavaType(params[j], paramsTypes[j]);
+                ps.setObject(j + 1, param);
             }
             ResultSet rs = ps.executeQuery();
-            // get first row
             rs.next();
-            // get body column value
             String bodyColumn = rs.getString("body");
-            // set response status
             res.setStatus(200);
-            // set headers
             res.setHeader("Content-Type", "application/json");
-            // set body
             res.getWriter().write(bodyColumn);
-            // close connection
             conn.close();
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException(e);
+        }
+    }
+
+    private Object stringParamToJavaType(String param, String type) {
+        switch (type.toLowerCase()) {
+            case "text":
+                return param;
+            case "integer":
+            case "int":
+            case "smallint":
+            case "bigint":
+            case "int2":
+            case "int4":
+            case "int8":
+            case "serial":
+            case "bigserial":
+                return Integer.parseInt(param);
+            case "float":
+            case "double":
+            case "real":
+            case "numeric":
+                return Double.parseDouble(param);
+            case "boolean":
+            case "bool":
+                return Boolean.parseBoolean(param);
+            case "date":
+            case "time":
+            case "timestamp":
+                return Date.valueOf(param);
+            default:
+                return param;
         }
     }
 }

@@ -9,7 +9,7 @@ use crate::schema::DbSchema;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use crate::api::{Condition::*, ContentType::*, Filter::*, Join::*, JsonOperand::*, JsonOperation::*, LogicOperator::*, QueryNode::*, SelectItem::*, *};
-use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn, param_placeholder_format};
+use crate::dynamic_statement::{param, sql, JoinIterator, SqlSnippet, SqlSnippetChunk, generate_fn};
 use crate::error::{Result, Error};
 
 use super::{ToParam, Snippet, SqlParam};
@@ -20,6 +20,11 @@ lazy_static! {
             .iter()
             .copied()
             .collect();
+}
+macro_rules! param_placeholder_format {
+    () => {
+        "${pos}{data_type}"
+    };
 }
 
 generate_fn!();
@@ -57,7 +62,7 @@ fmt_json_operand!();
 
 #[cfg(test)]
 mod tests {
-    use crate::dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk, param_placeholder_format};
+    use crate::dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk, };
     use pretty_assertions::assert_eq;
     use regex::Regex;
     use super::*;
