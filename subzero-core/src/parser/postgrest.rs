@@ -425,17 +425,18 @@ pub fn parse<'a>(
     let is_function_call = matches!(&root_obj.kind, Function { .. });
     let mut return_representation_header = !matches!(
         &preferences,
-        None |
-        Some(Preferences { representation: Some(Representation::None), .. }) |
-        Some(Preferences { representation: Some(Representation::HeadersOnly), .. })
+        None | Some(Preferences {
+            representation: Some(Representation::None),
+            ..
+        }) | Some(Preferences {
+            representation: Some(Representation::HeadersOnly),
+            ..
+        })
     );
 
     // we want to force return representation even the header was not provided
     // but there is a select parameter
-    if has_select_parameter
-        && !return_representation_header
-        && matches!(method, "POST" | "PATCH" | "PUT" | "DELETE")
-    {
+    if has_select_parameter && !return_representation_header && matches!(method, "POST" | "PATCH" | "PUT" | "DELETE") {
         return_representation_header = true;
         // set the preferences to Representation::Full while keeping the other preferences
         preferences = Some(match preferences {
@@ -449,15 +450,11 @@ pub fn parse<'a>(
                 count: None,
             },
         });
-
     }
-    
+
     if !is_function_call {
         match (method, return_representation_header) {
-            ("POST", false) |
-            ("PATCH", false) |
-            ("PUT", false) |
-            ("DELETE", false) => select_items = vec![],
+            ("POST", false) | ("PATCH", false) | ("PUT", false) | ("DELETE", false) => select_items = vec![],
             _ => {}
         }
     };
@@ -584,7 +581,9 @@ pub fn parse<'a>(
             }?;
 
             let payload = match parameter_values {
-                ParamValues::Parsed(args) => Payload(Cow::Owned(serde_json::to_string(&args).context(JsonSerializeSnafu)?), Some(Cow::Borrowed("text"))),
+                ParamValues::Parsed(args) => {
+                    Payload(Cow::Owned(serde_json::to_string(&args).context(JsonSerializeSnafu)?), Some(Cow::Borrowed("text")))
+                }
                 ParamValues::Raw(r) => Payload(Cow::Borrowed(r), Some(Cow::Borrowed("text"))),
             };
             let mut q = Query {

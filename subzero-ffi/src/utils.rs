@@ -55,9 +55,7 @@ macro_rules! cstr_to_str_unchecked {
             ""
         } else {
             // SAFETY: This block is safe if `c_str` is a valid pointer to a null-terminated C string.
-            unsafe { CStr::from_ptr($c_str) }
-                .to_str()
-                .unwrap_or_default()
+            unsafe { CStr::from_ptr($c_str) }.to_str().unwrap_or_default()
         }
     };
 }
@@ -132,8 +130,7 @@ pub fn arr_to_tuple_vec(tuples_ptr: *const *const c_char, length: usize) -> Resu
 use subzero_core::formatter::{ToParam, Param};
 use subzero_core::api::{/*ListVal, */ SingleVal, Payload};
 use std::borrow::Cow;
-pub fn parameters_to_tuples<'a>(db_type: &'a str, parameters: Vec<&'a (dyn ToParam + Sync)>)
-    -> Vec<(Cow<'a, str>, Cow<'a, str>)> {
+pub fn parameters_to_tuples<'a>(db_type: &'a str, parameters: Vec<&'a (dyn ToParam + Sync)>) -> Vec<(Cow<'a, str>, Cow<'a, str>)> {
     parameters
         .iter()
         .map(|p| {
@@ -146,11 +143,11 @@ pub fn parameters_to_tuples<'a>(db_type: &'a str, parameters: Vec<&'a (dyn ToPar
                 Param::LV(ListVal(v, _)) => match db_type {
                     "sqlite" | "mysql" => Cow::Owned(serde_json::to_string(v).unwrap_or_default()),
                     _ => Cow::Owned(format!("'{{{}}}'", v.join(", "))),
-                }
+                },
             };
-            let data_type:Cow<str> = match p.to_data_type(){
+            let data_type: Cow<str> = match p.to_data_type() {
                 Some(dt) => Cow::Borrowed(dt.as_ref()),
-                None => Cow::Borrowed("unknown")
+                None => Cow::Borrowed("unknown"),
             };
             // (
             //     CString::new(param).unwrap().into_raw() as *const c_char,
@@ -161,13 +158,9 @@ pub fn parameters_to_tuples<'a>(db_type: &'a str, parameters: Vec<&'a (dyn ToPar
         .collect::<Vec<_>>()
 }
 
-
 use subzero_core::{
     schema::DbSchema as CoreDbSchema,
-    
-    api::{
-        SelectItem,
-        ListVal, Query, ApiRequest, QueryNode::*, Field, Condition, Filter},
+    api::{SelectItem, ListVal, Query, ApiRequest, QueryNode::*, Field, Condition, Filter},
     error::Error as CoreError,
 };
 // #[cfg(feature = "postgresql")]
@@ -180,12 +173,8 @@ use subzero_core::formatter::sqlite;
 use subzero_core::formatter::mysql;
 
 pub fn fmt_first_stage_mutate<'a>(
-    db_type: &'a str,
-    db_schema: &'a CoreDbSchema,
-    original_request: &'a ApiRequest,
-    env: &'a HashMap<&str, &str>
+    db_type: &'a str, db_schema: &'a CoreDbSchema, original_request: &'a ApiRequest, env: &'a HashMap<&str, &str>,
 ) -> Result<(String, Vec<(String, String)>), CoreError> {
-
     // create a clone of the request
     let mut request = original_request.clone();
     let is_delete = matches!(original_request.query.node, Delete { .. });
@@ -290,11 +279,9 @@ pub fn fmt_first_stage_mutate<'a>(
             let query = mysql::fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, env)?;
             Ok(mysql::generate(query))
         }
-        _ => Err(
-            CoreError::InternalError {
-                message: "unsupported database type for two step mutation".to_string(),
-            }
-        )
+        _ => Err(CoreError::InternalError {
+            message: "unsupported database type for two step mutation".to_string(),
+        }),
     }?;
 
     let pp = parameters_to_tuples(db_type, main_parameters)
@@ -305,12 +292,8 @@ pub fn fmt_first_stage_mutate<'a>(
 }
 
 pub fn fmt_second_stage_select<'a>(
-    db_type: &'a str,
-    db_schema: &'a CoreDbSchema,
-    original_request: &'a ApiRequest,
-    env: &'a HashMap<&str, &str>
+    db_type: &'a str, db_schema: &'a CoreDbSchema, original_request: &'a ApiRequest, env: &'a HashMap<&str, &str>,
 ) -> Result<(String, Vec<(String, String)>), CoreError> {
-    
     let ids: Vec<String> = vec!["_subzero_ids_placeholder_".to_string()];
 
     // create a clone of the request
@@ -375,11 +358,11 @@ pub fn fmt_second_stage_select<'a>(
                 sub_selects: sub_selects.to_vec(),
             };
         }
-        _ => return Err(
-            CoreError::InternalError {
+        _ => {
+            return Err(CoreError::InternalError {
                 message: "unsupported database type for two step mutation".to_string(),
-            }
-        ),
+            })
+        }
     }
 
     let (main_statement, main_parameters, _) = match db_type {
@@ -410,7 +393,8 @@ pub fn fmt_second_stage_select<'a>(
             Ok(mysql::generate(query))
         }
         _ => Err(CoreError::InternalError {
-            message: "unsupported database type for two step mutation".to_string()}),
+            message: "unsupported database type for two step mutation".to_string(),
+        }),
     }?;
     let pp = parameters_to_tuples(db_type, main_parameters)
         .into_iter()

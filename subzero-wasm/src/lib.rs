@@ -10,9 +10,7 @@ use std::collections::HashMap;
 use serde_json::Value as JsonValue;
 
 mod utils;
-use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet,
-    log, console_log,
-};
+use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet, log, console_log};
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema, replace_json_str},

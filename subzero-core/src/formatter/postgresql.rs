@@ -62,7 +62,7 @@ fmt_json_operand!();
 
 #[cfg(test)]
 mod tests {
-    use crate::dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk, };
+    use crate::dynamic_statement::{generate_fn, SqlSnippet, SqlSnippetChunk};
     use pretty_assertions::assert_eq;
     use regex::Regex;
     use super::*;

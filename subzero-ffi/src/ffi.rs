@@ -17,15 +17,13 @@ use url::Url;
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema as CoreDbSchema, replace_json_str},
-    
+
     api::ApiRequest,
     // permissions::{check_privileges, check_safe_functions, insert_policy_conditions, replace_select_star},
     error::Error as CoreError,
 };
 use crate::{check_null_ptr, try_cstr_to_str, try_cstr_to_cstring, cstr_to_str_unchecked};
-use crate::utils::{extract_cookies, arr_to_tuple_vec, parameters_to_tuples,
-    fmt_first_stage_mutate, fmt_second_stage_select
-};
+use crate::utils::{extract_cookies, arr_to_tuple_vec, parameters_to_tuples, fmt_first_stage_mutate, fmt_second_stage_select};
 #[cfg(feature = "postgresql")]
 use subzero_core::formatter::postgresql;
 #[cfg(feature = "clickhouse")]
@@ -85,7 +83,7 @@ impl sbz_Statement {
 /// The mutate statement is used to perform the mutation (insert, update, delete)
 /// and the select statement is used to retrieve the result.
 /// This is used for databases that do not support returning the result of a mutation (sqlite/mysql).
-/// 
+///
 /// Both statements should be executed in the same transaction.
 /// The mutate statement will return two columns: id and _subzero_check__constraint
 /// You need to collect the ids and then call two_stage_statement_set_ids to set the ids for the select statement
@@ -101,7 +99,12 @@ pub struct sbz_TwoStageStatement {
 }
 impl sbz_TwoStageStatement {
     pub fn new(db_type: String, mutate: sbz_Statement, select: sbz_Statement) -> Self {
-        sbz_TwoStageStatement { db_type, mutate, select, ids_set: false }
+        sbz_TwoStageStatement {
+            db_type,
+            mutate,
+            select,
+            ids_set: false,
+        }
     }
     pub fn set_ids(&mut self, ids: Vec<&str>) {
         let select_params = &self.select._params;
@@ -110,7 +113,8 @@ impl sbz_TwoStageStatement {
         let placehoder = CString::new(match self.db_type.as_str() {
             "sqlite" | "mysql" => serde_json::to_string(&placehoder_vec).unwrap_or_default(),
             _ => format!("'{{{}}}'", placehoder_vec.join(", ")),
-        }).unwrap();
+        })
+        .unwrap();
         let mut pos = None;
         for (i, (val, _)) in select_params.iter().enumerate() {
             if val == &placehoder {
@@ -120,7 +124,8 @@ impl sbz_TwoStageStatement {
         let new_val = CString::new(match self.db_type.as_str() {
             "sqlite" | "mysql" => serde_json::to_string(&ids).unwrap_or_default(),
             _ => format!("'{{{}}}'", ids.join(", ")),
-        }).unwrap();
+        })
+        .unwrap();
         if let Some(pos) = pos {
             self.select._params[pos].0 = new_val;
             self.select.params_values[pos] = self.select._params[pos].0.as_ptr();
@@ -128,7 +133,6 @@ impl sbz_TwoStageStatement {
         }
     }
 }
-
 
 /// A structure representing a HTTP request.
 /// This is used to pass the information about the request to the subzero core.
@@ -143,18 +147,18 @@ pub struct sbz_HTTPRequest {
     body: Option<*const c_char>,
     #[allow(dead_code)]
     body_owned: Option<CString>,
-    headers: Vec<(*const c_char,*const c_char)>,
+    headers: Vec<(*const c_char, *const c_char)>,
     #[allow(dead_code)]
-    headers_owned: Option<Vec<(CString,CString)>>,
-    env: Vec<(*const c_char,*const c_char)>,
+    headers_owned: Option<Vec<(CString, CString)>>,
+    env: Vec<(*const c_char, *const c_char)>,
     #[allow(dead_code)]
-    env_owned: Option<Vec<(CString,CString)>>,
+    env_owned: Option<Vec<(CString, CString)>>,
 }
 
 /// Create a new `sbz_HTTPRequest` and take ownership of the strings.
 /// This is usefull when the caller can not guarantee that the strings will be valid for the lifetime of the `sbz_HTTPRequest`.
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `method` - The HTTP method (GET, POST, PUT, DELETE, etc).
 /// - `uri` - The full URI of the request (including the query string, ex: http://example.com/path?query=string).
@@ -163,10 +167,10 @@ pub struct sbz_HTTPRequest {
 /// - `headers_count` - The number of elements in the `headers` array.
 /// - `env` - An array of key-value pairs representing the environment data that needs to be available to the query. It needs to contain an even number of elements.
 /// - `env_count` - The number of elements in the `env` array.
-/// 
+///
 /// # Returns
 /// A pointer to the newly created `sbz_HTTPRequest` or a null pointer if an error occurred.
-/// 
+///
 /// # Example
 /// ```c
 /// const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
@@ -179,15 +183,10 @@ pub struct sbz_HTTPRequest {
 ///    env, 2
 /// );
 /// ```
-/// 
+///
 #[no_mangle]
 pub unsafe extern "C" fn sbz_http_request_new_with_clone(
-    method: *const c_char,
-    uri: *const c_char,
-    body: *const c_char,
-    headers: *const *const c_char,
-    headers_count: c_int,
-    env: *const *const c_char,
+    method: *const c_char, uri: *const c_char, body: *const c_char, headers: *const *const c_char, headers_count: c_int, env: *const *const c_char,
     env_count: c_int,
 ) -> *mut sbz_HTTPRequest {
     let method_str = try_cstr_to_cstring!(method, "Invalid UTF-8 or null pointer in method");
@@ -214,16 +213,17 @@ pub unsafe extern "C" fn sbz_http_request_new_with_clone(
     let method_owned = Some(method_str);
     let uri_owned = Some(uri_str);
     let body_owned = body_str.map(|s| CString::new(s).unwrap());
-    let headers_owned:Option<Vec<(CString, CString)>> = Some(headers.iter().map(|(k, v)| 
-        unsafe { 
-            (CStr::from_ptr(*k).to_owned(), CStr::from_ptr(*v).to_owned())
-        }
-    ).collect());
-    let env_owned:Option<Vec<(CString, CString)>> = Some(env.iter().map(|(k, v)| 
-        unsafe { 
-            (CStr::from_ptr(*k).to_owned(), CStr::from_ptr(*v).to_owned())
-        }
-    ).collect());
+    let headers_owned: Option<Vec<(CString, CString)>> = Some(
+        headers
+            .iter()
+            .map(|(k, v)| unsafe { (CStr::from_ptr(*k).to_owned(), CStr::from_ptr(*v).to_owned()) })
+            .collect(),
+    );
+    let env_owned: Option<Vec<(CString, CString)>> = Some(
+        env.iter()
+            .map(|(k, v)| unsafe { (CStr::from_ptr(*k).to_owned(), CStr::from_ptr(*v).to_owned()) })
+            .collect(),
+    );
     let request = sbz_HTTPRequest {
         method: method_owned.as_ref().map(|s| s.as_ptr()).unwrap(),
         method_owned,
@@ -245,10 +245,9 @@ pub unsafe extern "C" fn sbz_http_request_new_with_clone(
     Box::into_raw(Box::new(request))
 }
 
-
 /// Create a new `sbz_HTTPRequest`
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `method` - The HTTP method (GET, POST, PUT, DELETE, etc).
 /// - `uri` - The full URI of the request (including the query string, ex: http://example.com/path?query=string).
@@ -257,10 +256,10 @@ pub unsafe extern "C" fn sbz_http_request_new_with_clone(
 /// - `headers_count` - The number of elements in the `headers` array.
 /// - `env` - An array of key-value pairs representing the environment data that needs to be available to the query. It needs to contain an even number of elements.
 /// - `env_count` - The number of elements in the `env` array.
-/// 
+///
 /// # Returns
 /// A pointer to the newly created `sbz_HTTPRequest` or a null pointer if an error occurred.
-/// 
+///
 /// # Example
 /// ```c
 /// const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
@@ -273,15 +272,10 @@ pub unsafe extern "C" fn sbz_http_request_new_with_clone(
 ///   env, 2
 /// );
 /// ```
-/// 
+///
 #[no_mangle]
 pub unsafe extern "C" fn sbz_http_request_new(
-    method: *const c_char,
-    uri: *const c_char,
-    body: *const c_char,
-    headers: *const *const c_char,
-    headers_count: c_int,
-    env: *const *const c_char,
+    method: *const c_char, uri: *const c_char, body: *const c_char, headers: *const *const c_char, headers_count: c_int, env: *const *const c_char,
     env_count: c_int,
 ) -> *mut sbz_HTTPRequest {
     try_cstr_to_str!(method, "Invalid UTF-8 or null pointer in method");
@@ -305,13 +299,13 @@ pub unsafe extern "C" fn sbz_http_request_new(
             return ptr::null_mut();
         }
     };
-    
+
     let request = sbz_HTTPRequest {
         method,
         method_owned: None,
         uri,
         uri_owned: None,
-        body: if body_str.is_some() { Some(body)} else { None },
+        body: if body_str.is_some() { Some(body) } else { None },
         body_owned: None,
         headers,
         headers_owned: None,
@@ -323,10 +317,10 @@ pub unsafe extern "C" fn sbz_http_request_new(
 
 /// Free the memory associated with a `sbz_HTTPRequest`.
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `request` - A pointer to the `sbz_HTTPRequest` to free.
-/// 
+///
 #[no_mangle]
 pub unsafe extern "C" fn sbz_http_request_free(request: *mut sbz_HTTPRequest) {
     if !request.is_null() {
@@ -336,20 +330,19 @@ pub unsafe extern "C" fn sbz_http_request_free(request: *mut sbz_HTTPRequest) {
     }
 }
 
-
 /// Create a new `sbz_TwoStageStatement`
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `schema_name` - The name of the database schema for the current request (ex: public).
 /// - `path_prefix` - The prefix of the path for the current request (ex: /api/).
 /// - `db_schema` - A pointer to the `sbz_DbSchema`
 /// - `request` - A pointer to the `sbz_HTTPRequest`
 /// - `max_rows` - The maximum number of rows to return (pass NULL if there is no limit, otherwise pass a string representing the number of rows).
-/// 
+///
 /// # Returns
 /// A pointer to the newly created `sbz_TwoStageStatement` or a null pointer if an error occurred.
-/// 
+///
 /// # Example
 /// ```c
 /// const char* db_type = "sqlite";
@@ -387,7 +380,7 @@ pub unsafe extern "C" fn sbz_http_request_free(request: *mut sbz_HTTPRequest) {
 /// printf("mutate SQL: %s\n", sql);
 /// printf("mutate params: %s\n", params[0]);
 /// printf("mutate params_count: %d\n", params_count);
-/// 
+///
 /// // collect the ids from the result of the mutate statement
 /// // and set them for the select statement
 /// const char *ids[] = {"1", "2", "3"};
@@ -401,7 +394,7 @@ pub unsafe extern "C" fn sbz_http_request_free(request: *mut sbz_HTTPRequest) {
 /// printf("select SQL: %s\n", sql_select);
 /// printf("select params: %s\n", params_select[0]);
 /// printf("select params_count: %d\n", params_count_select);
-/// 
+///
 /// // free the memory associated with the two_stage_statement
 /// sbz_two_stage_statement_free(main_stmt);
 /// sbz_http_request_free(req);
@@ -409,11 +402,7 @@ pub unsafe extern "C" fn sbz_http_request_free(request: *mut sbz_HTTPRequest) {
 /// ```
 #[no_mangle]
 pub unsafe extern "C" fn sbz_two_stage_statement_new(
-    schema_name: *const c_char,
-    path_prefix: *const c_char,
-    db_schema: *const sbz_DbSchema,
-    request: *const sbz_HTTPRequest,
-    max_rows: *const c_char,
+    schema_name: *const c_char, path_prefix: *const c_char, db_schema: *const sbz_DbSchema, request: *const sbz_HTTPRequest, max_rows: *const c_char,
 ) -> *mut sbz_TwoStageStatement {
     // check if not disabled
     if DISABLED.load(Ordering::Relaxed) {
@@ -446,8 +435,16 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
         .collect();
     let get: Vec<(&str, &str)> = query_pairs.iter().map(|(key, value)| (key.as_ref(), value.as_ref())).collect();
 
-    let headers:HashMap<_,_> = request.headers.iter().map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v))).collect();
-    let env:HashMap<_,_> = request.env.iter().map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v))).collect();
+    let headers: HashMap<_, _> = request
+        .headers
+        .iter()
+        .map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v)))
+        .collect();
+    let env: HashMap<_, _> = request
+        .env
+        .iter()
+        .map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v)))
+        .collect();
     let cookies = extract_cookies(headers.get("Cookie").copied());
     let max_rows_opt = if max_rows.is_null() {
         None
@@ -487,27 +484,17 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
 
     let db_type = db_schema.borrow_db_type();
     let mutate = match fmt_first_stage_mutate(db_type, db_schema.borrow_inner(), &api_request, &env) {
-        Ok((sql, params)) => {
-            sbz_Statement::new(
-                &sql, 
-                params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
-            )
-        }
+        Ok((sql, params)) => sbz_Statement::new(&sql, params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()),
         Err(e) => {
             update_last_error(e);
-            return ptr::null_mut()
+            return ptr::null_mut();
         }
     };
     let select = match fmt_second_stage_select(db_type, db_schema.borrow_inner(), &api_request, &env) {
-        Ok((sql, params)) => {
-            sbz_Statement::new(
-                &sql, 
-                params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
-            )
-        }
+        Ok((sql, params)) => sbz_Statement::new(&sql, params.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()),
         Err(e) => {
             update_last_error(e);
-            return ptr::null_mut()
+            return ptr::null_mut();
         }
     };
 
@@ -518,10 +505,10 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
 
 /// Get the mutate statement from a `sbz_TwoStageStatement`.
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `two_stage_statement` - A pointer to the `sbz_TwoStageStatement`.
-/// 
+///
 /// # Returns
 /// A pointer to the `sbz_Statement` representing the mutate statement.
 #[no_mangle]
@@ -533,16 +520,16 @@ pub unsafe extern "C" fn sbz_two_stage_statement_mutate(two_stage_statement: *co
 
 /// Get the select statement from a `sbz_TwoStageStatement`.
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `two_stage_statement` - A pointer to the `sbz_TwoStageStatement`.
-/// 
+///
 /// # Returns
 /// A pointer to the `sbz_Statement` representing the select statement.
-/// 
+///
 /// # Note
 /// The ids of the mutated rows need to be set before calling this function using `sbz_two_stage_statement_set_ids`.
-/// 
+///
 #[no_mangle]
 pub unsafe extern "C" fn sbz_two_stage_statement_select(two_stage_statement: *const sbz_TwoStageStatement) -> *const sbz_Statement {
     check_null_ptr!(two_stage_statement, "Null pointer passed into two_stage_statement_select()");
@@ -558,24 +545,25 @@ pub unsafe extern "C" fn sbz_two_stage_statement_select(two_stage_statement: *co
 
 /// Set the ids for a `sbz_TwoStageStatement`.
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `two_stage_statement` - A pointer to the `sbz_TwoStageStatement`.
 /// - `ids` - An array of strings representing the ids of the mutated rows.
 /// - `ids_count` - The number of ids in the `ids` array.
-/// 
+///
 /// # Returns
 /// 0 if successful, -1 if an error occurred.
-/// 
+///
 /// # Example
 /// ```c
 /// const char *ids[] = {"1", "2", "3"};
 /// const int ids_set = sbz_two_stage_statement_set_ids(stmt, ids, 3);
 /// ```
-/// 
+///
 #[no_mangle]
-pub unsafe extern "C" fn sbz_two_stage_statement_set_ids(two_stage_statement: *mut sbz_TwoStageStatement, ids: *const *const c_char, ids_count: c_int)
--> c_int {
+pub unsafe extern "C" fn sbz_two_stage_statement_set_ids(
+    two_stage_statement: *mut sbz_TwoStageStatement, ids: *const *const c_char, ids_count: c_int,
+) -> c_int {
     check_null_ptr!(two_stage_statement, -1, "Null pointer passed into two_stage_statement_set_ids()");
     let two_stage_statement = unsafe { &mut *two_stage_statement };
     let ids = slice::from_raw_parts(ids, ids_count as usize);
@@ -585,7 +573,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_set_ids(two_stage_statement: *m
 
 /// Free the memory associated with a `sbz_TwoStageStatement`.
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `two_stage_statement` - A pointer to the `sbz_TwoStageStatement` to free.
 ///
@@ -598,20 +586,19 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
     }
 }
 
-
 /// Create a new `sbz_Statement`
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `schema_name` - The name of the database schema for the current request (ex: public).
 /// - `path_prefix` - The prefix of the path for the current request (ex: /api/).
 /// - `db_schema` - A pointer to the `sbz_DbSchema`
 /// - `request` - A pointer to the `sbz_HTTPRequest`
 /// - `max_rows` - The maximum number of rows to return (pass NULL if there is no limit, otherwise pass a string representing the number of rows).
-/// 
+///
 /// # Returns
 /// A pointer to the newly created `sbz_Statement` or a null pointer if an error occurred.
-/// 
+///
 /// # Example
 /// ```c
 /// const char* db_type = "sqlite";
@@ -641,7 +628,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 ///   free(err);
 ///   return;
 /// }
-/// 
+///
 /// const char* sql = sbz_statement_sql(stmt);
 /// const char *const * params = sbz_statement_params(stmt);
 /// const char *const * params_types = sbz_statement_params_types(stmt);
@@ -656,11 +643,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// ```
 #[no_mangle]
 pub unsafe extern "C" fn sbz_statement_new(
-    schema_name: *const c_char,
-    path_prefix: *const c_char,
-    db_schema: *const sbz_DbSchema,
-    request: *const sbz_HTTPRequest,
-    max_rows: *const c_char,
+    schema_name: *const c_char, path_prefix: *const c_char, db_schema: *const sbz_DbSchema, request: *const sbz_HTTPRequest, max_rows: *const c_char,
 ) -> *mut sbz_Statement {
     if DISABLED.load(Ordering::Relaxed) {
         update_last_error(CoreError::InternalError {
@@ -693,8 +676,16 @@ pub unsafe extern "C" fn sbz_statement_new(
         .collect();
     let get: Vec<(&str, &str)> = query_pairs.iter().map(|(key, value)| (key.as_ref(), value.as_ref())).collect();
 
-    let headers:HashMap<_,_> = request.headers.iter().map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v))).collect();
-    let env:HashMap<_,_> = request.env.iter().map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v))).collect();
+    let headers: HashMap<_, _> = request
+        .headers
+        .iter()
+        .map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v)))
+        .collect();
+    let env: HashMap<_, _> = request
+        .env
+        .iter()
+        .map(|(k, v)| (cstr_to_str_unchecked!(*k), cstr_to_str_unchecked!(*v)))
+        .collect();
     let cookies = extract_cookies(headers.get("Cookie").copied());
     let max_rows_opt = if max_rows.is_null() {
         None
@@ -783,10 +774,10 @@ pub unsafe extern "C" fn sbz_statement_new(
 
 /// Get the SQL query from a `sbz_Statement`.
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `statement` - A pointer to the `sbz_Statement`.
-/// 
+///
 /// # Returns
 /// A pointer to the SQL query as a C string.
 ///
@@ -799,13 +790,13 @@ pub unsafe extern "C" fn sbz_statement_sql(statement: *const sbz_Statement) -> *
 
 /// Get the parameter values from a `sbz_Statement`
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `statement` - A pointer to the `sbz_Statement`.
-/// 
+///
 /// # Returns
 /// A pointer to the parameter values as an array of C strings.
-/// 
+///
 #[no_mangle]
 pub unsafe extern "C" fn sbz_statement_params(statement: *const sbz_Statement) -> *const *const c_char {
     check_null_ptr!(statement, "Null pointer passed into statement_params()");
@@ -815,13 +806,13 @@ pub unsafe extern "C" fn sbz_statement_params(statement: *const sbz_Statement) -
 
 /// Get the parameter types from a `sbz_Statement`
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `statement` - A pointer to the `sbz_Statement`.
-/// 
+///
 /// # Returns
 /// A pointer to the parameter types as an array of C strings.
-/// 
+///
 /// # Note
 /// The parameter types are the database types of the parameters (ex: text, integer, integer[], etc).
 #[no_mangle]
@@ -833,13 +824,13 @@ pub unsafe extern "C" fn sbz_statement_params_types(statement: *const sbz_Statem
 
 /// Get the number of parameters from a `sbz_Statement`
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `statement` - A pointer to the `sbz_Statement`.
-/// 
+///
 /// # Returns
 /// The number of parameters as an integer.
-/// 
+///
 #[no_mangle]
 pub unsafe extern "C" fn sbz_statement_params_count(statement: *const sbz_Statement) -> c_int {
     if statement.is_null() {
@@ -854,10 +845,10 @@ pub unsafe extern "C" fn sbz_statement_params_count(statement: *const sbz_Statem
 
 /// Free the memory associated with a `sbz_Statement`.
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `statement` - A pointer to the `sbz_Statement` to free.
-/// 
+///
 
 #[no_mangle]
 pub unsafe extern "C" fn sbz_statement_free(statement: *mut sbz_Statement) {
@@ -871,7 +862,7 @@ pub unsafe extern "C" fn sbz_statement_free(statement: *mut sbz_Statement) {
 #[no_mangle]
 /// Free the memory associated with a `sbz_DbSchema`.
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `schema` - A pointer to the `sbz_DbSchema` to free.
 pub unsafe extern "C" fn sbz_db_schema_free(schema: *mut sbz_DbSchema) {
@@ -894,11 +885,11 @@ pub unsafe extern "C" fn sbz_db_schema_free(schema: *mut sbz_DbSchema) {
 ///   Pass NULL if you are running in demo mode.
 /// # Returns
 /// A pointer to the newly created `DbSchema` or a null pointer if an error occurred.
-/// 
+///
 /// # Note
 /// Constructing the JSON schema is tedious and for this reason we provide "introspection queries" for each database type
 /// that can be used to generate the schema JSON.
-/// 
+///
 /// # Example
 /// ```c
 /// const char* db_type = "sqlite";
@@ -941,11 +932,7 @@ pub unsafe extern "C" fn sbz_db_schema_free(schema: *mut sbz_DbSchema) {
 /// }
 /// ```
 #[no_mangle]
-pub unsafe extern "C" fn sbz_db_schema_new(
-    db_type: *const c_char,
-    db_schema_json: *const c_char,
-    license_key: *const c_char,
-) -> *mut sbz_DbSchema {
+pub unsafe extern "C" fn sbz_db_schema_new(db_type: *const c_char, db_schema_json: *const c_char, license_key: *const c_char) -> *mut sbz_DbSchema {
     // Convert the C strings to Rust &strs
     let db_type_str = try_cstr_to_str!(db_type, "Invalid UTF-8 or null pointer in db_type");
     // check if db_type is supported
@@ -967,7 +954,6 @@ pub unsafe extern "C" fn sbz_db_schema_new(
         }
     };
 
-    
     let mut db_schema_json = try_cstr_to_str!(db_schema_json, "Invalid UTF-8 or null pointer in db_schema_json").to_owned();
     //println!("db_schema_json: {}", db_schema_json);
     if db_type_str == "clickhouse" {
@@ -1027,16 +1013,15 @@ pub unsafe extern "C" fn sbz_db_schema_new(
     }
 }
 
-
 /// Check if subzero is running in demo mode.
 /// # Safety
-/// 
+///
 /// # Parameters
 /// - `db_schema` - A pointer to the `sbz_DbSchema`.
-/// 
+///
 /// # Returns
 /// 1 if subzero is running in demo mode, 0 if it is not, -1 if an error occurred.
-/// 
+///
 #[no_mangle]
 pub unsafe extern "C" fn sbz_db_schema_is_demo(db_schema: *const sbz_DbSchema) -> c_int {
     check_null_ptr!(db_schema, -1, "Null pointer passed into db_schema_is_demo()");
@@ -1047,7 +1032,6 @@ pub unsafe extern "C" fn sbz_db_schema_is_demo(db_schema: *const sbz_DbSchema) -
         0
     }
 }
-
 
 /// Write the most recent error message into a caller-provided buffer as a UTF-8
 /// string, returning the number of bytes written.
@@ -1121,7 +1105,7 @@ pub fn update_last_error<E: StdError + 'static>(err: E) {
 
 /// Clear the most recent error.
 /// # Safety
-/// 
+///
 #[no_mangle]
 pub unsafe extern "C" fn sbz_clear_last_error() {
     LAST_ERROR.with(|prev| {

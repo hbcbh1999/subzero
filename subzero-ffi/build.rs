@@ -4,7 +4,7 @@ use std::env;
 use std::path::PathBuf;
 use cbindgen::Config;
 
-static HEADER:&str = r#"
+static HEADER: &str = r#"
 /**
  * \mainpage SubZero C Shared Library Documentation
  *
@@ -122,7 +122,6 @@ fn main() {
     let package_name = env::var("CARGO_PKG_NAME").unwrap();
     let output_file = target_dir().join(format!("{}.h", package_name.replace("-ffi", ""))).display().to_string();
 
-    
     let mut config = Config::default();
     config.language = cbindgen::Language::C;
     config.documentation_style = cbindgen::DocumentationStyle::Doxy;
