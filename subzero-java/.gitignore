@@ -2,3 +2,4 @@ target
 subzero_wrap.o
 libsubzerojni.*
 docs
+hs_err_pid*

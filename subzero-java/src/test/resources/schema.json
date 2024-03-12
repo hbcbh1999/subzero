@@ -1,0 +1,219 @@
+{
+    "schemas": [
+        {
+            "name": "public",
+            "objects": [
+                {
+                    "kind": "table",
+                    "name": "clients",
+                    "columns": [
+                        {
+                            "name": "id",
+                            "data_type": "INTEGER",
+                            "primary_key": true
+                        },
+                        {
+                            "name": "name",
+                            "data_type": "TEXT",
+                            "primary_key": false
+                        }
+                    ],
+                    "foreign_keys": []
+                },
+                {
+                    "kind": "table",
+                    "name": "projects",
+                    "columns": [
+                        {
+                            "name": "id",
+                            "data_type": "INTEGER",
+                            "primary_key": true
+                        },
+                        {
+                            "name": "name",
+                            "data_type": "TEXT",
+                            "primary_key": false
+                        },
+                        {
+                            "name": "client_id",
+                            "data_type": "INTEGER",
+                            "primary_key": false
+                        }
+                    ],
+                    "foreign_keys": [
+                        {
+                            "name": "projects_client_id_fkey",
+                            "table": [
+                                "_sqlite_public_",
+                                "projects"
+                            ],
+                            "columns": [
+                                "client_id"
+                            ],
+                            "referenced_table": [
+                                "_sqlite_public_",
+                                "clients"
+                            ],
+                            "referenced_columns": [
+                                "id"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "kind": "view",
+                    "name": "projects_view",
+                    "columns": [
+                        {
+                            "name": "id",
+                            "data_type": "INTEGER",
+                            "primary_key": false
+                        },
+                        {
+                            "name": "name",
+                            "data_type": "TEXT",
+                            "primary_key": false
+                        },
+                        {
+                            "name": "client_id",
+                            "data_type": "INTEGER",
+                            "primary_key": false
+                        }
+                    ],
+                    "foreign_keys": []
+                },
+                {
+                    "kind": "table",
+                    "name": "tasks",
+                    "columns": [
+                        {
+                            "name": "id",
+                            "data_type": "INTEGER",
+                            "primary_key": true
+                        },
+                        {
+                            "name": "name",
+                            "data_type": "TEXT",
+                            "primary_key": false
+                        },
+                        {
+                            "name": "project_id",
+                            "data_type": "INTEGER",
+                            "primary_key": false
+                        }
+                    ],
+                    "foreign_keys": [
+                        {
+                            "name": "tasks_project_id_fkey",
+                            "table": [
+                                "_sqlite_public_",
+                                "tasks"
+                            ],
+                            "columns": [
+                                "project_id"
+                            ],
+                            "referenced_table": [
+                                "_sqlite_public_",
+                                "projects"
+                            ],
+                            "referenced_columns": [
+                                "id"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "kind": "table",
+                    "name": "users",
+                    "columns": [
+                        {
+                            "name": "id",
+                            "data_type": "INTEGER",
+                            "primary_key": true
+                        },
+                        {
+                            "name": "name",
+                            "data_type": "TEXT",
+                            "primary_key": false
+                        }
+                    ],
+                    "foreign_keys": []
+                },
+                {
+                    "kind": "table",
+                    "name": "users_tasks",
+                    "columns": [
+                        {
+                            "name": "user_id",
+                            "data_type": "INTEGER",
+                            "primary_key": false
+                        },
+                        {
+                            "name": "task_id",
+                            "data_type": "INTEGER",
+                            "primary_key": true
+                        }
+                    ],
+                    "foreign_keys": [
+                        {
+                            "name": "users_tasks_task_id_fkey",
+                            "table": [
+                                "_sqlite_public_",
+                                "users_tasks"
+                            ],
+                            "columns": [
+                                "task_id"
+                            ],
+                            "referenced_table": [
+                                "_sqlite_public_",
+                                "tasks"
+                            ],
+                            "referenced_columns": [
+                                "id"
+                            ]
+                        },
+                        {
+                            "name": "users_tasks_user_id_fkey",
+                            "table": [
+                                "_sqlite_public_",
+                                "users_tasks"
+                            ],
+                            "columns": [
+                                "user_id"
+                            ],
+                            "referenced_table": [
+                                "_sqlite_public_",
+                                "users"
+                            ],
+                            "referenced_columns": [
+                                "id"
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "kind": "table",
+                    "name": "complex_items",
+                    "columns": [
+                        {
+                            "name": "id",
+                            "data_type": "INTEGER",
+                            "primary_key": false
+                        },
+                        {
+                            "name": "name",
+                            "data_type": "TEXT",
+                            "primary_key": false
+                        },
+                        {
+                            "name": "settings",
+                            "data_type": "TEXT",
+                            "primary_key": false
+                        }
+                    ],
+                    "foreign_keys": []
+                }
+            ]
+        }
+    ]
+}
