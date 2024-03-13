@@ -461,11 +461,7 @@ pub fn fmt_mysql_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a
 //         .join("")
 // }
 
-pub fn fmt_introspection_query<'a>(
-    raw_query: &'a str,
-    custom_relations: Option<&'a str>,
-    custom_permissions: Option<&'a str>,
-) -> String {
+pub fn fmt_introspection_query<'a>(raw_query: &'a str, custom_relations: Option<&'a str>, custom_permissions: Option<&'a str>) -> String {
     // Assuming your string is split by new lines or another character
     raw_query
         .split('\n') // Adjust this based on your actual delimiter
@@ -482,5 +478,3 @@ pub fn fmt_introspection_query<'a>(
         .collect::<Vec<_>>()
         .join("\n") // Re-join using the same delimiter
 }
-
-

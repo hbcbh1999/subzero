@@ -18,7 +18,6 @@ use url::Url;
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema as CoreDbSchema, replace_json_str},
-
     api::{ApiRequest, DEFAULT_SAFE_SELECT_FUNCTIONS},
     permissions::{check_privileges, check_safe_functions, insert_policy_conditions, replace_select_star},
     error::Error as CoreError,
@@ -41,7 +40,7 @@ thread_local! {
     static LAST_ERROR: RefCell<Option<Box<CoreError>>> = RefCell::new(None);
     static LAST_ERROR_LENGTH: RefCell<c_int> = RefCell::new(0);
     static LAST_ERROR_HTTP_STATUS: RefCell<c_int> = RefCell::new(0);
-    
+
 }
 //static NULL_PTR: *const c_char = std::ptr::null();
 static DISABLED: AtomicBool = AtomicBool::new(false);
@@ -407,11 +406,7 @@ pub unsafe extern "C" fn sbz_http_request_free(request: *mut sbz_HTTPRequest) {
 /// ```
 #[no_mangle]
 pub unsafe extern "C" fn sbz_two_stage_statement_new(
-    schema_name: *const c_char,
-    path_prefix: *const c_char,
-    role: *const c_char,
-    db_schema: *const sbz_DbSchema,
-    request: *const sbz_HTTPRequest,
+    schema_name: *const c_char, path_prefix: *const c_char, role: *const c_char, db_schema: *const sbz_DbSchema, request: *const sbz_HTTPRequest,
     max_rows: *const c_char,
 ) -> *mut sbz_TwoStageStatement {
     // check if not disabled
@@ -656,11 +651,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// ```
 #[no_mangle]
 pub unsafe extern "C" fn sbz_statement_main_new(
-    schema_name: *const c_char,
-    path_prefix: *const c_char,
-    role: *const c_char,
-    db_schema: *const sbz_DbSchema,
-    request: *const sbz_HTTPRequest,
+    schema_name: *const c_char, path_prefix: *const c_char, role: *const c_char, db_schema: *const sbz_DbSchema, request: *const sbz_HTTPRequest,
     max_rows: *const c_char,
 ) -> *mut sbz_Statement {
     if DISABLED.load(Ordering::Relaxed) {
@@ -793,10 +784,7 @@ pub unsafe extern "C" fn sbz_statement_main_new(
 }
 
 fn run_privileges_checks<'a>(
-    db_schema: &'a CoreDbSchema,
-    schema_name: &'a str,
-    role: &'a str,
-    api_request: &'a ApiRequest<'a>,
+    db_schema: &'a CoreDbSchema, schema_name: &'a str, role: &'a str, api_request: &'a ApiRequest<'a>,
 ) -> Result<(), CoreError> {
     // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
     // of the "authenticator" role unless the DbSchema has internal privileges set
