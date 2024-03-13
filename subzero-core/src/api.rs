@@ -869,25 +869,6 @@ impl<'a, 'de: 'a> Deserialize<'de> for SingleVal<'a> {
     where
         D: Deserializer<'de>,
     {
-        // // deserialize everything into a &str and then parse it
-        // let v: &'de str = serde::Deserialize::deserialize(deserializer)?;
-        // // trim white spaces
-        // let v = v.trim();
-        // if v.starts_with('{') && v.ends_with('}') {
-        //     let mut iter = v[1..v.len() - 1].split(',');
-        //     let v = match iter.next() {
-        //         Some(vv) => Ok(vv.trim().trim_matches('"')),
-        //         None => Err(serde::de::Error::custom("missing v field")),
-        //     }?;
-        //     let t = match iter.next() {
-        //         Some(tt) => Ok(Some(tt.trim().trim_matches('"'))),
-        //         None => Ok(None),
-        //     }?;
-
-        //     Ok(SingleVal(v, t))
-        // } else {
-        //     Ok(SingleVal(v.trim().trim_matches('"'), None))
-        // }
         let v = JsonValue::deserialize(deserializer)?;
         match v {
             JsonValue::String(s) => Ok(Self(Cow::Owned(s), None)),

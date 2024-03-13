@@ -41,7 +41,7 @@ public class SwigTest {
         // validate it's in demo mode
         assertTrue(db_schema.isDemo());
 
-        sbz_Statement statement = Subzero.sbz_statement_main_new("public", "/api/", db_schema, req, null);
+        sbz_Statement statement = Subzero.sbz_statement_main_new("public", "/api/", "user", db_schema, req, null);
         if (statement == null) {
             System.out.println("Failed to create statement");
             assert (false);

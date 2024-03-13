@@ -1,24 +1,22 @@
-use tokio_postgres::{IsolationLevel};
+use tokio_postgres::IsolationLevel;
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime, Timeouts, Object, PoolError};
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
-use postgres_openssl::{MakeTlsConnector};
+use postgres_openssl::MakeTlsConnector;
 use snafu::ResultExt;
 use tokio::time::{Duration, sleep};
 use crate::config::{VhostConfig, SchemaStructure::*};
 // use log::{debug};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, ContentType::*, SingleVal, ListVal, Payload},
-    error::{
-        Error::{SingularityError, PutMatchingPkError, PermissionDenied},
-    },
-    schema::{DbSchema},
+    error::Error::{SingularityError, PutMatchingPkError, PermissionDenied},
+    schema::DbSchema,
     formatter::{
         Param,
         Param::*,
         postgresql::{fmt_main_query, generate},
         ToParam, Snippet, SqlParam,
     },
-    error::{JsonDeserializeSnafu},
+    error::JsonDeserializeSnafu,
 };
 use subzero_core::dynamic_statement::{param, sql, JoinIterator};
 use postgres_types::{to_sql_checked, Format, IsNull, ToSql, Type};

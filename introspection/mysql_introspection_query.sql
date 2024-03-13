@@ -59,8 +59,8 @@ with used_schemas as (
         foreign_table_name,
         foreign_columns
     from json_table(
-        '{@relations.json#[]}',
-        '$[*]' columns (
+        '[]'--relations.json
+        ,'$[*]' columns (
             constraint_name text path '$.constraint_name',
             table_schema text path '$.table_schema',
             table_name text path '$.table_name',
@@ -89,8 +89,8 @@ with used_schemas as (
         _check as "check",
         _using as "using"
     from json_table(
-        '{@permissions.json#[]}',
-        '$[*]' columns (
+        '[]'--permissions.json
+        ,'$[*]' columns (
             name text path '$.name',
             restrictive boolean path '$.restrictive',
             table_schema text path '$.table_schema',

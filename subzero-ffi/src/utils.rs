@@ -61,6 +61,19 @@ macro_rules! cstr_to_str_unchecked {
 }
 
 #[macro_export]
+macro_rules! unwrap_result_or_return {
+    ($result:expr) => {
+        match $result {
+            Ok(val) => val,
+            Err(err) => {
+                update_last_error(err);
+                return ptr::null_mut();
+            }
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! try_cstr_to_cstring {
     ($c_str:expr, $msg:literal) => {
         if $c_str.is_null() {
@@ -423,3 +436,51 @@ pub fn fmt_mysql_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a
             env.iter().map(|(k, v)| format!("@{k} := ") + param(v as &SqlParam)).join(",")
         }
 }
+
+// use subzero_core::schema::{split_keep, SplitStr};
+// use regex::Regex;
+// pub fn fmt_introspection_query<'a>(raw_query: &'a str, custom_relations: Option<&'a str>, custom_permissions: Option<&'a str>) -> String {
+//     let r = Regex::new(r"'\[\]'--\w+\.json").expect("Invalid regex");
+//     split_keep(&r, raw_query)
+//         .into_iter()
+//         .map(|v| match v {
+//             SplitStr::Str(s) => s.to_owned(),
+//             SplitStr::Sep(s) => {
+//                 let parts = s.split("--").collect::<Vec<&str>>();
+//                 let file_name = parts[1];
+//                 let default_val = "[]";
+//                 let contents = match file_name {
+//                     "relations.json" => custom_relations.unwrap_or(default_val),
+//                     "permissions.json" => custom_permissions.unwrap_or(default_val),
+//                     _ => default_val,
+//                 };
+//                 format!("'{}'", contents)
+//             }
+//         })
+//         .collect::<Vec<_>>()
+//         .join("")
+// }
+
+pub fn fmt_introspection_query<'a>(
+    raw_query: &'a str,
+    custom_relations: Option<&'a str>,
+    custom_permissions: Option<&'a str>,
+) -> String {
+    // Assuming your string is split by new lines or another character
+    raw_query
+        .split('\n') // Adjust this based on your actual delimiter
+        .map(|line| {
+            if line.contains("'[]'--relations.json") {
+                let contents = custom_relations.unwrap_or("[]");
+                return format!("'{}'", contents);
+            } else if line.contains("'[]'--permissions.json") {
+                let contents = custom_permissions.unwrap_or("[]");
+                return format!("'{}'", contents);
+            }
+            line.to_owned()
+        })
+        .collect::<Vec<_>>()
+        .join("\n") // Re-join using the same delimiter
+}
+
+

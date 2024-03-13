@@ -5,11 +5,12 @@ use std::thread;
 use std::time::Duration;
 use std::ffi::{CStr, CString};
 use std::ptr;
+use std::fs;
 use libc::{c_char, c_int};
 // use std::collections::HashMap;
 use serde_json::Value as JsonValue;
 use std::cell::RefCell;
-use std::error::Error as StdError;
+//use std::error::Error as StdError;
 use std::slice;
 use ouroboros::self_referencing;
 use std::collections::HashMap;
@@ -18,14 +19,14 @@ use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema as CoreDbSchema, replace_json_str},
 
-    api::ApiRequest,
-    // permissions::{check_privileges, check_safe_functions, insert_policy_conditions, replace_select_star},
+    api::{ApiRequest, DEFAULT_SAFE_SELECT_FUNCTIONS},
+    permissions::{check_privileges, check_safe_functions, insert_policy_conditions, replace_select_star},
     error::Error as CoreError,
 };
-use crate::{check_null_ptr, try_cstr_to_str, try_cstr_to_cstring, cstr_to_str_unchecked};
+use crate::{check_null_ptr, try_cstr_to_str, try_cstr_to_cstring, cstr_to_str_unchecked, unwrap_result_or_return};
 use crate::utils::{
     extract_cookies, arr_to_tuple_vec, parameters_to_tuples, fmt_first_stage_mutate, fmt_second_stage_select, fmt_mysql_env_query,
-    fmt_postgresql_env_query,
+    fmt_postgresql_env_query, fmt_introspection_query,
 };
 #[cfg(feature = "postgresql")]
 use subzero_core::formatter::postgresql;
@@ -37,10 +38,12 @@ use subzero_core::formatter::sqlite;
 use subzero_core::formatter::mysql;
 
 thread_local! {
-    static LAST_ERROR: RefCell<Option<Box<dyn StdError>>> = RefCell::new(None);
+    static LAST_ERROR: RefCell<Option<Box<CoreError>>> = RefCell::new(None);
     static LAST_ERROR_LENGTH: RefCell<c_int> = RefCell::new(0);
+    static LAST_ERROR_HTTP_STATUS: RefCell<c_int> = RefCell::new(0);
+    
 }
-
+//static NULL_PTR: *const c_char = std::ptr::null();
 static DISABLED: AtomicBool = AtomicBool::new(false);
 
 /// A structure for holding the information about database entities and permissions (tables, views, etc).
@@ -59,8 +62,8 @@ pub struct sbz_DbSchema {
 pub struct sbz_Statement {
     sql: CString,
     _params: Vec<(CString, CString)>,
-    params_values: Vec<*const c_char>,
     params_types: Vec<*const c_char>,
+    params_values: Vec<*const c_char>,
 }
 impl sbz_Statement {
     pub fn new(sql: &str, params: Vec<(&str, &str)>) -> Self {
@@ -70,14 +73,13 @@ impl sbz_Statement {
             .map(|(key, value)| (CString::new(key).unwrap(), CString::new(value).unwrap()))
             .collect();
 
-        let params_values: Vec<*const c_char> = _params.iter().map(|(value, _)| value.as_ptr()).collect();
         let params_types: Vec<*const c_char> = _params.iter().map(|(_, type_)| type_.as_ptr()).collect();
-
+        let params_values: Vec<*const c_char> = _params.iter().map(|(value, _)| value.as_ptr()).collect();
         sbz_Statement {
             sql,
             _params,
-            params_values,
             params_types,
+            params_values,
         }
     }
 }
@@ -405,7 +407,12 @@ pub unsafe extern "C" fn sbz_http_request_free(request: *mut sbz_HTTPRequest) {
 /// ```
 #[no_mangle]
 pub unsafe extern "C" fn sbz_two_stage_statement_new(
-    schema_name: *const c_char, path_prefix: *const c_char, db_schema: *const sbz_DbSchema, request: *const sbz_HTTPRequest, max_rows: *const c_char,
+    schema_name: *const c_char,
+    path_prefix: *const c_char,
+    role: *const c_char,
+    db_schema: *const sbz_DbSchema,
+    request: *const sbz_HTTPRequest,
+    max_rows: *const c_char,
 ) -> *mut sbz_TwoStageStatement {
     // check if not disabled
     if DISABLED.load(Ordering::Relaxed) {
@@ -420,6 +427,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
     let request = unsafe { &*request };
     let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 or null pointer in schema_name");
     let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 or null pointer in path_prefix");
+    let role_str = try_cstr_to_str!(role, "Invalid UTF-8 or null pointer in role");
     let method_str = cstr_to_str_unchecked!(request.method);
     let body_str = request.body.map(|b| cstr_to_str_unchecked!(b));
     let uri_str = cstr_to_str_unchecked!(request.uri);
@@ -477,13 +485,13 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
         max_rows_opt,
     );
 
-    let api_request = match api_request_result {
-        Ok(r) => r,
-        Err(e) => {
-            update_last_error(e);
-            return ptr::null_mut();
-        }
-    };
+    let mut api_request = unwrap_result_or_return!(api_request_result);
+
+    // replace "*" with the list of columns the user has access to
+    // so that he does not encounter permission errors
+    unwrap_result_or_return!(replace_select_star(db_schema.borrow_inner(), schema_name_str, role_str, &mut api_request.query));
+    unwrap_result_or_return!(run_privileges_checks(db_schema.borrow_inner(), schema_name_str, role_str, &api_request));
+    unwrap_result_or_return!(insert_policy_conditions(db_schema.borrow_inner(), schema_name_str, role_str, &mut api_request.query));
 
     let db_type = db_schema.borrow_db_type();
     let mutate = match fmt_first_stage_mutate(db_type, db_schema.borrow_inner(), &api_request, &env) {
@@ -595,6 +603,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// # Parameters
 /// - `schema_name` - The name of the database schema for the current request (ex: public).
 /// - `path_prefix` - The prefix of the path for the current request (ex: /api/).
+/// - `role` - The role of the user making the request
 /// - `db_schema` - A pointer to the `sbz_DbSchema`
 /// - `request` - A pointer to the `sbz_HTTPRequest`
 /// - `max_rows` - The maximum number of rows to return (pass NULL if there is no limit, otherwise pass a string representing the number of rows).
@@ -618,6 +627,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// sbz_Statement* stmt = sbz_statement_new(
 ///   "public",
 ///   "/rest/",
+///   "user",
 ///   db_schema,
 ///   req,
 ///   NULL
@@ -646,7 +656,12 @@ pub unsafe extern "C" fn sbz_two_stage_statement_free(two_stage_statement: *mut 
 /// ```
 #[no_mangle]
 pub unsafe extern "C" fn sbz_statement_main_new(
-    schema_name: *const c_char, path_prefix: *const c_char, db_schema: *const sbz_DbSchema, request: *const sbz_HTTPRequest, max_rows: *const c_char,
+    schema_name: *const c_char,
+    path_prefix: *const c_char,
+    role: *const c_char,
+    db_schema: *const sbz_DbSchema,
+    request: *const sbz_HTTPRequest,
+    max_rows: *const c_char,
 ) -> *mut sbz_Statement {
     if DISABLED.load(Ordering::Relaxed) {
         update_last_error(CoreError::InternalError {
@@ -660,6 +675,7 @@ pub unsafe extern "C" fn sbz_statement_main_new(
     let request = unsafe { &*request };
     let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 or null pointer in schema_name");
     let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 or null pointer in path_prefix");
+    let role_str = try_cstr_to_str!(role, "Invalid UTF-8 or null pointer in role");
     let method_str = cstr_to_str_unchecked!(request.method);
     let body_str = request.body.map(|b| cstr_to_str_unchecked!(b));
     let uri_str = cstr_to_str_unchecked!(request.uri);
@@ -718,13 +734,14 @@ pub unsafe extern "C" fn sbz_statement_main_new(
         max_rows_opt,
     );
 
-    let api_request = match api_request_result {
-        Ok(r) => r,
-        Err(e) => {
-            update_last_error(e);
-            return ptr::null_mut();
-        }
-    };
+    let mut api_request = unwrap_result_or_return!(api_request_result);
+
+    // replace "*" with the list of columns the user has access to
+    // so that he does not encounter permission errors
+    unwrap_result_or_return!(replace_select_star(db_schema.borrow_inner(), schema_name_str, role_str, &mut api_request.query));
+    unwrap_result_or_return!(run_privileges_checks(db_schema.borrow_inner(), schema_name_str, role_str, &api_request));
+    unwrap_result_or_return!(insert_policy_conditions(db_schema.borrow_inner(), schema_name_str, role_str, &mut api_request.query));
+
     let ApiRequest {
         method,
         schema_name,
@@ -773,6 +790,20 @@ pub unsafe extern "C" fn sbz_statement_main_new(
             ptr::null_mut()
         }
     }
+}
+
+fn run_privileges_checks<'a>(
+    db_schema: &'a CoreDbSchema,
+    schema_name: &'a str,
+    role: &'a str,
+    api_request: &'a ApiRequest<'a>,
+) -> Result<(), CoreError> {
+    // in case when the role is not set (but authenticated through jwt) the query will be executed with the privileges
+    // of the "authenticator" role unless the DbSchema has internal privileges set
+    let allowed_select_functions = Vec::from(DEFAULT_SAFE_SELECT_FUNCTIONS);
+    check_privileges(db_schema, schema_name, role, api_request)?;
+    check_safe_functions(api_request, &allowed_select_functions)?;
+    Ok(())
 }
 
 /// Create a new `sbz_Statement` for the env query
@@ -859,7 +890,13 @@ pub unsafe extern "C" fn sbz_statement_sql(statement: *const sbz_Statement) -> *
 pub unsafe extern "C" fn sbz_statement_params(statement: *const sbz_Statement) -> *const *const c_char {
     check_null_ptr!(statement, "Null pointer passed into statement_params()");
     let statement = unsafe { &*statement };
-    statement.params_values.as_ptr()
+    //statement.params_values.as_ptr()
+    if statement.params_values.is_empty() {
+        //&NULL_PTR
+        std::ptr::null()
+    } else {
+        statement.params_values.as_ptr()
+    }
 }
 
 /// Get the parameter types from a `sbz_Statement`
@@ -877,7 +914,13 @@ pub unsafe extern "C" fn sbz_statement_params(statement: *const sbz_Statement) -
 pub unsafe extern "C" fn sbz_statement_params_types(statement: *const sbz_Statement) -> *const *const c_char {
     check_null_ptr!(statement, "Null pointer passed into statement_params_types()");
     let statement = unsafe { &*statement };
-    statement.params_types.as_ptr()
+    //statement.params_types.as_ptr()
+    if statement.params_types.is_empty() {
+        //&NULL_PTR
+        std::ptr::null()
+    } else {
+        statement.params_types.as_ptr()
+    }
 }
 
 /// Get the number of parameters from a `sbz_Statement`
@@ -1065,7 +1108,7 @@ pub unsafe extern "C" fn sbz_db_schema_new(db_type: *const c_char, db_schema_jso
     match db_schema {
         Ok(s) => Box::into_raw(Box::new(s)),
         Err(e) => {
-            update_last_error(e);
+            update_last_error(CoreError::Serde { source: e });
             ptr::null_mut()
         }
     }
@@ -1088,6 +1131,68 @@ pub unsafe extern "C" fn sbz_db_schema_is_demo(db_schema: *const sbz_DbSchema) -
         1
     } else {
         0
+    }
+}
+
+/// Get the introspection query for a database type.
+///
+/// # Safety
+///
+/// # Parameters
+/// - `db_type` - The type of database to get the introspection query for.
+/// - `path` - The path to the directory where the introspection query files are located.
+/// - `custom_relations` - An optional JSON string representing custom relations to include in the introspection query.
+/// - `custom_permissions` - An optional JSON string representing custom permissions to include in the introspection query.
+///
+/// # Returns
+/// A pointer to the introspection query as a C string.
+#[no_mangle]
+pub unsafe extern "C" fn sbz_introspection_query(
+    db_type: *const c_char, path: *const c_char, custom_relations: *const c_char, custom_permissions: *const c_char,
+) -> *mut c_char {
+    let db_type = try_cstr_to_str!(db_type, "Invalid UTF-8 or null pointer in db_type");
+    let path = try_cstr_to_str!(path, "Invalid UTF-8 or null pointer in path");
+    let custom_relations = if custom_relations.is_null() {
+        None
+    } else {
+        Some(try_cstr_to_str!(custom_relations, "Invalid UTF-8 or null pointer in custom_relations"))
+    };
+    let custom_permissions = if custom_permissions.is_null() {
+        None
+    } else {
+        Some(try_cstr_to_str!(custom_permissions, "Invalid UTF-8 or null pointer in custom_permissions"))
+    };
+
+    let file_name = format!("{}/{}_introspection_query.sql", path, db_type);
+    let raw_introspection_query: String = match fs::read_to_string(file_name) {
+        Ok(s) => s,
+        Err(e) => {
+            update_last_error(CoreError::InternalError {
+                message: format!("Unable to read file: {}", e),
+            });
+            return ptr::null_mut();
+        }
+    };
+    let introspection_query = fmt_introspection_query(&raw_introspection_query, custom_relations, custom_permissions);
+    let cstr = CString::new(introspection_query).unwrap();
+
+    cstr.into_raw()
+}
+
+/// Free the memory associated with the introspection query.
+///
+/// # Safety
+///
+/// # Parameters
+/// - `introspection_query` - A pointer to the introspection query to free.
+///
+#[no_mangle]
+pub unsafe extern "C" fn sbz_introspection_query_free(introspection_query: *mut c_char) {
+    if !introspection_query.is_null() {
+        unsafe {
+            let s = CString::from_raw(introspection_query);
+            drop(s);
+        }
     }
 }
 
@@ -1123,7 +1228,7 @@ pub unsafe extern "C" fn sbz_last_error_message(buffer: *mut c_char, length: c_i
         None => return 0,
     };
 
-    let error_message = last_error.to_string();
+    let error_message = last_error.json_body().to_string();
 
     let buffer = slice::from_raw_parts_mut(buffer as *mut u8, length as usize);
 
@@ -1141,20 +1246,23 @@ pub unsafe extern "C" fn sbz_last_error_message(buffer: *mut c_char, length: c_i
 }
 
 /// Update the most recent error, clearing whatever may have been there before.
-pub fn update_last_error<E: StdError + 'static>(err: E) {
-    {
-        // Print a pseudo-backtrace for this error, following back each error's
-        // cause until we reach the root error.
-        let mut source = err.source();
-        while let Some(parent_err) = source {
-            source = parent_err.source();
-        }
-        // print to the console
-        eprintln!("Rust Error: {}", err);
-    }
+pub fn update_last_error(err: CoreError) {
+    // {
+    //     // Print a pseudo-backtrace for this error, following back each error's
+    //     // cause until we reach the root error.
+    //     let mut source = err.source();
+    //     while let Some(parent_err) = source {
+    //         source = parent_err.source();
+    //     }
+    //     // print to the console
+    //     eprintln!("Rust Error: {}", err);
+    // }
 
     LAST_ERROR_LENGTH.with(|prev| {
-        *prev.borrow_mut() = err.to_string().len() as c_int + 1;
+        *prev.borrow_mut() = err.json_body().to_string().len() as c_int + 1;
+    });
+    LAST_ERROR_HTTP_STATUS.with(|prev| {
+        *prev.borrow_mut() = err.status_code() as c_int;
     });
     LAST_ERROR.with(|prev| {
         *prev.borrow_mut() = Some(Box::new(err));
@@ -1172,10 +1280,13 @@ pub unsafe extern "C" fn sbz_clear_last_error() {
     LAST_ERROR_LENGTH.with(|prev| {
         *prev.borrow_mut() = 0;
     });
+    LAST_ERROR_HTTP_STATUS.with(|prev| {
+        *prev.borrow_mut() = 0;
+    });
 }
 
 /// Retrieve the most recent error, clearing it in the process.
-pub fn take_last_error() -> Option<Box<dyn StdError>> {
+pub fn take_last_error() -> Option<Box<CoreError>> {
     LAST_ERROR.with(|prev| prev.borrow_mut().take())
 }
 
@@ -1188,4 +1299,14 @@ pub extern "C" fn sbz_last_error_length() -> c_int {
     //     None => 0,
     // })
     LAST_ERROR_LENGTH.with(|prev| *prev.borrow())
+}
+
+/// Get the HTTP status code of the last error.
+///
+/// # Returns
+/// The HTTP status code of the last error.
+///
+#[no_mangle]
+pub extern "C" fn sbz_last_error_http_status() -> c_int {
+    LAST_ERROR_HTTP_STATUS.with(|prev| *prev.borrow())
 }

@@ -48,12 +48,12 @@ public class sbz_Statement {
     }
   }
 
-  public sbz_Statement(String schema_name, String path_prefix, sbz_DbSchema db_schema, sbz_HTTPRequest request, String max_rows) {
-    this(SubzeroJNI.new_sbz_Statement(schema_name, path_prefix, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows), true);
+  public sbz_Statement(String schema_name, String path_prefix, String role, sbz_DbSchema db_schema, sbz_HTTPRequest request, String max_rows) {
+    this(SubzeroJNI.new_sbz_Statement(schema_name, path_prefix, role, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows), true);
   }
 
-  public static sbz_Statement mainStatement(String schema_name, String path_prefix, sbz_DbSchema db_schema, sbz_HTTPRequest request, String max_rows) {
-    long cPtr = SubzeroJNI.sbz_Statement_mainStatement(schema_name, path_prefix, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows);
+  public static sbz_Statement mainStatement(String schema_name, String path_prefix, String role, sbz_DbSchema db_schema, sbz_HTTPRequest request, String max_rows) {
+    long cPtr = SubzeroJNI.sbz_Statement_mainStatement(schema_name, path_prefix, role, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows);
     return (cPtr == 0) ? null : new sbz_Statement(cPtr, false);
   }
 

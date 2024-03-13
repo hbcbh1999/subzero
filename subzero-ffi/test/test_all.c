@@ -44,7 +44,7 @@ END_TEST
 
 
 
-START_TEST(test_statement_new){
+START_TEST(test_statement_main_new){
     const char* db_type = "sqlite";
     sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
 
@@ -60,9 +60,10 @@ START_TEST(test_statement_new){
         env, 4
     );
 
-    sbz_Statement* main_stmt = sbz_statement_new(
+    sbz_Statement* main_stmt = sbz_statement_main_new(
         "public",
         "/rest/",
+        "admin", // role
         db_schema,
         req,
         NULL
@@ -97,27 +98,92 @@ START_TEST(test_statement_new){
         "  select \"projects\".\"id\", \"projects\".\"name\" from \"projects\", env    where \"projects\".\"id\" = ?     "
     );
     free(subzero_query);
-    
-    // ck_assert_str_eq(sql, 
-    //     "with"
-    //     " env as materialized (select ? as \"role\",? as \"path\"), "
-    //     " _subzero_query as ("
-    //     "  select \"projects\".\"id\", \"projects\".\"name\" from \"projects\", env    where \"projects\".\"id\" = ?   "
-    //     "  ) ,"
-    //     " _subzero_count_query as (select 1) "
-    //     "select"
-    //     " count(_subzero_t.row) AS page_total,"
-    //     " null as total_result_set,"
-    //     " json_group_array(json(_subzero_t.row)) as body, "
-    //     " null as response_headers, "
-    //     " null as response_status  "
-    //     "from (  "
-    //     "   select json_object('id', _subzero_query.\"id\",'name', _subzero_query.\"name\"     ) as row  "
-    //     "   from _subzero_query "
-    //     ") _subzero_t"
-    // );
     sbz_statement_free(main_stmt);
 
+}
+END_TEST
+
+START_TEST(test_statement_env_new){
+    const char* db_type = "postgresql";
+    sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
+
+    ck_assert_int_eq(sbz_db_schema_is_demo(db_schema), 1);
+
+    const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
+    const char* env[] = {"role", "admin", "path", "/home/user"};
+    sbz_HTTPRequest* req = sbz_http_request_new(
+        "GET",
+        "http://localhost/rest/projects?select=id,name&id=eq.1",
+        NULL,
+        headers, 4,
+        env, 4
+    );
+
+    sbz_Statement* main_stmt = sbz_statement_env_new(
+        db_schema,
+        req
+    );
+
+    const int err_len = sbz_last_error_length();
+    if (err_len > 0) {
+        char* err = (char*)malloc(err_len);
+        sbz_last_error_message(err, err_len);
+        printf("Error: %s\n", err);
+        free(err);
+    }
+    ck_assert_ptr_ne(main_stmt, NULL);
+    const char* sql = sbz_statement_sql(main_stmt);
+    const char *const * params = sbz_statement_params(main_stmt);
+    const char *const * params_types = sbz_statement_params_types(main_stmt);
+    int params_count = sbz_statement_params_count(main_stmt);
+    // printf("SQL: %s\n", sql);
+    // printf("params[0]: %s\n", params[0]);
+    // printf("params[1]: %s\n", params[1]);
+    // printf("params[2]: %s\n", params[2]);
+    // printf("params[3]: %s\n", params[3]);
+    ck_assert_int_eq(params_count, 4);
+    // don't check exact values because the order of the env vars is not guaranteed
+    // ck_assert_str_eq(params[0], "role");
+    // ck_assert_str_eq(params[1], "admin");
+    // ck_assert_str_eq(params[2], "path");
+    // ck_assert_str_eq(params[3], "/home/user");
+    ck_assert_str_eq(params_types[0], "text");
+    ck_assert_str_eq(params_types[1], "text");
+    ck_assert_str_eq(params_types[2], "text");
+    ck_assert_str_eq(params_types[3], "text");
+    ck_assert_str_eq(sql, "select set_config($1, $2, true),set_config($3, $4, true)");
+    sbz_statement_free(main_stmt);
+
+    //check when env is empty
+    const char* env2[] = {};
+    sbz_HTTPRequest* req2 = sbz_http_request_new(
+        "GET",
+        "http://localhost/rest/projects?select=id,name&id=eq.1",
+        NULL,
+        headers, 4,
+        env2, 0
+    );
+
+    sbz_Statement* main_stmt2 = sbz_statement_env_new(
+        db_schema,
+        req2
+    );
+
+    const int err_len2 = sbz_last_error_length();
+    if (err_len2 > 0) {
+        char* err = (char*)malloc(err_len2);
+        sbz_last_error_message(err, err_len2);
+        printf("Error: %s\n", err);
+        free(err);
+    }
+    ck_assert_ptr_ne(main_stmt2, NULL);
+    const char* sql2 = sbz_statement_sql(main_stmt2);
+    const char *const * params2 = sbz_statement_params(main_stmt2);
+    const char *const * params_types2 = sbz_statement_params_types(main_stmt2);
+    int params_count2 = sbz_statement_params_count(main_stmt2);
+    ck_assert_int_eq(params_count2, 0);
+    ck_assert_str_eq(sql2, "select null");
+    sbz_statement_free(main_stmt2);
 }
 END_TEST
 
@@ -143,6 +209,7 @@ START_TEST(test_two_stage_statement_new){
     sbz_TwoStageStatement* main_stmt = sbz_two_stage_statement_new(
         "public",
         "/rest/",
+        "admin", // role
         db_schema,
         req,
         NULL
@@ -225,7 +292,8 @@ Suite* subzero_suite(void)
     Suite *s = suite_create("subZero FFI Test Suite");
     TCase *tc_core = tcase_create("Core");
     tcase_add_test(tc_core, test_db_schema_new);
-    tcase_add_test(tc_core, test_statement_new);
+    tcase_add_test(tc_core, test_statement_main_new);
+    tcase_add_test(tc_core, test_statement_env_new);
     tcase_add_test(tc_core, test_two_stage_statement_new);
     suite_add_tcase(s, tc_core);
     return s;

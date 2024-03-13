@@ -386,7 +386,6 @@ columns as (
       and a.attname not in ('tableoid','cmax','xmax','cmin','xmin','ctid')
       and not a.attisdropped
       and c.relkind in ('r', 'v', 'f', 'm', 'p')
-      --and (nc.nspname = any ($1::name[]) or pks is not null)
       and nc.nspname = any ($1::name[])
       and not pg_is_other_temp_schema(c.relnamespace)
 ),
@@ -500,7 +499,10 @@ custom_relations as (
     foreign_table_name,
     0 as foreign_table_oid,
     foreign_columns   
-  from json_to_recordset('{@relations.json#[]}'::json)
+  from json_to_recordset(
+    '[]'--relations.json
+    ::json
+  )
   as x(
     constraint_name text,
     table_schema text,
@@ -536,7 +538,10 @@ custom_permissions as (
       policy_for,
       "check",
       "using"
-    from json_to_recordset('{@permissions.json#[]}'::json)
+    from json_to_recordset(
+      '[]'--permissions.json
+      ::json
+    )
     as x(
       name text,
       restrictive boolean,
@@ -870,7 +875,6 @@ json_schema as (
                             where 
                             p.table_schema= t.table_schema
                             and p.table_name= t.table_name
-                            --and p.table_schema = any($1)
                         ) as permissions), '[]')
                     ) as v
                     from tables t
@@ -915,7 +919,6 @@ json_schema as (
                             where 
                             p.table_schema= f.function_schema
                             and p.table_name= f.function_name
-                            --and p.table_schema = any($1)
                         ) as permissions), '[]')
                     ) as v
                     from functions f

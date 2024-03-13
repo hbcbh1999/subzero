@@ -255,11 +255,11 @@ SWIGINTERN bool sbz_DbSchema_isDemo(struct sbz_DbSchema *self){
 SWIGINTERN void delete_sbz_DbSchema(struct sbz_DbSchema *self){
         sbz_db_schema_free(self);
     }
-SWIGINTERN struct sbz_Statement *new_sbz_Statement(char const *schema_name,char const *path_prefix,struct sbz_DbSchema const *db_schema,struct sbz_HTTPRequest const *request,char const *max_rows){
-        return sbz_statement_main_new(schema_name, path_prefix, db_schema, request, max_rows);
+SWIGINTERN struct sbz_Statement *new_sbz_Statement(char const *schema_name,char const *path_prefix,char const *role,struct sbz_DbSchema const *db_schema,struct sbz_HTTPRequest const *request,char const *max_rows){
+        return sbz_statement_main_new(schema_name, path_prefix, role, db_schema, request, max_rows);
     }
-SWIGINTERN sbz_Statement *sbz_Statement_mainStatement(char const *schema_name,char const *path_prefix,struct sbz_DbSchema const *db_schema,struct sbz_HTTPRequest const *request,char const *max_rows){
-        return sbz_statement_main_new(schema_name, path_prefix, db_schema, request, max_rows);
+SWIGINTERN sbz_Statement *sbz_Statement_mainStatement(char const *schema_name,char const *path_prefix,char const *role,struct sbz_DbSchema const *db_schema,struct sbz_HTTPRequest const *request,char const *max_rows){
+        return sbz_statement_main_new(schema_name, path_prefix, role, db_schema, request, max_rows);
     }
 SWIGINTERN sbz_Statement *sbz_Statement_envStatement(struct sbz_DbSchema const *db_schema,struct sbz_HTTPRequest const *request){
         return sbz_statement_env_new(db_schema, request);
@@ -271,13 +271,28 @@ SWIGINTERN char *sbz_Statement_getSql(struct sbz_Statement *self){
         return (char *)sbz_statement_sql(self);
     }
 SWIGINTERN char **sbz_Statement_getParams(struct sbz_Statement *self){
-        return (char **)sbz_statement_params(self);
+        int count = sbz_statement_params_count(self);
+        const char *const *params = sbz_statement_params(self);
+        char **result = (char **)malloc((count+1)*sizeof(char *));
+        for (int i = 0; i < count; i++) {
+            result[i] = strdup(params[i]);
+        }
+        result[count] = 0;
+        return result;
     }
 SWIGINTERN char **sbz_Statement_getParamsTypes(struct sbz_Statement *self){
-        return (char **)sbz_statement_params_types(self);
+        //return (char **)sbz_statement_params_types(self);
+        int count = sbz_statement_params_count(self);
+        const char *const *params = sbz_statement_params_types(self);
+        char **result = (char **)malloc((count+1)*sizeof(char *));
+        for (int i = 0; i < count; i++) {
+            result[i] = strdup(params[i]);
+        }
+        result[count] = 0;
+        return result;
     }
-SWIGINTERN struct sbz_TwoStageStatement *new_sbz_TwoStageStatement(char const *schema_name,char const *path_prefix,struct sbz_DbSchema const *db_schema,struct sbz_HTTPRequest const *request,char const *max_rows){
-        return sbz_two_stage_statement_new(schema_name, path_prefix, db_schema, request, max_rows);
+SWIGINTERN struct sbz_TwoStageStatement *new_sbz_TwoStageStatement(char const *schema_name,char const *path_prefix,char const *role,struct sbz_DbSchema const *db_schema,struct sbz_HTTPRequest const *request,char const *max_rows){
+        return sbz_two_stage_statement_new(schema_name, path_prefix, role, db_schema, request, max_rows);
     }
 SWIGINTERN void delete_sbz_TwoStageStatement(struct sbz_TwoStageStatement *self){
         sbz_two_stage_statement_free(self);
@@ -394,6 +409,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1HTTPRequest(
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -434,6 +450,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1HTTPReques
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return ;
     }
     //}
   }
@@ -475,6 +492,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1DbSchema(JNI
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -506,6 +524,7 @@ SWIGEXPORT jboolean JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1DbSchema_1isDe
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -531,25 +550,27 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1DbSchema(J
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return ;
     }
     //}
   }
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1Statement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jlong jarg3, jobject jarg3_, jlong jarg4, jobject jarg4_, jstring jarg5) {
+SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1Statement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
-  struct sbz_DbSchema *arg3 = (struct sbz_DbSchema *) 0 ;
-  struct sbz_HTTPRequest *arg4 = (struct sbz_HTTPRequest *) 0 ;
-  char *arg5 = (char *) 0 ;
+  char *arg3 = (char *) 0 ;
+  struct sbz_DbSchema *arg4 = (struct sbz_DbSchema *) 0 ;
+  struct sbz_HTTPRequest *arg5 = (struct sbz_HTTPRequest *) 0 ;
+  char *arg6 = (char *) 0 ;
   struct sbz_Statement *result = 0 ;
   
   (void)jenv;
   (void)jcls;
-  (void)jarg3_;
   (void)jarg4_;
+  (void)jarg5_;
   arg1 = 0;
   if (jarg1) {
     arg1 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg1, 0);
@@ -560,15 +581,20 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1Statement(JN
     arg2 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg2, 0);
     if (!arg2) return 0;
   }
-  arg3 = *(struct sbz_DbSchema **)&jarg3; 
-  arg4 = *(struct sbz_HTTPRequest **)&jarg4; 
-  arg5 = 0;
-  if (jarg5) {
-    arg5 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg5, 0);
-    if (!arg5) return 0;
+  arg3 = 0;
+  if (jarg3) {
+    arg3 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg3, 0);
+    if (!arg3) return 0;
+  }
+  arg4 = *(struct sbz_DbSchema **)&jarg4; 
+  arg5 = *(struct sbz_HTTPRequest **)&jarg5; 
+  arg6 = 0;
+  if (jarg6) {
+    arg6 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg6, 0);
+    if (!arg6) return 0;
   }
   {
-    result = (struct sbz_Statement *)new_sbz_Statement((char const *)arg1,(char const *)arg2,(struct sbz_DbSchema const *)arg3,(struct sbz_HTTPRequest const *)arg4,(char const *)arg5);
+    result = (struct sbz_Statement *)new_sbz_Statement((char const *)arg1,(char const *)arg2,(char const *)arg3,(struct sbz_DbSchema const *)arg4,(struct sbz_HTTPRequest const *)arg5,(char const *)arg6);
     //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
@@ -578,30 +604,33 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1Statement(JN
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
   *(struct sbz_Statement **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
   if (arg2) (*jenv)->ReleaseStringUTFChars(jenv, jarg2, (const char *)arg2);
-  if (arg5) (*jenv)->ReleaseStringUTFChars(jenv, jarg5, (const char *)arg5);
+  if (arg3) (*jenv)->ReleaseStringUTFChars(jenv, jarg3, (const char *)arg3);
+  if (arg6) (*jenv)->ReleaseStringUTFChars(jenv, jarg6, (const char *)arg6);
   return jresult;
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1mainStatement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jlong jarg3, jobject jarg3_, jlong jarg4, jobject jarg4_, jstring jarg5) {
+SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1mainStatement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
-  struct sbz_DbSchema *arg3 = (struct sbz_DbSchema *) 0 ;
-  struct sbz_HTTPRequest *arg4 = (struct sbz_HTTPRequest *) 0 ;
-  char *arg5 = (char *) 0 ;
+  char *arg3 = (char *) 0 ;
+  struct sbz_DbSchema *arg4 = (struct sbz_DbSchema *) 0 ;
+  struct sbz_HTTPRequest *arg5 = (struct sbz_HTTPRequest *) 0 ;
+  char *arg6 = (char *) 0 ;
   sbz_Statement *result = 0 ;
   
   (void)jenv;
   (void)jcls;
-  (void)jarg3_;
   (void)jarg4_;
+  (void)jarg5_;
   arg1 = 0;
   if (jarg1) {
     arg1 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg1, 0);
@@ -612,15 +641,20 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1mainSt
     arg2 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg2, 0);
     if (!arg2) return 0;
   }
-  arg3 = *(struct sbz_DbSchema **)&jarg3; 
-  arg4 = *(struct sbz_HTTPRequest **)&jarg4; 
-  arg5 = 0;
-  if (jarg5) {
-    arg5 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg5, 0);
-    if (!arg5) return 0;
+  arg3 = 0;
+  if (jarg3) {
+    arg3 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg3, 0);
+    if (!arg3) return 0;
+  }
+  arg4 = *(struct sbz_DbSchema **)&jarg4; 
+  arg5 = *(struct sbz_HTTPRequest **)&jarg5; 
+  arg6 = 0;
+  if (jarg6) {
+    arg6 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg6, 0);
+    if (!arg6) return 0;
   }
   {
-    result = (sbz_Statement *)sbz_Statement_mainStatement((char const *)arg1,(char const *)arg2,(struct sbz_DbSchema const *)arg3,(struct sbz_HTTPRequest const *)arg4,(char const *)arg5);
+    result = (sbz_Statement *)sbz_Statement_mainStatement((char const *)arg1,(char const *)arg2,(char const *)arg3,(struct sbz_DbSchema const *)arg4,(struct sbz_HTTPRequest const *)arg5,(char const *)arg6);
     //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
@@ -630,13 +664,15 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1mainSt
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
   *(sbz_Statement **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
   if (arg2) (*jenv)->ReleaseStringUTFChars(jenv, jarg2, (const char *)arg2);
-  if (arg5) (*jenv)->ReleaseStringUTFChars(jenv, jarg5, (const char *)arg5);
+  if (arg3) (*jenv)->ReleaseStringUTFChars(jenv, jarg3, (const char *)arg3);
+  if (arg6) (*jenv)->ReleaseStringUTFChars(jenv, jarg6, (const char *)arg6);
   return jresult;
 }
 
@@ -664,6 +700,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1envSta
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -689,6 +726,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1Statement(
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return ;
     }
     //}
   }
@@ -715,6 +753,7 @@ SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1getS
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -743,6 +782,7 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -752,7 +792,12 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_
     jstring temp_string;
     const jclass clazz = (*jenv)->FindClass(jenv, "java/lang/String");
     
-    while (result[len]) len++;    
+    if (result == NULL) {
+      len = 0;
+    }
+    else {
+      while (result[len]) len++;
+    }
     jresult = (*jenv)->NewObjectArray(jenv, len, clazz, NULL);
     /* exception checking omitted */
     
@@ -786,6 +831,7 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -795,7 +841,12 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_
     jstring temp_string;
     const jclass clazz = (*jenv)->FindClass(jenv, "java/lang/String");
     
-    while (result[len]) len++;    
+    if (result == NULL) {
+      len = 0;
+    }
+    else {
+      while (result[len]) len++;
+    }
     jresult = (*jenv)->NewObjectArray(jenv, len, clazz, NULL);
     /* exception checking omitted */
     
@@ -809,19 +860,20 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1TwoStageStatement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jlong jarg3, jobject jarg3_, jlong jarg4, jobject jarg4_, jstring jarg5) {
+SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1TwoStageStatement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
-  struct sbz_DbSchema *arg3 = (struct sbz_DbSchema *) 0 ;
-  struct sbz_HTTPRequest *arg4 = (struct sbz_HTTPRequest *) 0 ;
-  char *arg5 = (char *) 0 ;
+  char *arg3 = (char *) 0 ;
+  struct sbz_DbSchema *arg4 = (struct sbz_DbSchema *) 0 ;
+  struct sbz_HTTPRequest *arg5 = (struct sbz_HTTPRequest *) 0 ;
+  char *arg6 = (char *) 0 ;
   struct sbz_TwoStageStatement *result = 0 ;
   
   (void)jenv;
   (void)jcls;
-  (void)jarg3_;
   (void)jarg4_;
+  (void)jarg5_;
   arg1 = 0;
   if (jarg1) {
     arg1 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg1, 0);
@@ -832,15 +884,20 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1TwoStageStat
     arg2 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg2, 0);
     if (!arg2) return 0;
   }
-  arg3 = *(struct sbz_DbSchema **)&jarg3; 
-  arg4 = *(struct sbz_HTTPRequest **)&jarg4; 
-  arg5 = 0;
-  if (jarg5) {
-    arg5 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg5, 0);
-    if (!arg5) return 0;
+  arg3 = 0;
+  if (jarg3) {
+    arg3 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg3, 0);
+    if (!arg3) return 0;
+  }
+  arg4 = *(struct sbz_DbSchema **)&jarg4; 
+  arg5 = *(struct sbz_HTTPRequest **)&jarg5; 
+  arg6 = 0;
+  if (jarg6) {
+    arg6 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg6, 0);
+    if (!arg6) return 0;
   }
   {
-    result = (struct sbz_TwoStageStatement *)new_sbz_TwoStageStatement((char const *)arg1,(char const *)arg2,(struct sbz_DbSchema const *)arg3,(struct sbz_HTTPRequest const *)arg4,(char const *)arg5);
+    result = (struct sbz_TwoStageStatement *)new_sbz_TwoStageStatement((char const *)arg1,(char const *)arg2,(char const *)arg3,(struct sbz_DbSchema const *)arg4,(struct sbz_HTTPRequest const *)arg5,(char const *)arg6);
     //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
@@ -850,13 +907,15 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1TwoStageStat
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
   *(struct sbz_TwoStageStatement **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
   if (arg2) (*jenv)->ReleaseStringUTFChars(jenv, jarg2, (const char *)arg2);
-  if (arg5) (*jenv)->ReleaseStringUTFChars(jenv, jarg5, (const char *)arg5);
+  if (arg3) (*jenv)->ReleaseStringUTFChars(jenv, jarg3, (const char *)arg3);
+  if (arg6) (*jenv)->ReleaseStringUTFChars(jenv, jarg6, (const char *)arg6);
   return jresult;
 }
 
@@ -878,6 +937,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1TwoStageSt
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return ;
     }
     //}
   }
@@ -957,6 +1017,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1ne
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1053,6 +1114,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1ne
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1094,25 +1156,27 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1fre
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return ;
     }
     //}
   }
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jlong jarg3, jobject jarg3_, jlong jarg4, jobject jarg4_, jstring jarg5) {
+SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
-  struct sbz_DbSchema *arg3 = (struct sbz_DbSchema *) 0 ;
-  struct sbz_HTTPRequest *arg4 = (struct sbz_HTTPRequest *) 0 ;
-  char *arg5 = (char *) 0 ;
+  char *arg3 = (char *) 0 ;
+  struct sbz_DbSchema *arg4 = (struct sbz_DbSchema *) 0 ;
+  struct sbz_HTTPRequest *arg5 = (struct sbz_HTTPRequest *) 0 ;
+  char *arg6 = (char *) 0 ;
   struct sbz_TwoStageStatement *result = 0 ;
   
   (void)jenv;
   (void)jcls;
-  (void)jarg3_;
   (void)jarg4_;
+  (void)jarg5_;
   arg1 = 0;
   if (jarg1) {
     arg1 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg1, 0);
@@ -1123,15 +1187,20 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1state
     arg2 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg2, 0);
     if (!arg2) return 0;
   }
-  arg3 = *(struct sbz_DbSchema **)&jarg3; 
-  arg4 = *(struct sbz_HTTPRequest **)&jarg4; 
-  arg5 = 0;
-  if (jarg5) {
-    arg5 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg5, 0);
-    if (!arg5) return 0;
+  arg3 = 0;
+  if (jarg3) {
+    arg3 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg3, 0);
+    if (!arg3) return 0;
+  }
+  arg4 = *(struct sbz_DbSchema **)&jarg4; 
+  arg5 = *(struct sbz_HTTPRequest **)&jarg5; 
+  arg6 = 0;
+  if (jarg6) {
+    arg6 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg6, 0);
+    if (!arg6) return 0;
   }
   {
-    result = (struct sbz_TwoStageStatement *)sbz_two_stage_statement_new((char const *)arg1,(char const *)arg2,(struct sbz_DbSchema const *)arg3,(struct sbz_HTTPRequest const *)arg4,(char const *)arg5);
+    result = (struct sbz_TwoStageStatement *)sbz_two_stage_statement_new((char const *)arg1,(char const *)arg2,(char const *)arg3,(struct sbz_DbSchema const *)arg4,(struct sbz_HTTPRequest const *)arg5,(char const *)arg6);
     //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
@@ -1141,13 +1210,15 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1state
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
   *(struct sbz_TwoStageStatement **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
   if (arg2) (*jenv)->ReleaseStringUTFChars(jenv, jarg2, (const char *)arg2);
-  if (arg5) (*jenv)->ReleaseStringUTFChars(jenv, jarg5, (const char *)arg5);
+  if (arg3) (*jenv)->ReleaseStringUTFChars(jenv, jarg3, (const char *)arg3);
+  if (arg6) (*jenv)->ReleaseStringUTFChars(jenv, jarg6, (const char *)arg6);
   return jresult;
 }
 
@@ -1172,6 +1243,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1state
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1200,6 +1272,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1state
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1247,6 +1320,7 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statem
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1279,25 +1353,27 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statem
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return ;
     }
     //}
   }
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1main_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jlong jarg3, jobject jarg3_, jlong jarg4, jobject jarg4_, jstring jarg5) {
+SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1main_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
-  struct sbz_DbSchema *arg3 = (struct sbz_DbSchema *) 0 ;
-  struct sbz_HTTPRequest *arg4 = (struct sbz_HTTPRequest *) 0 ;
-  char *arg5 = (char *) 0 ;
+  char *arg3 = (char *) 0 ;
+  struct sbz_DbSchema *arg4 = (struct sbz_DbSchema *) 0 ;
+  struct sbz_HTTPRequest *arg5 = (struct sbz_HTTPRequest *) 0 ;
+  char *arg6 = (char *) 0 ;
   struct sbz_Statement *result = 0 ;
   
   (void)jenv;
   (void)jcls;
-  (void)jarg3_;
   (void)jarg4_;
+  (void)jarg5_;
   arg1 = 0;
   if (jarg1) {
     arg1 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg1, 0);
@@ -1308,15 +1384,20 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1main_1
     arg2 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg2, 0);
     if (!arg2) return 0;
   }
-  arg3 = *(struct sbz_DbSchema **)&jarg3; 
-  arg4 = *(struct sbz_HTTPRequest **)&jarg4; 
-  arg5 = 0;
-  if (jarg5) {
-    arg5 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg5, 0);
-    if (!arg5) return 0;
+  arg3 = 0;
+  if (jarg3) {
+    arg3 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg3, 0);
+    if (!arg3) return 0;
+  }
+  arg4 = *(struct sbz_DbSchema **)&jarg4; 
+  arg5 = *(struct sbz_HTTPRequest **)&jarg5; 
+  arg6 = 0;
+  if (jarg6) {
+    arg6 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg6, 0);
+    if (!arg6) return 0;
   }
   {
-    result = (struct sbz_Statement *)sbz_statement_main_new((char const *)arg1,(char const *)arg2,(struct sbz_DbSchema const *)arg3,(struct sbz_HTTPRequest const *)arg4,(char const *)arg5);
+    result = (struct sbz_Statement *)sbz_statement_main_new((char const *)arg1,(char const *)arg2,(char const *)arg3,(struct sbz_DbSchema const *)arg4,(struct sbz_HTTPRequest const *)arg5,(char const *)arg6);
     //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
@@ -1326,13 +1407,15 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1main_1
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
   *(struct sbz_Statement **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
   if (arg2) (*jenv)->ReleaseStringUTFChars(jenv, jarg2, (const char *)arg2);
-  if (arg5) (*jenv)->ReleaseStringUTFChars(jenv, jarg5, (const char *)arg5);
+  if (arg3) (*jenv)->ReleaseStringUTFChars(jenv, jarg3, (const char *)arg3);
+  if (arg6) (*jenv)->ReleaseStringUTFChars(jenv, jarg6, (const char *)arg6);
   return jresult;
 }
 
@@ -1360,6 +1443,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1env_1n
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1388,6 +1472,7 @@ SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1sql(
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1416,6 +1501,7 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1425,7 +1511,12 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_
     jstring temp_string;
     const jclass clazz = (*jenv)->FindClass(jenv, "java/lang/String");
     
-    while (result[len]) len++;    
+    if (result == NULL) {
+      len = 0;
+    }
+    else {
+      while (result[len]) len++;
+    }
     jresult = (*jenv)->NewObjectArray(jenv, len, clazz, NULL);
     /* exception checking omitted */
     
@@ -1459,6 +1550,7 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1468,7 +1560,12 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_
     jstring temp_string;
     const jclass clazz = (*jenv)->FindClass(jenv, "java/lang/String");
     
-    while (result[len]) len++;    
+    if (result == NULL) {
+      len = 0;
+    }
+    else {
+      while (result[len]) len++;
+    }
     jresult = (*jenv)->NewObjectArray(jenv, len, clazz, NULL);
     /* exception checking omitted */
     
@@ -1502,6 +1599,7 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1params_
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1528,6 +1626,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1free(JN
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return ;
     }
     //}
   }
@@ -1552,6 +1651,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1free(J
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return ;
     }
     //}
   }
@@ -1593,6 +1693,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1new(J
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1624,11 +1725,95 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1is_1de
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
   jresult = (jint)result; 
   return jresult;
+}
+
+
+SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1introspection_1query(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jstring jarg4) {
+  jstring jresult = 0 ;
+  char *arg1 = (char *) 0 ;
+  char *arg2 = (char *) 0 ;
+  char *arg3 = (char *) 0 ;
+  char *arg4 = (char *) 0 ;
+  char *result = 0 ;
+  
+  (void)jenv;
+  (void)jcls;
+  arg1 = 0;
+  if (jarg1) {
+    arg1 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg1, 0);
+    if (!arg1) return 0;
+  }
+  arg2 = 0;
+  if (jarg2) {
+    arg2 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg2, 0);
+    if (!arg2) return 0;
+  }
+  arg3 = 0;
+  if (jarg3) {
+    arg3 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg3, 0);
+    if (!arg3) return 0;
+  }
+  arg4 = 0;
+  if (jarg4) {
+    arg4 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg4, 0);
+    if (!arg4) return 0;
+  }
+  {
+    result = (char *)sbz_introspection_query((char const *)arg1,(char const *)arg2,(char const *)arg3,(char const *)arg4);
+    //if (!result) {
+    const int err_len = sbz_last_error_length();
+    if (err_len > 0) {
+      // Check if there's an error
+      char* err_msg = (char*)malloc(err_len);
+      sbz_last_error_message(err_msg, err_len);
+      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      sbz_clear_last_error();
+      free(err_msg);
+      return 0;
+    }
+    //}
+  }
+  if (result) jresult = (*jenv)->NewStringUTF(jenv, (const char *)result);
+  if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
+  if (arg2) (*jenv)->ReleaseStringUTFChars(jenv, jarg2, (const char *)arg2);
+  if (arg3) (*jenv)->ReleaseStringUTFChars(jenv, jarg3, (const char *)arg3);
+  if (arg4) (*jenv)->ReleaseStringUTFChars(jenv, jarg4, (const char *)arg4);
+  return jresult;
+}
+
+
+SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1introspection_1query_1free(JNIEnv *jenv, jclass jcls, jstring jarg1) {
+  char *arg1 = (char *) 0 ;
+  
+  (void)jenv;
+  (void)jcls;
+  arg1 = 0;
+  if (jarg1) {
+    arg1 = (char *)(*jenv)->GetStringUTFChars(jenv, jarg1, 0);
+    if (!arg1) return ;
+  }
+  {
+    sbz_introspection_query_free(arg1);
+    //if (!result) {
+    const int err_len = sbz_last_error_length();
+    if (err_len > 0) {
+      // Check if there's an error
+      char* err_msg = (char*)malloc(err_len);
+      sbz_last_error_message(err_msg, err_len);
+      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      sbz_clear_last_error();
+      free(err_msg);
+      return ;
+    }
+    //}
+  }
+  if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
 }
 
 
@@ -1657,6 +1842,7 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1messa
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
     }
     //}
   }
@@ -1680,6 +1866,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1clear_1last_1error
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return ;
     }
     //}
   }
@@ -1703,6 +1890,33 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1lengt
       (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
       sbz_clear_last_error();
       free(err_msg);
+      return 0;
+    }
+    //}
+  }
+  jresult = (jint)result; 
+  return jresult;
+}
+
+
+SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1http_1status(JNIEnv *jenv, jclass jcls) {
+  jint jresult = 0 ;
+  int result;
+  
+  (void)jenv;
+  (void)jcls;
+  {
+    result = (int)sbz_last_error_http_status();
+    //if (!result) {
+    const int err_len = sbz_last_error_length();
+    if (err_len > 0) {
+      // Check if there's an error
+      char* err_msg = (char*)malloc(err_len);
+      sbz_last_error_message(err_msg, err_len);
+      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      sbz_clear_last_error();
+      free(err_msg);
+      return 0;
     }
     //}
   }

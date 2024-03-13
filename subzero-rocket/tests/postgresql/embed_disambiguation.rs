@@ -11,15 +11,15 @@ feature "embed_disambiguation"
                 {
                   "cardinality": "many-to-one",
                   "relationship": "message_sender_fkey[sender][id]",
-                  "embedding": "message with person_detail"
+                  "embedding": "message with person"
                 },
                 {
-                    "cardinality": "many-to-one",
-                    "relationship": "message_sender_fkey[sender][id]",
-                    "embedding": "message with person"
+                  "cardinality": "many-to-one",
+                  "relationship": "message_sender_fkey[sender][id]",
+                  "embedding": "message with person_detail"
                 }
               ],
-              "hint": "Try changing 'sender' to one of the following: 'person_detail!message_sender_fkey', 'person!message_sender_fkey'. Find the desired relationship in the 'details' key.",
+              "hint": "Try changing 'sender' to one of the following: 'person!message_sender_fkey', 'person_detail!message_sender_fkey'. Find the desired relationship in the 'details' key.",
               "message": "Could not embed because more than one relationship was found for 'message' and 'sender'"
             }"#
           |]
@@ -90,12 +90,7 @@ feature "embed_disambiguation"
               "details": [
                 {
                   "cardinality": "many-to-many",
-                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_1_fkey][whatev_jobs_project_id_1_fkey]",
-                  "embedding": "whatev_sites with whatev_projects"
-                },
-                {
-                  "cardinality": "many-to-many",
-                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_1_fkey][whatev_jobs_project_id_2_fkey]",
+                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_2_fkey][whatev_jobs_project_id_2_fkey]",
                   "embedding": "whatev_sites with whatev_projects"
                 },
                 {
@@ -105,7 +100,12 @@ feature "embed_disambiguation"
                 },
                 {
                   "cardinality": "many-to-many",
-                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_2_fkey][whatev_jobs_project_id_2_fkey]",
+                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_1_fkey][whatev_jobs_project_id_2_fkey]",
+                  "embedding": "whatev_sites with whatev_projects"
+                },
+                {
+                  "cardinality": "many-to-many",
+                  "relationship": "test.whatev_jobs[whatev_jobs_site_id_1_fkey][whatev_jobs_project_id_1_fkey]",
                   "embedding": "whatev_sites with whatev_projects"
                 }
               ],

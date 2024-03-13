@@ -23,8 +23,8 @@ public class Subzero {
     SubzeroJNI.sbz_http_request_free(sbz_HTTPRequest.getCPtr(request), request);
   }
 
-  public static sbz_TwoStageStatement sbz_two_stage_statement_new(String schema_name, String path_prefix, sbz_DbSchema db_schema, sbz_HTTPRequest request, String max_rows) {
-    long cPtr = SubzeroJNI.sbz_two_stage_statement_new(schema_name, path_prefix, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows);
+  public static sbz_TwoStageStatement sbz_two_stage_statement_new(String schema_name, String path_prefix, String role, sbz_DbSchema db_schema, sbz_HTTPRequest request, String max_rows) {
+    long cPtr = SubzeroJNI.sbz_two_stage_statement_new(schema_name, path_prefix, role, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows);
     return (cPtr == 0) ? null : new sbz_TwoStageStatement(cPtr, false);
   }
 
@@ -46,8 +46,8 @@ public class Subzero {
     SubzeroJNI.sbz_two_stage_statement_free(sbz_TwoStageStatement.getCPtr(two_stage_statement), two_stage_statement);
   }
 
-  public static sbz_Statement sbz_statement_main_new(String schema_name, String path_prefix, sbz_DbSchema db_schema, sbz_HTTPRequest request, String max_rows) {
-    long cPtr = SubzeroJNI.sbz_statement_main_new(schema_name, path_prefix, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows);
+  public static sbz_Statement sbz_statement_main_new(String schema_name, String path_prefix, String role, sbz_DbSchema db_schema, sbz_HTTPRequest request, String max_rows) {
+    long cPtr = SubzeroJNI.sbz_statement_main_new(schema_name, path_prefix, role, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows);
     return (cPtr == 0) ? null : new sbz_Statement(cPtr, false);
   }
 
@@ -89,6 +89,14 @@ public class Subzero {
     return SubzeroJNI.sbz_db_schema_is_demo(sbz_DbSchema.getCPtr(db_schema), db_schema);
   }
 
+  public static String sbz_introspection_query(String db_type, String path, String custom_relations, String custom_permissions) {
+    return SubzeroJNI.sbz_introspection_query(db_type, path, custom_relations, custom_permissions);
+  }
+
+  public static void sbz_introspection_query_free(String introspection_query) {
+    SubzeroJNI.sbz_introspection_query_free(introspection_query);
+  }
+
   public static int sbz_last_error_message(String buffer, int length) {
     return SubzeroJNI.sbz_last_error_message(buffer, length);
   }
@@ -99,6 +107,10 @@ public class Subzero {
 
   public static int sbz_last_error_length() {
     return SubzeroJNI.sbz_last_error_length();
+  }
+
+  public static int sbz_last_error_http_status() {
+    return SubzeroJNI.sbz_last_error_http_status();
   }
 
 }

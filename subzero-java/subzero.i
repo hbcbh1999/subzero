@@ -33,7 +33,12 @@
     jstring temp_string;
     const jclass clazz = (*jenv)->FindClass(jenv, "java/lang/String");
 
-    while ($1[len]) len++;    
+    if ($1 == NULL) {
+        len = 0;
+    }
+    else {
+        while ($1[len]) len++;
+    }
     jresult = (*jenv)->NewObjectArray(jenv, len, clazz, NULL);
     /* exception checking omitted */
 
@@ -79,6 +84,7 @@ typedef struct sbz_TwoStageStatement {} sbz_TwoStageStatement;
         (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
         sbz_clear_last_error();
         free(err_msg);
+        return $null;
     }
     //}
 }
@@ -118,18 +124,20 @@ typedef struct sbz_TwoStageStatement {} sbz_TwoStageStatement;
 %extend sbz_Statement {
     sbz_Statement(const char *schema_name,
                   const char *path_prefix,
+                  const char *role,
                   const struct sbz_DbSchema *db_schema,
                   const struct sbz_HTTPRequest *request,
                   const char *max_rows) {
-        return sbz_statement_main_new(schema_name, path_prefix, db_schema, request, max_rows);
+        return sbz_statement_main_new(schema_name, path_prefix, role, db_schema, request, max_rows);
     }
     static sbz_Statement* mainStatement(
         const char *schema_name,
         const char *path_prefix,
+        const char *role,
         const struct sbz_DbSchema *db_schema,
         const struct sbz_HTTPRequest *request,
         const char *max_rows) {
-        return sbz_statement_main_new(schema_name, path_prefix, db_schema, request, max_rows);
+        return sbz_statement_main_new(schema_name, path_prefix, role, db_schema, request, max_rows);
     }
     static sbz_Statement* envStatement(
         const struct sbz_DbSchema *db_schema,
@@ -143,20 +151,36 @@ typedef struct sbz_TwoStageStatement {} sbz_TwoStageStatement;
         return (char *)sbz_statement_sql($self);
     }
     char** getParams() {
-        return (char **)sbz_statement_params($self);
+        int count = sbz_statement_params_count($self);
+        const char *const *params = sbz_statement_params($self);
+        char **result = (char **)malloc((count+1)*sizeof(char *));
+        for (int i = 0; i < count; i++) {
+            result[i] = strdup(params[i]);
+        }
+        result[count] = 0;
+        return result;
     }
     char** getParamsTypes() {
-        return (char **)sbz_statement_params_types($self);
+        //return (char **)sbz_statement_params_types($self);
+        int count = sbz_statement_params_count($self);
+        const char *const *params = sbz_statement_params_types($self);
+        char **result = (char **)malloc((count+1)*sizeof(char *));
+        for (int i = 0; i < count; i++) {
+            result[i] = strdup(params[i]);
+        }
+        result[count] = 0;
+        return result;
     }
 }
 
 %extend sbz_TwoStageStatement {
     sbz_TwoStageStatement(const char *schema_name,
                           const char *path_prefix,
+                          const char *role,
                           const struct sbz_DbSchema *db_schema,
                           const struct sbz_HTTPRequest *request,
                           const char *max_rows) {
-        return sbz_two_stage_statement_new(schema_name, path_prefix, db_schema, request, max_rows);
+        return sbz_two_stage_statement_new(schema_name, path_prefix, role, db_schema, request, max_rows);
     }
     ~sbz_TwoStageStatement() {
         sbz_two_stage_statement_free($self);

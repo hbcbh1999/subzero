@@ -75,7 +75,7 @@ static HEADER: &str = r#"
  *   const char* headers[] = {"Content-Type", "application/json", "Accept", "application/json"};
  *   const char* env[] = {"user_id", "1"};
  *   sbz_HTTPRequest* req = sbz_http_request_new(
- *      "POST",
+ *      "GET",
  *      "http://localhost/rest/projects?select=id,name",
  *      NULL,
  *      headers, 4,
@@ -84,6 +84,7 @@ static HEADER: &str = r#"
  *   sbz_Statement* stmt = sbz_statement_new(
  *     "public",
  *     "/rest/",
+ *     "user",
  *     db_schema,
  *     &req,
  *     NULL

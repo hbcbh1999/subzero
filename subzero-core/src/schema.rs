@@ -931,21 +931,14 @@ pub fn replace_json_str(v: &mut JsonValue) -> Result<()> {
 }
 
 #[derive(Debug)]
-enum SplitStr<'a> {
+pub enum SplitStr<'a> {
     Str(&'a str),
     Sep(&'a str),
 }
 
-fn split_keep<'a>(r: &Regex, text: &'a str) -> Vec<SplitStr<'a>> {
+pub fn split_keep<'a>(r: &Regex, text: &'a str) -> Vec<SplitStr<'a>> {
     let mut result = Vec::new();
     let mut last = 0;
-    // for (index, matched) in text.match_indices(r) {
-    //     if last != index {
-    //         result.push(SplitStr::Str(&text[last..index]));
-    //     }
-    //     result.push(SplitStr::Sep(matched));
-    //     last = index + matched.len();
-    // }
     for m in r.find_iter(text) {
         if last != m.start() {
             result.push(SplitStr::Str(&text[last..m.start()]));
@@ -959,22 +952,28 @@ fn split_keep<'a>(r: &Regex, text: &'a str) -> Vec<SplitStr<'a>> {
     result
 }
 
+// Regexp is too heavy for this simple task
+// check out the ffi version
+// TODO!: simplify this
 pub fn include_files(template: String) -> String {
-    let r = Regex::new(r"\{@[^#}]+(#[^\}]*)?\}").expect("Invalid regex");
+    // regex for this format {@relations.json#[]}
+    // let r = Regex::new(r"\{@[^#}]+(#[^\}]*)?\}").expect("Invalid regex");
+    // regexp for this format '[]' --relations.json
+    let r = Regex::new(r"'\[\]'--\w+\.json").expect("Invalid regex");
     split_keep(&r, template.as_str())
         .into_iter()
         .map(|v| match v {
             SplitStr::Str(s) => s.to_owned(),
             SplitStr::Sep(s) => {
-                let parts = &s[2..(s.len() - 1)].split('#').collect::<Vec<&str>>();
+                let parts = s.split("--").collect::<Vec<&str>>();
                 debug!("parts {:?}", parts);
-                let file_name = parts[0];
-                let missing_msg = format!("{{not found @{file_name}}}");
-                let default_val = parts.get(1).unwrap_or(&(missing_msg.as_str())).to_owned();
+                let file_name = parts[1];
+                //let missing_msg = format!("{{not found --{file_name}}}");
+                let default_val = "[]";
                 //TODO!!! this allows including any file, should this be restricted in some way?
                 let contents = fs::read_to_string(Path::new(file_name)).unwrap_or_else(|_| String::from(default_val));
                 debug!("contents for {} {}", file_name, contents);
-                contents
+                format!("'{}'", contents)
             }
         })
         .collect::<Vec<_>>()
@@ -1010,7 +1009,7 @@ mod tests {
 
     #[test]
     fn test_include_files() {
-        let template = "this  in included =>{@include.html}<=".to_owned();
+        let template = "this  in included =>'[]'--test.json<=".to_owned();
         let result = include_files(template);
         println!("{result}");
         // assert!(false)
