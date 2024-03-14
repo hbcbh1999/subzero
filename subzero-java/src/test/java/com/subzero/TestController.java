@@ -8,13 +8,16 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.stereotype.Controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import com.subzero.spring.Subzero;
+import java.util.Optional;
+import java.util.HashMap;
 
 @Controller
 @DependsOn("dataSourceScriptDatabaseInitializer")
@@ -27,10 +30,7 @@ public class TestController {
     @Autowired
     public TestController(DataSource dataSource) {
         this.dataSource = dataSource;
-        
-        
         try {
-            
             // this.schema_json = Util.getResourceFileContent("schema.json");
             // this.subzero = new Subzero(dataSource, "postgresql", this.schema_json, null);
             this.permissions_json = Util.getResourceFileContent("permissions.json");
@@ -39,13 +39,14 @@ public class TestController {
                 "postgresql",
                 new String[] { "public" },
                 "./introspection",
+                true,
                 null,
                 this.permissions_json,
                 null
             );
         } catch (Exception e) {
             // print the error message
-            System.out.println("!!!!!!!!!!!!!Error: " + e.getMessage());
+            System.out.println("Error: " + e.getMessage());
             throw new RuntimeException(e);
         }
     }
@@ -73,18 +74,32 @@ public class TestController {
     @RequestMapping("/rest/**")
     public void handleRequest(HttpServletRequest req, HttpServletResponse res) {
         try {
-            String[] env = new String[] {
-                "request.jwt.claims", "{\"role\":\"alice\"}"
-            };
-            this.subzero.handleRequest("public", "/rest/", "alice", req, res, env);
+            ObjectNode jwtClaims = new ObjectNode(JsonNodeFactory.instance)
+                .put("role", "alice");
+            HashMap<String,String> env = this.subzero.getEnv(
+                "alice",
+                req,
+                Optional.of(jwtClaims)
+            );
+            // delete the "role" key from the env
+            env.remove("role");
+            //env.remove("request.jwt.claims");
+            String[] envArray = new String[env.size() * 2];
+            int i = 0;
+            for (String key : env.keySet()) {
+                envArray[i++] = key;
+                envArray[i++] = env.get(key);
+            }
+            
+            this.subzero.handleRequest("public", "/rest/", "alice", req, res, envArray);
         } catch (Exception e) {
             // return the error message
-            //e.printStackTrace();
+            e.printStackTrace();
             res.setStatus(500);
             res.setContentType("text/plain");
             res.setCharacterEncoding("UTF-8");
             try {
-                res.getWriter().write("Error: " + e.getMessage());
+                res.getWriter().write(e.getMessage());
             } catch (Exception e2) {
                 e2.printStackTrace();
             }

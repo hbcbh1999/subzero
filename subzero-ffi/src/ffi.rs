@@ -422,7 +422,11 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
     let request = unsafe { &*request };
     let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 or null pointer in schema_name");
     let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 or null pointer in path_prefix");
-    let role_str = try_cstr_to_str!(role, "Invalid UTF-8 or null pointer in role");
+    let role_str = if role.is_null() {
+        "" // permission checking functions need a string
+    } else {
+        try_cstr_to_str!(role, "Invalid UTF-8 or null pointer in role")
+    };
     let method_str = cstr_to_str_unchecked!(request.method);
     let body_str = request.body.map(|b| cstr_to_str_unchecked!(b));
     let uri_str = cstr_to_str_unchecked!(request.uri);
@@ -666,7 +670,11 @@ pub unsafe extern "C" fn sbz_statement_main_new(
     let request = unsafe { &*request };
     let schema_name_str = try_cstr_to_str!(schema_name, "Invalid UTF-8 or null pointer in schema_name");
     let path_prefix_str = try_cstr_to_str!(path_prefix, "Invalid UTF-8 or null pointer in path_prefix");
-    let role_str = try_cstr_to_str!(role, "Invalid UTF-8 or null pointer in role");
+    let role_str = if role.is_null() {
+        "" // permission checking functions need a string
+    } else {
+        try_cstr_to_str!(role, "Invalid UTF-8 or null pointer in role")
+    };
     let method_str = cstr_to_str_unchecked!(request.method);
     let body_str = request.body.map(|b| cstr_to_str_unchecked!(b));
     let uri_str = cstr_to_str_unchecked!(request.uri);

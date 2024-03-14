@@ -86,7 +86,7 @@ static HEADER: &str = r#"
  *     "/rest/",
  *     "user",
  *     db_schema,
- *     &req,
+ *     req,
  *     NULL
  *   );
  *  

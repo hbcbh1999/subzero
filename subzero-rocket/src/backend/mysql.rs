@@ -2,25 +2,23 @@ use mysql_async::prelude::*;
 use mysql_async::{Pool, Error as MysqlError, Conn, TxOpts, IsolationLevel, Value, Row, FromRowError, Opts};
 
 //use serde::__private::de;
-use snafu::{ResultExt};
+use snafu::ResultExt;
 use subzero_core::error::JsonSerializeSnafu;
 use tokio::time::{Duration, sleep};
-use serde_json::{json};
+use serde_json::json;
 use crate::config::{VhostConfig, SchemaStructure::*};
 // use log::{debug};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, ContentType::*, SingleVal, ListVal, Payload, QueryNode::*, Condition, Filter, Query, Field, Preferences, Count},
-    error::{
-        Error::{SingularityError, PutMatchingPkError, PermissionDenied},
-    },
-    schema::{DbSchema},
+    error::Error::{SingularityError, PutMatchingPkError, PermissionDenied},
+    schema::DbSchema,
     formatter::{
         Param,
         Param::*,
         mysql::{fmt_main_query, generate, return_representation},
         ToParam, Snippet, SqlParam,
     },
-    error::{JsonDeserializeSnafu},
+    error::JsonDeserializeSnafu,
 };
 use subzero_core::dynamic_statement::{param, sql, JoinIterator};
 use crate::error::{Result, Error, *};
