@@ -385,22 +385,27 @@ public class Subzero {
     }
     
     private static final String LIB_BIN = "/";
-    private final static String SUBZEROJNI = "subzerojni";
+    private final static String SUBZERO_LIB = "subzero";
+    private final static String SUBZEROJNI_LIB = "subzerojni";
     
     static {
         try {
-            System.loadLibrary(SUBZEROJNI);
+            System.loadLibrary(SUBZERO_LIB);
+            System.loadLibrary(SUBZEROJNI_LIB);
         } catch (UnsatisfiedLinkError e) {
-            loadFromJar();
+            loadNativeLibFromJar();
         }
     }
+    
     /**
-     * When packaged into JAR extracts DLLs, places these into
+     * Load the native library from the jar file
+     * This will try to load subzero and subzerojni native shared libraries from the jar file
      */
-    private static void loadFromJar() {
+    public static void loadNativeLibFromJar() {
         // we need to put both DLLs to temp dir
         String path = "SUBZERO_" + new java.util.Date().getTime();
-        loadLib(path, SUBZEROJNI);
+        loadLib(path, SUBZERO_LIB);
+        loadLib(path, SUBZEROJNI_LIB);
     }
     /**
      * Puts library to temp dir and loads to memory

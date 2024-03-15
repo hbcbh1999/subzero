@@ -1,5 +1,7 @@
 target
 subzero_wrap.o
+libsubzero.*
 libsubzerojni.*
+subzero.h
 docs
 hs_err_pid*

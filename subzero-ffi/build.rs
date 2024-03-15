@@ -119,15 +119,15 @@ static HEADER: &str = r#"
  */
 "#;
 fn main() {
+    // Generate the C header file
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let package_name = env::var("CARGO_PKG_NAME").unwrap();
-    let output_file = target_dir().join(format!("{}.h", package_name.replace("-ffi", ""))).display().to_string();
-
+    let target_dir = target_dir();
+    let output_file = target_dir.join(format!("{}.h", package_name.replace("-ffi", ""))).display().to_string();
     let mut config = Config::default();
     config.language = cbindgen::Language::C;
     config.documentation_style = cbindgen::DocumentationStyle::Doxy;
     config.header = Some(HEADER.to_string());
-    //config.export.prefix = Some("sbz_".to_string());
     cbindgen::generate_with_config(crate_dir, config)
         .expect("Unable to generate bindings")
         .write_to_file(output_file);

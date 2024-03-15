@@ -1,10 +1,15 @@
 # Assuming Check is installed via Homebrew on Apple Silicon Mac
 INCLUDE_PATH=-I/opt/homebrew/include
 LIBRARY_PATH=-L/opt/homebrew/lib
+TARGET_DIR=../target
+MAC_RELEASE_DIR=$(TARGET_DIR)/release
+LINUX_RELEASE_DIR=$(TARGET_DIR)/x86_64-unknown-linux-gnu/release
+VERSION=$(shell grep '^version' Cargo.toml | cut -d '"' -f 2)
+DIST_DIR=$(TARGET_DIR)/dist/subzero-ffi-$(VERSION)
 
 CC=gcc
-DEBUG_FLAGS=$(INCLUDE_PATH) -I../target/debug -lcheck $(LIBRARY_PATH) -L../target/debug -lsubzero
-RELEASE_FLAGS=$(INCLUDE_PATH) -I../target/release -lcheck $(LIBRARY_PATH) -L../target/release -lsubzero
+DEBUG_FLAGS=$(INCLUDE_PATH) -I$(TARGET_DIR)/debug -lcheck $(LIBRARY_PATH) -L$(TARGET_DIR)/debug -lsubzero
+RELEASE_FLAGS=$(INCLUDE_PATH) -I$(TARGET_DIR)/release -lcheck $(LIBRARY_PATH) -L$(TARGET_DIR)/release -lsubzero
 
 all: test_debug
 
@@ -29,12 +34,30 @@ test_all_release: test/test_all.c
 test: test_debug
 
 clean:
-	rm -f teat/test_all
+	rm -f test/test_all
 
 build_debug:
 	cargo build
 
 build_release:
-	cargo build --release
+	# build mac
+	cargo build --release && \
+	install_name_tool -id @rpath/libsubzero.dylib $(TARGET_DIR)/release/libsubzero.dylib
 
-.PHONY: all test_debug test_release test clean build_debug build_release
+	# build linux
+	CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
+	cargo build --release --target x86_64-unknown-linux-gnu
+
+package: 
+	rm -rf $(TARGET_DIR)/dist && mkdir -p $(DIST_DIR) && \
+	cp $(MAC_RELEASE_DIR)/libsubzero.dylib $(DIST_DIR)/libsubzero.dylib && \
+	cp $(LINUX_RELEASE_DIR)/libsubzero.so $(DIST_DIR)/libsubzero.so && \
+	cp $(TARGET_DIR)/release/subzero.h $(DIST_DIR)/subzero.h && \
+	cd $(DIST_DIR)/.. && \
+	ln -s subzero-ffi-$(VERSION) subzero-ffi && \
+	zip -ry subzero-ffi-$(VERSION).zip subzero-ffi-$(VERSION) subzero-ffi && \
+	ln -s subzero-ffi-$(VERSION).zip subzero-ffi-latest.zip
+
+
+
+.PHONY: all test_debug test_release test clean build_debug build_release package

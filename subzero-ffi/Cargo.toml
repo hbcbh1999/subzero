@@ -2,7 +2,7 @@
 name = "subzero-ffi"
 version = "0.1.0"
 edition = "2021"
-
+build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -18,7 +18,7 @@ crate-type = ["cdylib"]
 name = "subzero"
 
 
-build = "build.rs"
+# build = "build.rs"
 [build-dependencies]
 cbindgen = "0.26.0"
 
@@ -30,3 +30,4 @@ postgresql = ["subzero-core/postgresql"]
 sqlite = ["subzero-core/sqlite"]
 clickhouse = ["subzero-core/clickhouse"]
 mysql = ["subzero-core/mysql"]
+
