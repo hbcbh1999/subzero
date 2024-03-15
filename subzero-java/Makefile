@@ -22,7 +22,9 @@ swig_clean:
 
 docs:
 	# Generate javadocs and copy to docs directory
-	mvn javadoc:javadoc && cp -r target/site/apidocs/ docs/
+	rm -r target/site/apidocs/ && \
+	mvn javadoc:javadoc && \
+	cp -r target/site/apidocs/ docs/
 
 swig_generate: swig_clean
 	swig -java -package com.subzero.swig \
@@ -31,7 +33,7 @@ swig_generate: swig_clean
 swig_compile: swig_generate
 	gcc -c -fpic subzero_wrap.c -o subzero_wrap.o $(INCLUDE_PATH)
 swig_link:
-	gcc -shared -o libsubzerojni.dylib subzero_wrap.o $(LIBRARY_PATH)
+	gcc -shared -o src/main/resources/libsubzerojni.dylib subzero_wrap.o $(LIBRARY_PATH)
 
 swig: swig_compile swig_link
 

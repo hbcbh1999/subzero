@@ -5,6 +5,14 @@ import com.subzero.swig.sbz_DbSchema;
 import com.subzero.swig.sbz_HTTPRequest;
 
 import javax.sql.DataSource;
+
+//import java.util.Date;
+import java.sql.Date;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.sql.*;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -31,10 +39,10 @@ public class Subzero {
 
     /**
      * Constructor for Subzero, used when the json schema is already known (for example when it's cached in a file)
-     * @param dataSource - the data source to connect to the database
-     * @param dbType - the type of the database (postgresql, mysql, etc)
-     * @param dbSchemaJson - json representation of the database schema
-     * @param licenseKey - the license key for subzero (use null for demo mode)
+     * @param dataSource the data source to connect to the database
+     * @param dbType the type of the database (postgresql, mysql, etc)
+     * @param dbSchemaJson json representation of the database schema
+     * @param licenseKey the license key for subzero (use null for demo mode)
      */
     public Subzero(DataSource dataSource, String dbType, String dbSchemaJson, String licenseKey) {
         this.dataSource = dataSource;
@@ -48,15 +56,16 @@ public class Subzero {
 
     /**
      * Constructor for Subzero, used when the json schema is not known and needs to be introspected from the database
-     * @param dataSource - the data source to connect to the database
-     * @param dbType - the type of the database (postgresql, mysql, etc)
-     * @param dbSchemas - the schemas to introspect and expose for the REST API
-     * @param introspectionQueryDir - the directory where the introspection queries are stored
-     * @param useInternalPermissions - Set this to false if you want to rely on the database permissions only
+     * @param dataSource the data source to connect to the database
+     * @param dbType the type of the database (postgresql, mysql, etc)
+     * @param dbSchemas the schemas to introspect and expose for the REST API
+     * @param introspectionQueryDir the directory where the introspection queries are stored
+     * @param useInternalPermissions Set this to false if you want to rely on the database permissions only
      *        and bypass permission checks in Subzero.
-     * @param customRelations - custom relations to be added to the schema.
+     * @param customRelations custom relations to be added to the schema.
      *        This is useful when the introspection does not capture all the relations in the database (ex. with views)
      *        The parameters is a json string with the following format:
+     *        <pre>{@code
      *        [
      *          {
      *            "constraint_name": "projects_client_id_fkey",
@@ -69,11 +78,12 @@ public class Subzero {
      *          },
      *          ...
      *        ]
-     * @param customPermissions - custom permissions to be added to the schema. This is used when you don't want to 
+     *        }</pre>
+     * @param customPermissions custom permissions to be added to the schema. This is used when you don't want to 
      *        rely on the database permissions (database roles) to control access to the data. The permission system is 
      *        still similar to the database RBAC+RLS, but it's managed by Subzero. The parameters is a json string.
      *        For the format, see this link: https://github.com/subzerocloud/showcase/blob/main/flyio-sqlite-litefs/permissions.js 
-     * @param licenseKey - the license key for subzero (use null for demo mode)
+     * @param licenseKey the license key for subzero (use null for demo mode)
      */
     public Subzero(
             DataSource dataSource,
@@ -139,35 +149,30 @@ public class Subzero {
 
     /**
      * Handles an HTTP request. It will execute the SQL statement and return the result as a JSON object.
-     * @param schema_name - the name of the database schema for the current request. This has to be one of the schemas
+     * @param schema_name the name of the database schema for the current request. This has to be one of the schemas
      *        that were introspected and exposed by Subzero. In the context of PostgreSQL, this is the schema name, in the
      *        context of MySQL, this is the database name.
-     * @param prefix - the prefix for the url. For example when the url is /api/v1/employees?select=id,name,
+     * @param prefix the prefix for the url. For example when the url is /api/v1/employees?select=id,name,
      *        the prefix is /api/v1/ (including the trailing slash)
-     * @param role - the role for the current request.
-     * @param req - the HTTP request object
-     * @param res - the HTTP response object
-     * @param env - the environment variables for the current request. This is an array of strings in the format
-     *        ["name1", "value1", "name2", "value2", ...]. This is useful for passing to the SQL context aditional
-     *        information that is not part of the request itself.
-     *        Example:
-     *        [
-     *          "request.method", "GET",
-     *          "request.path", "/api/v1/employees",
-     *          "request.jwt.claims", "{\"role\":\"admin\"}",
-     *          "role", "admin"
-     *        ]
+     * @param role the role for the current request.
+     * @param req the HTTP request object
+     * @param res the HTTP response object
+     * @param max_rows the maximum number of rows that can be returned by a select statement.
+     * This should be an integer in string format. Use null for no limit.
+     * @param env the environment variables for the current request. This is an array of strings in the format
+     * ["name1", "value1", "name2", "value2", ...]. This is useful for passing to the SQL context aditional
+     * information that is not part of the request itself.
+     * Example:
+     * 
+     * <pre>{@code
+     * [
+     *   "request.method", "GET",
+     *   "request.path", "/api/v1/employees",
+     *   "request.jwt.claims", "{\"role\":\"admin\"}",
+     *   "role", "admin"
+     * ]
+     * }</pre>
      */
-    public void handleRequest(String schema_name, String prefix, String role, HttpServletRequest req,
-            HttpServletResponse res, String[] env) {
-        this.handleRequest(schema_name, prefix, role, req, res, env, null);
-    }
-
-    public void handleRequest(String schema_name, String prefix, String role, HttpServletRequest req,
-            HttpServletResponse res) {
-        this.handleRequest(schema_name, prefix, role, req, res, new String[] {}, null);
-    }
-
     public void handleRequest(String schema_name, String prefix, String role, HttpServletRequest req,
             HttpServletResponse res,
             String[] env, String max_rows) {
@@ -308,7 +313,32 @@ public class Subzero {
         }
     }
 
-    public HashMap<String,String> getEnv(String role, HttpServletRequest request, Optional<ObjectNode> jwtClaims) {
+    /**
+     * Returns the default environment variables for a request that can be passed to the handleRequest method
+     * and passed to the SQL context. The environment variables set are the following:
+     * - role: the role for the current request. In the context of PostgreSQL, this this env variable will
+     *   change the current role for the session.
+     * - request.method: the HTTP method for the current request
+     * - request.path: the path for the current request
+     * - request.headers: the headers for the current request, single parameter as a json string
+     * - request.get: the query parameters for the current request, single parameter as a json string
+     * - request.jwt.claims: the JWT claims for the current request, single parameter as a json string
+     * @param role the user role for the current request
+     * @param request the HTTP request object
+     * @param jwtClaims the JWT claims for the current request
+     * @return a map with the environment variables. While handleRequest expects String[], this method returns a map
+     * for easier manipulation. The map can be converted to a String[] using the following code:
+     * <pre>{@code
+     * HashMap<String, String> env = subzero.getEnv("alice", req, Optional.of(jwtClaims));
+     * String[] envArray = new String[env.size() * 2];
+     * int i = 0;
+     * for (String key : env.keySet()) {
+     *    envArray[i++] = key;
+     *    envArray[i++] = env.get(key);
+     * }
+     * }</pre>
+     */
+    public HashMap<String, String> getEnv(String role, HttpServletRequest request, Optional<ObjectNode> jwtClaims) {
         HashMap<String, String> env = new HashMap<>();
         ObjectMapper objectMapper = new ObjectMapper();
         if (role != null) {
@@ -325,20 +355,18 @@ public class Subzero {
         env.put("request.method", request.getMethod());
         env.put("request.path", request.getServletPath()); // Adjusted to use getServletPath for path
 
-        
         HashMap<String, String> headers = new HashMap<>();
         Enumeration<String> headerNames = request.getHeaderNames();
         while (headerNames.hasMoreElements()) {
             String headerName = headerNames.nextElement();
             headers.put(headerName, request.getHeader(headerName));
         }
-        
 
         jwtClaims.ifPresent(claims -> {
             env.put("request.jwt.claims", claims.toString());
         });
 
-        try{
+        try {
             env.put("request.headers", objectMapper.writeValueAsString(headers));
             env.put("request.get", objectMapper.writeValueAsString(request.getParameterMap()));
 
@@ -355,4 +383,77 @@ public class Subzero {
 
         return env;
     }
+    
+    private static final String LIB_BIN = "/";
+    private final static String SUBZEROJNI = "subzerojni";
+    
+    static {
+        try {
+            System.loadLibrary(SUBZEROJNI);
+        } catch (UnsatisfiedLinkError e) {
+            loadFromJar();
+        }
+    }
+    /**
+     * When packaged into JAR extracts DLLs, places these into
+     */
+    private static void loadFromJar() {
+        // we need to put both DLLs to temp dir
+        String path = "SUBZERO_" + new java.util.Date().getTime();
+        loadLib(path, SUBZEROJNI);
+    }
+    /**
+     * Puts library to temp dir and loads to memory
+     */
+    private static void loadLib(String path, String name) {
+        // depending on the OS, add the right extension
+        String os = System.getProperty("os.name").toLowerCase();
+        if (os.contains("win")) {
+            os = "windows";
+        } else if (os.contains("nix") || os.contains("nux")) {
+            os = "linux";
+        }
+        else if (os.contains("mac")) {
+            os = "mac";
+        } else {
+            throw new RuntimeException("Unsupported OS: " + os);
+        }
+        switch (os) {
+            case "linux":
+                name = "lib" + name + ".so";
+                break;
+            case "mac":
+                name = "lib" + name + ".dylib";
+                break;
+            case "windows":
+                name = name + ".dll";
+                break;
+        }
+        try {
+            InputStream in = Subzero.class.getResourceAsStream(LIB_BIN + name);
+            if (in == null) {
+                throw new RuntimeException("Cannot find for os " + os + "-" + LIB_BIN + name);
+            }
+            File fileOut = new File(System.getProperty("java.io.tmpdir") + "/" + path + LIB_BIN + name);
+            File parentDir = fileOut.getParentFile();
+            if (!parentDir.exists() && !parentDir.mkdirs()) {
+                throw new IOException("Failed to create directory: " + parentDir);
+            }
+            try (OutputStream out = new FileOutputStream(fileOut)) {
+                byte[] buffer = new byte[1024];
+                int bytesRead;
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
+            } finally {
+                in.close();
+            }
+            
+            System.load(fileOut.toString());
+            fileOut.deleteOnExit();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load required subzero native library", e);
+        }
+    }
+
 }

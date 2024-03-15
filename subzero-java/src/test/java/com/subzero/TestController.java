@@ -91,7 +91,7 @@ public class TestController {
                 envArray[i++] = env.get(key);
             }
             
-            this.subzero.handleRequest("public", "/rest/", "alice", req, res, envArray);
+            this.subzero.handleRequest("public", "/rest/", "alice", req, res, envArray, null);
         } catch (Exception e) {
             // return the error message
             e.printStackTrace();
