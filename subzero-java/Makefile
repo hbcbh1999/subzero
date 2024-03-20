@@ -31,7 +31,9 @@ docs:
 
 unzip_clib:
 	unzip -o -d $(RESOURCES_DIR) $(C_LIB_PATH)/subzero-ffi-latest.zip && \
-	cp $(RESOURCES_DIR)/subzero-ffi/* $(RESOURCES_DIR) && \
+	cp $(RESOURCES_DIR)/subzero-ffi/*.* $(RESOURCES_DIR) && \
+	mkdir -p $(RESOURCES_DIR)/introspection && \
+	cp $(RESOURCES_DIR)/subzero-ffi/introspection/* $(RESOURCES_DIR)/introspection && \
 	rm -rf $(RESOURCES_DIR)/subzero-ffi* 
 swig_generate: swig_clean unzip_clib
 	swig -java -package com.subzero.swig \

@@ -294,6 +294,15 @@ SWIGINTERN char **sbz_Statement_getParamsTypes(struct sbz_Statement *self){
 SWIGINTERN struct sbz_TwoStageStatement *new_sbz_TwoStageStatement(char const *schema_name,char const *path_prefix,char const *role,struct sbz_DbSchema const *db_schema,struct sbz_HTTPRequest const *request,char const *max_rows){
         return sbz_two_stage_statement_new(schema_name, path_prefix, role, db_schema, request, max_rows);
     }
+SWIGINTERN sbz_Statement const *sbz_TwoStageStatement_mutateStatement(struct sbz_TwoStageStatement *self){
+        return sbz_two_stage_statement_mutate(self);
+    }
+SWIGINTERN sbz_Statement const *sbz_TwoStageStatement_selectStatement(struct sbz_TwoStageStatement *self){
+        return sbz_two_stage_statement_select(self);
+    }
+SWIGINTERN int sbz_TwoStageStatement_setIds(struct sbz_TwoStageStatement *self,char const **ids,int ids_count){
+        return sbz_two_stage_statement_set_ids(self, ids, ids_count);
+    }
 SWIGINTERN void delete_sbz_TwoStageStatement(struct sbz_TwoStageStatement *self){
         sbz_two_stage_statement_free(self);
     }
@@ -400,18 +409,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1HTTPRequest(
   arg7 = (int)jarg7; 
   {
     result = (struct sbz_HTTPRequest *)new_sbz_HTTPRequest((char const *)arg1,(char const *)arg2,(char const *)arg3,(char const **)arg4,arg5,(char const **)arg6,arg7);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_HTTPRequest **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -441,18 +458,26 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1HTTPReques
   arg1 = *(struct sbz_HTTPRequest **)&jarg1; 
   {
     delete_sbz_HTTPRequest(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return ;
     }
-    //}
   }
 }
 
@@ -483,18 +508,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1DbSchema(JNI
   }
   {
     result = (struct sbz_DbSchema *)new_sbz_DbSchema((char const *)arg1,(char const *)arg2,(char const *)arg3);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_DbSchema **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -515,18 +548,26 @@ SWIGEXPORT jboolean JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1DbSchema_1isDe
   arg1 = *(struct sbz_DbSchema **)&jarg1; 
   {
     result = (bool)sbz_DbSchema_isDemo(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   jresult = (jboolean)result; 
   return jresult;
@@ -541,18 +582,26 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1DbSchema(J
   arg1 = *(struct sbz_DbSchema **)&jarg1; 
   {
     delete_sbz_DbSchema(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return ;
     }
-    //}
   }
 }
 
@@ -595,18 +644,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1Statement(JN
   }
   {
     result = (struct sbz_Statement *)new_sbz_Statement((char const *)arg1,(char const *)arg2,(char const *)arg3,(struct sbz_DbSchema const *)arg4,(struct sbz_HTTPRequest const *)arg5,(char const *)arg6);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_Statement **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -655,18 +712,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1mainSt
   }
   {
     result = (sbz_Statement *)sbz_Statement_mainStatement((char const *)arg1,(char const *)arg2,(char const *)arg3,(struct sbz_DbSchema const *)arg4,(struct sbz_HTTPRequest const *)arg5,(char const *)arg6);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(sbz_Statement **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -691,18 +756,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1envSta
   arg2 = *(struct sbz_HTTPRequest **)&jarg2; 
   {
     result = (sbz_Statement *)sbz_Statement_envStatement((struct sbz_DbSchema const *)arg1,(struct sbz_HTTPRequest const *)arg2);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(sbz_Statement **)&jresult = result; 
   return jresult;
@@ -717,18 +790,26 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1Statement(
   arg1 = *(struct sbz_Statement **)&jarg1; 
   {
     delete_sbz_Statement(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return ;
     }
-    //}
   }
 }
 
@@ -744,18 +825,26 @@ SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1getS
   arg1 = *(struct sbz_Statement **)&jarg1; 
   {
     result = (char *)sbz_Statement_getSql(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   if (result) jresult = (*jenv)->NewStringUTF(jenv, (const char *)result);
   return jresult;
@@ -773,18 +862,26 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_
   arg1 = *(struct sbz_Statement **)&jarg1; 
   {
     result = (char **)sbz_Statement_getParams(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   {
     int i;
@@ -822,18 +919,26 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_
   arg1 = *(struct sbz_Statement **)&jarg1; 
   {
     result = (char **)sbz_Statement_getParamsTypes(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   {
     int i;
@@ -898,24 +1003,168 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1TwoStageStat
   }
   {
     result = (struct sbz_TwoStageStatement *)new_sbz_TwoStageStatement((char const *)arg1,(char const *)arg2,(char const *)arg3,(struct sbz_DbSchema const *)arg4,(struct sbz_HTTPRequest const *)arg5,(char const *)arg6);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_TwoStageStatement **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
   if (arg2) (*jenv)->ReleaseStringUTFChars(jenv, jarg2, (const char *)arg2);
   if (arg3) (*jenv)->ReleaseStringUTFChars(jenv, jarg3, (const char *)arg3);
   if (arg6) (*jenv)->ReleaseStringUTFChars(jenv, jarg6, (const char *)arg6);
+  return jresult;
+}
+
+
+SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement_1mutateStatement(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+  jlong jresult = 0 ;
+  struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
+  sbz_Statement *result = 0 ;
+  
+  (void)jenv;
+  (void)jcls;
+  (void)jarg1_;
+  arg1 = *(struct sbz_TwoStageStatement **)&jarg1; 
+  {
+    result = (sbz_Statement *)sbz_TwoStageStatement_mutateStatement(arg1);
+    const int err_len = sbz_last_error_length();
+    if (err_len > 0) {
+      // Check if there's an error
+      char* err_msg = (char*)malloc(err_len);
+      sbz_last_error_message(err_msg, err_len);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
+      sbz_clear_last_error();
+      free(err_msg);
+      return 0;
+    }
+  }
+  *(sbz_Statement **)&jresult = result; 
+  return jresult;
+}
+
+
+SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement_1selectStatement(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+  jlong jresult = 0 ;
+  struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
+  sbz_Statement *result = 0 ;
+  
+  (void)jenv;
+  (void)jcls;
+  (void)jarg1_;
+  arg1 = *(struct sbz_TwoStageStatement **)&jarg1; 
+  {
+    result = (sbz_Statement *)sbz_TwoStageStatement_selectStatement(arg1);
+    const int err_len = sbz_last_error_length();
+    if (err_len > 0) {
+      // Check if there's an error
+      char* err_msg = (char*)malloc(err_len);
+      sbz_last_error_message(err_msg, err_len);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
+      sbz_clear_last_error();
+      free(err_msg);
+      return 0;
+    }
+  }
+  *(sbz_Statement **)&jresult = result; 
+  return jresult;
+}
+
+
+SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement_1setIds(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_, jobjectArray jarg2, jint jarg3) {
+  jint jresult = 0 ;
+  struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
+  char **arg2 = (char **) 0 ;
+  int arg3 ;
+  jint size2 ;
+  int result;
+  
+  (void)jenv;
+  (void)jcls;
+  (void)jarg1_;
+  arg1 = *(struct sbz_TwoStageStatement **)&jarg1; 
+  {
+    int i = 0;
+    size2 = (*jenv)->GetArrayLength(jenv, jarg2);
+    arg2 = (char **) malloc((size2+1)*sizeof(char *));
+    /* make a copy of each string */
+    for (i = 0; i<size2; i++) {
+      jstring j_string = (jstring)(*jenv)->GetObjectArrayElement(jenv, jarg2, i);
+      const char * c_string = (*jenv)->GetStringUTFChars(jenv, j_string, 0);
+      arg2[i] = malloc((strlen(c_string)+1)*sizeof(char));
+      strcpy(arg2[i], c_string);
+      (*jenv)->ReleaseStringUTFChars(jenv, j_string, c_string);
+      (*jenv)->DeleteLocalRef(jenv, j_string);
+    }
+    arg2[i] = 0;
+  }
+  arg3 = (int)jarg3; 
+  {
+    result = (int)sbz_TwoStageStatement_setIds(arg1,(char const **)arg2,arg3);
+    const int err_len = sbz_last_error_length();
+    if (err_len > 0) {
+      // Check if there's an error
+      char* err_msg = (char*)malloc(err_len);
+      sbz_last_error_message(err_msg, err_len);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
+      sbz_clear_last_error();
+      free(err_msg);
+      return 0;
+    }
+  }
+  jresult = (jint)result; 
+  {
+    int i;
+    for (i=0; i<size2-1; i++)
+    free(arg2[i]);
+    free(arg2);
+  }
   return jresult;
 }
 
@@ -928,18 +1177,26 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1TwoStageSt
   arg1 = *(struct sbz_TwoStageStatement **)&jarg1; 
   {
     delete_sbz_TwoStageStatement(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return ;
     }
-    //}
   }
 }
 
@@ -1008,18 +1265,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1ne
   arg7 = (int)jarg7; 
   {
     result = (struct sbz_HTTPRequest *)sbz_http_request_new_with_clone((char const *)arg1,(char const *)arg2,(char const *)arg3,(char const *const *)arg4,arg5,(char const *const *)arg6,arg7);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_HTTPRequest **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -1105,18 +1370,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1ne
   arg7 = (int)jarg7; 
   {
     result = (struct sbz_HTTPRequest *)sbz_http_request_new((char const *)arg1,(char const *)arg2,(char const *)arg3,(char const *const *)arg4,arg5,(char const *const *)arg6,arg7);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_HTTPRequest **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -1147,18 +1420,26 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1fre
   arg1 = *(struct sbz_HTTPRequest **)&jarg1; 
   {
     sbz_http_request_free(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return ;
     }
-    //}
   }
 }
 
@@ -1201,18 +1482,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1state
   }
   {
     result = (struct sbz_TwoStageStatement *)sbz_two_stage_statement_new((char const *)arg1,(char const *)arg2,(char const *)arg3,(struct sbz_DbSchema const *)arg4,(struct sbz_HTTPRequest const *)arg5,(char const *)arg6);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_TwoStageStatement **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -1234,18 +1523,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1state
   arg1 = *(struct sbz_TwoStageStatement **)&jarg1; 
   {
     result = (struct sbz_Statement *)sbz_two_stage_statement_mutate((struct sbz_TwoStageStatement const *)arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_Statement **)&jresult = result; 
   return jresult;
@@ -1263,18 +1560,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1state
   arg1 = *(struct sbz_TwoStageStatement **)&jarg1; 
   {
     result = (struct sbz_Statement *)sbz_two_stage_statement_select((struct sbz_TwoStageStatement const *)arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_Statement **)&jresult = result; 
   return jresult;
@@ -1311,18 +1616,26 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statem
   arg3 = (int)jarg3; 
   {
     result = (int)sbz_two_stage_statement_set_ids(arg1,(char const *const *)arg2,arg3);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   jresult = (jint)result; 
   {
@@ -1344,18 +1657,26 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statem
   arg1 = *(struct sbz_TwoStageStatement **)&jarg1; 
   {
     sbz_two_stage_statement_free(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return ;
     }
-    //}
   }
 }
 
@@ -1398,18 +1719,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1main_1
   }
   {
     result = (struct sbz_Statement *)sbz_statement_main_new((char const *)arg1,(char const *)arg2,(char const *)arg3,(struct sbz_DbSchema const *)arg4,(struct sbz_HTTPRequest const *)arg5,(char const *)arg6);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_Statement **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -1434,18 +1763,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1env_1n
   arg2 = *(struct sbz_HTTPRequest **)&jarg2; 
   {
     result = (struct sbz_Statement *)sbz_statement_env_new((struct sbz_DbSchema const *)arg1,(struct sbz_HTTPRequest const *)arg2);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_Statement **)&jresult = result; 
   return jresult;
@@ -1463,18 +1800,26 @@ SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1sql(
   arg1 = *(struct sbz_Statement **)&jarg1; 
   {
     result = (char *)sbz_statement_sql((struct sbz_Statement const *)arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   if (result) jresult = (*jenv)->NewStringUTF(jenv, (const char *)result);
   return jresult;
@@ -1492,18 +1837,26 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_
   arg1 = *(struct sbz_Statement **)&jarg1; 
   {
     result = (char **)sbz_statement_params((struct sbz_Statement const *)arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   {
     int i;
@@ -1541,18 +1894,26 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_
   arg1 = *(struct sbz_Statement **)&jarg1; 
   {
     result = (char **)sbz_statement_params_types((struct sbz_Statement const *)arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   {
     int i;
@@ -1590,18 +1951,26 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1params_
   arg1 = *(struct sbz_Statement **)&jarg1; 
   {
     result = (int)sbz_statement_params_count((struct sbz_Statement const *)arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   jresult = (jint)result; 
   return jresult;
@@ -1617,18 +1986,26 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1free(JN
   arg1 = *(struct sbz_Statement **)&jarg1; 
   {
     sbz_statement_free(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return ;
     }
-    //}
   }
 }
 
@@ -1642,18 +2019,26 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1free(J
   arg1 = *(struct sbz_DbSchema **)&jarg1; 
   {
     sbz_db_schema_free(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return ;
     }
-    //}
   }
 }
 
@@ -1684,18 +2069,26 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1new(J
   }
   {
     result = (struct sbz_DbSchema *)sbz_db_schema_new((char const *)arg1,(char const *)arg2,(char const *)arg3);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   *(struct sbz_DbSchema **)&jresult = result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -1716,18 +2109,26 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1is_1de
   arg1 = *(struct sbz_DbSchema **)&jarg1; 
   {
     result = (int)sbz_db_schema_is_demo((struct sbz_DbSchema const *)arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   jresult = (jint)result; 
   return jresult;
@@ -1766,18 +2167,26 @@ SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1introspection_1
   }
   {
     result = (char *)sbz_introspection_query((char const *)arg1,(char const *)arg2,(char const *)arg3,(char const *)arg4);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   if (result) jresult = (*jenv)->NewStringUTF(jenv, (const char *)result);
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -1800,18 +2209,26 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1introspection_1que
   }
   {
     sbz_introspection_query_free(arg1);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return ;
     }
-    //}
   }
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
 }
@@ -1833,18 +2250,26 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1messa
   arg2 = (int)jarg2; 
   {
     result = (int)sbz_last_error_message(arg1,arg2);
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   jresult = (jint)result; 
   if (arg1) (*jenv)->ReleaseStringUTFChars(jenv, jarg1, (const char *)arg1);
@@ -1857,18 +2282,26 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1clear_1last_1error
   (void)jcls;
   {
     sbz_clear_last_error();
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return ;
     }
-    //}
   }
 }
 
@@ -1881,18 +2314,26 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1lengt
   (void)jcls;
   {
     result = (int)sbz_last_error_length();
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   jresult = (jint)result; 
   return jresult;
@@ -1907,18 +2348,26 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1http_
   (void)jcls;
   {
     result = (int)sbz_last_error_http_status();
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
       // Check if there's an error
       char* err_msg = (char*)malloc(err_len);
       sbz_last_error_message(err_msg, err_len);
-      (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      
+      jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+      if (exceptionClass != NULL) {
+        int httpStatus = sbz_last_error_http_status();
+        jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+        jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+        (*jenv)->Throw(jenv, exception);
+      } else {
+        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+      }
+      
       sbz_clear_last_error();
       free(err_msg);
       return 0;
     }
-    //}
   }
   jresult = (jint)result; 
   return jresult;

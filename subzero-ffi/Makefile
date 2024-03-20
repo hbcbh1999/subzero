@@ -2,6 +2,7 @@
 INCLUDE_PATH=-I/opt/homebrew/include
 LIBRARY_PATH=-L/opt/homebrew/lib
 TARGET_DIR=../target
+INTROSPECTION_QUERIES_DIR=../introspection
 MAC_RELEASE_DIR=$(TARGET_DIR)/release
 LINUX_RELEASE_DIR=$(TARGET_DIR)/x86_64-unknown-linux-gnu/release
 VERSION=$(shell grep '^version' Cargo.toml | cut -d '"' -f 2)
@@ -48,11 +49,13 @@ build_release:
 	CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
 	cargo build --release --target x86_64-unknown-linux-gnu
 
-package: 
+package: build_release
 	rm -rf $(TARGET_DIR)/dist && mkdir -p $(DIST_DIR) && \
 	cp $(MAC_RELEASE_DIR)/libsubzero.dylib $(DIST_DIR)/libsubzero.dylib && \
 	cp $(LINUX_RELEASE_DIR)/libsubzero.so $(DIST_DIR)/libsubzero.so && \
 	cp $(TARGET_DIR)/release/subzero.h $(DIST_DIR)/subzero.h && \
+	mkdir -p $(DIST_DIR)/introspection/ && \
+	cp $(INTROSPECTION_QUERIES_DIR)/*.sql $(DIST_DIR)/introspection/ && \
 	cd $(DIST_DIR)/.. && \
 	ln -s subzero-ffi-$(VERSION) subzero-ffi && \
 	zip -ry subzero-ffi-$(VERSION).zip subzero-ffi-$(VERSION) subzero-ffi && \

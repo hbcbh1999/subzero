@@ -1,5 +1,8 @@
 %module Subzero
 
+
+
+
 /* This tells SWIG to treat char ** as a special case when used as a parameter
    in a function call */
 %typemap(in) char ** (jint size) {
@@ -22,7 +25,7 @@
 %typemap(freearg) char ** {
     int i;
     for (i=0; i<size$argnum-1; i++)
-      free($1[i]);
+        free($1[i]);
     free($1);
 }
 
@@ -61,7 +64,7 @@
     return $jnicall;
 }
 
-//%include "documentation.i"
+
 
 %{
     #include "subzero.h"
@@ -76,17 +79,25 @@ typedef struct sbz_TwoStageStatement {} sbz_TwoStageStatement;
 
 %exception {
     $action
-    //if (!result) {
     const int err_len = sbz_last_error_length();
     if (err_len > 0) { // Check if there's an error
         char* err_msg = (char*)malloc(err_len);
         sbz_last_error_message(err_msg, err_len);
-        (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+        
+        jclass exceptionClass = (*jenv)->FindClass(jenv, "com/subzero/SubzeroException");
+        if (exceptionClass != NULL) {
+            int httpStatus = sbz_last_error_http_status();
+            jmethodID constructor = (*jenv)->GetMethodID(jenv, exceptionClass, "<init>", "(Ljava/lang/String;I)V");
+            jobject exception = (*jenv)->NewObject(jenv, exceptionClass, constructor, (*jenv)->NewStringUTF(jenv, err_msg), httpStatus);
+            (*jenv)->Throw(jenv, exception);
+        } else {
+            (*jenv)->ThrowNew(jenv, (*jenv)->FindClass(jenv, "java/lang/RuntimeException"), err_msg);
+        }
+
         sbz_clear_last_error();
         free(err_msg);
         return $null;
     }
-    //}
 }
 
 %include "subzero.h"
@@ -181,6 +192,15 @@ typedef struct sbz_TwoStageStatement {} sbz_TwoStageStatement;
                           const struct sbz_HTTPRequest *request,
                           const char *max_rows) {
         return sbz_two_stage_statement_new(schema_name, path_prefix, role, db_schema, request, max_rows);
+    }
+    const sbz_Statement* mutateStatement() {
+        return sbz_two_stage_statement_mutate($self);
+    }
+    const sbz_Statement* selectStatement() {
+        return sbz_two_stage_statement_select($self);
+    }
+    int setIds(const char** ids, int ids_count) {
+        return sbz_two_stage_statement_set_ids($self, ids, ids_count);
     }
     ~sbz_TwoStageStatement() {
         sbz_two_stage_statement_free($self);

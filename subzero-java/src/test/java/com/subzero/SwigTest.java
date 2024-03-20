@@ -36,6 +36,7 @@ public class SwigTest {
         if (db_schema == null) {
             System.out.println("Failed to create db_schema");
             assert (false);
+            return;
         }
 
         // validate it's in demo mode
@@ -45,6 +46,7 @@ public class SwigTest {
         if (statement == null) {
             System.out.println("Failed to create statement");
             assert (false);
+            return;
         }
 
         //String sql = statement.getSql();

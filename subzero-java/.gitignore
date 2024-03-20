@@ -5,3 +5,4 @@ libsubzerojni.*
 subzero.h
 docs
 hs_err_pid*
+src/main/resources/introspection

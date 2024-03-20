@@ -328,7 +328,7 @@ export class ContextEnv {
 }
 
 type DbResponseRow = {
-    status?: number,
+    response_status?: number,
     body?: string,
     page_total?: number,
     total_result_set?: number,
@@ -639,7 +639,7 @@ export function getRequestHandler(
                 );
             }
 
-            const status = Number(result.status) || 200;
+            const status = Number(result.response_status) || 200;
             const pageTotal = Number(result.page_total) || 0;
             const totalResultSet = Number(result.total_result_set);
             const offset = Number(url.searchParams.get('offset') || '0') || 0;

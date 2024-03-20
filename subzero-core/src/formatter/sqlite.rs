@@ -137,7 +137,8 @@ pub fn fmt_main_query_internal<'a>(
             + body_snippet
             + " as body, "
             + " null as response_headers, "
-            + " null as response_status "
+            + " null as response_status, "
+            + " true as constraints_satisfied "
             + " from ("
             + "     select json_object("
             + select_column_names

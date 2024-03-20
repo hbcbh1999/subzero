@@ -52,4 +52,18 @@ public class sbz_TwoStageStatement {
     this(SubzeroJNI.new_sbz_TwoStageStatement(schema_name, path_prefix, role, sbz_DbSchema.getCPtr(db_schema), db_schema, sbz_HTTPRequest.getCPtr(request), request, max_rows), true);
   }
 
+  public sbz_Statement mutateStatement() {
+    long cPtr = SubzeroJNI.sbz_TwoStageStatement_mutateStatement(swigCPtr, this);
+    return (cPtr == 0) ? null : new sbz_Statement(cPtr, false);
+  }
+
+  public sbz_Statement selectStatement() {
+    long cPtr = SubzeroJNI.sbz_TwoStageStatement_selectStatement(swigCPtr, this);
+    return (cPtr == 0) ? null : new sbz_Statement(cPtr, false);
+  }
+
+  public int setIds(String[] ids, int ids_count) {
+    return SubzeroJNI.sbz_TwoStageStatement_setIds(swigCPtr, this, ids, ids_count);
+  }
+
 }

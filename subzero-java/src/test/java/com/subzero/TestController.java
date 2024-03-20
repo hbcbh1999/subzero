@@ -8,16 +8,13 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.stereotype.Controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import com.subzero.spring.Subzero;
-import java.util.Optional;
-import java.util.HashMap;
+import java.util.Map;
 
 @Controller
 @DependsOn("dataSourceScriptDatabaseInitializer")
@@ -38,7 +35,7 @@ public class TestController {
                 dataSource,
                 "postgresql",
                 new String[] { "public" },
-                "./introspection",
+                null,//"./introspection",
                 true,
                 null,
                 this.permissions_json,
@@ -74,12 +71,11 @@ public class TestController {
     @RequestMapping("/rest/**")
     public void handleRequest(HttpServletRequest req, HttpServletResponse res) {
         try {
-            ObjectNode jwtClaims = new ObjectNode(JsonNodeFactory.instance)
-                .put("role", "alice");
-            HashMap<String,String> env = this.subzero.getEnv(
+            Map<String, Object> jwtClaims = Map.of("role", "alice");
+            Map<String,String> env = this.subzero.getEnv(
                 "alice",
                 req,
-                Optional.of(jwtClaims)
+                jwtClaims
             );
             // delete the "role" key from the env
             env.remove("role");

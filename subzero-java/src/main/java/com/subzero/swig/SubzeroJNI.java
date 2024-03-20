@@ -22,6 +22,9 @@ public class SubzeroJNI {
   public final static native String[] sbz_Statement_getParams(long jarg1, sbz_Statement jarg1_);
   public final static native String[] sbz_Statement_getParamsTypes(long jarg1, sbz_Statement jarg1_);
   public final static native long new_sbz_TwoStageStatement(String jarg1, String jarg2, String jarg3, long jarg4, sbz_DbSchema jarg4_, long jarg5, sbz_HTTPRequest jarg5_, String jarg6);
+  public final static native long sbz_TwoStageStatement_mutateStatement(long jarg1, sbz_TwoStageStatement jarg1_);
+  public final static native long sbz_TwoStageStatement_selectStatement(long jarg1, sbz_TwoStageStatement jarg1_);
+  public final static native int sbz_TwoStageStatement_setIds(long jarg1, sbz_TwoStageStatement jarg1_, String[] jarg2, int jarg3);
   public final static native void delete_sbz_TwoStageStatement(long jarg1);
   public final static native long sbz_http_request_new_with_clone(String jarg1, String jarg2, String jarg3, String[] jarg4, int jarg5, String[] jarg6, int jarg7);
   public final static native long sbz_http_request_new(String jarg1, String jarg2, String jarg3, String[] jarg4, int jarg5, String[] jarg6, int jarg7);
