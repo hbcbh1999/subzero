@@ -6,6 +6,7 @@
         "outDir": "./lib",
         "strict": true,
         "allowJs": true,
+        "noImplicitAny": false,
         "moduleResolution": "node",
         "esModuleInterop": true,
     },

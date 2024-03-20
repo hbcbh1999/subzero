@@ -958,7 +958,7 @@ pub fn split_keep<'a>(r: &Regex, text: &'a str) -> Vec<SplitStr<'a>> {
 pub fn include_files(template: String) -> String {
     // regex for this format {@relations.json#[]}
     // let r = Regex::new(r"\{@[^#}]+(#[^\}]*)?\}").expect("Invalid regex");
-    // regexp for this format '[]' --relations.json
+    // regexp for this format '[]'--relations.json
     let r = Regex::new(r"'\[\]'--\w+\.json").expect("Invalid regex");
     split_keep(&r, template.as_str())
         .into_iter()

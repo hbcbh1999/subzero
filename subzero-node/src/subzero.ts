@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { default as sqlite_introspection_query } from '../introspection/sqlite_introspection_query.sql'
 import { default as postgresql_introspection_query } from '../introspection/postgresql_introspection_query.sql'
 import { default as clickhouse_introspection_query } from '../introspection/clickhouse_introspection_query.sql'
@@ -1097,35 +1099,20 @@ export function getRawIntrospectionQuery(dbType: DbType): Query {
 export function getIntrospectionQuery(
     dbType: DbType,
     schemas: string | string[],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     placeholder_values?: Map<string, any>,
     includeAllDbRoles = false,
 ): Statement {
-    const re = new RegExp(`{@([^#}]+)(#([^}]+))?}`, 'g')
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const re = /'\[\]'--([a-zA-Z0-9_.]+\.json)/g;
     const placeholder_values_map = placeholder_values || new Map<string, any>()
     const raw_query = getRawIntrospectionQuery(dbType)
-    const parts = raw_query.split(re)
-    let query = ''
-    for (let i = 0; i < parts.length; i += 4) {
-        query += parts[i]
-
-        if (i + 1 < parts.length) {
-            const file_to_include = parts[i + 1]
-            let default_value = parts[i + 3]
-            if (default_value === undefined) {
-                default_value = `{not found @${file_to_include}}`
-            }
-            if (placeholder_values_map.has(file_to_include)) {
-                query += JSON.stringify(placeholder_values_map.get(file_to_include))
-                // } else if (fs.existsSync(file_to_include)) {
-                //   const file_content = fs.readFileSync(file_to_include, 'utf8')
-                //   query += file_content
-            } else {
-                query += default_value
-            }
+    
+    const query = raw_query.replace(re, (match, filename) => {
+        if (placeholder_values_map.has(filename)) {
+            return `'${JSON.stringify(placeholder_values_map.get(filename))}'`;
+        } else {
+            return "'[]'";
         }
-    }
+    });
     const parameters: (string | string[] | boolean | number)[] = typeof schemas === 'string' ? [[schemas]] : [schemas]
     if (dbType === 'sqlite' || dbType === 'mysql') {
         parameters[0] = [JSON.stringify(parameters[0])]
