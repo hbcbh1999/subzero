@@ -13,11 +13,17 @@ fi
 
 VERSION=$1
 
+# set the version for rust subprojects
 cd "$PROJECT_DIR"
 cargo set-version $VERSION
 
+# set the version for the node subproject
 cd subzero-node
 npm version $VERSION
+
+# set the version for java subproject
+cd subzero-java
+mvn versions:set -DnewVersion=$VERSION
 
 cd "$PROJECT_DIR"
 

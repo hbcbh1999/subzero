@@ -5,11 +5,17 @@
     <groupId>com.subzero</groupId>
     <artifactId>subzero</artifactId>
     <packaging>jar</packaging>
-    <version>0.1.0</version>
+    <version>2.0.8</version>
     <name>subzero</name>
     <url>http://maven.apache.org</url>
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Subzero Apache Maven Packages</name>
+            <url>https://maven.pkg.github.com/subzerocloud/subzero</url>
+        </repository>
+    </distributionManagement>
     <dependencies>
-
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -41,7 +47,7 @@
             <artifactId>jackson-annotations</artifactId>
             <version>[2.0,3.0)</version>
         </dependency>
-        
+
         <!-- Test dependencies -->
         <dependency>
             <groupId>org.testcontainers</groupId>

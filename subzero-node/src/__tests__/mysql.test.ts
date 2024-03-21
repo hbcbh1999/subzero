@@ -1,6 +1,6 @@
 import { beforeAll,  afterAll } from '@jest/globals';
-import Subzero, { Statement, getIntrospectionQuery, fmtMySqlEnv, Env } from '../rest';
-import mysql, {ResultSetHeader, RowDataPacket} from 'mysql2';
+import Subzero, { getIntrospectionQuery, fmtMySqlEnv, Env } from '../rest';
+import mysql, {RowDataPacket} from 'mysql2';
 import * as fs from 'fs';
 import * as path from 'path';
 import { runPermissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
@@ -16,12 +16,12 @@ const dbPool = mysql.createPool({
   password: MYSQL_PASSWORD,
   database: MYSQL_DATABASE,
 }).promise()
-function normalize_statement(s: Statement) {
-  return {
-    query: s.query.replace(/\s+/g, ' ').trim(),
-    parameters: s.parameters,
-  };
-}
+// function normalize_statement(s: Statement) {
+//   return {
+//     query: s.query.replace(/\s+/g, ' ').trim(),
+//     parameters: s.parameters,
+//   };
+// }
 const base_url = 'http://localhost:3000/rest';
 //const subzero = new Subzero('postgresql', schema);
 let subzero: Subzero;

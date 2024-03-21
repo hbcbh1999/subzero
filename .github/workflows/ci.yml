@@ -10,7 +10,7 @@ defaults:
     shell: bash
 
 env:
-  PG_VER: 15
+  # PG_VER: 15
   RUST_BACKTRACE: 1
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
   SCCACHE_CACHE_SIZE: 2G
@@ -19,6 +19,7 @@ env:
   SCCACHE_BUCKET: subzero-sccache
   RUST_TOOLCHAIN: stable
   NODE_VERSION: 18
+  JAVA_VERSION: 21
 
   POSTGRES_USER: postgrest_test_authenticator
   POSTGRES_PASSWORD: pass
@@ -50,54 +51,15 @@ jobs:
         with:
           version: ${{ env.RUST_TOOLCHAIN }}
       - uses: ./.github/actions/cargo-cache
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'maven'
+          cache-dependency-path: 'subzero-java/pom.xml'
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - name: Set up prerequisites and environment (mostly because of pgx)
-        run: |
-          echo ""
-          echo "MAKEFLAGS=$MAKEFLAGS -j $(grep -c ^processor /proc/cpuinfo)" >> $GITHUB_ENV
-          cat $GITHUB_ENV
-          echo ""
-          echo "----- Remove old postgres -----"
-          sudo apt remove -y '^postgres.*' '^libpq.*'
-          echo ""
-          echo "----- Set up PostgreSQL Apt repository -----"
-          sudo apt-get install -y wget gnupg
-          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
-          sudo apt-get update -y -qq --fix-missing
-          echo ""
-          echo "----- Install system dependencies and PostgreSQL version $PG_VER -----"
-          sudo apt-get install -y \
-            llvm \
-            clang \
-            gcc \
-            make \
-            build-essential \
-            libz-dev \
-            zlib1g-dev \
-            strace \
-            libssl-dev \
-            pkg-config \
-            postgresql-$PG_VER \
-            postgresql-server-dev-$PG_VER
-          echo ""
-          echo "----- Set up Postgres permissions -----"
-          sudo chmod a+rwx `/usr/lib/postgresql/$PG_VER/bin/pg_config --pkglibdir` `/usr/lib/postgresql/$PG_VER/bin/pg_config --sharedir`/extension /var/run/postgresql/
-          echo ""
-          echo "----- Print env -----"
-          env
-          echo ""
-          echo "----- Get cargo version -----"
-          cargo --version
-          echo ""
-
-      # - name: Install cargo-pgx
-      #   run: cargo install --locked --force cargo-pgx
-
-      # - name: Run 'cargo pgx init' against system-level postgres-$PG_VER
-      #   run: cargo pgx init --pg$PG_VER /usr/lib/postgresql/$PG_VER/bin/pg_config
 
       - run: cargo fmt --all -- --check
 
@@ -107,11 +69,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes sqlite3
 
-      - run: cargo build --workspace --exclude subzero-wasm --exclude subzero-pgx
+      - run: cargo build --workspace
+
+      - name: Build subzero-java
+        working-directory: subzero-java
+        run: |
+          make build_rust
+          make build
 
       - name: Build subzero-wasm 
         working-directory: subzero-wasm
-        # run: wasm-pack build --release --target web
         run: |
           if ! command -v wasm-pack &> /dev/null
           then
@@ -121,20 +88,15 @@ jobs:
               echo "wasm-pack found"
           fi
 
-          
           wasm-pack build --release --target web --out-dir=pkg-web
           wasm-pack build --release --target nodejs --out-dir=pkg-node
-          # wasm-pack build --release --target deno --out-dir=pkg-deno
-        # run: |
-        #   cargo install -f wasm-bindgen-cli
-        #   cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release
-        #   wasm-bindgen --out-dir=pkg-web --target=web --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
-        #   wasm-bindgen --out-dir=pkg-node --target=nodejs --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
-        #   wasm-bindgen --out-dir=pkg-deno --target=deno --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
 
+      - run: make test
+        working-directory: subzero-java
 
       - run: npm ci
         working-directory: subzero-node
+
       - run: npm run lint
         working-directory: subzero-node
 
