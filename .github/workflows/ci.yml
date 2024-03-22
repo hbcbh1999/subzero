@@ -3,9 +3,9 @@ name: ci
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+  # push:
+  #   branches:
+  #     - main
 defaults:
   run:
     shell: bash
@@ -72,11 +72,11 @@ jobs:
 
       - run: cargo build --workspace
 
-      - name: Build subzero-java
-        working-directory: subzero-java
-        run: |
-          make build_rust
-          make build
+      # - name: Build subzero-java
+      #   working-directory: subzero-java
+      #   run: |
+      #     make build_rust
+      #     make build
 
       - name: Build subzero-wasm 
         working-directory: subzero-wasm
