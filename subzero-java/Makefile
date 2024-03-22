@@ -48,7 +48,9 @@ swig_link:
 
 swig: swig_compile swig_link
 
+deploy: build_rust build
+	mvn deploy
 
 
-.PHONY: build test clean package docs swig_clean swig_generate swig_compile swig_link swig
+.PHONY: build test clean package docs swig_clean swig_generate swig_compile swig_link swig deploy
 

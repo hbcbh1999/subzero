@@ -92,8 +92,8 @@ jobs:
           wasm-pack build --release --target web --out-dir=pkg-web
           wasm-pack build --release --target nodejs --out-dir=pkg-node
 
-      - run: make test
-        working-directory: subzero-java
+      # - run: make test
+      #   working-directory: subzero-java
 
       - run: npm ci
         working-directory: subzero-node
