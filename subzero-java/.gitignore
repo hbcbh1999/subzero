@@ -1,5 +1,8 @@
 target
-subzero_wrap.o
+*.o
+linux-jdk-*
+mac-jdk-*
+windows-jdk-*
 libsubzero.*
 libsubzerojni.*
 subzero.h

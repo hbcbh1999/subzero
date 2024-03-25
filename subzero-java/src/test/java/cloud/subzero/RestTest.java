@@ -1,4 +1,4 @@
-package com.subzero;
+package cloud.subzero;
 
 
 
@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
-public class SpringTest {
+public class RestTest {
     
     @Autowired
     private WebTestClient webTestClient;

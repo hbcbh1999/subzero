@@ -2,19 +2,97 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.subzero</groupId>
+    <groupId>cloud.subzero</groupId>
     <artifactId>subzero</artifactId>
     <packaging>jar</packaging>
     <version>2.0.8</version>
-    <name>subzero</name>
-    <url>http://maven.apache.org</url>
-    <distributionManagement>
+    <name>${project.groupId}:${project.artifactId}</name>
+    <description>subZero library for Java - From Database to UI: The All-in-One library suite for internal tools development with integrated authentication in your language of choice.</description>
+    <url>https://subzero.cloud/</url>
+    <licenses>
+        <license>
+            <name>GNU Lesser General Public License</name>
+            <url>https://www.gnu.org/licenses/lgpl-3.0.html</url>
+        </license>
+    </licenses>
+    <developers>
+        <developer>
+            <name>Ruslan Talpa</name>
+            <email>ruslan.talpa@subzero.cloud</email>
+            <organization>Subzero Cloud S.R.L</organization>
+            <organizationUrl>https://subzero.cloud</organizationUrl>
+        </developer>
+    </developers>
+    <scm>
+        <connection>scm:git:git://github.com/subzerocloud/subzero.git</connection>
+        <developerConnection>scm:git:ssh://github.com:subzerocloud/subzero.git</developerConnection>
+        <url>http://github.com/subzerocloud/subzero/tree/master</url>
+    </scm>
+
+    <!-- <distributionManagement>
         <repository>
             <id>github</id>
             <name>GitHub Subzero Apache Maven Packages</name>
             <url>https://maven.pkg.github.com/subzerocloud/subzero</url>
         </repository>
-    </distributionManagement>
+    </distributionManagement> -->
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.4.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                    <tokenAuth>true</tokenAuth>
+                    <autoPublish>true</autoPublish>
+                    <!-- <waitUntil>published</waitUntil> -->
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>2.2.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>2.9.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-gpg-plugin</artifactId>
+                <version>1.5</version>
+                <executions>
+                    <execution>
+                        <id>sign-artifacts</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>sign</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -55,24 +133,20 @@
             <version>1.19.7</version>
             <scope>test</scope>
         </dependency>
-        
+
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <version>42.7.2</version>
             <scope>test</scope>
         </dependency>
-        
+
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
             <version>1.19.7</version>
             <scope>test</scope>
         </dependency>
-        
-        
-        
-        
 
 
     </dependencies>

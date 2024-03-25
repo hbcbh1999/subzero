@@ -5,6 +5,7 @@ TARGET_DIR=../target
 INTROSPECTION_QUERIES_DIR=../introspection
 MAC_RELEASE_DIR=$(TARGET_DIR)/release
 LINUX_RELEASE_DIR=$(TARGET_DIR)/x86_64-unknown-linux-gnu/release
+WINDOWS_RELEASE_DIR=$(TARGET_DIR)/x86_64-pc-windows-gnu/release
 VERSION=$(shell grep '^version' Cargo.toml | cut -d '"' -f 2)
 DIST_DIR=$(TARGET_DIR)/dist/subzero-ffi-$(VERSION)
 
@@ -49,10 +50,14 @@ build_release:
 	CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
 	cargo build --release --target x86_64-unknown-linux-gnu
 
+	# build windows
+	cargo build --release --target x86_64-pc-windows-gnu
+
 package: build_release
 	rm -rf $(TARGET_DIR)/dist && mkdir -p $(DIST_DIR) && \
 	cp $(MAC_RELEASE_DIR)/libsubzero.dylib $(DIST_DIR)/libsubzero.dylib && \
 	cp $(LINUX_RELEASE_DIR)/libsubzero.so $(DIST_DIR)/libsubzero.so && \
+	cp $(WINDOWS_RELEASE_DIR)/subzero.dll $(DIST_DIR)/subzero.dll && \
 	cp $(TARGET_DIR)/release/subzero.h $(DIST_DIR)/subzero.h && \
 	mkdir -p $(DIST_DIR)/introspection/ && \
 	cp $(INTROSPECTION_QUERIES_DIR)/*.sql $(DIST_DIR)/introspection/ && \

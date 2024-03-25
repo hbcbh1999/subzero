@@ -6,7 +6,7 @@
  * the SWIG interface file instead.
  * ----------------------------------------------------------------------------- */
 
-package com.subzero.swig;
+package cloud.subzero.swig;
 
 public class sbz_Statement {
   private transient long swigCPtr;

@@ -345,7 +345,7 @@ SWIGINTERN void SWIG_JavaException(JNIEnv *jenv, int code, const char *msg) {
 extern "C" {
 #endif
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1HTTPRequest(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jobjectArray jarg4, jint jarg5, jobjectArray jarg6, jint jarg7) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_new_1sbz_1HTTPRequest(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jobjectArray jarg4, jint jarg5, jobjectArray jarg6, jint jarg7) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -450,7 +450,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1HTTPRequest(
 }
 
 
-SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1HTTPRequest(JNIEnv *jenv, jclass jcls, jlong jarg1) {
+SWIGEXPORT void JNICALL Java_cloud_subzero_swig_SubzeroJNI_delete_1sbz_1HTTPRequest(JNIEnv *jenv, jclass jcls, jlong jarg1) {
   struct sbz_HTTPRequest *arg1 = (struct sbz_HTTPRequest *) 0 ;
   
   (void)jenv;
@@ -482,7 +482,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1HTTPReques
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1DbSchema(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_new_1sbz_1DbSchema(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -537,7 +537,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1DbSchema(JNI
 }
 
 
-SWIGEXPORT jboolean JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1DbSchema_1isDemo(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jboolean JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1DbSchema_1isDemo(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jboolean jresult = 0 ;
   struct sbz_DbSchema *arg1 = (struct sbz_DbSchema *) 0 ;
   bool result;
@@ -574,7 +574,7 @@ SWIGEXPORT jboolean JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1DbSchema_1isDe
 }
 
 
-SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1DbSchema(JNIEnv *jenv, jclass jcls, jlong jarg1) {
+SWIGEXPORT void JNICALL Java_cloud_subzero_swig_SubzeroJNI_delete_1sbz_1DbSchema(JNIEnv *jenv, jclass jcls, jlong jarg1) {
   struct sbz_DbSchema *arg1 = (struct sbz_DbSchema *) 0 ;
   
   (void)jenv;
@@ -606,7 +606,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1DbSchema(J
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1Statement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_new_1sbz_1Statement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -674,7 +674,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1Statement(JN
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1mainStatement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1Statement_1mainStatement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -742,7 +742,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1mainSt
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1envStatement(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_, jlong jarg2, jobject jarg2_) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1Statement_1envStatement(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_, jlong jarg2, jobject jarg2_) {
   jlong jresult = 0 ;
   struct sbz_DbSchema *arg1 = (struct sbz_DbSchema *) 0 ;
   struct sbz_HTTPRequest *arg2 = (struct sbz_HTTPRequest *) 0 ;
@@ -782,7 +782,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1envSta
 }
 
 
-SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1Statement(JNIEnv *jenv, jclass jcls, jlong jarg1) {
+SWIGEXPORT void JNICALL Java_cloud_subzero_swig_SubzeroJNI_delete_1sbz_1Statement(JNIEnv *jenv, jclass jcls, jlong jarg1) {
   struct sbz_Statement *arg1 = (struct sbz_Statement *) 0 ;
   
   (void)jenv;
@@ -814,7 +814,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1Statement(
 }
 
 
-SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1getSql(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jstring JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1Statement_1getSql(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jstring jresult = 0 ;
   struct sbz_Statement *arg1 = (struct sbz_Statement *) 0 ;
   char *result = 0 ;
@@ -851,7 +851,7 @@ SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1getS
 }
 
 
-SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1getParams(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jobjectArray JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1Statement_1getParams(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jobjectArray jresult = 0 ;
   struct sbz_Statement *arg1 = (struct sbz_Statement *) 0 ;
   char **result = 0 ;
@@ -908,7 +908,7 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_
 }
 
 
-SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_1getParamsTypes(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jobjectArray JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1Statement_1getParamsTypes(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jobjectArray jresult = 0 ;
   struct sbz_Statement *arg1 = (struct sbz_Statement *) 0 ;
   char **result = 0 ;
@@ -965,7 +965,7 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1Statement_
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1TwoStageStatement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_new_1sbz_1TwoStageStatement(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -1033,7 +1033,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_new_1sbz_1TwoStageStat
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement_1mutateStatement(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement_1mutateStatement(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jlong jresult = 0 ;
   struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
   sbz_Statement *result = 0 ;
@@ -1070,7 +1070,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement_1selectStatement(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement_1selectStatement(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jlong jresult = 0 ;
   struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
   sbz_Statement *result = 0 ;
@@ -1107,7 +1107,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement
 }
 
 
-SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement_1setIds(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_, jobjectArray jarg2, jint jarg3) {
+SWIGEXPORT jint JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement_1setIds(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_, jobjectArray jarg2, jint jarg3) {
   jint jresult = 0 ;
   struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
   char **arg2 = (char **) 0 ;
@@ -1169,7 +1169,7 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1TwoStageStatement_
 }
 
 
-SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1TwoStageStatement(JNIEnv *jenv, jclass jcls, jlong jarg1) {
+SWIGEXPORT void JNICALL Java_cloud_subzero_swig_SubzeroJNI_delete_1sbz_1TwoStageStatement(JNIEnv *jenv, jclass jcls, jlong jarg1) {
   struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
   
   (void)jenv;
@@ -1201,7 +1201,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_delete_1sbz_1TwoStageSt
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1new_1with_1clone(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jobjectArray jarg4, jint jarg5, jobjectArray jarg6, jint jarg7) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1http_1request_1new_1with_1clone(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jobjectArray jarg4, jint jarg5, jobjectArray jarg6, jint jarg7) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -1306,7 +1306,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1ne
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jobjectArray jarg4, jint jarg5, jobjectArray jarg6, jint jarg7) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1http_1request_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jobjectArray jarg4, jint jarg5, jobjectArray jarg6, jint jarg7) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -1411,7 +1411,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1ne
 }
 
 
-SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1free(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT void JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1http_1request_1free(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   struct sbz_HTTPRequest *arg1 = (struct sbz_HTTPRequest *) 0 ;
   
   (void)jenv;
@@ -1444,7 +1444,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1http_1request_1fre
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -1512,7 +1512,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1state
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1mutate(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1mutate(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jlong jresult = 0 ;
   struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
   struct sbz_Statement *result = 0 ;
@@ -1549,7 +1549,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1state
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1select(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1select(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jlong jresult = 0 ;
   struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
   struct sbz_Statement *result = 0 ;
@@ -1586,7 +1586,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1state
 }
 
 
-SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1set_1ids(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_, jobjectArray jarg2, jint jarg3) {
+SWIGEXPORT jint JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1set_1ids(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_, jobjectArray jarg2, jint jarg3) {
   jint jresult = 0 ;
   struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
   char **arg2 = (char **) 0 ;
@@ -1648,7 +1648,7 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statem
 }
 
 
-SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1free(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT void JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statement_1free(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   struct sbz_TwoStageStatement *arg1 = (struct sbz_TwoStageStatement *) 0 ;
   
   (void)jenv;
@@ -1681,7 +1681,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1two_1stage_1statem
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1main_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1statement_1main_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jlong jarg4, jobject jarg4_, jlong jarg5, jobject jarg5_, jstring jarg6) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -1749,7 +1749,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1main_1
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1env_1new(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_, jlong jarg2, jobject jarg2_) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1statement_1env_1new(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_, jlong jarg2, jobject jarg2_) {
   jlong jresult = 0 ;
   struct sbz_DbSchema *arg1 = (struct sbz_DbSchema *) 0 ;
   struct sbz_HTTPRequest *arg2 = (struct sbz_HTTPRequest *) 0 ;
@@ -1789,7 +1789,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1env_1n
 }
 
 
-SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1sql(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jstring JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1statement_1sql(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jstring jresult = 0 ;
   struct sbz_Statement *arg1 = (struct sbz_Statement *) 0 ;
   char *result = 0 ;
@@ -1826,7 +1826,7 @@ SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1sql(
 }
 
 
-SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1params(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jobjectArray JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1statement_1params(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jobjectArray jresult = 0 ;
   struct sbz_Statement *arg1 = (struct sbz_Statement *) 0 ;
   char **result = 0 ;
@@ -1883,7 +1883,7 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_
 }
 
 
-SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1params_1types(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jobjectArray JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1statement_1params_1types(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jobjectArray jresult = 0 ;
   struct sbz_Statement *arg1 = (struct sbz_Statement *) 0 ;
   char **result = 0 ;
@@ -1940,7 +1940,7 @@ SWIGEXPORT jobjectArray JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_
 }
 
 
-SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1params_1count(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jint JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1statement_1params_1count(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jint jresult = 0 ;
   struct sbz_Statement *arg1 = (struct sbz_Statement *) 0 ;
   int result;
@@ -1977,7 +1977,7 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1params_
 }
 
 
-SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1free(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT void JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1statement_1free(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   struct sbz_Statement *arg1 = (struct sbz_Statement *) 0 ;
   
   (void)jenv;
@@ -2010,7 +2010,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1statement_1free(JN
 }
 
 
-SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1free(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT void JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1db_1schema_1free(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   struct sbz_DbSchema *arg1 = (struct sbz_DbSchema *) 0 ;
   
   (void)jenv;
@@ -2043,7 +2043,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1free(J
 }
 
 
-SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3) {
+SWIGEXPORT jlong JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1db_1schema_1new(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3) {
   jlong jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -2098,7 +2098,7 @@ SWIGEXPORT jlong JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1new(J
 }
 
 
-SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1is_1demo(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
+SWIGEXPORT jint JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1db_1schema_1is_1demo(JNIEnv *jenv, jclass jcls, jlong jarg1, jobject jarg1_) {
   jint jresult = 0 ;
   struct sbz_DbSchema *arg1 = (struct sbz_DbSchema *) 0 ;
   int result;
@@ -2135,7 +2135,7 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1db_1schema_1is_1de
 }
 
 
-SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1introspection_1query(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jstring jarg4) {
+SWIGEXPORT jstring JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1introspection_1query(JNIEnv *jenv, jclass jcls, jstring jarg1, jstring jarg2, jstring jarg3, jstring jarg4) {
   jstring jresult = 0 ;
   char *arg1 = (char *) 0 ;
   char *arg2 = (char *) 0 ;
@@ -2197,7 +2197,7 @@ SWIGEXPORT jstring JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1introspection_1
 }
 
 
-SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1introspection_1query_1free(JNIEnv *jenv, jclass jcls, jstring jarg1) {
+SWIGEXPORT void JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1introspection_1query_1free(JNIEnv *jenv, jclass jcls, jstring jarg1) {
   char *arg1 = (char *) 0 ;
   
   (void)jenv;
@@ -2234,7 +2234,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1introspection_1que
 }
 
 
-SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1message(JNIEnv *jenv, jclass jcls, jstring jarg1, jint jarg2) {
+SWIGEXPORT jint JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1last_1error_1message(JNIEnv *jenv, jclass jcls, jstring jarg1, jint jarg2) {
   jint jresult = 0 ;
   char *arg1 = (char *) 0 ;
   int arg2 ;
@@ -2277,7 +2277,7 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1messa
 }
 
 
-SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1clear_1last_1error(JNIEnv *jenv, jclass jcls) {
+SWIGEXPORT void JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1clear_1last_1error(JNIEnv *jenv, jclass jcls) {
   (void)jenv;
   (void)jcls;
   {
@@ -2306,7 +2306,7 @@ SWIGEXPORT void JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1clear_1last_1error
 }
 
 
-SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1length(JNIEnv *jenv, jclass jcls) {
+SWIGEXPORT jint JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1last_1error_1length(JNIEnv *jenv, jclass jcls) {
   jint jresult = 0 ;
   int result;
   
@@ -2340,7 +2340,7 @@ SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1lengt
 }
 
 
-SWIGEXPORT jint JNICALL Java_com_subzero_swig_SubzeroJNI_sbz_1last_1error_1http_1status(JNIEnv *jenv, jclass jcls) {
+SWIGEXPORT jint JNICALL Java_cloud_subzero_swig_SubzeroJNI_sbz_1last_1error_1http_1status(JNIEnv *jenv, jclass jcls) {
   jint jresult = 0 ;
   int result;
   

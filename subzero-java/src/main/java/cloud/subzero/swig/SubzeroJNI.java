@@ -6,7 +6,7 @@
  * the SWIG interface file instead.
  * ----------------------------------------------------------------------------- */
 
-package com.subzero.swig;
+package cloud.subzero.swig;
 
 public class SubzeroJNI {
   public final static native long new_sbz_HTTPRequest(String jarg1, String jarg2, String jarg3, String[] jarg4, int jarg5, String[] jarg6, int jarg7);

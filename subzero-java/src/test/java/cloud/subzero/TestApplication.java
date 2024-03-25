@@ -1,4 +1,4 @@
-package com.subzero;
+package cloud.subzero;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

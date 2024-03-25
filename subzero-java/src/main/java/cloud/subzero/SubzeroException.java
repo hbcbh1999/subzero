@@ -1,4 +1,4 @@
-package com.subzero;
+package cloud.subzero;
 
 // custom class to hold the exception message
 public class SubzeroException extends Exception {

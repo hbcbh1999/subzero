@@ -1,12 +1,4 @@
-package com.subzero.spring;
-
-import com.subzero.swig.sbz_Statement;
-import com.subzero.swig.sbz_TwoStageStatement;
-
-
-import com.subzero.swig.sbz_DbSchema;
-import com.subzero.swig.sbz_HTTPRequest;
-import com.subzero.SubzeroException;
+package cloud.subzero.rest;
 
 import javax.sql.DataSource;
 
@@ -35,6 +27,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 
+import cloud.subzero.SubzeroException;
+import cloud.subzero.swig.sbz_DbSchema;
+import cloud.subzero.swig.sbz_HTTPRequest;
+import cloud.subzero.swig.sbz_Statement;
+import cloud.subzero.swig.sbz_TwoStageStatement;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,8 +40,8 @@ import org.slf4j.LoggerFactory;
 /**
  * The main class for Subzero. It is used to handle HTTP requests in the context of a spring application.
  */
-public class Subzero {
-    private static final Logger logger = LoggerFactory.getLogger(Subzero.class);
+public class RestHandler {
+    private static final Logger logger = LoggerFactory.getLogger(RestHandler.class);
     private sbz_DbSchema dbSchemaSbz;
     private DataSource dataSource;
     private String dbType;
@@ -67,7 +65,7 @@ public class Subzero {
      * @throws JsonProcessingException
      */
     @SuppressWarnings("unchecked")
-    public Subzero(DataSource dataSource, String dbType, String dbSchemaJson, String licenseKey)
+    public RestHandler(DataSource dataSource, String dbType, String dbSchemaJson, String licenseKey)
     throws JsonProcessingException, SubzeroException {
         this.dataSource = dataSource;
         this.dbType = dbType;
@@ -117,7 +115,7 @@ public class Subzero {
      * @throws JsonProcessingException
      */
     @SuppressWarnings("unchecked")
-    public Subzero(
+    public RestHandler(
             DataSource dataSource,
             String dbType,
             String[] dbSchemas,
@@ -145,7 +143,7 @@ public class Subzero {
             //System.out.println("Introspection queries extracted to " + queryDir);
         };
 
-        String introspectionQuery = com.subzero.swig.Subzero.sbz_introspection_query(
+        String introspectionQuery = cloud.subzero.swig.Subzero.sbz_introspection_query(
                 dbType,
                 queryDir,
                 customRelations,
@@ -315,9 +313,9 @@ public class Subzero {
                 }
                 int idsSet = twoStageStatement.setIds(ids.toArray(new String[0]), ids.size());
                 if (idsSet < 0) {
-                    int l = com.subzero.swig.Subzero.sbz_last_error_length();
+                    int l = cloud.subzero.swig.Subzero.sbz_last_error_length();
                     String buf = new String(new char[l]);
-                    com.subzero.swig.Subzero.sbz_last_error_message(buf, l);
+                    cloud.subzero.swig.Subzero.sbz_last_error_message(buf, l);
                     throw new SubzeroException("Error setting ids", 500, buf);
                 }
                 selecStatement = twoStageStatement.selectStatement();
@@ -793,7 +791,7 @@ public class Subzero {
 
     private static File extractResourceFile(String resource) {
         try {
-            InputStream in = Subzero.class.getResourceAsStream(resource);
+            InputStream in = RestHandler.class.getResourceAsStream(resource);
             if (in == null) {
                 throw new RuntimeException("Cannot find " + resource);
             }

@@ -6,7 +6,7 @@
  * the SWIG interface file instead.
  * ----------------------------------------------------------------------------- */
 
-package com.subzero.swig;
+package cloud.subzero.swig;
 
 public class Subzero {
   public static sbz_HTTPRequest sbz_http_request_new_with_clone(String method, String uri, String body, String[] headers, int headers_count, String[] env, int env_count) {

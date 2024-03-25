@@ -1,10 +1,13 @@
-package com.subzero;
+package cloud.subzero;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
+
+import cloud.subzero.rest.RestHandler;
+
 import org.springframework.stereotype.Controller;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -13,7 +16,6 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import com.subzero.spring.Subzero;
 import java.util.Map;
 
 @Controller
@@ -23,7 +25,7 @@ public class TestController {
     private final DataSource dataSource;
     //private final String schema_json;
     private final String permissions_json;
-    private final Subzero subzero;
+    private final RestHandler rest;
     @Autowired
     public TestController(DataSource dataSource) {
         this.dataSource = dataSource;
@@ -31,7 +33,7 @@ public class TestController {
             // this.schema_json = Util.getResourceFileContent("schema.json");
             // this.subzero = new Subzero(dataSource, "postgresql", this.schema_json, null);
             this.permissions_json = Util.getResourceFileContent("permissions.json");
-            this.subzero = new Subzero(
+            this.rest = new RestHandler(
                 dataSource,
                 "postgresql",
                 new String[] { "public" },
@@ -72,7 +74,7 @@ public class TestController {
     public void handleRequest(HttpServletRequest req, HttpServletResponse res) {
         try {
             Map<String, Object> jwtClaims = Map.of("role", "alice");
-            Map<String,String> env = this.subzero.getEnv(
+            Map<String,String> env = this.rest.getEnv(
                 "alice",
                 req,
                 jwtClaims
@@ -87,7 +89,7 @@ public class TestController {
                 envArray[i++] = env.get(key);
             }
             
-            this.subzero.handleRequest("public", "/rest/", "alice", req, res, envArray, null);
+            this.rest.handleRequest("public", "/rest/", "alice", req, res, envArray, null);
         } catch (Exception e) {
             // return the error message
             e.printStackTrace();
