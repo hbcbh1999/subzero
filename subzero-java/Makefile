@@ -35,7 +35,7 @@ swig_clean:
 
 docs:
 # Generate javadocs and copy to docs directory
-	rm -r target/site/apidocs/ && \
+	rm -rf target/site/apidocs/ && \
 	mvn javadoc:javadoc && \
 	cp -r target/site/apidocs/ docs/
 
