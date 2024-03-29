@@ -25,7 +25,7 @@ build_rust:
 clean:
 	mvn clean
 
-package:
+package: build
 	mvn package
 
 swig_clean:

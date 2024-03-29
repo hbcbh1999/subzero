@@ -5,6 +5,8 @@ mac-jdk-*
 windows-jdk-*
 libsubzero.*
 libsubzerojni.*
+subzero.dll
+subzerojni.dll
 subzero.h
 docs
 hs_err_pid*
