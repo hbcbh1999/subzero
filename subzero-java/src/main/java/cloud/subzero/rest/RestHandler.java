@@ -43,7 +43,7 @@ import org.slf4j.LoggerFactory;
 public class RestHandler {
     private static final Logger logger = LoggerFactory.getLogger(RestHandler.class);
     private sbz_DbSchema dbSchemaSbz;
-    private DataSource dataSource;
+    //private DataSource dataSource;
     private String dbType;
     public String dbSchemaJson;
     public Map<String, Object> dbSchema;
@@ -67,13 +67,14 @@ public class RestHandler {
     @SuppressWarnings("unchecked")
     public RestHandler(DataSource dataSource, String dbType, String dbSchemaJson, String licenseKey)
     throws JsonProcessingException, SubzeroException {
-        this.dataSource = dataSource;
+        //this.dataSource = dataSource;
         this.dbType = dbType;
         this.dbSchemaJson = dbSchemaJson;
-        this.dbSchemaSbz = new sbz_DbSchema(dbType, dbSchemaJson, licenseKey);
         ObjectMapper objectMapper = new ObjectMapper();
-        
         this.dbSchema = objectMapper.readValue(dbSchemaJson, Map.class);
+        logger.debug("dbSchema: " + dbSchema);
+        this.dbSchemaSbz = new sbz_DbSchema(dbType, dbSchemaJson, licenseKey);
+        
         
         if (this.dbSchemaSbz.isDemo()) {
             logger.info(demoModeMessage);
@@ -82,7 +83,7 @@ public class RestHandler {
 
     /**
      * Constructor for Subzero, used when the json schema is not known and needs to be introspected from the database
-     * @param dataSource the data source to connect to the database
+     * @param conn the connection to the database
      * @param dbType the type of the database (postgresql, mysql, etc)
      * @param dbSchemas the schemas to introspect and expose for the REST API
      * @param introspectionQueryDir the directory where the introspection queries are stored (optional, use null for default)
@@ -116,7 +117,8 @@ public class RestHandler {
      */
     @SuppressWarnings("unchecked")
     public RestHandler(
-            DataSource dataSource,
+            //DataSource dataSource,
+            Connection conn,
             String dbType,
             String[] dbSchemas,
             String introspectionQueryDir,
@@ -125,7 +127,7 @@ public class RestHandler {
             String customPermissions,
             String licenseKey)
         throws SQLException, JsonProcessingException, SubzeroException {
-        this.dataSource = dataSource;
+        //this.dataSource = dataSource;
         this.dbType = dbType;
         String queryDir = null;
         if (introspectionQueryDir != null) {
@@ -149,7 +151,7 @@ public class RestHandler {
                 customRelations,
                 customPermissions);
         
-        Connection conn = dataSource.getConnection();
+        //Connection conn = dataSource.getConnection();
         PreparedStatement ps = conn.prepareStatement(introspectionQuery.replaceAll("\\$\\d+", "?"));
         if (this.dbType.equals("postgresql")) {
             Array dbSchemasArr = conn.createArrayOf("text", dbSchemas);
@@ -183,6 +185,7 @@ public class RestHandler {
             this.dbSchema.put("use_internal_permissions", useInternalPermissions);
         }
         this.dbSchemaJson = objectMapper.writeValueAsString(this.dbSchema);
+        logger.debug("dbSchema: " + dbSchema);
         this.dbSchemaSbz = new sbz_DbSchema(this.dbType, this.dbSchemaJson, licenseKey);
         conn.close();
 
@@ -193,6 +196,7 @@ public class RestHandler {
 
     /**
      * Handles an HTTP request. It will execute the SQL statement and return the result as a JSON object.
+     * @param conn the connection to the database
      * @param schema_name the name of the database schema for the current request. This has to be one of the schemas
      *        that were introspected and exposed by Subzero. In the context of PostgreSQL, this is the schema name, in the
      *        context of MySQL, this is the database name.
@@ -216,160 +220,153 @@ public class RestHandler {
      *   "role", "admin"
      * ]
      * }</pre>
+     * @throws SQLException 
      */
-    public void handleRequest(String schema_name, String prefix, String role, HttpServletRequest req,
+    public void handleRequest(Connection conn, String schema_name, String prefix, String role, HttpServletRequest req,
             HttpServletResponse res,
-            String[] env, String max_rows) throws IOException, SubzeroException {
-        Connection conn = null;
-        try {
-            String method = req.getMethod();
-            String uri; // = req.getRequestURI();
-            StringBuffer requestURL = req.getRequestURL();
-            String queryString = req.getQueryString();
+            String[] env, String max_rows) throws IOException, SubzeroException, SQLException {
+        // Connection conn = null;
+        //Boolean transactionStarted = false;
+        
+        String method = req.getMethod();
+        String uri; // = req.getRequestURI();
+        StringBuffer requestURL = req.getRequestURL();
+        String queryString = req.getQueryString();
 
-            if (queryString == null) {
-                uri = requestURL.toString();
-            } else {
-                uri = requestURL.append('?').append(queryString).toString();
-            }
-            String body = null;
-            Boolean isMutation = false;
-            if ("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method) || "DELETE".equals(method)) {
-                body = req.getReader().lines().reduce("", (accumulator, actual) -> accumulator + actual);
-                isMutation = true;
-            }
+        if (queryString == null) {
+            uri = requestURL.toString();
+        } else {
+            uri = requestURL.append('?').append(queryString).toString();
+        }
+        String body = null;
+        Boolean isMutation = false;
+        if ("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method) || "DELETE".equals(method)) {
+            body = req.getReader().lines().reduce("", (accumulator, actual) -> accumulator + actual);
+            isMutation = true;
+        }
 
-            Enumeration<String> headerNames = req.getHeaderNames();
-            int headerCount = 0;
-            while (headerNames.hasMoreElements()) {
-                headerNames.nextElement();
-                headerCount++;
-            }
+        Enumeration<String> headerNames = req.getHeaderNames();
+        int headerCount = 0;
+        while (headerNames.hasMoreElements()) {
+            headerNames.nextElement();
+            headerCount++;
+        }
 
-            String[] headers = new String[headerCount * 2];
+        String[] headers = new String[headerCount * 2];
 
-            headerNames = req.getHeaderNames();
-            int i = 0;
-            while (headerNames.hasMoreElements()) {
-                String headerName = headerNames.nextElement();
-                headers[i++] = headerName;
-                headers[i++] = req.getHeader(headerName);
-            }
-            headerCount = headers.length;
+        headerNames = req.getHeaderNames();
+        int i = 0;
+        while (headerNames.hasMoreElements()) {
+            String headerName = headerNames.nextElement();
+            headers[i++] = headerName;
+            headers[i++] = req.getHeader(headerName);
+        }
+        headerCount = headers.length;
 
-            int envCount = env.length;
-            logger.debug("Creating sbz_HTTPRequest with:" +
-                    " method: " + method +
-                    " uri: " + uri +
-                    " body (length): " + (body == null ? 0 : body.length()) +
-                    " headerCount: " + headerCount +
-                    " envCount: " + envCount);
-            sbz_HTTPRequest request = new sbz_HTTPRequest(method, uri, body, headers, headerCount, env, envCount);
-            sbz_Statement selecStatement = null;
-            sbz_Statement mutateStatement = null;
-            sbz_TwoStageStatement twoStageStatement = null;
-            if (
-                isMutation &&
-                (this.dbType.equals("sqlite") || this.dbType.equals("mysql"))
-                ) {
-                // SQLite and MySQL do not support returning in a CTE, so we need to use a two stage statement
-                twoStageStatement = new sbz_TwoStageStatement(schema_name, prefix, role, dbSchemaSbz, request,
-                        max_rows);
-                mutateStatement = twoStageStatement.mutateStatement();
-            } else {
-                selecStatement = sbz_Statement.mainStatement(schema_name, prefix, role, dbSchemaSbz, request, max_rows);
-            }
+        int envCount = env.length;
+        logger.debug("Creating sbz_HTTPRequest with:" +
+                " method: " + method +
+                " uri: " + uri +
+                " body (length): " + (body == null ? 0 : body.length()) +
+                " headerCount: " + headerCount +
+                " envCount: " + envCount);
+        sbz_HTTPRequest request = new sbz_HTTPRequest(method, uri, body, headers, headerCount, env, envCount);
+        sbz_Statement selecStatement = null;
+        sbz_Statement mutateStatement = null;
+        sbz_TwoStageStatement twoStageStatement = null;
+        if (
+            isMutation &&
+            (this.dbType.equals("sqlite") || this.dbType.equals("mysql"))
+            ) {
+            // SQLite and MySQL do not support returning in a CTE, so we need to use a two stage statement
+            twoStageStatement = new sbz_TwoStageStatement(schema_name, prefix, role, dbSchemaSbz, request,
+                    max_rows);
+            mutateStatement = twoStageStatement.mutateStatement();
+        } else {
+            selecStatement = sbz_Statement.mainStatement(schema_name, prefix, role, dbSchemaSbz, request, max_rows);
+        }
 
-            conn = this.dataSource.getConnection();
-            conn.setAutoCommit(false);
-            conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
+        //conn = this.dataSource.getConnection();
+        //conn.setAutoCommit(false);
+        //transactionStarted = true;
+        //conn.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
 
-            switch (this.dbType) {
-                case "postgresql":
-                case "mysql":
-                    if (this.dbType.equals("mysql")) {
-                        PreparedStatement ps = conn.prepareStatement("set role ?");
-                        ps.setString(1, role);
-                        ps.executeQuery();
-                    }
-                    sbz_Statement envStatement = sbz_Statement.envStatement(dbSchemaSbz, request);
-                    executeStatement(envStatement, conn);
-                    break;
-            }
-
-            ResultSet rs;
-            if (isMutation && mutateStatement != null && twoStageStatement != null) {
-                ResultSet rsMu = executeStatement(mutateStatement, conn);
-                List<String> ids = new ArrayList<>();
-                List<Boolean> constraintsSatisfied = new ArrayList<>();
-                while (rsMu.next()) {
-                    ids.add(rsMu.getString(1));
-                    constraintsSatisfied.add(rsMu.getBoolean("_subzero_check__constraint"));
+        switch (this.dbType) {
+            case "postgresql":
+            case "mysql":
+                if (this.dbType.equals("mysql")) {
+                    PreparedStatement ps = conn.prepareStatement("set role ?");
+                    ps.setString(1, role);
+                    ps.executeQuery();
                 }
-                Boolean constraintsOk = constraintsSatisfied.stream().allMatch(c -> c == true);
-                if (!constraintsOk) {
-                    throw new SubzeroException("Permission denied", 403,
-                            "check constraint of an insert/update permission has failed");
-                }
-                int idsSet = twoStageStatement.setIds(ids.toArray(new String[0]), ids.size());
-                if (idsSet < 0) {
-                    int l = cloud.subzero.swig.Subzero.sbz_last_error_length();
-                    String buf = new String(new char[l]);
-                    cloud.subzero.swig.Subzero.sbz_last_error_message(buf, l);
-                    throw new SubzeroException("Error setting ids", 500, buf);
-                }
-                selecStatement = twoStageStatement.selectStatement();
-                rs = executeStatement(selecStatement, conn);
-            } else {
-                rs = executeStatement(selecStatement, conn);
+                sbz_Statement envStatement = sbz_Statement.envStatement(dbSchemaSbz, request);
+                executeStatement(envStatement, conn);
+                break;
+        }
+
+        ResultSet rs;
+        if (isMutation && mutateStatement != null && twoStageStatement != null) {
+            ResultSet rsMu = executeStatement(mutateStatement, conn);
+            List<String> ids = new ArrayList<>();
+            List<Boolean> constraintsSatisfied = new ArrayList<>();
+            while (rsMu.next()) {
+                ids.add(rsMu.getString(1));
+                constraintsSatisfied.add(rsMu.getBoolean("_subzero_check__constraint"));
             }
-            rs.next();
-            Boolean constraintsSatisfied = rs.getBoolean("constraints_satisfied");
-            if (constraintsSatisfied != null && !constraintsSatisfied) {
+            Boolean constraintsOk = constraintsSatisfied.stream().allMatch(c -> c == true);
+            if (!constraintsOk) {
                 throw new SubzeroException("Permission denied", 403,
                         "check constraint of an insert/update permission has failed");
             }
-
-            int status = rs.getInt("response_status");
-            if (rs.wasNull() || status == 0)
-                status = 200;
-            int pageTotal = rs.getInt("page_total");
-            if (rs.wasNull())
-                pageTotal = 0;
-            int totalResultSet = rs.getInt("total_result_set");
-            if (rs.wasNull())
-                totalResultSet = -1;
-            int offset = Integer.parseInt(req.getParameter("offset") == null ? "0" : req.getParameter("offset"));
-            String responseHeadersStr = rs.getString("response_headers");
-            ObjectMapper objectMapper = new ObjectMapper();
-            Map<String, Object> responseHeaders = responseHeadersStr != null
-                    ? objectMapper.readValue(responseHeadersStr, Map.class)
-                    : new HashMap<>();
-            String bodyColumn = rs.getString("body");
-            responseHeaders.put("content-length", String.valueOf(bodyColumn.getBytes(StandardCharsets.UTF_8).length));
-            responseHeaders.put("content-type", "application/json;charset=UTF-8");
-            responseHeaders.put("range-unit", "items");
-            responseHeaders.put("content-range",
-                    fmtContentRangeHeader(offset, offset + pageTotal - 1, totalResultSet < 0 ? null : totalResultSet));
-
-            res.setStatus(status);
-            for (String key : responseHeaders.keySet()) {
-                res.setHeader(key, responseHeaders.get(key).toString());
+            int idsSet = twoStageStatement.setIds(ids.toArray(new String[0]), ids.size());
+            if (idsSet < 0) {
+                int l = cloud.subzero.swig.Subzero.sbz_last_error_length();
+                String buf = new String(new char[l]);
+                cloud.subzero.swig.Subzero.sbz_last_error_message(buf, l);
+                throw new SubzeroException("Error setting ids", 500, buf);
             }
-            conn.commit();
-            conn.close();
-            PrintWriter writer = res.getWriter();
-            writer.write(bodyColumn);
-        } catch (SQLException e) {
-            logger.error("SQL error");
-            if (conn != null) {
-                try {
-                    conn.rollback();
-                } catch (SQLException ex) {
-                }
-            }
-            throw new RuntimeException(e);
+            selecStatement = twoStageStatement.selectStatement();
+            rs = executeStatement(selecStatement, conn);
+        } else {
+            rs = executeStatement(selecStatement, conn);
         }
+        rs.next();
+        Boolean constraintsSatisfied = rs.getBoolean("constraints_satisfied");
+        if (constraintsSatisfied != null && !constraintsSatisfied) {
+            throw new SubzeroException("Permission denied", 403,
+                    "check constraint of an insert/update permission has failed");
+        }
+
+        int status = rs.getInt("response_status");
+        if (rs.wasNull() || status == 0)
+            status = 200;
+        int pageTotal = rs.getInt("page_total");
+        if (rs.wasNull())
+            pageTotal = 0;
+        int totalResultSet = rs.getInt("total_result_set");
+        if (rs.wasNull())
+            totalResultSet = -1;
+        int offset = Integer.parseInt(req.getParameter("offset") == null ? "0" : req.getParameter("offset"));
+        String responseHeadersStr = rs.getString("response_headers");
+        ObjectMapper objectMapper = new ObjectMapper();
+        Map<String, Object> responseHeaders = responseHeadersStr != null
+                ? objectMapper.readValue(responseHeadersStr, Map.class)
+                : new HashMap<>();
+        String bodyColumn = rs.getString("body");
+        responseHeaders.put("content-length", String.valueOf(bodyColumn.getBytes(StandardCharsets.UTF_8).length));
+        responseHeaders.put("content-type", "application/json;charset=UTF-8");
+        responseHeaders.put("range-unit", "items");
+        responseHeaders.put("content-range",
+                fmtContentRangeHeader(offset, offset + pageTotal - 1, totalResultSet < 0 ? null : totalResultSet));
+
+        res.setStatus(status);
+        for (String key : responseHeaders.keySet()) {
+            res.setHeader(key, responseHeaders.get(key).toString());
+        }
+        //conn.commit();
+        //conn.close();
+        PrintWriter writer = res.getWriter();
+        writer.write(bodyColumn);
     }
 
     public static String fmtContentRangeHeader(int lower, int upper, Integer total) {

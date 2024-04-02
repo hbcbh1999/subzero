@@ -9,9 +9,13 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import cloud.subzero.rest.RestHandler;
 
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.annotation.Transactional;
+
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import javax.sql.DataSource;
+
+import java.io.IOException;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -33,8 +37,9 @@ public class TestController {
             // this.schema_json = Util.getResourceFileContent("schema.json");
             // this.subzero = new Subzero(dataSource, "postgresql", this.schema_json, null);
             this.permissions_json = Util.getResourceFileContent("permissions.json");
+
             this.rest = new RestHandler(
-                dataSource,
+                dataSource.getConnection(),
                 "postgresql",
                 new String[] { "public" },
                 null,//"./introspection",
@@ -71,7 +76,10 @@ public class TestController {
     }
     
     @RequestMapping("/rest/**")
-    public void handleRequest(HttpServletRequest req, HttpServletResponse res) {
+    @Transactional
+    public void handleRequest(HttpServletRequest req, HttpServletResponse res)
+    throws SQLException, IOException, SubzeroException
+    {
         try {
             Map<String, Object> jwtClaims = Map.of("role", "alice");
             Map<String,String> env = this.rest.getEnv(
@@ -89,7 +97,7 @@ public class TestController {
                 envArray[i++] = env.get(key);
             }
             
-            this.rest.handleRequest("public", "/rest/", "alice", req, res, envArray, null);
+            this.rest.handleRequest(this.dataSource.getConnection(), "public", "/rest/", "alice", req, res, envArray, null);
         } catch (Exception e) {
             // return the error message
             e.printStackTrace();
@@ -101,6 +109,7 @@ public class TestController {
             } catch (Exception e2) {
                 e2.printStackTrace();
             }
+            throw e;
         }
         
     }
