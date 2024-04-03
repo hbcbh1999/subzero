@@ -1,4 +1,4 @@
-/* 
+/*
 licenses keys are generated like this:
 openssl ecparam -name prime256v1 -genkey -noout -out ecdsa_p256_private.pem
 openssl ec -in ecdsa_p256_private.pem -pubout -out ecdsa_p256_public.pem
@@ -42,7 +42,7 @@ pub struct LicenseData {
     pub exp: i64,
 }
 
-fn parse_pem(in_pem: &str) -> Result<Vec<u8>,pem::PemError> {
+fn parse_pem(in_pem: &str) -> Result<Vec<u8>, pem::PemError> {
     let pem_p = pem::parse(in_pem)?;
     let pem_contents = pem_p.contents();
     Ok(pem_contents.to_vec())
@@ -50,25 +50,21 @@ fn parse_pem(in_pem: &str) -> Result<Vec<u8>,pem::PemError> {
 fn extract_public_key(der: Vec<u8>) -> Result<Vec<u8>, yasna::ASN1Error> {
     let asn = yasna::parse_der(&der, |reader| {
         reader.read_sequence(|reader| {
-                reader.next().read_sequence(|info_reader| {
-                    info_reader.next().read_oid()?;
-                    info_reader.next().read_oid()?;
-                    Ok(())
-                })?;
-                let b = reader.next().read_bitvec_bytes()?;
-                Ok(b)
-            })
-        }
-    )?;
+            reader.next().read_sequence(|info_reader| {
+                info_reader.next().read_oid()?;
+                info_reader.next().read_oid()?;
+                Ok(())
+            })?;
+            let b = reader.next().read_bitvec_bytes()?;
+            Ok(b)
+        })
+    })?;
 
     let public_key = asn.0;
     Ok(public_key)
 }
 
-pub fn get_license_info(
-    license_key: &str,
-    public_key: &str
-) -> Result<LicenseData, &'static str> {
+pub fn get_license_info(license_key: &str, public_key: &str) -> Result<LicenseData, &'static str> {
     let parts: Vec<&str> = license_key.trim().split('.').collect();
     if parts.len() != 2 {
         return Err("Invalid license key");
@@ -88,7 +84,6 @@ pub fn get_license_info(
     let email = data["email"].as_str().ok_or("Invalid license key (email)")?.to_string();
     let plan = data["plan"].as_str().ok_or("Invalid license key (plan)")?.to_string();
     let exp = data["exp"].as_i64().ok_or("Invalid license key (exp)")?;
-    
 
     // check if license is expired
     let current_timestamp = SystemTime::now()

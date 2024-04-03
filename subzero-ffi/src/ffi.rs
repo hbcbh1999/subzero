@@ -27,7 +27,6 @@ use crate::{check_null_ptr, try_cstr_to_str, try_cstr_to_cstring, cstr_to_str_un
 use crate::utils::{
     extract_cookies, arr_to_tuple_vec, parameters_to_tuples, fmt_first_stage_mutate, fmt_second_stage_select, fmt_mysql_env_query,
     fmt_postgresql_env_query, fmt_introspection_query,
-    
 };
 #[cfg(feature = "postgresql")]
 use subzero_core::formatter::postgresql;
@@ -1041,7 +1040,7 @@ pub unsafe extern "C" fn sbz_db_schema_new(db_type: *const c_char, db_schema_jso
         });
         return ptr::null_mut();
     }
-    
+
     let license_key_str = if license_key.is_null() {
         None
     } else {
@@ -1054,24 +1053,19 @@ pub unsafe extern "C" fn sbz_db_schema_new(db_type: *const c_char, db_schema_jso
     };
 
     let license_data = match license_key_str {
-        Some(k) => {
-            match get_license_info(&k, PUBLIC_LICENSE_PEM) {
-                Ok(l) => {
-                    if l.plan != "team" {
-                        Some(l)
-                    }
-                    else {
-                        None
-                    }
-                },
-                Err(e) => {
-                    update_last_error(CoreError::InternalError {
-                        message: e.to_string(),
-                    });
-                    return ptr::null_mut();
+        Some(k) => match get_license_info(&k, PUBLIC_LICENSE_PEM) {
+            Ok(l) => {
+                if l.plan != "team" {
+                    Some(l)
+                } else {
+                    None
                 }
             }
-        }
+            Err(e) => {
+                update_last_error(CoreError::InternalError { message: e.to_string() });
+                return ptr::null_mut();
+            }
+        },
         None => None,
     };
 

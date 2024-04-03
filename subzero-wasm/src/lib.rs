@@ -67,14 +67,12 @@ impl Backend {
         set_panic_hook();
 
         let license_data = match license_key {
-            Some(k) => {
-                match get_license_info(&k, PUBLIC_LICENSE_PEM) {
-                    Ok(l) => Some(l),
-                    Err(e) => {
-                        return Err(JsError::new(e));
-                    }
+            Some(k) => match get_license_info(&k, PUBLIC_LICENSE_PEM) {
+                Ok(l) => Some(l),
+                Err(e) => {
+                    return Err(JsError::new(e));
                 }
-            }
+            },
             None => None,
         };
         if license_data.is_none() {
