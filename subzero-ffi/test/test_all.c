@@ -28,7 +28,8 @@ const char* db_schema_json =
 START_TEST(test_db_schema_new)
 {
     const char* db_type = "sqlite";
-    sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, NULL);
+    const char* license_key = "eyJlbWFpbCI6Im1lQG15LmNvbSIsInBsYW4iOiJwZXJzb25hbCIsImV4cCI6MTc0MzY3MTQwMjA5NX0=.wa2uukWdOzkSThL7TCxASJOHkRQA5AMtyFKteR0uykw/BcMwHJXezbFtf4rH9peDzTHj6t4KtBbGxsO5bg0oYw==";
+    sbz_DbSchema* db_schema = sbz_db_schema_new(db_type, db_schema_json, license_key);
     const int err_len = sbz_last_error_length();
     if (err_len > 0) {
         char* err = (char*)malloc(err_len);
@@ -38,6 +39,8 @@ START_TEST(test_db_schema_new)
     }
     // check that the db_schema is not NULL
     ck_assert_ptr_ne(db_schema, NULL);
+    const int is_demo = sbz_db_schema_is_demo(db_schema);
+    ck_assert_int_eq(is_demo, 0);
     sbz_db_schema_free(db_schema);
 }
 END_TEST
@@ -261,7 +264,7 @@ START_TEST(test_two_stage_statement_new){
     ck_assert_str_eq(params_types_select[0], "unknown");
     ck_assert_int_eq(params_count_select, 1);
     //printf("select SQL: |%s|\n", sql_select);
-    ck_assert_str_eq(sql_select, 
+    const char* expected_sql_select =
         "with"
         " env as materialized (select null), "
         " _subzero_query as ( "
@@ -275,12 +278,16 @@ START_TEST(test_two_stage_statement_new){
         " null as total_result_set,"
         " json_group_array(json(_subzero_t.row)) as body, "
         " null as response_headers, "
-        " null as response_status  "
+        " null as response_status, "
+        " true as constraints_satisfied  "
         "from (    "
         " select json_object('id', _subzero_query.\"id\",'name', _subzero_query.\"name\"     ) as row    "
         " from _subzero_query "
-        ") _subzero_t"
-    );
+        ") _subzero_t";
+    
+    //printf("  select SQL: %s\n", sql_select);
+    //printf("expected SQL: %s\n", expected_sql_select);
+    ck_assert_str_eq(sql_select, expected_sql_select);
 
     sbz_two_stage_statement_free(main_stmt);
 

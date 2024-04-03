@@ -35,7 +35,7 @@ public class SwigTest {
                 env,
                 env.length);
 
-        sbz_DbSchema db_schema = Subzero.sbz_db_schema_new("sqlite", this.schema_json, "license_key");
+        sbz_DbSchema db_schema = Subzero.sbz_db_schema_new("sqlite", this.schema_json, null);
         if (db_schema == null) {
             System.out.println("Failed to create db_schema");
             assert (false);

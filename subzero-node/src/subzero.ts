@@ -152,6 +152,10 @@ export async function initInternal(
         debugFn: () => {},
         ...options,
     };
+    // delete o.licenseKey if it's empty
+    if (o.licenseKey === null || (o.licenseKey && o.licenseKey.trim() === '')) {
+        delete o.licenseKey;
+    }
     const { query, parameters } = getIntrospectionQuery(
         dbType, // database type
         dbSchemas, // the schema name that is exposed to the HTTP api (ex: public, api)

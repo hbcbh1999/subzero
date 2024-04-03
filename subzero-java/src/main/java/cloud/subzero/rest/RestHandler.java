@@ -47,7 +47,7 @@ public class RestHandler {
     private String dbType;
     public String dbSchemaJson;
     public Map<String, Object> dbSchema;
-    private String demoModeMessage = "Subzero is running in demo mode. It will stop working after 15 minutes";
+    private String demoModeMessage = "subZero is running in demo mode. It will stop working after 15 minutes.";
 
     private static class InstantSerializer extends JsonSerializer<Instant> {
         @Override
@@ -73,9 +73,10 @@ public class RestHandler {
         ObjectMapper objectMapper = new ObjectMapper();
         this.dbSchema = objectMapper.readValue(dbSchemaJson, Map.class);
         logger.debug("dbSchema: " + dbSchema);
-        this.dbSchemaSbz = new sbz_DbSchema(dbType, dbSchemaJson, licenseKey);
-        
-        
+        String lk = licenseKey != null ? (licenseKey.trim().length() == 0 ? null : licenseKey) : null;
+        //logger.debug("licenseKey: " + lk);
+        this.dbSchemaSbz = new sbz_DbSchema(dbType, dbSchemaJson, lk);
+
         if (this.dbSchemaSbz.isDemo()) {
             logger.info(demoModeMessage);
         }
@@ -186,7 +187,9 @@ public class RestHandler {
         }
         this.dbSchemaJson = objectMapper.writeValueAsString(this.dbSchema);
         logger.debug("dbSchema: " + dbSchema);
-        this.dbSchemaSbz = new sbz_DbSchema(this.dbType, this.dbSchemaJson, licenseKey);
+        String lk = licenseKey != null ? (licenseKey.trim().length() == 0 ? null : licenseKey) : null;
+        //logger.debug("licenseKey: " + lk);
+        this.dbSchemaSbz = new sbz_DbSchema(this.dbType, this.dbSchemaJson, lk);
         conn.close();
 
         if (this.dbSchemaSbz.isDemo()) {

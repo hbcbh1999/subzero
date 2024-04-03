@@ -21,11 +21,13 @@ use subzero_core::{
     api::{ApiRequest, DEFAULT_SAFE_SELECT_FUNCTIONS},
     permissions::{check_privileges, check_safe_functions, insert_policy_conditions, replace_select_star},
     error::Error as CoreError,
+    license::{get_license_info, LicenseData},
 };
 use crate::{check_null_ptr, try_cstr_to_str, try_cstr_to_cstring, cstr_to_str_unchecked, unwrap_result_or_return};
 use crate::utils::{
     extract_cookies, arr_to_tuple_vec, parameters_to_tuples, fmt_first_stage_mutate, fmt_second_stage_select, fmt_mysql_env_query,
     fmt_postgresql_env_query, fmt_introspection_query,
+    
 };
 #[cfg(feature = "postgresql")]
 use subzero_core::formatter::postgresql;
@@ -40,16 +42,16 @@ thread_local! {
     static LAST_ERROR: RefCell<Option<Box<CoreError>>> = RefCell::new(None);
     static LAST_ERROR_LENGTH: RefCell<c_int> = RefCell::new(0);
     static LAST_ERROR_HTTP_STATUS: RefCell<c_int> = RefCell::new(0);
-
 }
-//static NULL_PTR: *const c_char = std::ptr::null();
+static PUBLIC_LICENSE_PEM: &str = include_str!("../../../subzero-license-server/ecdsa_p256_public.pem");
+
 static DISABLED: AtomicBool = AtomicBool::new(false);
 
 /// A structure for holding the information about database entities and permissions (tables, views, etc).
 #[self_referencing]
 pub struct sbz_DbSchema {
     db_type: String,
-    license_key: Option<String>,
+    license_data: Option<LicenseData>,
     data: String,
     #[covariant]
     #[borrows(data)]
@@ -660,7 +662,7 @@ pub unsafe extern "C" fn sbz_statement_main_new(
 ) -> *mut sbz_Statement {
     if DISABLED.load(Ordering::Relaxed) {
         update_last_error(CoreError::InternalError {
-            message: "Subzero is disabled".to_string(),
+            message: "subZero is disabled".to_string(),
         });
         return ptr::null_mut();
     }
@@ -1039,16 +1041,38 @@ pub unsafe extern "C" fn sbz_db_schema_new(db_type: *const c_char, db_schema_jso
         });
         return ptr::null_mut();
     }
-
-    let license_key = if license_key.is_null() {
+    
+    let license_key_str = if license_key.is_null() {
         None
     } else {
         let k = try_cstr_to_str!(license_key, "Invalid UTF-8 in license_key").to_owned();
         // no checks for now except for empty string
         match k.is_empty() {
-            true => Some(k),
-            false => None,
+            false => Some(k),
+            true => None,
         }
+    };
+
+    let license_data = match license_key_str {
+        Some(k) => {
+            match get_license_info(&k, PUBLIC_LICENSE_PEM) {
+                Ok(l) => {
+                    if l.plan != "team" {
+                        Some(l)
+                    }
+                    else {
+                        None
+                    }
+                },
+                Err(e) => {
+                    update_last_error(CoreError::InternalError {
+                        message: e.to_string(),
+                    });
+                    return ptr::null_mut();
+                }
+            }
+        }
+        None => None,
     };
 
     let mut db_schema_json = try_cstr_to_str!(db_schema_json, "Invalid UTF-8 or null pointer in db_schema_json").to_owned();
@@ -1089,14 +1113,14 @@ pub unsafe extern "C" fn sbz_db_schema_new(db_type: *const c_char, db_schema_jso
         };
     }
 
-    if license_key.is_none() {
+    if license_data.is_none() {
         // start a thread and set the DISABLED flag to true after 15 minutes
         let _ = thread::spawn(|| {
             thread::sleep(Duration::from_secs(900));
             DISABLED.store(true, Ordering::Relaxed);
         });
     }
-    let db_schema = sbz_DbSchema::try_new(db_type_str.to_string(), license_key, db_schema_json, |data_ref| {
+    let db_schema = sbz_DbSchema::try_new(db_type_str.to_string(), license_data, db_schema_json, |data_ref| {
         let s = data_ref.as_str();
         serde_json::from_str(s)
     });
@@ -1123,7 +1147,7 @@ pub unsafe extern "C" fn sbz_db_schema_new(db_type: *const c_char, db_schema_jso
 pub unsafe extern "C" fn sbz_db_schema_is_demo(db_schema: *const sbz_DbSchema) -> c_int {
     check_null_ptr!(db_schema, -1, "Null pointer passed into db_schema_is_demo()");
     let db_schema = unsafe { &*db_schema };
-    if db_schema.borrow_license_key().is_none() {
+    if db_schema.borrow_license_data().is_none() {
         1
     } else {
         0

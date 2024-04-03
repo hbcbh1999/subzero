@@ -11,3 +11,4 @@ pub mod formatter;
 pub mod parser;
 pub mod permissions;
 pub mod schema;
+pub mod license;

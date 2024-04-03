@@ -1,5 +1,7 @@
 use js_sys::Array as JsArray;
 use subzero_core::api::ApiRequest;
+use std::thread;
+use std::time::Duration;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use ouroboros::self_referencing;
 use serde_wasm_bindgen::from_value as from_js_value;
@@ -8,6 +10,7 @@ use serde_wasm_bindgen::Error as JsError;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use serde_json::Value as JsonValue;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 mod utils;
 use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet, log, console_log};
@@ -18,6 +21,7 @@ use subzero_core::{
     api::{SingleVal, ListVal, Payload, Query, Field, QueryNode::*, SelectItem, Condition, Filter, DEFAULT_SAFE_SELECT_FUNCTIONS},
     permissions::{check_privileges, check_safe_functions, insert_policy_conditions, replace_select_star},
     error::Error as CoreError,
+    license::get_license_info,
 };
 #[cfg(feature = "postgresql")]
 use subzero_core::formatter::postgresql;
@@ -33,6 +37,8 @@ use subzero_core::formatter::mysql;
 #[cfg(feature = "wee_alloc")]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+static DISABLED: AtomicBool = AtomicBool::new(false);
+static PUBLIC_LICENSE_PEM: &str = include_str!("../../../subzero-license-server/ecdsa_p256_public.pem");
 
 struct BackendData {
     db_schema: String,
@@ -60,15 +66,24 @@ impl Backend {
     pub fn init(db_schema: String, db_type: String, allowed_select_functions: JsValue, license_key: Option<String>) -> Result<Backend, JsError> {
         set_panic_hook();
 
-        match license_key {
-            Some(_license_key) => {
-                // no checks for now
-            }
-            None => {
-                if !["sqlite", "mysql", "postgresql"].contains(&db_type.as_str()) {
-                    console_log!("subZero: No license key provided. Running in demo mode.")
+        let license_data = match license_key {
+            Some(k) => {
+                match get_license_info(&k, PUBLIC_LICENSE_PEM) {
+                    Ok(l) => Some(l),
+                    Err(e) => {
+                        return Err(JsError::new(e));
+                    }
                 }
             }
+            None => None,
+        };
+        if license_data.is_none() {
+            console_log!("subZero is running in demo mode. It will stop working after 15 minutes");
+            // start a thread and set the DISABLED flag to true after 15 minutes
+            let _ = thread::spawn(|| {
+                thread::sleep(Duration::from_secs(900));
+                DISABLED.store(true, Ordering::Relaxed);
+            });
         }
 
         let allowed_select_functions = from_js_value::<Option<Vec<String>>>(allowed_select_functions).unwrap_or_default();
@@ -162,6 +177,9 @@ impl Backend {
         &self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue,
         cookies: JsValue, env: JsValue, max_rows: Option<String>,
     ) -> Result<Vec<JsValue>, JsError> {
+        if DISABLED.load(Ordering::Relaxed) {
+            return Err(JsError::new("subZero is disabled"));
+        }
         if !["GET", "POST", "PUT", "DELETE", "PATCH"].contains(&method.as_str()) {
             return Err(JsError::new("invalid method"));
         }
@@ -458,6 +476,9 @@ impl Backend {
         &self, schema_name: String, root: String, method: String, path: String, get: JsValue, body: String, role: String, headers: JsValue,
         cookies: JsValue, env: JsValue, max_rows: Option<String>,
     ) -> Result<Vec<JsValue>, JsError> {
+        if DISABLED.load(Ordering::Relaxed) {
+            return Err(JsError::new("subZero is disabled"));
+        }
         if !["GET", "POST", "PUT", "DELETE", "PATCH"].contains(&method.as_str()) {
             return Err(JsError::new("invalid method"));
         }
