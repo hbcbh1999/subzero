@@ -38,7 +38,7 @@ use subzero_core::formatter::mysql;
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 static DISABLED: AtomicBool = AtomicBool::new(false);
-static PUBLIC_LICENSE_PEM: &str = include_str!("../../../subzero-license-server/ecdsa_p256_public.pem");
+static PUBLIC_LICENSE_PEM: &str = include_str!("../../ecdsa_p256_public.pem");
 
 struct BackendData {
     db_schema: String,

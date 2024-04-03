@@ -43,7 +43,7 @@ thread_local! {
     static LAST_ERROR_LENGTH: RefCell<c_int> = RefCell::new(0);
     static LAST_ERROR_HTTP_STATUS: RefCell<c_int> = RefCell::new(0);
 }
-static PUBLIC_LICENSE_PEM: &str = include_str!("../../../subzero-license-server/ecdsa_p256_public.pem");
+static PUBLIC_LICENSE_PEM: &str = include_str!("../../ecdsa_p256_public.pem");
 
 static DISABLED: AtomicBool = AtomicBool::new(false);
 

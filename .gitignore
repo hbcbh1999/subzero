@@ -3,3 +3,4 @@
 .rustup
 .sccache
 .cargo
+*.pem
