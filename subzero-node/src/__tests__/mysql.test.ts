@@ -1,10 +1,11 @@
-import { beforeAll,  afterAll } from '@jest/globals';
+import { beforeAll,  afterAll, jest } from '@jest/globals';
 import Subzero, { getIntrospectionQuery, fmtMySqlEnv, Env } from '../rest';
 import mysql, {RowDataPacket} from 'mysql2';
 import * as fs from 'fs';
 import * as path from 'path';
 import { runPermissionsTest, runSelectTest, runUpdateTest, runInsertTest } from './shared/shared'
 import dotenv from 'dotenv';
+
 dotenv.config({ path: `${__dirname}/../../../.github/.env`});
 
 const { MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE} = process.env;
@@ -26,6 +27,8 @@ const base_url = 'http://localhost:3000/rest';
 //const subzero = new Subzero('postgresql', schema);
 let subzero: Subzero;
 beforeAll(async () => {
+  console.warn = jest.fn();
+  //jest.useFakeTimers();
   const db = await dbPool.getConnection();
   const permissions = JSON.parse(fs.readFileSync(path.join(__dirname, 'permissions.json')).toString());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,6 +46,7 @@ beforeAll(async () => {
   subzero = new Subzero('mysql', schema);
   await db.release();
 });
+
 
 // execute the queries for a given parsed request
 async function run(role: string, req:Request, queryEnv?: Env) {
@@ -135,5 +139,6 @@ runInsertTest('mysql', base_url, run);
 
 afterAll(async () => {
   await dbPool.end();
-  
+  jest.runOnlyPendingTimers();
+  jest.useRealTimers();
 });

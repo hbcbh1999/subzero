@@ -1,4 +1,4 @@
-import { expect, test } from '@jest/globals';
+import { expect, test, beforeAll, jest, afterAll } from '@jest/globals';
 
 import Subzero from '../rest';
 import type { NextApiRequest} from "next";
@@ -64,10 +64,16 @@ const schema = {
 };
 
 const base_url = 'http://localhost:3000/rest';
-const subzero = new Subzero('postgresql', schema);
-// beforeAll(async () => {
-//   await subzero.init();
-// });
+let subzero: Subzero; 
+beforeAll(async () => {
+  console.warn = jest.fn();
+  //jest.useFakeTimers();
+  subzero = new Subzero('postgresql', schema);
+});
+afterAll(() => {
+  jest.runOnlyPendingTimers();
+  jest.useRealTimers();
+});
 
 test('fetch request', async () => {
   expect(await subzero.fmtStatement('public', '/rest/', 'anonymous',

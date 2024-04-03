@@ -10,7 +10,7 @@
     "cpdeclarations": "cp declarations/*.d.ts dist-rest/",
     "esbuild": "node esbuild.config.cjs",
     "rollup": "npx rollup --config",
-    "test": "jest --config jestconfig.json",
+    "test": "jest --config jestconfig.json --forceExit",
     "format": "prettier --write \"src/**/*.ts\"",
     "lint": "eslint src",
     "prepublishOnly": "npm test && npm run lint",

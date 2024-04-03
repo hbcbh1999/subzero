@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, } from '@jest/globals';
+import { beforeAll, afterAll, jest } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as sqlite3 from 'sqlite3';
@@ -13,6 +13,8 @@ let subzero: Subzero;
 const base_url = 'http://localhost:3000/rest';
 
 beforeAll(async () => {
+  console.warn = jest.fn();
+  //jest.useFakeTimers();
   db = await open({ filename: ':memory:', driver: sqlite3.Database });
   // Read the init SQL file
   const loadSql = fs.readFileSync(path.join(__dirname, 'load.sql')).toString().split(';');
@@ -77,4 +79,7 @@ runInsertTest('sqlite', base_url, run);
 
 afterAll(async () => {
   await db.close();
+  jest.runOnlyPendingTimers();
+  jest.useRealTimers();
+
 });

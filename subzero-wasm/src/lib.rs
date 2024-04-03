@@ -83,10 +83,6 @@ impl Backend {
                 DISABLED.store(true, Ordering::Relaxed);
             });
             setTimeout(&closure, 900_000); // 15 minutes in milliseconds
-                                           // let _ = thread::spawn(|| {
-                                           //     thread::sleep(Duration::from_secs(900));
-                                           //     DISABLED.store(true, Ordering::Relaxed);
-                                           // });
         }
 
         let allowed_select_functions = from_js_value::<Option<Vec<String>>>(allowed_select_functions).unwrap_or_default();

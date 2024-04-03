@@ -1,4 +1,4 @@
-import { expect, test, beforeAll, describe, afterAll } from '@jest/globals';
+import { expect, test, beforeAll, describe, afterAll, jest } from '@jest/globals';
 import Subzero, { Statement, getIntrospectionQuery, fmtPostgreSqlEnv, Env } from '../rest';
 import { Pool } from 'pg';
 import * as fs from 'fs';
@@ -22,6 +22,8 @@ const base_url = 'http://localhost:3000/rest';
 //const subzero = new Subzero('postgresql', schema);
 let subzero: Subzero;
 beforeAll(async () => {
+  console.warn = jest.fn();
+  //jest.useFakeTimers();
   const db = await dbPool.connect();
   const permissions = JSON.parse(fs.readFileSync(path.join(__dirname, 'permissions.json')).toString());
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,5 +117,6 @@ runInsertTest('postgresql', base_url, run);
 
 afterAll(async () => {
   await dbPool.end();
-  
+  jest.runOnlyPendingTimers();
+  jest.useRealTimers();
 });
