@@ -23,6 +23,9 @@ extern "C" {
     #[wasm_bindgen(js_namespace = console, js_name = warn)]
     pub fn js_warn(s: &str);
 
+    #[wasm_bindgen(js_namespace = globalThis)]
+    pub fn setTimeout(closure: &Closure<dyn FnMut()>, millis: u32);
+
 }
 #[allow(unused_macros)]
 macro_rules! console_log {

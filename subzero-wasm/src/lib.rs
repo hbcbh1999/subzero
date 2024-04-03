@@ -1,7 +1,8 @@
 use js_sys::Array as JsArray;
 use subzero_core::api::ApiRequest;
-use std::thread;
-use std::time::Duration;
+use wasm_bindgen::closure::Closure;
+// use std::thread;
+// use std::time::Duration;
 use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 use ouroboros::self_referencing;
 use serde_wasm_bindgen::from_value as from_js_value;
@@ -13,7 +14,7 @@ use serde_json::Value as JsonValue;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 mod utils;
-use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet, js_warn, console_warn};
+use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet, js_warn, console_warn, setTimeout};
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema, replace_json_str},
@@ -78,10 +79,14 @@ impl Backend {
         if license_data.is_none() {
             console_warn!("subZero is running in demo mode. It will stop working after 15 minutes");
             // start a thread and set the DISABLED flag to true after 15 minutes
-            let _ = thread::spawn(|| {
-                thread::sleep(Duration::from_secs(900));
+            let closure = Closure::new(|| {
                 DISABLED.store(true, Ordering::Relaxed);
             });
+            setTimeout(&closure, 900_000); // 15 minutes in milliseconds
+                                           // let _ = thread::spawn(|| {
+                                           //     thread::sleep(Duration::from_secs(900));
+                                           //     DISABLED.store(true, Ordering::Relaxed);
+                                           // });
         }
 
         let allowed_select_functions = from_js_value::<Option<Vec<String>>>(allowed_select_functions).unwrap_or_default();
