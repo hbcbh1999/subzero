@@ -78,7 +78,7 @@ public class RestHandler {
         this.dbSchemaSbz = new sbz_DbSchema(dbType, dbSchemaJson, lk);
 
         if (this.dbSchemaSbz.isDemo()) {
-            logger.info(demoModeMessage);
+            logger.warn(demoModeMessage);
         }
     }
 
@@ -193,7 +193,7 @@ public class RestHandler {
         conn.close();
 
         if (this.dbSchemaSbz.isDemo()) {
-            logger.info(demoModeMessage);
+            logger.warn(demoModeMessage);
         }
     }
 

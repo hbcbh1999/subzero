@@ -19,15 +19,10 @@ extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     pub fn log(s: &str);
 
-    // The `console.log` is quite polymorphic, so we can bind it with multiple
-    // signatures. Note that we need to use `js_name` to ensure we always call
-    // `log` in JS.
-    #[wasm_bindgen(js_namespace = console, js_name = log)]
-    pub fn log_u32(a: u32);
+    // bind the warn function
+    #[wasm_bindgen(js_namespace = console, js_name = warn)]
+    pub fn js_warn(s: &str);
 
-    // Multiple arguments too!
-    #[wasm_bindgen(js_namespace = console, js_name = log)]
-    pub fn log_many(a: &str, b: &str);
 }
 #[allow(unused_macros)]
 macro_rules! console_log {
@@ -37,6 +32,15 @@ macro_rules! console_log {
 }
 #[allow(unused_imports)]
 pub(super) use console_log;
+
+#[allow(unused_macros)]
+macro_rules! console_warn {
+    // Note that this is using the `warn` function imported above during
+    // `bare_bones`
+    ($($t:tt)*) => (js_warn(&format_args!($($t)*).to_string()))
+}
+#[allow(unused_imports)]
+pub(super) use console_warn;
 
 pub fn cast_core_err(err: subzero_core::error::Error) -> JsError {
     // we can pass only strings between wasm and js

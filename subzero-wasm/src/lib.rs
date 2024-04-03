@@ -13,7 +13,7 @@ use serde_json::Value as JsonValue;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 mod utils;
-use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet, log, console_log};
+use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet, js_warn, console_warn};
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema, replace_json_str},
@@ -78,7 +78,7 @@ impl Backend {
             None => None,
         };
         if license_data.is_none() {
-            console_log!("subZero is running in demo mode. It will stop working after 15 minutes");
+            console_warn!("subZero is running in demo mode. It will stop working after 15 minutes");
             // start a thread and set the DISABLED flag to true after 15 minutes
             let _ = thread::spawn(|| {
                 thread::sleep(Duration::from_secs(900));
