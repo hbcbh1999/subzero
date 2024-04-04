@@ -67,8 +67,8 @@ pub fn get_license_info(license_key: &str, public_key: &str, current_timestamp: 
     if parts.len() != 2 {
         return Err("Invalid license key");
     }
-    let data = BASE64_STANDARD.decode(parts[0]).unwrap();
-    let signature = BASE64_STANDARD.decode(parts[1]).unwrap();
+    let data = BASE64_STANDARD.decode(parts[0]).map_err(|_| "Failed to decode license key")?;
+    let signature = BASE64_STANDARD.decode(parts[1]).map_err(|_| "Failed to decode license key")?;
     let pem_der = parse_pem(public_key).map_err(|_| "Failed to parse public key pem")?;
     let public_key_der = extract_public_key(pem_der).map_err(|_| "Failed to extract public key")?;
     let public_key = UnparsedPublicKey::new(&ring::signature::ECDSA_P256_SHA256_FIXED, &public_key_der);
