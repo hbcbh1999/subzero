@@ -153,7 +153,7 @@ export async function initInternal(
         ...options,
     };
     // delete o.licenseKey if it's empty
-    if (o.licenseKey === null || (o.licenseKey && o.licenseKey.trim() === '')) {
+    if (o.licenseKey === null || (o.licenseKey ?? '').trim() === '') {
         delete o.licenseKey;
     }
     const { query, parameters } = getIntrospectionQuery(
