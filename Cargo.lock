@@ -3134,7 +3134,7 @@ checksum = "81cdd64d312baedb58e21336b31bc043b77e01cc99033ce76ef539f78e965ebc"
 
 [[package]]
 name = "subzero-core"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "base64 0.22.0",
  "criterion",
@@ -3155,7 +3155,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-ffi"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "cbindgen",
  "libc",
@@ -3167,7 +3167,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-rocket"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "async-trait",
  "async_once",
@@ -3206,7 +3206,7 @@ dependencies = [
 
 [[package]]
 name = "subzero-wasm"
-version = "3.0.0"
+version = "3.0.1"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
