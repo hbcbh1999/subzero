@@ -14,7 +14,7 @@ use serde_json::Value as JsonValue;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 mod utils;
-use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet, js_warn, console_warn, setTimeout};
+use utils::{set_panic_hook, cast_core_err, cast_serde_err, print_error_with_json_snippet, js_warn, console_warn, setTimeout, date_now};
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema, replace_json_str},
@@ -66,14 +66,16 @@ pub struct B<'a> {
 impl Backend {
     pub fn init(db_schema: String, db_type: String, allowed_select_functions: JsValue, license_key: Option<String>) -> Result<Backend, JsError> {
         set_panic_hook();
-
         let license_data = match license_key {
-            Some(k) => match get_license_info(&k, PUBLIC_LICENSE_PEM) {
-                Ok(l) => Some(l),
-                Err(e) => {
-                    return Err(JsError::new(e));
+            Some(k) => {
+                let current_timestamp = (date_now() as i64) / 1000;
+                match get_license_info(&k, PUBLIC_LICENSE_PEM, current_timestamp) {
+                    Ok(l) => Some(l),
+                    Err(e) => {
+                        return Err(JsError::new(e));
+                    }
                 }
-            },
+            }
             None => None,
         };
         if license_data.is_none() {

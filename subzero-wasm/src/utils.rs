@@ -26,6 +26,10 @@ extern "C" {
     #[wasm_bindgen(js_namespace = globalThis)]
     pub fn setTimeout(closure: &Closure<dyn FnMut()>, millis: u32);
 
+    // get the current time
+    #[wasm_bindgen(js_namespace = Date, js_name = now)]
+    pub fn date_now() -> f64;
+
 }
 #[allow(unused_macros)]
 macro_rules! console_log {

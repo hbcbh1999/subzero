@@ -15,6 +15,7 @@ use std::slice;
 use ouroboros::self_referencing;
 use std::collections::HashMap;
 use url::Url;
+use std::time::{SystemTime, UNIX_EPOCH};
 use subzero_core::{
     parser::postgrest::parse,
     schema::{DbSchema as CoreDbSchema, replace_json_str},
@@ -509,7 +510,7 @@ pub unsafe extern "C" fn sbz_two_stage_statement_new(
         }
     };
 
-    let two_stage_statement = sbz_TwoStageStatement::new(db_type.clone(), mutate, select);
+    let two_stage_statement = sbz_TwoStageStatement::new(db_type.to_string(), mutate, select);
     //println!("Rust two_stage_statement: {:?}", two_stage_statement);
     Box::into_raw(Box::new(two_stage_statement))
 }
@@ -1053,19 +1054,22 @@ pub unsafe extern "C" fn sbz_db_schema_new(db_type: *const c_char, db_schema_jso
     };
 
     let license_data = match license_key_str {
-        Some(k) => match get_license_info(&k, PUBLIC_LICENSE_PEM) {
-            Ok(l) => {
-                if l.plan != "team" {
-                    Some(l)
-                } else {
-                    None
+        Some(k) => {
+            let current_timestamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("Time went backwards").as_secs() as i64;
+            match get_license_info(&k, PUBLIC_LICENSE_PEM, current_timestamp) {
+                Ok(l) => {
+                    if l.plan != "team" {
+                        Some(l)
+                    } else {
+                        None
+                    }
+                }
+                Err(e) => {
+                    update_last_error(CoreError::InternalError { message: e.to_string() });
+                    return ptr::null_mut();
                 }
             }
-            Err(e) => {
-                update_last_error(CoreError::InternalError { message: e.to_string() });
-                return ptr::null_mut();
-            }
-        },
+        }
         None => None,
     };
 

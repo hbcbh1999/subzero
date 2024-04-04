@@ -33,7 +33,6 @@ use ring::signature::UnparsedPublicKey;
 use base64::prelude::*;
 use serde_json::Value;
 use std::str::from_utf8;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
 pub struct LicenseData {
@@ -63,8 +62,7 @@ fn extract_public_key(der: Vec<u8>) -> Result<Vec<u8>, yasna::ASN1Error> {
     let public_key = asn.0;
     Ok(public_key)
 }
-
-pub fn get_license_info(license_key: &str, public_key: &str) -> Result<LicenseData, &'static str> {
+pub fn get_license_info(license_key: &str, public_key: &str, current_timestamp: i64) -> Result<LicenseData, &'static str> {
     let parts: Vec<&str> = license_key.trim().split('.').collect();
     if parts.len() != 2 {
         return Err("Invalid license key");
@@ -85,14 +83,7 @@ pub fn get_license_info(license_key: &str, public_key: &str) -> Result<LicenseDa
     let plan = data["plan"].as_str().ok_or("Invalid license key (plan)")?.to_string();
     let exp = data["exp"].as_i64().ok_or("Invalid license key (exp)")?;
 
-    // check if license is expired
-    let current_timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| "Failed to get current timestamp")?
-        .as_secs() as i64;
-
     if exp < current_timestamp {
-        println!("2 License expired");
         return Err("License expired");
     }
 
