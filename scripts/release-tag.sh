@@ -22,11 +22,11 @@ cd subzero-node
 npm version $VERSION
 
 # set the version for java subproject
+cd "$PROJECT_DIR"
 cd subzero-java
 mvn versions:set -DnewVersion=$VERSION
 
 cd "$PROJECT_DIR"
-
 cargo generate-lockfile
 
 git add .
