@@ -33,7 +33,7 @@ public class sbz_TwoStageStatement {
     return ptr;
   }
 
-  @SuppressWarnings({"deprecation", "removal"})
+  
   protected void finalize() {
     delete();
   }

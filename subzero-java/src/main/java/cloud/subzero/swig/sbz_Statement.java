@@ -33,7 +33,7 @@ public class sbz_Statement {
     return ptr;
   }
 
-  @SuppressWarnings({"deprecation", "removal"})
+  
   protected void finalize() {
     delete();
   }

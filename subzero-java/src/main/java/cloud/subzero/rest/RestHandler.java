@@ -22,6 +22,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializerProvider;
@@ -353,7 +354,7 @@ public class RestHandler {
         String responseHeadersStr = rs.getString("response_headers");
         ObjectMapper objectMapper = new ObjectMapper();
         Map<String, Object> responseHeaders = responseHeadersStr != null
-                ? objectMapper.readValue(responseHeadersStr, Map.class)
+                ? objectMapper.readValue(responseHeadersStr, new TypeReference<Map<String, Object>>() {})
                 : new HashMap<>();
         String bodyColumn = rs.getString("body");
         responseHeaders.put("content-length", String.valueOf(bodyColumn.getBytes(StandardCharsets.UTF_8).length));

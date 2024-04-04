@@ -33,7 +33,7 @@ public class sbz_DbSchema {
     return ptr;
   }
 
-  @SuppressWarnings({"deprecation", "removal"})
+  
   protected void finalize() {
     delete();
   }

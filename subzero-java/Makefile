@@ -50,6 +50,8 @@ swig_generate: swig_clean unzip_clib
 	swig -java -package cloud.subzero.swig \
 		-outdir src/main/java/cloud/subzero/swig \
 		-I$(RESOURCES_DIR) subzero.i
+	find src/main/java/cloud/subzero/swig -type f -name "sbz_*.java" \
+		-exec sed -i '' 's/@SuppressWarnings({"deprecation", "removal"})//g' {} +
 
 swig_compile: swig_generate
 # compile for linux
