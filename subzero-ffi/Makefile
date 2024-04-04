@@ -9,7 +9,7 @@ WINDOWS_RELEASE_DIR=$(TARGET_DIR)/x86_64-pc-windows-gnu/release
 VERSION=$(shell grep '^version' Cargo.toml | cut -d '"' -f 2)
 DIST_DIR=$(TARGET_DIR)/dist/subzero-ffi-$(VERSION)
 
-CC=gcc
+# CC=gcc
 DEBUG_FLAGS=$(INCLUDE_PATH) -I$(TARGET_DIR)/debug -lcheck $(LIBRARY_PATH) -L$(TARGET_DIR)/debug -lsubzero
 RELEASE_FLAGS=$(INCLUDE_PATH) -I$(TARGET_DIR)/release -lcheck $(LIBRARY_PATH) -L$(TARGET_DIR)/release -lsubzero
 
@@ -47,10 +47,13 @@ build_release:
 	install_name_tool -id @rpath/libsubzero.dylib $(TARGET_DIR)/release/libsubzero.dylib
 
 	# build linux
+	CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc \
 	CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
 	cargo build --release --target x86_64-unknown-linux-gnu
 
 	# build windows
+	CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc \
+	CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc \
 	cargo build --release --target x86_64-pc-windows-gnu
 
 package: build_release
