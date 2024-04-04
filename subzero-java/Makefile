@@ -79,7 +79,7 @@ swig_link:
 swig: swig_compile swig_link
 
 deploy: build_rust build
-	mvn deploy
+	GPG_TTY=`tty` mvn deploy
 
 
 .PHONY: build test clean package docs swig_clean swig_generate swig_compile swig_link swig deploy
