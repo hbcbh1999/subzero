@@ -35,10 +35,10 @@ docker build -t subzero .
 ## Create temporary database
 
 ```
-export url=$(subzero-rocket/tests/bin/pg_tmp.sh -t -u authenticator -w 3600) && psql -f demo/db/pg_init.sql $url
+export url=$(rocket/tests/bin/pg_tmp.sh -t -u authenticator -w 3600) && psql -f demo/db/pg_init.sql $url
 ```
 ```
-export url=$(subzero-rocket/tests/bin/pg_tmp.sh -k -t -u postgrest_test_authenticator -w 3600) && psql -f subzero-rocket/tests/postgresql/fixtures/load.sql $url
+export url=$(rocket/tests/bin/pg_tmp.sh -k -t -u postgrest_test_authenticator -w 3600) && psql -f rocket/tests/postgresql/fixtures/load.sql $url
 ```
 
 

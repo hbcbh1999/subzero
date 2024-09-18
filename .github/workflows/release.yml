@@ -52,7 +52,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Check package version the same as tag
-        working-directory: subzero-node
+        working-directory: js-bindings
         run: |
           echo "VERSION_TAG: $VERSION_TAG"
           echo "PACKAGE_VERSION: $(node -p "require('./package.json').version")"
@@ -82,37 +82,37 @@ jobs:
         #   wasm-bindgen --out-dir=pkg-deno --target=deno --omit-default-module-path ../target/wasm32-unknown-unknown/release/subzero_wasm.wasm
 
       # note, this has to be after building wasm
-      - name: Build subzero-node
-        working-directory: subzero-node
+      - name: Build js-bindings
+        working-directory: js-bindings
         run: |
           npm ci
           npm run lint
           npm run build
 
       - name: Set package version as env var
-        working-directory: subzero-node
+        working-directory: js-bindings
         run: |
           echo "PACKAGE_VERSION=${VERSION_TAG/v/}" >> $GITHUB_ENV
           echo "PACKAGE_VERSION: $PACKAGE_VERSION"
       
       # - name: Pack web package
-      #   working-directory: subzero-node/dist-web
+      #   working-directory: js-bindings/dist-web
       #   run: npm pack
 
       # - name: Pack nodejs package
-      #   working-directory: subzero-node/dist-nodejs
+      #   working-directory: js-bindings/dist-nodejs
       #   run: npm pack
 
       - name: Pack rest (nodejs) package
-        working-directory: subzero-node/dist-rest
+        working-directory: js-bindings/dist-rest
         run: npm pack
 
       - name: Pack rest (web) package
-        working-directory: subzero-node/dist-rest-web
+        working-directory: js-bindings/dist-rest-web
         run: npm pack
 
       # - name: Pack deno package
-      #   working-directory: subzero-node/dist-deno
+      #   working-directory: js-bindings/dist-deno
       #   run: npm pack
 
       - name: Upload artifacts
@@ -120,12 +120,12 @@ jobs:
         with:
           name: npm-package-${{ env.VERSION_TAG }}
           path: |
-            subzero-node/dist-rest/subzerocloud-rest-${{ env.PACKAGE_VERSION }}.tgz
-            subzero-node/dist-rest-web/subzerocloud-rest-web-${{ env.PACKAGE_VERSION }}.tgz
+            js-bindings/dist-rest/subzerocloud-rest-${{ env.PACKAGE_VERSION }}.tgz
+            js-bindings/dist-rest-web/subzerocloud-rest-web-${{ env.PACKAGE_VERSION }}.tgz
           # path: |
-          #   subzero-node/dist-web/subzerocloud-web-${{ env.PACKAGE_VERSION }}.tgz
-          #   subzero-node/dist-nodejs/subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
-          #   subzero-node/dist-deno/subzerocloud-deno-${{ env.PACKAGE_VERSION }}.tgz
+          #   js-bindings/dist-web/subzerocloud-web-${{ env.PACKAGE_VERSION }}.tgz
+          #   js-bindings/dist-nodejs/subzerocloud-nodejs-${{ env.PACKAGE_VERSION }}.tgz
+          #   js-bindings/dist-deno/subzerocloud-deno-${{ env.PACKAGE_VERSION }}.tgz
       
       - run: sccache --show-stats
 
@@ -191,7 +191,7 @@ jobs:
 
       # # note, this has to be after building wasm
       # - name: Build node
-      #   working-directory: subzero-node
+      #   working-directory: js-bindings
       #   run: |
       #     npm ci
       #     npm pack

@@ -1,1 +1,0 @@
-../../../subzero-rocket/tests/sqlite/fixtures/load.sql

@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "subzero-core",
-    "subzero-ffi",
-    "subzero-rocket",
-    "subzero-wasm",
+    "core",
+    "ffi",
+    "rocket",
+    "wasm",
     # "subzero-pgx",
     # "subzero-pg"
 ]

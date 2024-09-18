@@ -83,7 +83,7 @@ fn main() -> Result<(), std::io::Error> {
     let targetdir = PathBuf::from_str("./target/pgx-build/").unwrap();
     let artifactdir = PathBuf::from_str("./target/pgx-build/artifacts/").unwrap();
     let builddir = PathBuf::from_str("./target/pgx-build/build/").unwrap();
-    let repodir = PathBuf::from_str("./target/pgx-build/subzero-core/").unwrap();
+    let repodir = PathBuf::from_str("./target/pgx-build/core/").unwrap();
     //let pgx_src_dir = PathBuf::from_str("../").unwrap();
     //let repodir = PathBuf::from_str("../").unwrap();
 
@@ -367,7 +367,7 @@ fn git_clone(branch: &str, repodir: &PathBuf) -> Result<(), std::io::Error> {
         .arg("--single-branch")
         .arg("--branch")
         .arg(branch)
-        .arg("https://github.com/subzerocloud/subzero-core.git")
+        .arg("https://github.com/subzerocloud/core.git")
         .arg(repodir.canonicalize().unwrap());
 
     println!("{} `{}` branch", "     Cloning".bold().green(), branch);

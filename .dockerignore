@@ -1,5 +1,5 @@
 target
-subzero-rocket/tests
+rocket/tests
 demo
 benches
 Dockerfile

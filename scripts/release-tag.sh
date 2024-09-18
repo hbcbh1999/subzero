@@ -18,12 +18,12 @@ cd "$PROJECT_DIR"
 cargo set-version $VERSION
 
 # set the version for the node subproject
-cd subzero-node
+cd js-bindings
 npm version $VERSION
 
 # set the version for java subproject
 cd "$PROJECT_DIR"
-cd subzero-java
+cd java-bindings
 mvn versions:set -DnewVersion=$VERSION
 
 cd "$PROJECT_DIR"

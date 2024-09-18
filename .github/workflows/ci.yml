@@ -57,7 +57,7 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
           cache: 'maven'
-          cache-dependency-path: 'subzero-java/pom.xml'
+          cache-dependency-path: 'java-bindings/pom.xml'
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -72,8 +72,8 @@ jobs:
 
       - run: cargo build --workspace
 
-      # - name: Build subzero-java
-      #   working-directory: subzero-java
+      # - name: Build java-bindings
+      #   working-directory: java-bindings
       #   run: |
       #     make build_rust
       #     make build
@@ -93,31 +93,31 @@ jobs:
           wasm-pack build --release --target nodejs --out-dir=pkg-node
 
       # - run: make test
-      #   working-directory: subzero-java
+      #   working-directory: java-bindings
 
       - run: npm ci
-        working-directory: subzero-node
+        working-directory: js-bindings
 
       - run: npm run lint
-        working-directory: subzero-node
+        working-directory: js-bindings
 
       - name: Bring up db services
         run: docker-compose --file .github/docker-compose.yml --env-file .github/.env up -d
 
       - run: cargo test
-        working-directory: subzero-core
+        working-directory: core
 
       - run: cargo test sqlite -- --test-threads=1
-        working-directory: subzero-rocket
+        working-directory: rocket
 
       - run: cargo test postgresql -- --test-threads=1
-        working-directory: subzero-rocket
+        working-directory: rocket
 
       - run: cargo test mysql -- --test-threads=1
-        working-directory: subzero-rocket
+        working-directory: rocket
 
       - run: npm test
-        working-directory: subzero-node
+        working-directory: js-bindings
 
       - run: sccache --show-stats
 

@@ -389,7 +389,7 @@ fn git_clone(branch: &str, repodir: &PathBuf) -> Result<(), std::io::Error> {
         .arg("--single-branch")
         .arg("--branch")
         .arg(branch)
-        .arg("https://github.com/subzerocloud/subzero-core.git")
+        .arg("https://github.com/subzerocloud/core.git")
         .arg(repodir.canonicalize().unwrap());
 
     println!("{} `{}` branch", "     Cloning".bold().green(), branch);
