@@ -1,15 +1,8 @@
-This is the subzero's internal core library which is Rust-based and compiled to WASM.
-It's Responsible parsing and formatting queries.
+This directory contans a library that wraps the subzero core library in a WASM module which is used by the [js-bindings](../js-bindings) code which exposes the core library to the js/ts environment.
 
-build with
+## Building
 
-```
-wasm-pack build --target web
-wasm-pack build --target nodejs
-```
-
-new mode
-```
-cargo build --package subzero-wasm --target=wasm32-unknown-unknown --release
-wasm-bindgen --out-dir=pkg --target=web --omit-default-module-path ./target/wasm32-unknown-unknown/release/subzero_wasm.wasm
+```bash
+wasm-pack build --release --target web --out-dir=pkg-web
+wasm-pack build --release --target nodejs --out-dir=pkg-node
 ```
