@@ -6,9 +6,7 @@ Currently PostgreSQL, SQLite, MySQL* and ClickHouse* are supported as target dat
 
 For more information on how to use it see [https://subzero.cloud](https://subzero.cloud).
 
-The compiled library is licensed under [LGPLv3 license](http://www.gnu.org/licenses/lgpl-3.0.html).
-
-The source code is licensed under [AGPLv3 license](http://www.gnu.org/licenses/agpl-3.0.html)
+The library licensed under [AGPLv3 license](http://www.gnu.org/licenses/agpl-3.0.html)
 
 # Usage
 

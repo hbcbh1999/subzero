@@ -11,6 +11,7 @@ The directory structure is as follows:
 - [js-bindings](js-bindings/README.md): The JavaScript/TypeScript bindings for subZero.
 
 
-The compiled library is licensed under [LGPLv3 license](http://www.gnu.org/licenses/lgpl-3.0.html).
 
-The source code is licensed under [AGPLv3 license](http://www.gnu.org/licenses/agpl-3.0.html)
+The library is licensed under [AGPLv3 license](http://www.gnu.org/licenses/agpl-3.0.html).
+
+Commercial licensing options are available.
