@@ -173,21 +173,6 @@ mod rest {
             .map(|o| o.iter().map(|(k, v)| (k.as_str(), v.as_str().unwrap_or_default())).collect())
             .unwrap_or_default();
 
-        // try to execute set env query straight away
-        let (env_query, env_parameters, _) = generate(fmt_env_query(&env));
-        let r:Result<(),Error> = Spi::connect(|client| {
-            let params = convert_params(env_parameters)?;
-            client.select(&env_query, None, Some(params)).map_err(|e| Error::InternalError{message: e.to_string()})?;
-            Ok(())
-        });
-
-        if let Err(e) = r {
-            let mut r = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
-            r.set_by_name("status", 500).unwrap();
-            r.set_by_name("body", e.to_string()).unwrap();
-            return r;
-        }
-
         let max_rows = config.get("max_rows").and_then(|s| s.as_i64());
         let path_prefix: &str = config.get("path_prefix").and_then(|s| s.as_str()).unwrap_or("/");
         
@@ -251,6 +236,25 @@ mod rest {
             })
             .unwrap_or_default();
         debug1!("request headers {:?}", headers);
+
+
+        // try to execute set env query straight away
+        let (env_query, env_parameters, _) = generate(fmt_env_query(&env));
+        let r:Result<(),Error> = Spi::connect(|client| {
+            debug1!("env query: {}", env_query);
+            debug1!("env parameters: {:?}", env_parameters);
+            let params = convert_params(env_parameters)?;
+            client.select(&env_query, None, Some(params)).map_err(|e| Error::InternalError{message: e.to_string()})?;
+            Ok(())
+        });
+
+        if let Err(e) = r {
+            let mut r = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
+            r.set_by_name("status", 500).unwrap();
+            r.set_by_name("body", e.to_string()).unwrap();
+            return r;
+        }
+
         let parsed_request = postgrest::parse(
             schema,
             relation,
@@ -514,6 +518,10 @@ mod tests {
         
         Spi::run("CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT NOT NULL)").unwrap();
         Spi::run("INSERT INTO users (id, name) VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Carol')").unwrap();
+        Spi::run("CREATE ROLE admin").unwrap();
+        Spi::run("GRANT ALL ON users TO admin").unwrap();
+        Spi::run("GRANT USAGE ON SCHEMA rest TO admin").unwrap();
+
         let request = Spi::connect(|client| {
             client
                 .select(
@@ -543,7 +551,7 @@ mod tests {
             "schema": "public",
             "env": {
                 "role": "admin",
-                "user_id": "1"
+                "request.param": "1"
             },
             "path_prefix": "/api/",
             "max_rows": 100,
