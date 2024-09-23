@@ -23,7 +23,7 @@ use subzero_core::error::Error as SubzeroCoreError;
 use deadpool_postgres::PoolError as PgPoolError;
 
 #[cfg(feature = "postgresql")]
-use tokio_postgres::{Error as PgError};
+use tokio_postgres::Error as PgError;
 
 #[cfg(feature = "sqlite")]
 use rusqlite::Error as SqliteError;
@@ -41,7 +41,10 @@ use deadpool::managed::PoolError as ClickhousePoolError;
 use http::Error as HttpError;
 
 #[cfg(feature = "clickhouse")]
-use hyper::Error as SourceHyperError;
+use hyper::http::Error as HyperHttpError;
+
+#[cfg(feature = "clickhouse")]
+use hyper::Error as HyperError;
 
 #[cfg(feature = "mysql")]
 use mysql_async::Error as MysqlError;
@@ -90,7 +93,11 @@ pub enum Error {
 
     #[cfg(feature = "clickhouse")]
     #[snafu(display("HttpRequestError: {}", source))]
-    Hyper { source: SourceHyperError },
+    HyperHttp { source: HyperHttpError },
+
+    #[cfg(feature = "clickhouse")]
+    #[snafu(display("HttpRequestError: {}", source))]
+    Hyper { source: HyperError },
 
     #[snafu(display("{}", source))]
     Core { source: SubzeroCoreError },
@@ -124,6 +131,8 @@ impl Error {
             Error::Internal { .. } => 500,
             #[cfg(feature = "clickhouse")]
             Error::HttpRequest { .. } => 500,
+            #[cfg(feature = "clickhouse")]
+            Error::HyperHttp { .. } => 500,
             Error::Core { source } => source.status_code(),
             #[cfg(feature = "sqlite")]
             Error::Thread { .. } => 500,
@@ -201,6 +210,10 @@ impl Error {
             }
             #[cfg(feature = "clickhouse")]
             Error::Hyper { source } => {
+                json!({ "message": format!("{source}") })
+            }
+            #[cfg(feature = "clickhouse")]
+            Error::HyperHttp { source } => {
                 json!({ "message": format!("{source}") })
             }
             Error::Core { source } => source.json_body(),

@@ -19,10 +19,10 @@ use subzero_core::{
     schema::DbSchema,
 };
 
-pub use subzero_core::schema::{include_files};
+pub use subzero_core::schema::include_files;
 use std::collections::HashMap;
 use crate::error::Result;
-use crate::config::{VhostConfig};
+use crate::config::VhostConfig;
 use async_trait::async_trait;
 use ouroboros::self_referencing;
 #[cfg(feature = "clickhouse")]

@@ -245,7 +245,7 @@ impl Backend for PostgreSQLBackend {
         let pg_uri = config.db_uri.clone();
         let pg_config = pg_uri.parse::<tokio_postgres::Config>().unwrap();
         let mgr_config = ManagerConfig {
-            recycling_method: RecyclingMethod::Verified,
+            recycling_method: RecyclingMethod::Fast,
         };
         let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
         builder.set_verify(SslVerifyMode::NONE);

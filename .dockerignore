@@ -1,5 +1,9 @@
 target
 rocket/tests
+pg_rest
+wasm
+java-bindings
+js-bindings
 demo
 benches
 Dockerfile

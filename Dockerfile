@@ -10,10 +10,11 @@ FROM rustlang/rust:nightly as builder
 ARG FEATURES
 WORKDIR /usr/src/subzero
 COPY . .
-RUN cargo build --package subzero-rocket --features ${FEATURES} --release
+RUN cargo build --package subzero-rocket --no-default-features --features ${FEATURES} --release
 
-FROM debian:buster-slim
+FROM debian:bookworm-slim
 ARG FEATURES
+ENV SUBZERO_ADDRESS 0.0.0.0
 RUN apt-get update && \
     apt-get install -y openssl && \
     rm -rf /var/lib/apt/lists/*

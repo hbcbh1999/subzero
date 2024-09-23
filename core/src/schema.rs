@@ -855,7 +855,7 @@ fn deserialize_bool_from_anything<'de, D>(deserializer: D) -> Result<bool, D::Er
 where
     D: Deserializer<'de>,
 {
-    use std::f64::EPSILON;
+    // use std::f64::EPSILON;
 
     #[derive(Deserialize)]
     #[serde(untagged)]
@@ -874,7 +874,7 @@ where
             _ => Err(serde::de::Error::custom("The number is neither 1 nor 0")),
         },
         AnythingOrBool::Float(f) => {
-            if (f - 1.0f64).abs() < EPSILON {
+            if (f - 1.0f64).abs() < f64::EPSILON {
                 Ok(true)
             } else if f == 0.0f64 {
                 Ok(false)
@@ -892,7 +892,7 @@ where
                     _ => Err(serde::de::Error::custom("The number is neither 1 nor 0")),
                 }
             } else if let Ok(f) = string.parse::<f64>() {
-                if (f - 1.0f64).abs() < EPSILON {
+                if (f - 1.0f64).abs() < f64::EPSILON {
                     Ok(true)
                 } else if f == 0.0f64 {
                     Ok(false)

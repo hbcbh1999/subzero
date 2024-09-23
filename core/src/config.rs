@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Deserializer, Serialize};
-use crate::api::{DEFAULT_SAFE_SELECT_FUNCTIONS};
+use crate::api::DEFAULT_SAFE_SELECT_FUNCTIONS;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 #[serde(rename_all(serialize = "snake_case", deserialize = "snake_case"))]

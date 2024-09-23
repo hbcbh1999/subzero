@@ -55,9 +55,9 @@ use subzero_core::formatter::sqlite;
 use subzero_core::formatter::mysql;
 
 thread_local! {
-    static LAST_ERROR: RefCell<Option<Box<CoreError>>> = RefCell::new(None);
-    static LAST_ERROR_LENGTH: RefCell<c_int> = RefCell::new(0);
-    static LAST_ERROR_HTTP_STATUS: RefCell<c_int> = RefCell::new(0);
+    static LAST_ERROR: RefCell<Option<Box<CoreError>>> = const { RefCell::new(None) };
+    static LAST_ERROR_LENGTH: RefCell<c_int> = const { RefCell::new(0) };
+    static LAST_ERROR_HTTP_STATUS: RefCell<c_int> = const { RefCell::new(0) };
 }
 static PUBLIC_LICENSE_PEM: &str = include_str!("../../ecdsa_p256_public.pem");
 

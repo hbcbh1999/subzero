@@ -161,8 +161,6 @@ pub async fn handle<'a>(
     root: &'a str, method: &Method, path: &'a str, get: Vec<(&'a str, &'a str)>, body: Option<&'a str>, headers: HashMap<&'a str, &'a str>,
     cookies: HashMap<&'a str, &'a str>, backend: &Box<dyn Backend + Send + Sync>,
 ) -> Result<(u16, ContentType, Vec<(String, String)>, String)> {
-    #![allow(unused_variables)]
-    #![allow(unreachable_code)]
     let mut response_headers = vec![];
     let config = backend.config();
     let db_schema = backend.db_schema();
@@ -246,7 +244,7 @@ pub async fn handle<'a>(
     }
     .context(CoreSnafu)?;
 
-    debug!("role: {:?}, jwt_claims: {:?}", role, jwt_claims);
+    debug!("role: {:?}, jwt_claims: {:?}, disable_internal_permissions: {:?}", role, jwt_claims, disable_internal_permissions);
 
     // do not allow unauthenticated requests when there is no anonymous role setup
     if let (None, false) = (role, authenticated) {

@@ -79,7 +79,7 @@ jobs:
       #     make build
 
       - name: Build subzero-wasm 
-        working-directory: subzero-wasm
+        working-directory: wasm
         run: |
           if ! command -v wasm-pack &> /dev/null
           then

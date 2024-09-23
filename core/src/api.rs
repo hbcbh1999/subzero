@@ -200,7 +200,7 @@ pub struct Query<'a> {
 
 pub struct Iter<T>(VecDeque<Vec<String>>, VecDeque<T>);
 
-pub struct Visitor<'a, 'b, F>(VecDeque<Vec<String>>, VecDeque<&'b mut Query<'a>>, F);
+// pub struct Visitor<'a, 'b, F>(VecDeque<Vec<String>>, VecDeque<&'b mut Query<'a>>, F);
 
 impl<'a, 'b> Query<'a> {
     pub fn insert_conditions(&'b mut self, conditions: Vec<(Vec<&'a str>, Condition<'a>)>) -> Result<()> {
@@ -268,9 +268,9 @@ impl<'a, 'b> Query<'a> {
         Ok(())
     }
 
-    pub fn visit<R, F: FnMut(Vec<String>, &'b mut Self) -> R>(&'b mut self, f: F) -> Visitor<'a, 'b, F> {
-        Visitor(VecDeque::from([vec![String::from(self.node.name())]]), VecDeque::from([self]), f)
-    }
+    // pub fn visit<R, F: FnMut(Vec<String>, &'b mut Self) -> R>(&'b mut self, f: F) -> Visitor<'a, 'b, F> {
+    //     Visitor(VecDeque::from([vec![String::from(self.node.name())]]), VecDeque::from([self]), f)
+    // }
 }
 
 impl<'a, 'b> Iterator for Iter<&'b Query<'a>> {

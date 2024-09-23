@@ -14,12 +14,12 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
-use hyper::{Client, client::HttpConnector, Body, Uri};
-use url::{Url};
+use hyper::{Client, client::HttpConnector, Body, Uri,};
+use url::Url;
 use formdata::{FormData, generate_boundary, write_formdata};
-use deadpool::{managed};
+use deadpool::managed;
 use snafu::ResultExt;
-use tokio::time::{Duration};
+use tokio::time::Duration;
 use crate::error::{Result, *};
 use crate::config::{VhostConfig, SchemaStructure::*};
 use subzero_core::{
@@ -37,9 +37,9 @@ use http::Error as HttpError;
 // use log::{debug};
 use super::{Backend, DbSchemaWrap, include_files};
 
-use std::{fs};
+use std::fs;
 use std::path::Path;
-use serde_json::{Value as JsonValue};
+use serde_json::Value as JsonValue;
 use http::Method;
 use base64::{Engine as _, engine::general_purpose};
 
@@ -53,7 +53,6 @@ const TCP_KEEPALIVE: Duration = Duration::from_secs(60);
 // ClickHouse uses 3s by default.
 // See https://github.com/ClickHouse/ClickHouse/blob/368cb74b4d222dc5472a7f2177f6bb154ebae07a/programs/server/config.xml#L201
 const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
-#[async_trait]
 impl managed::Manager for Manager {
     type Type = HttpClient;
     type Error = HttpError;
@@ -68,7 +67,7 @@ impl managed::Manager for Manager {
         Ok((self.uri.parse::<Url>().unwrap(), self.uri.parse::<Uri>().unwrap(), client))
     }
 
-    async fn recycle(&self, _: &mut HttpClient) -> managed::RecycleResult<HttpError> {
+    async fn recycle(&self, _: &mut HttpClient, _: &managed::Metrics) -> managed::RecycleResult<HttpError> {
         Ok(())
     }
 }
@@ -105,7 +104,7 @@ async fn execute<'a>(
 
     let mut http_request = hyper::Request::builder()
         .uri(base_url)
-        .method(http::Method::POST)
+        .method(hyper::Method::POST)
         .header("Content-Type", format!("multipart/form-data; boundary={}", std::str::from_utf8(boundary.as_slice()).unwrap()));
     //.body(Body::from(http_body)).context(HttpRequestError)?;
     if uri.username() != "" {
@@ -115,7 +114,7 @@ async fn execute<'a>(
         );
     }
 
-    let http_req = http_request.body(Body::from(http_body)).context(HttpRequestSnafu)?;
+    let http_req = http_request.body(Body::from(http_body)).context(HyperHttpSnafu)?;
     let http_response = match client.request(http_req).await {
         Ok(r) => Ok(r),
         Err(e) => Err(Error::InternalError { message: e.to_string() }),
@@ -214,7 +213,7 @@ impl Backend for ClickhouseBackend {
 
                         let mut http_request = hyper::Request::builder()
                             .uri(base_url)
-                            .method(http::Method::POST)
+                            .method(hyper::Method::POST)
                             .header("Content-Type", format!("multipart/form-data; boundary={}", std::str::from_utf8(boundary.as_slice()).unwrap()));
                         //.body(Body::from(http_body)).context(HttpRequestError)?;
                         if uri.username() != "" {
@@ -227,7 +226,7 @@ impl Backend for ClickhouseBackend {
                             );
                         }
 
-                        let http_req = http_request.body(Body::from(http_body)).context(HttpRequestSnafu)?;
+                        let http_req = http_request.body(Body::from(http_body)).context(HyperHttpSnafu)?;
                         let http_response = match client.request(http_req).await {
                             Ok(r) => Ok(r),
                             Err(e) => Err(Error::InternalError { message: e.to_string() }),

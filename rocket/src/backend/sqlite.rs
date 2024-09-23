@@ -192,40 +192,34 @@ fn execute(
             let (mutate_statement, mutate_parameters, _) = generate(
                 fmt_main_query(db_schema, request.schema_name, &mutate_request, &env1)
                     .context(CoreSnafu)
-                    .map_err(|e| {
+                    .inspect_err(|_| {
                         let _ = conn.execute_batch("ROLLBACK");
-                        e
                     })?,
             );
             debug!("mutate_statement: {}\n{:?}", mutate_statement, mutate_parameters);
             let mut mutate_stmt = conn
                 .prepare(mutate_statement.as_str())
                 .context(SqliteDbSnafu { authenticated })
-                .map_err(|e| {
+                .inspect_err(|_| {
                     let _ = conn.execute_batch("ROLLBACK");
-                    e
                 })?;
             let mutate_params = params_from_iter(mutate_parameters.into_iter().map(wrap_param));
-            let mut rows = mutate_stmt.query(mutate_params).context(SqliteDbSnafu { authenticated }).map_err(|e| {
+            let mut rows = mutate_stmt.query(mutate_params).context(SqliteDbSnafu { authenticated }).inspect_err(|_| {
                 let _ = conn.execute_batch("ROLLBACK");
-                e
             })?;
             let mut ids: Vec<(i64, bool)> = vec![];
-            while let Some(r) = rows.next().context(SqliteDbSnafu { authenticated }).map_err(|e| {
+            while let Some(r) = rows.next().context(SqliteDbSnafu { authenticated }).inspect_err(|_| {
                 let _ = conn.execute_batch("ROLLBACK");
-                e
             })? {
                 ids.push((
-                    r.get(0).context(SqliteDbSnafu { authenticated }).map_err(|e| {
+                    r.get(0).context(SqliteDbSnafu { authenticated }).inspect_err(|_| {
                         let _ = conn.execute_batch("ROLLBACK");
-                        e
                     })?, //rowid
                     if is_delete {
                         true
                     } else {
-                        r.get(1).context(SqliteDbSnafu { authenticated }).map_err(|e| {
+                        r.get(1).context(SqliteDbSnafu { authenticated }).inspect_err(|_| {
                             let _ = conn.execute_batch("ROLLBACK");
-                            e
                         })?
                     }, //constraint check
                 ))
@@ -311,34 +305,30 @@ fn execute(
             let (main_statement, main_parameters, _) = generate(
                 fmt_main_query(db_schema, select_request.schema_name, &select_request, env)
                     .context(CoreSnafu)
-                    .map_err(|e| {
+                    .inspect_err(|_| {
                         let _ = conn.execute_batch("ROLLBACK");
-                        e
                     })?,
             );
             debug!("main_statement: {}\n{:?}", main_statement, main_parameters);
             let mut main_stm = conn
                 .prepare_cached(main_statement.as_str())
-                .map_err(|e| {
+                .inspect_err(|_| {
                     let _ = conn.execute_batch("ROLLBACK");
-                    e
                 })
                 .context(SqliteDbSnafu { authenticated })?;
             let parameters = params_from_iter(main_parameters.into_iter().map(wrap_param));
             let mut rows = main_stm
                 .query(parameters)
-                .map_err(|e| {
+                .inspect_err(|_| {
                     let _ = conn.execute_batch("ROLLBACK");
-                    e
                 })
                 .context(SqliteDbSnafu { authenticated })?;
 
             let response_row = rows
                 .next()
                 .context(SqliteDbSnafu { authenticated })
-                .map_err(|e| {
+                .inspect_err(|_| {
                     let _ = conn.execute_batch("ROLLBACK");
-                    e
                 })?
                 .unwrap();
 
@@ -356,43 +346,38 @@ fn execute(
                     response_status: response_row.get("response_status").context(SqliteDbSnafu { authenticated })?,   //("response_status"),
                 })
             }
-            .map_err(|e| {
+            .inspect_err(|_| {
                 let _ = conn.execute_batch("ROLLBACK");
-                e
             })?
         }
         _ => {
             let (main_statement, main_parameters, _) = generate(
                 fmt_main_query(db_schema, request.schema_name, request, env)
                     .context(CoreSnafu)
-                    .map_err(|e| {
+                    .inspect_err(|_| {
                         let _ = conn.execute_batch("ROLLBACK");
-                        e
                     })?,
             );
             debug!("main_statement: {}\n{:?}", main_statement, main_parameters);
             let mut main_stm = conn
                 .prepare_cached(main_statement.as_str())
-                .map_err(|e| {
+                .inspect_err(|_| {
                     let _ = conn.execute_batch("ROLLBACK");
-                    e
                 })
                 .context(SqliteDbSnafu { authenticated })?;
             let parameters = params_from_iter(main_parameters.into_iter().map(wrap_param));
             let mut rows = main_stm
                 .query(parameters)
-                .map_err(|e| {
+                .inspect_err(|_| {
                     let _ = conn.execute_batch("ROLLBACK");
-                    e
                 })
                 .context(SqliteDbSnafu { authenticated })?;
 
             let response_row = rows
                 .next()
                 .context(SqliteDbSnafu { authenticated })
-                .map_err(|e| {
+                .inspect_err(|_| {
                     let _ = conn.execute_batch("ROLLBACK");
-                    e
                 })?
                 .unwrap();
 
@@ -410,9 +395,8 @@ fn execute(
                     response_status: response_row.get("response_status").context(SqliteDbSnafu { authenticated })?,   //("response_status"),
                 })
             }
-            .map_err(|e| {
+            .inspect_err(|_| {
                 let _ = conn.execute_batch("ROLLBACK");
-                e
             })?
         }
     };

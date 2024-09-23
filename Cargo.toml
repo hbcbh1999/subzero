@@ -9,6 +9,8 @@ members = [
 ]
 exclude = [
     "pg_rest",
+    # "wasm",
+    # "ffi",
 ]
 
 # [patch.crates-io]
