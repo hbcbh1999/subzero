@@ -5,12 +5,10 @@ members = [
     "ffi",
     "rocket",
     "wasm",
-    # "subzero-pgx",
-    # "subzero-pg"
+    # "pg_rest",
 ]
 exclude = [
-    "subzero-pgx",
-    "subzero-pg"
+    "pg_rest",
 ]
 
 # [patch.crates-io]

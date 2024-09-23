@@ -1,27 +1,28 @@
---create type http_method as enum ('GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'CONNECT', 'OPTIONS', 'TRACE', 'PATCH');
-create type subzero.http_header as
+create type rest.http_header as
 (
     name  text,
     value text
 );
 
-create type subzero.http_request as
+create type rest.http_request as
 (
-    method       subzero_http_method,
+    method       rest_http_method,
     path         text,
     query_string text,
     body         text,
-    headers      subzero.http_header[]
+    headers      rest.http_header[]
 );
 
-create type subzero.http_response as
+create type rest.http_response as
 (
     body    text,
     status  smallint,
-    headers subzero.http_header[]
+    headers rest.http_header[],
+    page_total int,
+    total_result_set int
 );
 
-create or replace function subzero.introspect_schemas(
+create or replace function rest.introspect_schemas(
     schemas text[],
     allow_login_roles boolean default false,
     custom_permissions json default '[]'::json,

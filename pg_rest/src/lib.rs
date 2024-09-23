@@ -16,9 +16,10 @@
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 use pgrx::prelude::*;
 use std::fmt::Display;
+
 #[derive(PostgresEnum, Default)]
 #[allow(non_camel_case_types)]
-pub enum subzero_http_method {
+pub enum rest_http_method {
     #[default]
     GET,
     HEAD,
@@ -30,38 +31,29 @@ pub enum subzero_http_method {
     TRACE,
     PATCH,
 }
-impl Display for subzero_http_method {
+impl Display for rest_http_method {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            subzero_http_method::GET => write!(f, "GET"),
-            subzero_http_method::HEAD => write!(f, "HEAD"),
-            subzero_http_method::POST => write!(f, "POST"),
-            subzero_http_method::PUT => write!(f, "PUT"),
-            subzero_http_method::DELETE => write!(f, "DELETE"),
-            subzero_http_method::CONNECT => write!(f, "CONNECT"),
-            subzero_http_method::OPTIONS => write!(f, "OPTIONS"),
-            subzero_http_method::TRACE => write!(f, "TRACE"),
-            subzero_http_method::PATCH => write!(f, "PATCH"),
+            rest_http_method::GET => write!(f, "GET"),
+            rest_http_method::HEAD => write!(f, "HEAD"),
+            rest_http_method::POST => write!(f, "POST"),
+            rest_http_method::PUT => write!(f, "PUT"),
+            rest_http_method::DELETE => write!(f, "DELETE"),
+            rest_http_method::CONNECT => write!(f, "CONNECT"),
+            rest_http_method::OPTIONS => write!(f, "OPTIONS"),
+            rest_http_method::TRACE => write!(f, "TRACE"),
+            rest_http_method::PATCH => write!(f, "PATCH"),
         }
     }
 }
 
 #[pg_schema]
-mod subzero {
-    use pgrx::lwlock::PgLwLock;
-    // use pgrx::pg_sys::Hash;
+mod rest {
     use pgrx::prelude::*;
-    use pgrx::shmem::*;
-    use pgrx::PgAtomic;
-    use pgrx::{pg_shmem_init, warning};
-    use pgrx::{GucRegistry, GucSetting, GucContext, GucFlags};
+    use pgrx::Json;
+    use once_cell::sync::Lazy;
     use pgrx::Array;
-    use std::ffi::CStr;
-    use std::sync::atomic::Ordering;
-
     use std::iter::Iterator;
-    // use std::path;
-
     use subzero_core::schema::DbSchema;
     use subzero_core::api::ApiRequest;
     use subzero_core::parser::postgrest;
@@ -69,35 +61,24 @@ mod subzero {
     use subzero_core::formatter::{
         Param::*,
         ToParam,
+        Snippet,
+        SqlParam,
         postgresql::{generate, fmt_main_query_internal},
     };
+    use subzero_core::dynamic_statement::{param, sql, JoinIterator};
     use subzero_core::api::{SingleVal, ListVal, Payload};
     use subzero_core::error::{*};
     use ouroboros::self_referencing;
-    use parking_lot::RwLock;
+    use std::sync::Mutex;
     use std::collections::HashMap;
-    // use serde::{Serialize, Deserialize};
 
     pgrx::pg_module_magic!();
 
-    extension_sql_file!("../sql/init.sql", requires = [subzero_http_method], name = "init",);
-    extension_sql!(
-        r#"
-    -- introspect on extension load
-    select subzero.init(
-        schemas => coalesce(current_setting('subzero.db_schemas', true), 'public'),
-        allow_login_roles => coalesce(current_setting('subzero.allow_login_roles', true), 'false')::boolean,
-        custom_relations => current_setting('subzero.custom_relations', true),
-        custom_permissions => current_setting('subzero.custom_permissions', true)
-    );
-    "#,
-        name = "introspect",
-        finalize,
-    );
+    extension_sql_file!("../sql/init.sql", requires = [rest_http_method], name = "init",);
 
-    const REQUEST_TYPE: &str = "subzero.http_request";
-    const RESPONSE_TYPE: &str = "subzero.http_response";
-    const HEADER_TYPE: &str = "subzero.http_header";
+    const REQUEST_TYPE: &str = "rest.http_request";
+    const RESPONSE_TYPE: &str = "rest.http_response";
+    const HEADER_TYPE: &str = "rest.http_header";
 
     #[self_referencing]
     #[derive(Debug)]
@@ -115,99 +96,41 @@ mod subzero {
 
     #[derive(Debug)]
     pub struct Response {
-        //page_total: Option<i64>,
-        //total_result_set: Option<i64>,
+        page_total: Option<i64>,
+        total_result_set: Option<i64>,
         body: String,
         constraints_satisfied: bool,
         headers: Option<String>,
         status: Option<String>,
     }
 
-    static DB_SCHEMA: RwLock<Option<DbSchemaWrap>> = RwLock::new(None);
-    static DB_SCHEMA_TIMESTAMP_LOCAL: RwLock<u64> = RwLock::new(0);
+    static DB_SCHEMA: Lazy<Mutex<Option<DbSchemaWrap>>> = Lazy::new(|| Mutex::new(None));
 
-    static DB_SCHEMA_STRING: PgLwLock<heapless::Vec<u8, 1000000>> = PgLwLock::new();
-    static DB_SCHEMA_TIMESTAMP: PgLwLock<u64> = PgLwLock::new();
-    static UPDATING_SCHEMA: PgAtomic<std::sync::atomic::AtomicBool> = PgAtomic::new();
-
-    lazy_static::lazy_static! {
-        static ref GUC_DB_SCHEMAS: GucSetting<Option<&'static CStr>> =
-                GucSetting::<Option<&'static CStr>>::new(None);
-        static ref GUC_ALLOW_LOGIN_ROLES: GucSetting<bool> = GucSetting::<bool>::new(false);
-        static ref GUC_CUSTOM_RELATIONS: GucSetting<Option<&'static CStr>> =
-            GucSetting::<Option<&'static CStr>>::new(Some(unsafe {
-                CStr::from_bytes_with_nul_unchecked(b"[]\0")
-            }));
-        static ref GUC_CUSTOM_PERMISSIONS: GucSetting<Option<&'static CStr>> =
-            GucSetting::<Option<&'static CStr>>::new(Some(unsafe {
-                CStr::from_bytes_with_nul_unchecked(b"[]\0")
-            }));
-    }
-
-    #[pg_guard]
-    pub extern "C" fn _PG_init() {
-        pg_shmem_init!(DB_SCHEMA_STRING);
-        pg_shmem_init!(DB_SCHEMA_TIMESTAMP);
-        pg_shmem_init!(UPDATING_SCHEMA);
-
-        GucRegistry::define_string_guc(
-            "subzero.db_schemas",
-            "The schemas to expose",
-            "The schemas to expose",
-            &GUC_DB_SCHEMAS,
-            GucContext::Suset,
-            GucFlags::default(),
-        );
-        GucRegistry::define_bool_guc(
-            "subzero.allow_login_roles",
-            "Allow login roles",
-            "Allow login roles",
-            &GUC_ALLOW_LOGIN_ROLES,
-            GucContext::Suset,
-            GucFlags::default(),
-        );
-        GucRegistry::define_string_guc(
-            "subzero.custom_relations",
-            "Custom relations",
-            "Custom relations",
-            &GUC_CUSTOM_RELATIONS,
-            GucContext::Suset,
-            GucFlags::default(),
-        );
-        GucRegistry::define_string_guc(
-            "subzero.custom_permissions",
-            "Custom permissions",
-            "Custom permissions",
-            &GUC_CUSTOM_PERMISSIONS,
-            GucContext::Suset,
-            GucFlags::default(),
-        );
-        // //info!("running introspection");
-        // _ = Spi::run(r#"
-        //     select subzero.init(
-        //         schemas => coalesce(current_setting('subzero.db_schemas', true), 'public'),
-        //         allow_login_roles => coalesce(current_setting('subzero.allow_login_roles', true), 'false')::boolean,
-        //         custom_relations => current_setting('subzero.custom_relations', true),
-        //         custom_permissions => current_setting('subzero.custom_permissions', true)
-        //     );
-        // "#);
-        info!("subzero extension loaded");
+    fn fmt_env_query<'a>(env: &'a HashMap<&'a str, &'a str>) -> Snippet<'a> {
+        "select "
+            + if env.is_empty() {
+                sql("null")
+            } else {
+                env.iter()
+                    .map(|(k, v)| "set_config(" + param(k as &SqlParam) + ", " + param(v as &SqlParam) + ", true)")
+                    .join(",")
+            }
     }
 
     #[pg_extern(requires = ["init"])]
     #[search_path(@extschema@)]
-    pub fn init(schemas: &str, allow_login_roles: bool, custom_relations: Option<&str>, custom_permissions: Option<&str>) -> bool {
-        let is_updating = UPDATING_SCHEMA.get().load(Ordering::Relaxed);
-        if is_updating {
-            info!("already updating schema");
-            return false;
-        }
-        info!("init called");
-        UPDATING_SCHEMA.get().store(true, Ordering::Relaxed);
-        let schemas = schemas.split(',').collect::<Vec<_>>();
-        let query = "select subzero.introspect_schemas($1, $2, $3, $4)";
-        //info!("called with schemas: {:?}, allow_login_roles: {:?}, custom_relations: {:?}, custom_permissions: {:?}", schemas, allow_login_roles, custom_relations, custom_permissions);
-        let json = Spi::connect(|client| {
+    pub fn init(schemas: &str, allow_login_roles: bool, custom_relations: Option<&str>, custom_permissions: Option<&str>) {
+        // split by comma and trim
+        let schemas = schemas.split(',').map(|s| s.trim()).collect::<Vec<&str>>();
+        let query = "select rest.introspect_schemas($1, $2, $3, $4)";
+        debug1!(
+            "init called with schemas: {:?}, allow_login_roles: {:?}, custom_relations: {:?}, custom_permissions: {:?}",
+            schemas,
+            allow_login_roles,
+            custom_relations,
+            custom_permissions
+        );
+        let schema_json_string = Spi::connect(|client| {
             client
                 .select(
                     query,
@@ -223,125 +146,95 @@ mod subzero {
                 .get_one::<String>()
         });
 
-        match json {
-            Ok(Some(ss)) => {
-                //info!("json schema fetched ok: {}", ss);
-                let mut lock_str = DB_SCHEMA_STRING.exclusive();
-                lock_str.clear();
-                //lock_str.push_str(&ss);
-                let r = lock_str.extend_from_slice(ss.as_bytes());
-                if r.is_err() {
-                    warning!("failed to save shared schema: {:?}", r);
-                }
-                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-                *DB_SCHEMA_TIMESTAMP.exclusive() = now;
-                drop(lock_str);
-                UPDATING_SCHEMA.get().store(false, Ordering::Relaxed);
-                true
+        match schema_json_string {
+            Ok(Some(schema_string)) => {
+                debug1!("json schema fetched ok: {}", schema_string);
+                let schema = DbSchemaWrap::new(schema_string, |s| serde_json::from_str::<DbSchema>(s.as_str()).map_err(|e| e.to_string()));
+                let mut data = DB_SCHEMA.lock().unwrap();
+                *data = Some(schema);
             }
             Err(e) => {
-                //info!("json schema fetch failed: {}", e);
-                false
+                error!("json schema fetch failed: {}", e);
             }
             _ => {
-                //info!("Failed to introspect");
-                false
+                error!("Failed to introspect");
             }
         }
     }
 
     #[pg_extern(requires = ["init"])]
     #[search_path(@extschema@)]
-    pub fn handle(
-        schema: &str, relation: &str, request: pgrx::composite_type!(REQUEST_TYPE), env: &str, max_rows: Option<i64>,
-    ) -> pgrx::composite_type!('static, RESPONSE_TYPE) {
-        {
-            //info!("checking schema cache");
-            let mut should_update_schema_cache = false;
-            {
-                let rl = DB_SCHEMA.read();
-                let t = *DB_SCHEMA_TIMESTAMP.share();
-                let tl = *DB_SCHEMA_TIMESTAMP_LOCAL.read();
-                if (*rl).is_none() || t > tl {
-                    should_update_schema_cache = true;
-                }
-            }
-            if should_update_schema_cache {
-                info!("updating schema cache");
-                let string_vec = DB_SCHEMA_STRING.share();
-                //info!("schmea vec: {:?}", string_vec.as_slice());
-                let schema_string_r = String::from_utf8(string_vec.to_vec());
-                if schema_string_r.is_err() {
-                    //info!("failed to read shared schema");
-                    let mut r = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
-                    r.set_by_name("status", 500).unwrap();
-                    r.set_by_name("body", "failed to read shared schema").unwrap();
-                    return r;
-                }
-                let mut string_schema = schema_string_r.unwrap();
-                if string_schema.is_empty() {
-                    info!("empty schema string");
-                    drop(string_vec);
-                    let did_init = init(
-                        GUC_DB_SCHEMAS.get().unwrap().to_str().unwrap(),
-                        GUC_ALLOW_LOGIN_ROLES.get(),
-                        GUC_CUSTOM_RELATIONS.get().map(|c| c.to_str().unwrap()),
-                        GUC_CUSTOM_PERMISSIONS.get().map(|c| c.to_str().unwrap()),
-                    );
-                    if !did_init {
-                        // this may be because another thread is updating, sleep for a bit
-                        std::thread::sleep(std::time::Duration::from_millis(500));
-                        let string_vec = DB_SCHEMA_STRING.share();
-                        //info!("schmea vec: {:?}", string_vec.as_slice());
-                        let schema_string_r = String::from_utf8(string_vec.to_vec());
-                        if schema_string_r.is_err() {
-                            //info!("failed to read shared schema");
-                            let mut r = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
-                            r.set_by_name("status", 500).unwrap();
-                            r.set_by_name("body", "failed to read shared schema").unwrap();
-                            return r;
-                        }
-                        string_schema = schema_string_r.unwrap();
-                        //info!("got schema string after update");
-                    }
-                }
-                //info!("schema string: {:?}", &string_schema);
+    pub fn handle(request: pgrx::composite_type!(REQUEST_TYPE), config: Option<Json>) -> pgrx::composite_type!('static, RESPONSE_TYPE) {
+        let Json(config) = config.unwrap_or(Json(serde_json::Value::Null));
+        let schema: &str = config.get("schema").and_then(|s| s.as_str()).unwrap_or("public");
+        let env: HashMap<&str, &str> = config
+            .get("env")
+            .and_then(|s| s.as_object())
+            .map(|o| o.iter().map(|(k, v)| (k.as_str(), v.as_str().unwrap_or_default())).collect())
+            .unwrap_or_default();
 
-                let ss = DbSchemaWrap::new(string_schema, |s| serde_json::from_str::<DbSchema>(s.as_str()).map_err(|e| e.to_string()));
-                //info!("schema_wrap: {:?}", ss);
-                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
-                let mut w = DB_SCHEMA.write();
-                *w = Some(ss);
-                let mut ww = DB_SCHEMA_TIMESTAMP_LOCAL.write();
-                *ww = now;
-                //info!("local schema cache updated!!!");
+        // try to execute set env query straight away
+        let (env_query, env_parameters, _) = generate(fmt_env_query(&env));
+        let r:Result<(),Error> = Spi::connect(|client| {
+            let params = convert_params(env_parameters)?;
+            client.select(&env_query, None, Some(params)).map_err(|e| Error::InternalError{message: e.to_string()})?;
+            Ok(())
+        });
+
+        if let Err(e) = r {
+            let mut r = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
+            r.set_by_name("status", 500).unwrap();
+            r.set_by_name("body", e.to_string()).unwrap();
+            return r;
+        }
+
+        let max_rows = config.get("max_rows").and_then(|s| s.as_i64());
+        let path_prefix: &str = config.get("path_prefix").and_then(|s| s.as_str()).unwrap_or("/");
+        
+        let mut should_update_schema_cache = false;
+        {
+            let data = DB_SCHEMA.lock().unwrap();
+            if data.is_none() {
+                should_update_schema_cache = true;
             }
         }
-        let s = DB_SCHEMA.read();
-        if s.as_ref().is_none() {
-            //info!("failed read cached schema");
+        if should_update_schema_cache {
+            debug1!("updating schema cache");
+            
+            let schemas: &str = config.get("schemas").and_then(|s| s.as_str()).unwrap_or("public");
+            let allow_login_roles = config.get("allow_login_roles").and_then(|s| s.as_bool()).unwrap_or(false);
+            let custom_relations = config.get("custom_relations").and_then(|s| s.as_str());
+            let custom_permissions = config.get("custom_permissions").and_then(|s| s.as_str());
+
+            init(schemas, allow_login_roles, custom_relations, custom_permissions);
+        }
+        let db_schema_wrap = DB_SCHEMA.lock().unwrap();
+        if db_schema_wrap.is_none() {
             let mut r = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
             r.set_by_name("status", 500).unwrap();
             r.set_by_name("body", "failed to read cached schema").unwrap();
             return r;
         }
-        let db_schema_wrap = s.as_ref().unwrap();
-        let db_schema = db_schema_wrap.schema();
-        //info!("got schema");
-        let _max_rows = max_rows.map(|m| m.to_string());
+        let db_schema = db_schema_wrap.as_ref().unwrap().schema();
+        let max_rows = max_rows.map(|m| m.to_string());
         let path: &str = request.get_by_name("path").unwrap().unwrap_or_default();
-        //info!("got path {}", path);
-        let _method = request.get_by_name::<crate::subzero_http_method>("method").unwrap().unwrap_or_default();
-        let method = _method.to_string();
-        //info!("got method {}", method);
+        debug1!("request path {}", path);
+        let relation = path.strip_prefix(path_prefix).unwrap_or_default();
+        debug1!("request relation {}", relation);
+        let method = request
+            .get_by_name::<crate::rest_http_method>("method")
+            .unwrap()
+            .unwrap_or_default()
+            .to_string();
+        debug1!("request method {}", method);
         let query_string: &str = request.get_by_name("query_string").unwrap().unwrap_or_default();
-        //info!("got query_string {}", query_string);
+        debug1!("request query_string {}", query_string);
         let url = url::Url::parse(&format!("http://localhost/?{}", query_string))
             .unwrap_or_else(|_| url::Url::parse("http://localhost/").expect("Fallback URL should be valid"));
         let query_pairs = url.query_pairs();
         let get: Vec<(String, String)> = query_pairs.map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
         let body: Option<&str> = request.get_by_name("body").unwrap();
-        //info!("got body {:?}", body);
+        debug1!("request body {:?}", body);
         let headers_array: Option<Array<pgrx::composite_type!(HEADER_TYPE)>> = request.get_by_name("headers").unwrap();
         let headers: HashMap<&str, &str> = headers_array
             .map(|a| {
@@ -357,7 +250,7 @@ mod subzero {
                     .collect()
             })
             .unwrap_or_default();
-        //info!("got headers {:?}", headers);
+        debug1!("request headers {:?}", headers);
         let parsed_request = postgrest::parse(
             schema,
             relation,
@@ -367,12 +260,11 @@ mod subzero {
             get.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect(),
             body,
             headers,
-            HashMap::new(),       //request.cookies,
-            _max_rows.as_deref(), //None
+            HashMap::new(),      //request.cookies,
+            max_rows.as_deref(), //None
         )
         .map_err(|e| e.to_string());
         if let Err(e) = parsed_request {
-            //info!("failed to parse request: {:?}", e);
             let mut r = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
             r.set_by_name("status", 400).unwrap();
             r.set_by_name("body", e).unwrap();
@@ -389,12 +281,11 @@ mod subzero {
             ..
         } = parsed_request;
 
-        let _env: HashMap<&str, &str> = serde_json::from_str(env).unwrap_or_default();
+        //let _env: HashMap<&str, &str> = serde_json::from_str(env).unwrap_or_default();
         //info!("got env");
         let statement =
-            fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, &_env).map_err(|e| e.to_string());
+            fmt_main_query_internal(db_schema, schema_name, method, &accept_content_type, &query, &preferences, &env).map_err(|e| e.to_string());
         if let Err(e) = statement {
-            //info!("failed to format statement: {:?}", e);
             let mut r = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
             r.set_by_name("status", 400).unwrap();
             r.set_by_name("body", e).unwrap();
@@ -402,27 +293,30 @@ mod subzero {
         }
         let statement = statement.unwrap();
         let (main_statement, main_parameters, _) = generate(statement);
-        //info!("main_statement: {}", main_statement);
-        //info!("main_parameters: {:?}", main_parameters);
+
+        debug1!("statement: {}", main_statement);
+        debug1!("parameters_unparsed: {:?}", main_parameters);
         let parameters = convert_params(main_parameters).map_err(|e| e.to_string());
         if let Err(e) = parameters {
-            //info!("failed to convert parameters: {:?}", e);
             let mut r = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
             r.set_by_name("status", 400).unwrap();
             r.set_by_name("body", e).unwrap();
             return r;
         }
         let parameters = parameters.unwrap();
+
+        
+        
+        debug1!("parameters: {:?}", parameters);
         let response: Result<Response, spi::SpiError> = Spi::connect(|client| {
             let row = client.select(&main_statement, None, Some(parameters))?.first();
-
             Ok(Response {
-                //page_total: row.get::<i64>(1)?,
-                //total_result_set: row.get::<i64>(2)?,
-                body: row.get::<String>(3)?.unwrap_or_default(),
-                constraints_satisfied: row.get::<bool>(4)?.unwrap_or(false),
-                headers: row.get::<String>(5)?,
-                status: row.get::<String>(6)?,
+                page_total: row.get_by_name::<i64, _>("page_total")?,
+                total_result_set: row.get_by_name::<i64, _>("total_result_set")?,
+                body: row.get_by_name::<String, _>("body")?.unwrap_or_default(),
+                constraints_satisfied: row.get_by_name::<bool, _>("constraints_satisfied")?.unwrap_or(false),
+                headers: row.get_by_name::<String, _>("response_headers")?,
+                status: row.get_by_name::<String, _>("response_status")?,
             })
         });
         match &response {
@@ -435,7 +329,6 @@ mod subzero {
                 }
                 let mut http_response = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
                 let status: i16 = r.status.as_ref().map(|s| s.parse::<i16>().unwrap_or(500)).unwrap_or(200);
-                //let body: &[u8] = r.body.as_bytes();
                 let body = r.body.as_str();
                 let mut headers_map = HashMap::from([("Content-Type", "application/json")]);
                 headers_map.extend(
@@ -444,7 +337,8 @@ mod subzero {
                         .map(|h| serde_json::from_str::<HashMap<&str, &str>>(h).unwrap_or_default())
                         .unwrap_or_default(),
                 );
-                //info!("RESPONSE: {:?} {:?} {:?}", status, headers_map, body);
+                let page_total = r.page_total;
+                let total_result_set = r.total_result_set;
                 let headers: Vec<pgrx::composite_type!(HEADER_TYPE)> = headers_map
                     .into_iter()
                     .map(|(k, v)| {
@@ -454,14 +348,15 @@ mod subzero {
                         header
                     })
                     .collect();
-                let s = http_response.set_by_name("status", status);
-                let b = http_response.set_by_name("body", body);
-                let h = http_response.set_by_name("headers", headers);
-                //info!("RESPONSE: s:{:?} b:{:?} h:{:?}", s, b, h);
+                let _s = http_response.set_by_name("status", status);
+                let _b = http_response.set_by_name("body", body);
+                let _h = http_response.set_by_name("headers", headers);
+                let _pt = http_response.set_by_name("page_total", page_total);
+                let _trs = http_response.set_by_name("total_result_set", total_result_set);
                 http_response
             }
             Err(e) => {
-                //info!("failed to execute query: {:?}", e);
+                info!("failed to execute query: {:?}", e);
                 let mut r = PgHeapTuple::new_composite_type(RESPONSE_TYPE).unwrap();
                 r.set_by_name("status", 500).unwrap();
                 r.set_by_name("body", e.to_string()).unwrap();
@@ -501,6 +396,7 @@ mod subzero {
             "varbit" => pg_sys::VARBITOID,
             "tsvector" => pg_sys::TSVECTOROID,
             "tsquery" => pg_sys::TSQUERYOID,
+            "unknown" => pg_sys::UNKNOWNOID,
             _ => pg_sys::TEXTOID,
         }
     }
@@ -615,20 +511,9 @@ mod tests {
 
     #[pg_test]
     fn test_handle() {
-        _ = Spi::run("CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT NOT NULL)");
-        _ = Spi::run("INSERT INTO users (id, name) VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Carol')");
-        //info!("introspecting from test");
-        _ = Spi::run(
-            r#"
-            select subzero.init(
-                schemas => 'public'::text,
-                allow_login_roles => true,
-                custom_relations => '[]'::text,
-                custom_permissions => '[]'::text
-            )
-        "#,
-        );
-        //info!("introspection from test succeeded");
+        
+        Spi::run("CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT NOT NULL)").unwrap();
+        Spi::run("INSERT INTO users (id, name) VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Carol')").unwrap();
         let request = Spi::connect(|client| {
             client
                 .select(
@@ -636,14 +521,14 @@ mod tests {
                 SELECT (
                     ROW(
                         'GET',                            -- method
-                        '/api/data',                      -- path
+                        '/api/users',                     -- path
                         'select=id,name&id=eq.2',         -- query_string
                         null::bytea,                      -- body
                         ARRAY[
-                            ROW('Content-Type', 'application/json')::subzero.http_header,
-                            ROW('Authorization', 'Bearer your_token')::subzero.http_header
-                        ]                                 -- headers
-                    )::subzero.http_request
+                            ROW('Content-Type', 'application/json'),
+                            ROW('Authorization', 'Bearer your_token')
+                        ]::rest.http_header[]             -- headers
+                    )::rest.http_request
                 ) AS  request;
                 "#,
                     None,
@@ -652,10 +537,24 @@ mod tests {
                 .first()
                 .get_one::<pgrx::composite_type!(REQUEST_TYPE)>()
         });
-        //info!("request ready");
         let request = request.unwrap().unwrap();
-        let response = crate::subzero::handle("public", "users", request, "", None);
-
+        info!("request ready");
+        let options = serde_json::json!({
+            "schema": "public",
+            "env": {
+                "role": "admin",
+                "user_id": "1"
+            },
+            "path_prefix": "/api/",
+            "max_rows": 100,
+            "schemas": "public",
+            "allow_login_roles": false,
+            "custom_relations": null,
+            "custom_permissions": null
+        });
+        Spi::run("SET log_min_messages = DEBUG1").unwrap();
+        let response = crate::rest::handle(request, Some(pgrx::Json(options)));
+        info!("response ready");
         let status = response.get_by_name::<i16>("status");
         let body = response.get_by_name::<&str>("body");
         let _headers = response
@@ -679,7 +578,11 @@ mod tests {
     fn test_init() {
         _ = Spi::run("CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT NOT NULL)");
         _ = Spi::run("INSERT INTO users (id, name) VALUES (1, 'Alice'), (2, 'Bob'), (3, 'Carol')");
-        assert!(crate::subzero::init("public", false, None, None));
+        //assert!(crate::subzero::init("public", false, None, None));
+        let result = std::panic::catch_unwind(|| {
+            crate::rest::init("public", false, None, None);
+        });
+        assert!(result.is_ok());
     }
 }
 
@@ -693,7 +596,7 @@ pub mod pg_test {
 
     pub fn postgresql_conf_options() -> Vec<&'static str> {
         // return any postgresql.conf settings that are required for your tests
-        // vec![]
-        vec!["shared_preload_libraries='subzero'"]
+        vec![]
+        //vec!["log_min_messages=DEBUG1"]
     }
 }
