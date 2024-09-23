@@ -905,9 +905,9 @@ fn enforce_max_rows<'a>(query: &mut Query<'a>, max_rows: Option<&'a str>) {
             match limit {
                 Some(SingleVal(l, ..)) => match l.parse::<u32>() {
                     Ok(ll) if ll > max => *limit = Some(SingleVal(Cow::Borrowed(max_str), None)),
-                    _ => *limit = Some(SingleVal(Cow::Borrowed(max_str), None)),
+                    _ => *limit = Some(SingleVal(Cow::Borrowed(max_str), Some(Cow::Borrowed("integer")))),
                 },
-                None => *limit = Some(SingleVal(Cow::Borrowed(max_str), None)),
+                None => *limit = Some(SingleVal(Cow::Borrowed(max_str), Some(Cow::Borrowed("integer")))),
             }
         }
     }
