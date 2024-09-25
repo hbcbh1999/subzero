@@ -21,6 +21,7 @@ use super::base::{
     fmt_select_name, fmt_sub_select_item, return_representation, simple_select_item_format, star_select_item_format, fmt_function_param,
     fmt_select_item_function, fmt_function_call, fmt_env_query, body_snippet, get_body_snippet,
 };
+use itertools::Itertools;
 use crate::schema::DbSchema;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};

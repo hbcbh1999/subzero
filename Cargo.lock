@@ -3191,6 +3191,7 @@ dependencies = [
  "criterion",
  "csv",
  "getrandom 0.2.15",
+ "itertools 0.13.0",
  "lazy_static",
  "log 0.4.22",
  "nom",

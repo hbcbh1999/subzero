@@ -19,6 +19,7 @@ use super::base::{
     fmt_main_query, fmt_offset, fmt_operator, fmt_order, fmt_order_term, fmt_groupby, fmt_groupby_term, fmt_qi, fmt_select_item, fmt_select_name,
     star_select_item_format, fmt_function_param, fmt_env_query, get_body_snippet, fmt_function_call,
 };
+use itertools::Itertools;
 pub use super::base::return_representation;
 use crate::schema::DbSchema;
 use std::borrow::Cow;

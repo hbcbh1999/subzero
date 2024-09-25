@@ -18,6 +18,7 @@
 
 use std::collections::HashSet;
 use std::collections::HashMap;
+// use itertools::Itertools;
 
 use super::base::{
     cast_select_item_format, fmt_condition, fmt_field, fmt_filter, fmt_identity, fmt_json_path, fmt_limit, fmt_logic_operator, fmt_offset,

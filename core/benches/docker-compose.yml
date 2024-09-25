@@ -32,6 +32,7 @@ services:
       POSTGRES_DB: app_db
       POSTGRES_USER: app_user
       POSTGRES_PASSWORD: password
+    # command: "postgres -c log_statement=all"
 
     volumes:
       - "./schema.sql:/docker-entrypoint-initdb.d/schema.sql"
