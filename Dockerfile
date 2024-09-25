@@ -6,7 +6,7 @@
 
 ARG FEATURES="all"
 
-FROM rustlang/rust:nightly as builder
+FROM rustlang/rust:nightly AS builder
 ARG FEATURES
 WORKDIR /usr/src/subzero
 COPY . .
@@ -14,7 +14,7 @@ RUN cargo build --package subzero-rocket --no-default-features --features ${FEAT
 
 FROM debian:bookworm-slim
 ARG FEATURES
-ENV SUBZERO_ADDRESS 0.0.0.0
+ENV SUBZERO_ADDRESS="0.0.0.0"
 RUN apt-get update && \
     apt-get install -y openssl && \
     rm -rf /var/lib/apt/lists/*
