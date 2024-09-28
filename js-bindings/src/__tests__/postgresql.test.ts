@@ -105,7 +105,7 @@ describe('query shape tests', () => {
       normalize_statement({
         query: `
             with 
-            env as materialized (select $1 as "role",$2 as "request")
+            env as materialized (select $1 as "request",$2 as "role")
             , _subzero_query as (
                 select "public"."tasks"."id", "public"."tasks"."name" from "public"."tasks", env where "public"."tasks"."id" = $3
                 and ((true))
@@ -120,7 +120,7 @@ describe('query shape tests', () => {
                 nullif(current_setting('response.status', true), '') as response_status
             from ( select * from _subzero_query ) _subzero_t
             `,
-        parameters: ['anonymous', '{"method":"GET"}', 1],
+        parameters: ['{"method":"GET"}', 'anonymous', 1],
       }),
     );
   });
