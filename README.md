@@ -1,4 +1,4 @@
-*subZero* is a fast, Rust-powered library designed to simplify building REST APIs and backend services. It generalizes the concepts found in tools like PostgREST, PostGraphile, and Hasura, with the aim to support multiple REST/GraphQL flavors like PostgREST, OData, Hasura and various databases on the backend (PostgreSQL, SQLite, MySQL, Clickhouse).
+**subZero** is a [fast](core/benches/), Rust-powered library designed to simplify building REST APIs and backend services. It generalizes the concepts found in tools like PostgREST, PostGraphile, and Hasura, with the aim to support multiple REST/GraphQL flavors like PostgREST, OData, Hasura and various databases on the backend (PostgreSQL, SQLite, MySQL, Clickhouse).
 
 In contrast to PostgREST/Hasura, subZero is designed as a library, not just an executable. This allows you to integrate it into your backend (Rust, Node, Workers, C, Java), offering the fast turnaround time of PostgREST without sacrificing the flexibility of a custom backend.
 
