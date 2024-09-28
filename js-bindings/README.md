@@ -244,4 +244,4 @@ export const GET = router.fetch
 export const POST = router.fetch
 ```
 
-[*] MySQL and ClickHouse support is implemented only in the core library and would have to use lower level functions. The hire level functions (`init`, `getRestHandler`, etc) do not yet support these databases.
+[*] MySQL and ClickHouse support is implemented only in the core library and you would have to use lower level functions. The higher level functions (`init`, `getRestHandler`, etc) do not yet support these databases.
