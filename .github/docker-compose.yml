@@ -1,6 +1,4 @@
 ### used for providing services when running tests in github actions
-version: '3'
-
 services:
   postgresql:
     image: postgres:16

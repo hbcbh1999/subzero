@@ -994,7 +994,6 @@ export class SubzeroInternal {
     }
 
     free() {
-        console.log('freeing subzero')
         if (this.backend) {
             console.log('freeing backend')
             this.backend.free()
