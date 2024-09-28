@@ -102,7 +102,7 @@ jobs:
         working-directory: js-bindings
 
       - name: Bring up db services
-        run: docker-compose --file .github/docker-compose.yml --env-file .github/.env up -d
+        run: docker compose --file .github/docker-compose.yml --env-file .github/.env up -d
 
       - run: cargo test
         working-directory: core
@@ -122,4 +122,4 @@ jobs:
       - run: sccache --show-stats
 
       - name: Bring down db services
-        run: docker-compose --file .github/docker-compose.yml --env-file .github/.env down
+        run: docker compose --file .github/docker-compose.yml --env-file .github/.env down
