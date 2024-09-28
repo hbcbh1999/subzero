@@ -178,9 +178,7 @@ macro_rules! fmt_env_query {
                 } else {
                     env.iter()
                         .sorted_by_key(|x| x.0)
-                        .map(|(k, v)| {
-                            param(v as &SqlParam) + " as " + fmt_identity(&String::from(*k))
-                        })
+                        .map(|(k, v)| param(v as &SqlParam) + " as " + fmt_identity(&String::from(*k)))
                         .join(",")
                 }
         }

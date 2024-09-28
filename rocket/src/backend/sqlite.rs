@@ -204,9 +204,12 @@ fn execute(
                     let _ = conn.execute_batch("ROLLBACK");
                 })?;
             let mutate_params = params_from_iter(mutate_parameters.into_iter().map(wrap_param));
-            let mut rows = mutate_stmt.query(mutate_params).context(SqliteDbSnafu { authenticated }).inspect_err(|_| {
-                let _ = conn.execute_batch("ROLLBACK");
-            })?;
+            let mut rows = mutate_stmt
+                .query(mutate_params)
+                .context(SqliteDbSnafu { authenticated })
+                .inspect_err(|_| {
+                    let _ = conn.execute_batch("ROLLBACK");
+                })?;
             let mut ids: Vec<(i64, bool)> = vec![];
             while let Some(r) = rows.next().context(SqliteDbSnafu { authenticated }).inspect_err(|_| {
                 let _ = conn.execute_batch("ROLLBACK");

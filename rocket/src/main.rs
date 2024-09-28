@@ -184,8 +184,6 @@ async fn start() -> Result<Rocket<Build>, Error> {
     #[allow(unused_variables)]
     let url_prefix = vhost_config.url_prefix.clone().unwrap_or(default_prefix);
 
-    
-
     //initialize the backend
     #[allow(unused_variables)]
     let backend: Box<dyn Backend + Send + Sync> = match vhost_config.db_type.as_str() {

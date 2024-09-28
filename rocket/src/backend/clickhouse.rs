@@ -14,7 +14,7 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
-use hyper::{Client, client::HttpConnector, Body, Uri,};
+use hyper::{Client, client::HttpConnector, Body, Uri};
 use url::Url;
 use formdata::{FormData, generate_boundary, write_formdata};
 use deadpool::managed;
