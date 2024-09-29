@@ -14,17 +14,20 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
-use hyper::{Client, client::HttpConnector, Body, Uri};
-use url::Url;
-use formdata::{FormData, generate_boundary, write_formdata};
+// use hyper::{Client, client::HttpConnector, Body, Uri};
+use reqwest::{Client, Url};
+// use url::Url;
+use http::Uri;
+//use formdata::{FormData, generate_boundary, write_formdata};
 use deadpool::managed;
+//use rocket::http::hyper::body;
 use snafu::ResultExt;
 use tokio::time::Duration;
 use crate::error::{Result, *};
 use crate::config::{VhostConfig, SchemaStructure::*};
 use subzero_core::{
     api::{ApiRequest, ApiResponse, SingleVal, Payload, ListVal},
-    error::{Error, JsonDeserializeSnafu, JsonSerializeSnafu},
+    error::{Error as CoreError, JsonDeserializeSnafu, JsonSerializeSnafu},
     schema::{DbSchema, replace_json_str},
     formatter::{
         Param::*,
@@ -32,8 +35,9 @@ use subzero_core::{
     },
 };
 use std::collections::HashMap;
+//use std::panic::resume_unwind;
 use async_trait::async_trait;
-use http::Error as HttpError;
+// use http::Error as HttpError;
 // use log::{debug};
 use super::{Backend, DbSchemaWrap, include_files};
 
@@ -43,7 +47,7 @@ use serde_json::Value as JsonValue;
 use http::Method;
 use base64::{Engine as _, engine::general_purpose};
 
-type HttpClient = (Url, Uri, Client<HttpConnector>);
+type HttpClient = (Url, Uri, Client);
 type Pool = managed::Pool<Manager>;
 struct Manager {
     uri: String,
@@ -55,19 +59,17 @@ const TCP_KEEPALIVE: Duration = Duration::from_secs(60);
 const POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(2);
 impl managed::Manager for Manager {
     type Type = HttpClient;
-    type Error = HttpError;
+    type Error = reqwest::Error;
 
-    async fn create(&self) -> Result<HttpClient, HttpError> {
-        let mut connector = HttpConnector::new();
-
-        // TODO: make configurable in `Client::builder()`.
-        connector.set_keepalive(Some(TCP_KEEPALIVE));
-
-        let client = hyper::Client::builder().pool_idle_timeout(POOL_IDLE_TIMEOUT).build(connector);
+    async fn create(&self) -> Result<HttpClient, reqwest::Error> {
+        let client = Client::builder()
+            .tcp_keepalive(Some(TCP_KEEPALIVE))
+            .pool_idle_timeout(Some(POOL_IDLE_TIMEOUT))
+            .build()?;
         Ok((self.uri.parse::<Url>().unwrap(), self.uri.parse::<Uri>().unwrap(), client))
     }
 
-    async fn recycle(&self, _: &mut HttpClient, _: &managed::Metrics) -> managed::RecycleResult<HttpError> {
+    async fn recycle(&self, _: &mut HttpClient, _: &managed::Metrics) -> managed::RecycleResult<reqwest::Error> {
         Ok(())
     }
 }
@@ -94,40 +96,34 @@ async fn execute<'a>(
     }
     debug!("parameters {:?}", parameters);
 
-    let formdata = FormData {
-        fields: parameters,
-        files: vec![],
-    };
-    let mut http_body: Vec<u8> = Vec::new();
-    let boundary = generate_boundary();
-    write_formdata(&mut http_body, &boundary, &formdata).expect("write_formdata error");
+    let form = parameters.into_iter().fold(reqwest::multipart::Form::new(), |form, (k, v)| {
+        form.text(k, v)
+    });
+    // let formdata = FormData {
+    //     fields: parameters,
+    //     files: vec![],
+    // };
+    // let mut http_body: Vec<u8> = Vec::new();
+    // let boundary = generate_boundary();
+    // write_formdata(&mut http_body, &boundary, &formdata).expect("write_formdata error");
 
-    let mut http_request = hyper::Request::builder()
-        .uri(base_url)
-        .method(hyper::Method::POST)
-        .header("Content-Type", format!("multipart/form-data; boundary={}", std::str::from_utf8(boundary.as_slice()).unwrap()));
+    let mut http_request = client
+        .post(base_url.to_string())
+        .multipart(form);
     //.body(Body::from(http_body)).context(HttpRequestError)?;
     if uri.username() != "" {
         http_request = http_request.header(
-            hyper::header::AUTHORIZATION,
+            reqwest::header::AUTHORIZATION,
             format!("Basic {}", general_purpose::STANDARD_NO_PAD.encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))),
         );
     }
 
-    let http_req = http_request.body(Body::from(http_body)).context(HyperHttpSnafu)?;
-    let http_response = match client.request(http_req).await {
-        Ok(r) => Ok(r),
-        Err(e) => Err(Error::InternalError { message: e.to_string() }),
-    }
-    .context(CoreSnafu)?;
-    let (parts, body) = http_response.into_parts();
-    let status = parts.status.as_u16();
-    let headers = parts.headers;
-    debug!("status {:?}", status);
-    debug!("headers {:?}", headers);
-    let bytes = hyper::body::to_bytes(body).await.context(HyperSnafu)?;
-    let body = String::from_utf8(bytes.to_vec()).unwrap_or_default();
-    let page_total = match headers.get("x-clickhouse-summary") {
+    //let http_request = http_request.body(http_body);
+    let http_response = http_request.send().await.context(ReqwestSnafu)?;
+    let page_total = {
+        let headers = http_response.headers();
+        debug!("headers {:?}", headers);
+        match headers.get("x-clickhouse-summary") {
         Some(s) => match serde_json::from_str::<JsonValue>(s.to_str().unwrap_or("")) {
             Ok(v) => {
                 debug!("read_rows {:?}", v["read_rows"].as_str());
@@ -136,7 +132,14 @@ async fn execute<'a>(
             Err(_) => 0,
         },
         None => 0,
-    };
+    }};
+    let status = http_response.status();
+    let body = http_response.text().await.context(ReqwestSnafu)?;
+    debug!("status {:?}", status);
+    //debug!("headers {:?}", headers);
+    // let bytes = hyper::body::to_bytes(body).await.context(HyperSnafu)?;
+    // let body = String::from_utf8(bytes.to_vec()).unwrap_or_default();
+    
     debug!("page_total {:?}", page_total);
     let api_response = ApiResponse {
         page_total,
@@ -161,7 +164,7 @@ async fn execute<'a>(
         // PUT /items?id=eq.14 { "id" : 2, .. } is rejected.
         // If this condition is not satisfied then nothing is inserted,
         //transaction.rollback().await.context(PgDbError { authenticated })?;
-        return Err(to_core_error(Error::PutMatchingPkError));
+        return Err(to_core_error(CoreError::PutMatchingPkError));
     }
 
     // if config.db_tx_rollback {
@@ -193,70 +196,44 @@ impl Backend for ClickhouseBackend {
                     .find(|f| Path::new(f).exists())
                     .unwrap_or(&f),
             ) {
-                Ok(q) => match pool.get().await {
-                    Ok(o) => {
-                        let uri = &o.0;
-                        let base_url = &o.1;
-                        let client = &o.2;
-                        let query = include_files(q);
-                        //println!("query {}", query);
-                        let formdata = FormData {
-                            fields: vec![
-                                ("param_p1".to_owned(), format!("['{}']", config.db_schemas.join("','"))),
-                                ("query".to_owned(), query),
-                            ],
-                            files: vec![],
-                        };
-                        let mut http_body: Vec<u8> = Vec::new();
-                        let boundary = generate_boundary();
-                        write_formdata(&mut http_body, &boundary, &formdata).expect("write_formdata error");
-
-                        let mut http_request = hyper::Request::builder()
-                            .uri(base_url)
-                            .method(hyper::Method::POST)
-                            .header("Content-Type", format!("multipart/form-data; boundary={}", std::str::from_utf8(boundary.as_slice()).unwrap()));
-                        //.body(Body::from(http_body)).context(HttpRequestError)?;
-                        if uri.username() != "" {
-                            http_request = http_request.header(
-                                hyper::header::AUTHORIZATION,
-                                format!(
-                                    "Basic {}",
-                                    general_purpose::STANDARD_NO_PAD.encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))
-                                ),
-                            );
-                        }
-
-                        let http_req = http_request.body(Body::from(http_body)).context(HyperHttpSnafu)?;
-                        let http_response = match client.request(http_req).await {
-                            Ok(r) => Ok(r),
-                            Err(e) => Err(Error::InternalError { message: e.to_string() }),
-                        }
-                        .context(CoreSnafu)?;
-                        let (parts, body) = http_response.into_parts();
-
-                        let _status = parts.status.as_u16();
-                        let _headers = parts.headers;
-                        let bytes = hyper::body::to_bytes(body).await.context(HyperSnafu)?;
-                        let s = String::from_utf8(bytes.to_vec()).unwrap_or_default();
-                        //println!("json schema original:\n{:?}\n", s);
-                        // clickhouse query returns check_json_str and using_json_str as string
-                        // so we first parse it into a JsonValue and then convert those two fileds into json
-                        let mut v: JsonValue = serde_json::from_str(&s).context(JsonDeserializeSnafu).context(CoreSnafu)?;
-                        //recursivley iterate through the json and convert check_json_str and using_json_str into json
-                        // println!("json value before replace:\n{:?}\n", v);
-                        // recursively iterate through the json and apply the f function
-                        replace_json_str(&mut v).context(CoreSnafu)?;
-                        let s = serde_json::to_string_pretty(&v).context(JsonSerializeSnafu).context(CoreSnafu)?;
-
-                        //let schema: DbSchema = serde_json::from_str(&s).context(JsonDeserialize).context(CoreError)?;
-                        //println!("schema {:?}", schema);
-                        Ok(DbSchemaWrap::new(s, |s| {
-                            serde_json::from_str::<DbSchema>(s.as_str())
-                                .context(JsonDeserializeSnafu)
-                                .context(CoreSnafu)
-                        }))
+                Ok(q) => {
+                    let o = pool.get().await.context(ClickhouseDbPoolSnafu)?;
+                    let uri = &o.0;
+                    let base_url = &o.1;
+                    let client = &o.2;
+                    let query = include_files(q);
+                    let parameters = vec![
+                            ("param_p1".to_owned(), format!("['{}']", config.db_schemas.join("','"))),
+                            ("query".to_owned(), query),
+                    ];
+                    let form = parameters.into_iter().fold(reqwest::multipart::Form::new(), |form, (k, v)| {
+                        form.text(k, v)
+                    });
+                    let mut http_request = client
+                        .post(base_url.to_string())
+                        .multipart(form);
+                    if uri.username() != "" {
+                        http_request = http_request.header(
+                            reqwest::header::AUTHORIZATION,
+                            format!(
+                                "Basic {}",
+                                general_purpose::STANDARD_NO_PAD.encode(format!("{}:{}", uri.username(), uri.password().unwrap_or_default()))
+                            ),
+                        );
                     }
-                    Err(e) => Err(e).context(ClickhouseDbPoolSnafu),
+
+                    let http_response = http_request.send().await.context(ReqwestSnafu)?;
+                    let s = http_response.text().await.context(ReqwestSnafu)?;
+                    //println!("s: {}", s);
+                    let mut v: JsonValue = serde_json::from_str(&s).context(JsonDeserializeSnafu).context(CoreSnafu)?;
+                    replace_json_str(&mut v).context(CoreSnafu)?;
+                    let s = serde_json::to_string_pretty(&v).context(JsonSerializeSnafu).context(CoreSnafu)?;
+
+                    Ok(DbSchemaWrap::new(s, |s| {
+                        serde_json::from_str::<DbSchema>(s.as_str())
+                            .context(JsonDeserializeSnafu)
+                            .context(CoreSnafu)
+                    }))
                 },
                 Err(e) => Err(e).context(ReadFileSnafu { path: f }),
             },

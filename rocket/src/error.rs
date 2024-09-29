@@ -41,10 +41,7 @@ use deadpool::managed::PoolError as ClickhousePoolError;
 use http::Error as HttpError;
 
 #[cfg(feature = "clickhouse")]
-use hyper::http::Error as HyperHttpError;
-
-#[cfg(feature = "clickhouse")]
-use hyper::Error as HyperError;
+use reqwest::Error as ReqwestHttpError;
 
 #[cfg(feature = "mysql")]
 use mysql_async::Error as MysqlError;
@@ -61,7 +58,7 @@ pub enum Error {
 
     #[cfg(feature = "clickhouse")]
     #[snafu(display("DbPoolError {}", source))]
-    ClickhouseDbPool { source: ClickhousePoolError<HttpError> },
+    ClickhouseDbPool { source: ClickhousePoolError<ReqwestHttpError> },
 
     #[cfg(feature = "sqlite")]
     #[snafu(display("DbPoolError {}", source))]
@@ -93,11 +90,7 @@ pub enum Error {
 
     #[cfg(feature = "clickhouse")]
     #[snafu(display("HttpRequestError: {}", source))]
-    HyperHttp { source: HyperHttpError },
-
-    #[cfg(feature = "clickhouse")]
-    #[snafu(display("HttpRequestError: {}", source))]
-    Hyper { source: HyperError },
+    Reqwest { source: ReqwestHttpError },
 
     #[snafu(display("{}", source))]
     Core { source: SubzeroCoreError },
@@ -127,12 +120,10 @@ impl Error {
             Error::ReadFile { .. } => 500,
 
             #[cfg(feature = "clickhouse")]
-            Error::Hyper { .. } => 500,
+            Error::Reqwest { .. } => 500,
             Error::Internal { .. } => 500,
             #[cfg(feature = "clickhouse")]
             Error::HttpRequest { .. } => 500,
-            #[cfg(feature = "clickhouse")]
-            Error::HyperHttp { .. } => 500,
             Error::Core { source } => source.status_code(),
             #[cfg(feature = "sqlite")]
             Error::Thread { .. } => 500,
@@ -209,11 +200,7 @@ impl Error {
                 json!({ "message": format!("{source}") })
             }
             #[cfg(feature = "clickhouse")]
-            Error::Hyper { source } => {
-                json!({ "message": format!("{source}") })
-            }
-            #[cfg(feature = "clickhouse")]
-            Error::HyperHttp { source } => {
+            Error::Reqwest { source } => {
                 json!({ "message": format!("{source}") })
             }
             Error::Core { source } => source.json_body(),
