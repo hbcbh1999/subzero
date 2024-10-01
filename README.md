@@ -4,7 +4,7 @@ In contrast to PostgREST/Hasura, subZero is designed as a library, not just an e
 
 The directory structure is as follows:
 
-- [core](core/README.md): The core library that contains the AST, parser, and query builder.
+- [core](core/): The core library that contains the AST, parser, and query builder.
 - [core/benches](core/benches/): Some interesting performance benchmarks.
 - [rocket](rocket/README.md): The code to create an executable that exposes a web server based on the Rocket framework.
 - [java-bindings](java-bindings/README.md): The Java bindings for subZero.
